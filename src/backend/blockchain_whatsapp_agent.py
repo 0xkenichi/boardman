@@ -26,9 +26,9 @@ from web3.contract import Contract
 from dotenv import load_dotenv
 import os
 
-from db_layer import DBLayer
-from blockchain_layer import BlockchainLayer
-from evolution_bridge import EvolutionBridge
+from backend.db_layer import DBLayer
+from backend.blockchain_layer import BlockchainLayer
+from backend.evolution_bridge import EvolutionBridge
 
 load_dotenv()
 

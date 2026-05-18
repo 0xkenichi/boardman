@@ -29,10 +29,10 @@ class ClawController:
     """
 
     def __init__(self):
-        from evolution_bridge import EvolutionBridge
-        from wallet_service   import get_wallet_service
-        from match_manager    import get_match_manager
-        from db_layer         import DBLayer
+        from backend.evolution_bridge import EvolutionBridge
+        from backend.wallet_service import get_wallet_service
+        from gaming.src.backend.match_manager import get_match_manager
+        from backend.db_layer import DBLayer
 
         self.db      = DBLayer()
         self.bridge  = EvolutionBridge()
@@ -289,8 +289,8 @@ class ClawController:
     async def _cmd_transactions(self, user, args) -> str:
         """Show recent Circle wallet transactions."""
         try:
-            from supabase import create_client
-            sb = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
+            from backend.supabase_client import get_supabase
+            sb = get_supabase()
 
             # Get recent transactions for this user
             result = sb.table("circle_transactions").select("*").eq("profile_id", user["id"]).order("created_at", desc=True).limit(10).execute()

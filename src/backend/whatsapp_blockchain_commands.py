@@ -23,7 +23,7 @@ async def handle_deposit(user: dict, send_fn) -> str:
     The wallet is auto-generated from their WhatsApp number.
     """
     from custodial_wallet import get_wallet_for_user
-    from blockchain_layer import get_blockchain_layer
+    from backend.blockchain_layer import get_blockchain_layer
     
     bl = get_blockchain_layer()
     phone = user.get("whatsapp_number") or user.get("whatsapp_id")
@@ -46,7 +46,7 @@ async def handle_balance(user: dict, send_fn) -> str:
     /balance or /wallet
     Shows user's USDC balance and $PLAY points.
     """
-    from db_layer_blockchain import get_wallet_balance
+    from backend.db_layer_blockchain import get_wallet_balance
     
     balance = await get_wallet_balance(user["id"])
     play_points = user.get("play_points", 0)
@@ -78,7 +78,7 @@ async def handle_withdraw(user: dict, amount_str: str, send_fn) -> str:
     if amount < 5:
         return "❌ Minimum withdrawal is $5 USDC."
 
-    from db_layer_blockchain import get_wallet_balance
+    from backend.db_layer_blockchain import get_wallet_balance
     balance = await get_wallet_balance(user["id"])
 
     if amount > balance:
@@ -93,7 +93,7 @@ async def handle_withdraw(user: dict, amount_str: str, send_fn) -> str:
     wallet = get_wallet_for_user(phone, user)
     to_address = wallet["address"]
 
-    from db_layer_blockchain import get_supabase
+    from backend.db_layer_blockchain import get_supabase
     sb = get_supabase()
     sb.table("withdrawal_requests").insert({
         "user_id":      user["id"],
@@ -102,7 +102,7 @@ async def handle_withdraw(user: dict, amount_str: str, send_fn) -> str:
         "status":       "pending",
     }).execute()
 
-    from blockchain_layer import get_blockchain_layer
+    from backend.blockchain_layer import get_blockchain_layer
     bl = get_blockchain_layer()
 
     return (
@@ -120,7 +120,7 @@ async def handle_my_wallet(user: dict, send_fn) -> str:
     /my_wallet
     Shows user's complete wallet info.
     """
-    from db_layer_blockchain import get_wallet_balance
+    from backend.db_layer_blockchain import get_wallet_balance
     from custodial_wallet import get_wallet_for_user
     
     balance = await get_wallet_balance(user["id"])
@@ -130,7 +130,7 @@ async def handle_my_wallet(user: dict, send_fn) -> str:
     wallet = get_wallet_for_user(phone, user)
     address = wallet["address"]
     
-    from blockchain_layer import get_blockchain_layer
+    from backend.blockchain_layer import get_blockchain_layer
     bl = get_blockchain_layer()
     
     return (

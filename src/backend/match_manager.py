@@ -20,10 +20,10 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 from functools import wraps
 
-from supabase import create_client
+from backend.supabase_client import get_supabase
 
-from bot.keyboards import ALLOWED_TEAMS
-from db_layer_blockchain import debit_wallet, get_wallet_balance, credit_wallet
+from gaming.src.backend.bot.keyboards import ALLOWED_TEAMS
+from backend.db_layer_blockchain import debit_wallet, get_wallet_balance, credit_wallet
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class MatchManager:
 
     def __init__(self):
         from court_layer import CourtLayer
-        from evolution_bridge import EvolutionBridge
+        from backend.evolution_bridge import EvolutionBridge
 
         self.court = CourtLayer()
         self.bridge = EvolutionBridge()
@@ -101,7 +101,7 @@ class MatchManager:
             return {"success": False, "error": "Failed to debit wallet. Please try again."}
 
         # Create DB record with new fields
-        sb = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
+        sb = get_supabase()
         record = {
             "id": full_match_id,
             "short_id": match_id,
@@ -144,7 +144,7 @@ class MatchManager:
         player2_whatsapp: str,
     ) -> dict:
         """Player2 joins an open match."""
-        sb = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
+        sb = get_supabase()
 
         # Fetch match
         result = sb.table("bets").select("*").or_(
@@ -190,7 +190,7 @@ class MatchManager:
         # Lock stakes in escrow (record in DB for balance display)
         try:
             from escrow_manager import EscrowManager
-            from db_layer import DBLayer
+            from backend.db_layer import DBLayer
             db = DBLayer()
             escrow_mgr = EscrowManager(db)
 
@@ -227,7 +227,7 @@ class MatchManager:
         reporter_whatsapp: Optional[str] = None,
     ) -> dict:
         """Record a score report from a player. Triggers resolution if both have reported."""
-        sb = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
+        sb = get_supabase()
 
         result = sb.table("bets").select("*").or_(
             f"short_id.eq.{match_id},id.eq.{match_id}"
@@ -279,7 +279,7 @@ class MatchManager:
         image_path: str,
     ) -> dict:
         """Record a screenshot submission for a disputed match."""
-        sb = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
+        sb = get_supabase()
         result = sb.table("bets").select("*").or_(
             f"short_id.eq.{match_id},id.eq.{match_id}"
         ).single().execute()
@@ -330,7 +330,7 @@ class MatchManager:
     async def _process_screenshots(self, match: dict):
         """Route to AI mediator once both screenshots are submitted."""
         try:
-            sb = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
+            sb = get_supabase()
             creator = sb.table("profiles").select(PROFILE_SELECT).eq("id", match["creator_id"]).single().execute().data
             opponent = sb.table("profiles").select(PROFILE_SELECT).eq("id", match["opponent_id"]).single().execute().data
 
@@ -365,7 +365,7 @@ class MatchManager:
             await asyncio.sleep(TIMEOUT_CHECK_INTERVAL)
 
     async def _cancel_expired_matches(self):
-        sb = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
+        sb = get_supabase()
         now = datetime.now(timezone.utc)
 
         # Find expired OPEN matches (no opponent joined in 24h)
@@ -407,7 +407,7 @@ class MatchManager:
 
     async def get_match(self, match_id: str) -> Optional[dict]:
         """Fetch match record by ID."""
-        sb = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
+        sb = get_supabase()
         res = sb.table("bets").select("*").or_(f"id.eq.{match_id},short_id.eq.{match_id}").execute()
         return res.data[0] if res.data else None
 
@@ -417,7 +417,7 @@ class MatchManager:
             logger.warning("Invalid team '%s' attempted by user %s for match %s", team_name, player_id, match_id)
             return False
 
-        sb = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
+        sb = get_supabase()
         match = await self.get_match(match_id)
         if not match:
             return False

@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8670193780:AAE_myMBXRlel2TpS3HmBN_uSwYqblMi3Is")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+if not BOT_TOKEN:
+    logger.warning("TELEGRAM_BOT_TOKEN not set - webhook will not work")
 
 RESPONSES = {
     "/start": "🎮 *Welcome to sideQuest!*\n\nStake USDC, play games, and win real money.\n\nUse /help to see all commands.",

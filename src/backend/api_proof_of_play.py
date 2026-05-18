@@ -11,7 +11,8 @@ from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 
-from db_layer import DBLayer
+from backend.db_layer import DBLayer
+from backend.utils.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 db = DBLayer()
@@ -20,12 +21,15 @@ app = FastAPI(title="sideQuest Proof of Play API", version="1.0.0")
 
 # ─── CORS ──────────────────────────────────────────────────────────────────────
 
+# CORS - explicit origins only (not wildcard)
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://sidequest.vercel.app,http://localhost:3000").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # ─── Helper Functions ─────────────────────────────────────────────────────────
@@ -40,7 +44,7 @@ def validate_uuid(param: str, param_name: str = "id"):
 # ─── Sessions ─────────────────────────────────────────────────────────────────
 
 @app.post("/api/sessions")
-async def create_session(session: dict):
+async def create_session(session: dict, user_id: str = Depends(get_current_user)):
     """Create a new match session."""
     try:
         required = ["host_id", "title", "game_type"]
@@ -89,7 +93,7 @@ async def get_session(session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/api/sessions/{session_id}/status")
-async def update_session_status(session_id: str, status: str):
+async def update_session_status(session_id: str, status: str, user_id: str = Depends(get_current_user)):
     """Update session status."""
     try:
         validate_uuid(session_id, "session_id")
@@ -136,7 +140,7 @@ async def list_sessions(status: Optional[str] = None, limit: int = 50):
 # ─── Challenges ───────────────────────────────────────────────────────────────
 
 @app.post("/api/challenges")
-async def create_challenge(challenge: dict):
+async def create_challenge(challenge: dict, user_id: str = Depends(get_current_user)):
     """Create a public challenge."""
     try:
         required = ["issuer_id", "game_type", "stake_amount"]
@@ -205,7 +209,7 @@ async def list_challenges(target_id: Optional[str] = None, limit: int = 50):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/api/challenges/{challenge_id}/accept")
-async def accept_challenge(challenge_id: str, bet_id: Optional[str] = None):
+async def accept_challenge(challenge_id: str, bet_id: Optional[str] = None, user_id: str = Depends(get_current_user)):
     """Accept a public challenge."""
     try:
         validate_uuid(challenge_id, "challenge_id")
@@ -225,7 +229,7 @@ async def accept_challenge(challenge_id: str, bet_id: Optional[str] = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/api/challenges/{challenge_id}/decline")
-async def decline_challenge(challenge_id: str):
+async def decline_challenge(challenge_id: str, user_id: str = Depends(get_current_user)):
     """Decline a public challenge."""
     try:
         validate_uuid(challenge_id, "challenge_id")
@@ -257,7 +261,7 @@ async def get_player_challenges(player_id: str):
 # ─── Base Markets Integration ─────────────────────────────────────────────────
 
 @app.post("/api/base-markets")
-async def create_base_market(market: dict):
+async def create_base_market(market: dict, user_id: str = Depends(get_current_user)):
     """Create a Base Markets prediction pool."""
     try:
         required = ["market_type", "question", "outcomes"]
@@ -332,7 +336,7 @@ async def list_active_base_markets():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/api/base-markets/{market_id}/resolve")
-async def resolve_base_market(market_id: str, status: str, tx_hash: Optional[str] = None):
+async def resolve_base_market(market_id: str, status: str, tx_hash: Optional[str] = None, user_id: str = Depends(get_current_user)):
     """Resolve a base market."""
     try:
         valid_statuses = ["resolved", "cancelled"]
@@ -354,7 +358,7 @@ async def resolve_base_market(market_id: str, status: str, tx_hash: Optional[str
 # ─── Proof of Play Receipts ───────────────────────────────────────────────────
 
 @app.post("/api/proof-of-play")
-async def create_proof_of_play(receipt: dict):
+async def create_proof_of_play(receipt: dict, user_id: str = Depends(get_current_user)):
     """Create a proof of play receipt."""
     try:
         required = ["bet_id", "tx_hash"]

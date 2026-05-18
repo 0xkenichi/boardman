@@ -17,8 +17,8 @@ from telegram.ext import (
 )
 from dotenv import load_dotenv
 
-from app_controller import ClawController
-from match_manager import MatchType, MatchConfig, VerificationLevel
+from gaming.src.backend.app_controller import ClawController
+from gaming.src.backend.match_manager import MatchType, MatchConfig, VerificationLevel
 
 load_dotenv()
 controller = ClawController()

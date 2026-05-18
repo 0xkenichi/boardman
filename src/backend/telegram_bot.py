@@ -36,7 +36,7 @@ if not API_TOKEN:
     exit(1)
 
 try:
-    from app_controller import get_controller
+    from gaming.src.backend.app_controller import get_controller
     controller = get_controller()
     logger.info("✅ Shared ClawController linked")
 except Exception as e:
@@ -161,7 +161,7 @@ async def cmd_start(message: types.Message):
 
     if not wallet or wallet == "Not linked":
         try:
-            from wallet_service import get_wallet_service
+            from backend.wallet_service import get_wallet_service
             ws = get_wallet_service()
             result = await ws.create_wallet(profile["id"])
             if result.get("success"):

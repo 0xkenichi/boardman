@@ -12,7 +12,7 @@ from telegram.ext import (
 )
 from dotenv import load_dotenv
 
-from app_controller import ClawController
+from gaming.src.backend.app_controller import ClawController
 
 load_dotenv()
 controller = ClawController()

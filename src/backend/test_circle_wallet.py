@@ -14,9 +14,9 @@ load_dotenv()
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from circle_wallet_service import CircleWalletService
-from db_layer import DBLayer
-from wallet_service import WalletService
+from backend.circle_wallet_service import CircleWalletService
+from backend.db_layer import DBLayer
+from backend.wallet_service import WalletService
 
 
 def test_wallet_creation():

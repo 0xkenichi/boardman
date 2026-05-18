@@ -12,7 +12,7 @@ Commands:
 
 import re
 from blockchain_whatsapp_agent import BlockchainWhatsAppAgent, TxStatus
-from evolution_bridge import EvolutionBridge
+from backend.evolution_bridge import EvolutionBridge
 
 class BlockchainWhatsAppCommands:
     def __init__(self, agent: BlockchainWhatsAppAgent, bridge: EvolutionBridge):

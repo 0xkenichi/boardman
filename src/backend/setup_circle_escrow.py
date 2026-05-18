@@ -17,8 +17,8 @@ load_dotenv()
 # Add backend to path
 sys.path.insert(0, os.path.dirname(__file__))
 
-from circle_wallet_service import CircleWalletService
-from db_layer import DBLayer
+from backend.circle_wallet_service import CircleWalletService
+from backend.db_layer import DBLayer
 
 
 def main():

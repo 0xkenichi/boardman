@@ -10,9 +10,9 @@ import logging
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from supabase import Client
-from db_layer import DBLayer
+from backend.db_layer import DBLayer
 from pydantic import BaseModel, Field
-from utils.auth import require_beta_approval
+from backend.utils.auth import require_beta_approval
 
 logger = logging.getLogger(__name__)
 

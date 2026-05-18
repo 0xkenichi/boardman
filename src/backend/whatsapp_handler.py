@@ -18,8 +18,8 @@ import asyncio
 import re
 import json
 
-from app_controller import ClawController
-from evolution_bridge import EvolutionBridge
+from gaming.src.backend.app_controller import ClawController
+from backend.evolution_bridge import EvolutionBridge
 from slip_verifier import verify_slip_from_url
 from flutterwave_service import (
     get_or_create_virtual_account,

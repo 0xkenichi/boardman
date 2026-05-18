@@ -1,6 +1,6 @@
-from db_layer import DBLayer
+from backend.db_layer import DBLayer
 from court_layer import CourtLayer
-from score_verifier import ScoreVerifier, verify_match
+from gaming.src.backend.score_verifier import ScoreVerifier, verify_match
 
 
 class BettingEngine:

@@ -17,7 +17,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.client.default import DefaultBotProperties
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 
-from app_controller import get_controller
+from gaming.src.backend.app_controller import get_controller
 controller = get_controller()
 
 from services.trust_safety_service import (
@@ -28,7 +28,7 @@ from services.trust_safety_service import (
     request_account_deletion, REPUTATION_THRESHOLDS,
 )
 
-from bot.keyboards import (
+from gaming.src.backend.bot.keyboards import (
     main_menu, back_menu, challenge_menu, stake_menu,
     team_menu, opponent_menu, confirm_menu, profile_menu,
     accept_challenge_menu
@@ -150,7 +150,7 @@ async def ensure_wallet(p: dict) -> str:
     # Create new wallet if still missing
     if not w or w in ("Not linked", "", None):
         try:
-            from wallet_service import get_wallet_service
+            from backend.wallet_service import get_wallet_service
             ws = get_wallet_service()
             result = await ws.create_wallet(p["id"])
             if result.get("success"):
@@ -266,7 +266,7 @@ async def cmd_debug_wallet(message: types.Message):
     wallet_bal = "N/A"
     if custodial_addr:
         try:
-            from services.circle_vault import get_live_balance
+            from backend.services.circle_vault import get_live_balance
             if circle_id:
                 bal = await get_live_balance(circle_id)
                 wallet_bal = f"${bal:.2f}" if bal is not None else "Error"
@@ -322,7 +322,7 @@ async def cmd_check_balance(message: types.Message):
         return
 
     try:
-        from services.circle_vault import get_live_balance
+        from backend.services.circle_vault import get_live_balance
         onchain = await get_live_balance(circle_id)
         response = (
             f"💰 *Live Balance Check*\n\n"
@@ -381,7 +381,7 @@ async def nav_wallet(cb: types.CallbackQuery):
     circle_id = p.get("circle_wallet_id")
     wallet_bal = None
     try:
-        from services.circle_vault import get_live_balance
+        from backend.services.circle_vault import get_live_balance
         if circle_id:
             wallet_bal = await get_live_balance(circle_id)
     except Exception as e:
@@ -421,7 +421,7 @@ async def nav_profile(cb: types.CallbackQuery):
     wallet_bal = None
     if custodial and custodial != "Not set" and circle_id:
         try:
-            from services.circle_vault import get_live_balance
+            from backend.services.circle_vault import get_live_balance
             wallet_bal = await get_live_balance(circle_id)
         except Exception as e:
             logger.error(f"On-chain balance fetch failed: {e}")
@@ -667,7 +667,7 @@ async def challenge_expiry(match_id: str, creator_id: str, stake_naira: float):
             return
         sb = controller.db.supabase
         sb.table("bets").update({"status": "CANCELLED"}).eq("id", m.get("id", match_id)).execute()
-        from db_layer_blockchain import credit_wallet
+        from backend.db_layer_blockchain import credit_wallet
         stake_usd = round(stake_naira / 1600, 4)
         await credit_wallet(creator_id, stake_usd, f"refund_expiry_{match_id}", "expiry_refund")
         creator = await get_profile_by_id(creator_id)

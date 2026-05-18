@@ -1,8 +1,8 @@
 import os
 import asyncio
-from db_layer import DBLayer
-from wallet_service import WalletService
-from betting_engine import BettingEngine
+from backend.db_layer import DBLayer
+from backend.wallet_service import WalletService
+from gaming.src.backend.betting_engine import BettingEngine
 
 async def run_simulation():
     print("🚀 Starting ClawStation Wallet & Betting Simulation...")

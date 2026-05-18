@@ -12,8 +12,8 @@ import logging
 import os
 from typing import Optional
 
-from blockchain_layer import get_blockchain_layer
-from db_layer_blockchain import (
+from backend.blockchain_layer import get_blockchain_layer
+from backend.db_layer_blockchain import (
     debit_wallet,
     credit_wallet,
     update_match_onchain_status,
@@ -76,7 +76,7 @@ async def resolve_match_and_payout(
 
     # ── Update escrow entries (mark as released) ─────────────────────────
     try:
-        from db_layer import DBLayer
+        from backend.db_layer import DBLayer
         db = DBLayer()
         # Mark escrow entries as released for this match
         db.update_escrow_entry_status(match_id, "RELEASED")
@@ -122,7 +122,7 @@ async def resolve_match_and_payout(
 
     # ── Update main bets table status and winner (CRITICAL) ───────────────────
     try:
-        from db_layer import DBLayer
+        from backend.db_layer import DBLayer
         db = DBLayer()
         db.resolve_bet(match_id, winner_user_id)
         logger.info(f"[BettingEngine] Bet status updated to COMPLETED with winner {winner_user_id}")
@@ -164,7 +164,7 @@ async def cancel_match_and_refund(
 
     # ── Release escrow entries ─────────────────────────────────────────────
     try:
-        from db_layer import DBLayer
+        from backend.db_layer import DBLayer
         db = DBLayer()
         # Mark escrow entries as cancelled for this match
         db.update_escrow_entry_status(match_id, "CANCELLED")
