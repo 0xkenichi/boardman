@@ -128,7 +128,7 @@ class BlockchainWhatsAppAgent:
         # Find associated user
         user = self.db.find_user_by_wallet(winner)
         if user:
-            amount_usd = amount / (10 ** self.usdt_decimals)
+            amount_usd = amount / (10 ** self.usdc_decimals)
             self._notify_user_payout(user['whatsapp_id'], pool_id, amount_usd)
 
     def estimate_gas(self, tx_type: str, **kwargs) -> Tuple[float, str]:
@@ -209,7 +209,7 @@ class BlockchainWhatsAppAgent:
                 tx_hash = self._execute_create_pool(
                     whatsapp_id,
                     req["pool_type"],
-                    int(req["entry_fee"] * (10 ** self.usdt_decimals))
+                    int(req["entry_fee"] * (10 ** self.usdc_decimals))
                 )
             elif action == "join_pool":
                 tx_hash = self._execute_join_pool(whatsapp_id, req["pool_id"])
@@ -273,7 +273,7 @@ class BlockchainWhatsAppAgent:
             duration,
             is_public
         ).build_transaction({
-            'chainId': self.base_chain_id,
+            'chainId': self.chain_id,
             'gas': 300000,
             'gasPrice': self.w3.eth.gas_price,
             'nonce': nonce,
@@ -287,7 +287,7 @@ class BlockchainWhatsAppAgent:
         """Execute join_pool transaction"""
         nonce = self.w3.eth.get_transaction_count(self.blockchain.account.address)
         txn = self.escrow_contract.functions.joinPool(pool_id).build_transaction({
-            'chainId': self.base_chain_id,
+            'chainId': self.chain_id,
             'gas': 200000,
             'gasPrice': self.w3.eth.gas_price,
             'nonce': nonce,
@@ -301,7 +301,7 @@ class BlockchainWhatsAppAgent:
         """Execute resolve_pool transaction"""
         nonce = self.w3.eth.get_transaction_count(self.blockchain.account.address)
         txn = self.escrow_contract.functions.resolvePool(pool_id, winners, amounts).build_transaction({
-            'chainId': self.base_chain_id,
+            'chainId': self.chain_id,
             'gas': 300000,
             'gasPrice': self.w3.eth.gas_price,
             'nonce': nonce,

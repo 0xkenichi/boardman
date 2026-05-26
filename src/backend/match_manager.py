@@ -56,7 +56,7 @@ class MatchManager:
     """
 
     def __init__(self):
-        from court_layer import CourtLayer
+        from backend.court_layer import CourtLayer
         from backend.evolution_bridge import EvolutionBridge
 
         self.court = CourtLayer()
@@ -189,7 +189,7 @@ class MatchManager:
 
         # Lock stakes in escrow (record in DB for balance display)
         try:
-            from escrow_manager import EscrowManager
+            from backend.escrow_manager import EscrowManager
             from backend.db_layer import DBLayer
             db = DBLayer()
             escrow_mgr = EscrowManager(db)
@@ -212,7 +212,7 @@ class MatchManager:
         return {
             "success": True,
             "match_id": match_id,
-            "game": match["game"],
+            "game": match["game_type"],
             "stake_usd": stake_usd,
             "timeout_mins": match["timeout_minutes"],
         }

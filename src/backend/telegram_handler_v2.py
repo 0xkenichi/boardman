@@ -1,33 +1,17 @@
 """
-Updated Telegram Handler for ClawStation
-Includes support for Local and Online match types.
+telegram_handler_v2.py — DEPRECATED: Use backend/main.py + bot/handlers.py instead.
+This file is kept for reference only and should NOT be used in production.
 """
 
 import os
-import re
-import asyncio
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    CallbackQueryHandler,
-    MessageHandler,
-    filters,
-    ContextTypes
-)
-from dotenv import load_dotenv
-
-from gaming.src.backend.app_controller import ClawController
-from gaming.src.backend.match_manager import MatchType, MatchConfig, VerificationLevel
-
-load_dotenv()
-controller = ClawController()
-
-# ─── Verification & Whitelist ──────────────────────────────────────────────────
-ADMIN_NUMBERS = frozenset(["2348022202143", "2347073924753", "2349163497691"])
 
 def _is_admin(user_id: str) -> bool:
-    return True  # Rely on password-based admin access
+    """Check if user is admin via ADMIN_TELEGRAM_IDS env var."""
+    admin_ids = os.getenv("ADMIN_TELEGRAM_IDS", "")
+    if not admin_ids:
+        return False
+    allowed = {x.strip() for x in admin_ids.split(",") if x.strip()}
+    return user_id in allowed
 
 # ─── Utility Functions ─────────────────────────────────────────────────────────
 async def identify_user(update: Update) -> dict:

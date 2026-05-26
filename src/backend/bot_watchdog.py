@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 BOT_DIR = Path(__file__).parent
 BOT_SCRIPT = BOT_DIR / "main.py"
-PYTHON_BIN = "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/bin/python3"
+PYTHON_BIN = sys.executable
 PID_FILE = BOT_DIR / "bot.pid"
 LOG_FILE = BOT_DIR / "bot.log"
 

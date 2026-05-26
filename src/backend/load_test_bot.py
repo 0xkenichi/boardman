@@ -1,8 +1,19 @@
 #!/usr/bin/env python3
 """
 Load test script for sideQuest Telegram Bot
-Simulates 5000 concurrent users to validate rate limiting and performance
+WARNING: This sends real requests to the Telegram API. Only use with a test bot token.
+DO NOT run against the production bot — it WILL get banned.
 """
+
+import os
+import sys
+
+# Safety guard: require explicit confirmation
+if os.getenv("LOAD_TEST_CONFIRM") != "YES_I_KNOW_WHAT_IM_DOING":
+    print("❌ LOAD TEST BLOCKED: Set LOAD_TEST_CONFIRM=YES_I_KNOW_WHAT_IM_DOING to run.")
+    print("   WARNING: This sends real requests to Telegram API and can get your bot banned.")
+    print("   Only use with a dedicated TEST bot token, never production.")
+    sys.exit(1)
 
 import asyncio
 import aiohttp

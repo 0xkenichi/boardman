@@ -7,8 +7,9 @@ For quest_type: 'gaming' only.
 
 import os
 import logging
+from datetime import datetime, timezone
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Body
 from supabase import Client
 from backend.db_layer import DBLayer
 from pydantic import BaseModel, Field
@@ -26,6 +27,7 @@ class StakeRequest(BaseModel):
 
 class ScoreSubmissionRequest(BaseModel):
     quest_id: str = Field(..., description="Gaming quest ID")
+    user_id: str = Field(..., description="Submitting user profile ID")
     winner_id: str = Field(..., description="Winner profile ID")
     score: str = Field(..., description="Score (e.g., '3-1')")
     proof_image: Optional[str] = Field(None, description="Base64 encoded screenshot")
@@ -131,9 +133,7 @@ async def submit_score(
     Triggers OpenAI GPT-4 Vision to verify score screenshot.
     """
     try:
-        user_id = score_data.user_id if hasattr(score_data, 'user_id') else None
-        if not user_id:
-            raise HTTPException(status_code=400, detail="user_id required")
+        user_id = score_data.user_id
         
         # Get quest
         quest_res = db.supabase.table("quests").select(
@@ -346,8 +346,6 @@ async def get_gaming_quest_status(
         logger.error(f"Error getting gaming quest status: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-
-from fastapi import Body
 
 @router.post("/{quest_id}/resolve", response_model=dict)
 async def resolve_gaming_quest(
