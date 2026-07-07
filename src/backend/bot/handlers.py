@@ -255,6 +255,36 @@ class AcceptChallenge(StatesGroup):
 
 # ── START COMMAND ───────────────────────────────────────────────────────────────
 async def cmd_start(message: types.Message, state: FSMContext):
+    # Geo-fence: refuse to onboard users from blocked regions (silent IP-based block).
+    try:
+        from gaming.src.backend.middleware import BlockedRegionError, check_region
+
+        class _FakeRequest:
+            def __init__(self, headers):
+                self.headers = headers or {}
+                self.client = None
+
+        headers = {}
+        if getattr(message, "from_user", None) is not None:
+            lang = getattr(message.from_user, "language_code", None)
+            if lang:
+                headers["cf-ipcountry"] = lang
+        # Honour any explicit header on the Message object (test hook / future use).
+        explicit = getattr(message, "cf_ipcountry", None)
+        if explicit:
+            headers["cf-ipcountry"] = explicit
+        check_region(_FakeRequest(headers))
+    except BlockedRegionError:
+        await state.clear()
+        await send(
+            message.bot,
+            message.chat.id,
+            "ClawStation isn't available in your region yet.",
+        )
+        return
+    except Exception as geo_exc:  # noqa: BLE001 — geo-fence must never crash /start
+        logger.warning("geo-fence check skipped due to error: %s", geo_exc)
+
     await state.clear()
     args = message.text.split() if message.text else []
     if len(args) > 1 and args[1].startswith("accept_"):

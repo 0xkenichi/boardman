@@ -1,0 +1,52 @@
+"""
+gaming/src/backend/main.py — FastAPI entrypoint for the ClawStation gaming backend.
+
+Registers the geo-fence middleware so any request whose origin country is in the
+configured block list is rejected with HTTP 451 and a structured JSON error.
+
+This app is intentionally separate from the social app (``backend/``). Do not import
+from ``backend/`` here — the two packages share infrastructure (Supabase, Circle) but
+no Python modules.
+"""
+from __future__ import annotations
+
+import json
+import logging
+
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
+from gaming.src.backend.middleware import BlockedRegionError, check_region
+
+logger = logging.getLogger(__name__)
+
+
+def create_app() -> FastAPI:
+    """Build the ClawStation FastAPI application with the geo-fence wired in."""
+    app = FastAPI(title="ClawStation API", version="0.1.0")
+
+    @app.middleware("http")
+    async def geo_fence_middleware(request: Request, call_next):
+        try:
+            check_region(request)
+        except BlockedRegionError as exc:
+            logger.info(
+                "geo-fence blocked request country=%s path=%s",
+                exc.country_code,
+                request.url.path,
+            )
+            return JSONResponse(
+                status_code=451,
+                content={"error": "service_unavailable_in_region"},
+            )
+        return await call_next(request)
+
+    @app.get("/")
+    async def root():
+        return {"status": "ok"}
+
+    return app
+
+
+# Module-level app for ``uvicorn gaming.src.backend.main:app``
+app = create_app()
