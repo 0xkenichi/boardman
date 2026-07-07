@@ -22,12 +22,14 @@ from functools import wraps
 
 from backend.supabase_client import get_supabase
 
-from gaming.src.backend.bot.keyboards import ALLOWED_TEAMS
 from backend.db_layer_blockchain import debit_wallet, get_wallet_balance, credit_wallet
 
 logger = logging.getLogger(__name__)
 
 # ─── Constants ──────────────────────────────────────────────────────────────────
+
+# Allowed team selections — must match validation in bot/keyboards team_menu
+ALLOWED_TEAMS = ["Real Madrid", "Barcelona", "Man City", "Liverpool", "PSG", "Bayern", "Lakers", "Warriors"]
 
 MATCH_TIMEOUT_ONLINE_MINS = 120
 MATCH_TIMEOUT_LOCAL_MINS = 60
