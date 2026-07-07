@@ -191,7 +191,7 @@ class MatchManager:
 
         # Lock stakes in escrow (record in DB for balance display)
         try:
-            from backend.escrow_manager import EscrowManager
+            from gaming.src.backend.escrow_manager import EscrowManager
             from backend.db_layer import DBLayer
             db = DBLayer()
             escrow_mgr = EscrowManager(db)
