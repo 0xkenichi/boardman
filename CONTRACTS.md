@@ -11,7 +11,7 @@
 - **Network:** Base Sepolia (`chainId: 84532`)
 - **USDC:** `0x036CbD53842c5426634e7929541eC2318f3dCF7e`
 - **Fee Recipient:** `0x39EcF94ed35451A67006dcCE4A467aecdfAB6940`
-- **Resolver:** `0x39EcF94ed35451A67006dcCE4A467aecdfAB6940`
+- **Resolver:** `0x118d994c999923de4665Ca1A31e73A7872beAd56`
 - **Platform Fee:** 7% (`FEE_BPS = 700`)
 - **Max Stake:** $10,000 USDC per match
 
