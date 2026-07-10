@@ -10,13 +10,19 @@ no Python modules.
 """
 from __future__ import annotations
 
-import json
 import logging
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from gaming.src.backend.api import (
+    deposit_router,
+    health_router,
+    settlement_router,
+    webhooks_router,
+)
 from gaming.src.backend.middleware import BlockedRegionError, check_region
+from gaming.src.backend.services.clawstation_circle import start_deposit_expiry_task
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +51,20 @@ def create_app() -> FastAPI:
     async def root():
         return {"status": "ok"}
 
+    app.include_router(deposit_router, prefix="/api")
+    app.include_router(health_router, prefix="/api")
+    app.include_router(settlement_router, prefix="/api")
+    app.include_router(webhooks_router)
+
     return app
 
 
 # Module-level app for ``uvicorn gaming.src.backend.main:app``
 app = create_app()
+
+
+@app.on_event("startup")
+async def _startup():
+    """Start background jobs on server startup."""
+    start_deposit_expiry_task(interval_seconds=3600.0)
+    logger.info("[Startup] ClawStation API started, expiry task scheduled")

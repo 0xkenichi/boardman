@@ -15,7 +15,6 @@ MaxMind DB present but missing the IP → 200 (allowed). Confirmed in
 """
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -35,6 +34,17 @@ from gaming.src.backend.middleware.geo_fence import (  # noqa: E402
     detect_country,
     reset_blocked_cache,
 )
+
+
+# ── Module-level async stubs used by TestBotStartHandler mirror methods ───────
+async def _send(_sent, _chat_id, _text):
+    """Overridden at runtime by each bot-handler mirror test."""
+    raise NotImplementedError("_send must be patched by the test")
+
+
+async def _clear_state():
+    """Overridden at runtime by each bot-handler mirror test."""
+    raise NotImplementedError("_clear_state must be patched by the test")
 
 
 # ── Minimal request double (avoids requiring FastAPI/Starlette in unit tests) ──

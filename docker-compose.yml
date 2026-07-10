@@ -1,0 +1,54 @@
+services:
+  clawstation-api:
+    build:
+      context: ..
+      dockerfile: gaming/Dockerfile
+    image: clawstation-api:latest
+    container_name: clawstation-api
+    command:
+      - uvicorn
+      - gaming.src.backend.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    restart: always
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../.env
+    networks:
+      - clawstation
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  clawstation-bot:
+    build:
+      context: ..
+      dockerfile: gaming/Dockerfile
+    image: clawstation-bot:latest
+    container_name: clawstation-bot
+    command:
+      - python
+      - -m
+      - gaming.src.bot.main
+    restart: always
+    depends_on:
+      - clawstation-api
+    env_file:
+      - ../.env
+    networks:
+      - clawstation
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  clawstation:
+    name: clawstation
+    driver: bridge

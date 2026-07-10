@@ -1,0 +1,25 @@
+# Caddy reverse proxy for ClawStation 24/7 hosting.
+# Place this file at /etc/caddy/Caddyfile on the VPS and reload caddy.
+
+{
+    # Global options: enable automatic HTTPS via Let's Encrypt.
+    email admin@clawstation.example
+}
+
+# Replace clawstation.example with the real public domain pointed at the VPS.
+clawstation.example {
+    # Direct lightweight health response for uptime monitors and load balancers.
+    respond /healthz "ok" 200
+
+    # Circle webhook endpoint.
+    reverse_proxy /webhooks/circle clawstation-api:8000
+
+    # Telegram bot webhook endpoint (production webhook mode).
+    reverse_proxy /webhooks/telegram clawstation-api:8000
+
+    # All API calls go to the FastAPI backend.
+    reverse_proxy /api/* clawstation-api:8000
+
+    # Everything else is served by the backend (root endpoint, docs, etc.).
+    reverse_proxy clawstation-api:8000
+}
