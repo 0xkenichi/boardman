@@ -96,8 +96,9 @@ async def cb_menu_challenge(callback: types.CallbackQuery) -> None:
     await callback.answer()
     from gaming.src.bot.handlers.challenge import cmd_challenge
     # Build a message with the usage text to start the flow.
-    callback.message.text = '/challenge'
-    await cmd_challenge(callback.message)
+    # aiogram v3 Message instances are frozen; use model_copy to change text.
+    message = callback.message.model_copy(update={"text": "/challenge"})
+    await cmd_challenge(message)
 
 
 @router.callback_query(F.data == "menu:leaderboard")
@@ -115,8 +116,9 @@ async def cb_menu_profile(callback: types.CallbackQuery) -> None:
     """Profile button → show own profile."""
     await callback.answer()
     from gaming.src.bot.handlers.profile import cmd_profile
-    callback.message.text = '/profile'
-    await cmd_profile(callback.message)
+    # aiogram v3 Message instances are frozen; use model_copy to change text.
+    message = callback.message.model_copy(update={"text": "/profile"})
+    await cmd_profile(message)
 
 
 CLAWSTATION_INFO_URL = "https://playingsidequest.fun/clawstation"
