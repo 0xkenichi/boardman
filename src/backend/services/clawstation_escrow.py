@@ -1,11 +1,9 @@
 """
-gaming/src/backend/services/clawstation_escrow.py
-────────────────────────────────────────────────
-Non-custodial on-chain escrow integration for ClawStation.
+Non-custodial on-chain escrow for ClawStation (multi-chain).
 
-Wraps Circle developer-controlled wallets and the deployed ClawEscrow.sol
-contract so Telegram-bot players can lock stakes, settle matches, and receive
-payouts without sideQuest ever taking custody of the funds.
+Wraps Circle developer-controlled wallets and ClawEscrow.sol so Telegram
+players can lock stakes, settle matches, and receive payouts without
+sideQuest taking custody of funds.
 """
 from __future__ import annotations
 
@@ -17,15 +15,23 @@ from typing import Optional
 
 from backend.circle_wallet_service import CircleWalletService
 from backend.supabase_client import get_supabase
+from gaming.src.backend.services.chains import (
+    default_chain_id,
+    get_circle_blockchain,
+    get_circle_usdc_token_id,
+    get_escrow_address,
+    get_explorer_tx,
+    get_rpc_url,
+    get_usdc_address,
+    normalize_chain_id,
+)
+from gaming.src.backend.services.challenge_compat import denormalize_challenge, normalize_challenge
 from gaming.src.backend.services.clawstation_circle import ensure_user_wallet
+from gaming.src.backend.services.gas_tank import ensure_native_gas
 
 logger = logging.getLogger(__name__)
 
 USDC_DECIMALS = 6
-ESCROW_ADDRESS = os.getenv(
-    "CLAW_ESCROW_ADDRESS_BASE_SEPOLIA",
-    os.getenv("CSC_ADDRESS", ""),
-)
 
 
 class EscrowError(Exception):
@@ -36,15 +42,18 @@ class EscrowNotConfiguredError(EscrowError):
     """Raised when the escrow contract address or keys are missing."""
 
 
-def _require_env() -> None:
-    if not ESCROW_ADDRESS or ESCROW_ADDRESS in ("0x...", "0x0000", ""):
-        raise EscrowNotConfiguredError(
-            "CLAW_ESCROW_ADDRESS_BASE_SEPOLIA / CSC_ADDRESS is not configured"
-        )
+def _challenge_chain(challenge: dict) -> str:
+    return normalize_chain_id(challenge.get("settlement_chain") or default_chain_id())
+
+
+def _require_escrow(chain_id: str) -> str:
+    try:
+        return get_escrow_address(chain_id)
+    except ValueError as exc:
+        raise EscrowNotConfiguredError(str(exc)) from exc
 
 
 def _challenge_id_to_bytes32(challenge_id: str) -> str:
-    """Hash a challenge UUID into a 0x-prefixed 64-char bytes32 hex string."""
     return "0x" + hashlib.sha256(challenge_id.encode()).hexdigest()
 
 
@@ -52,26 +61,49 @@ def _usdc_to_wei(amount_usd: Decimal) -> int:
     return int(amount_usd * Decimal(10**USDC_DECIMALS))
 
 
-def _circle() -> CircleWalletService:
-    return CircleWalletService()
+def _circle(chain_id: str) -> CircleWalletService:
+    """Circle client bound to the settlement chain's USDC / RPC / token id."""
+    return CircleWalletService(
+        blockchain=get_circle_blockchain(chain_id),
+        usdc_address=get_usdc_address(chain_id),
+        usdc_token_id=get_circle_usdc_token_id(chain_id),
+        rpc_url=get_rpc_url(chain_id),
+    )
 
 
 def _get_supabase():
     return get_supabase()
 
 
-def _load_profile_wallet_id(profile_id: str) -> str:
+def _load_profile_wallet(profile_id: str, chain_id: str = "base") -> tuple[str, str]:
+    """Return (wallet_id, address) for a profile on a given chain."""
     sb = _get_supabase()
-    result = (
-        sb.table("profiles")
-        .select("circle_wallet_id")
-        .eq("id", profile_id)
-        .maybe_single()
-        .execute()
-    )
-    if not result.data or not result.data.get("circle_wallet_id"):
-        raise EscrowError(f"User {profile_id} has no Circle wallet")
-    return result.data["circle_wallet_id"]
+    try:
+        result = (
+            sb.table("profiles")
+            .select("circle_wallet_id, gaming_deposit_address, gaming_circle_wallets")
+            .eq("id", profile_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception:
+        result = (
+            sb.table("profiles")
+            .select("circle_wallet_id, gaming_deposit_address")
+            .eq("id", profile_id)
+            .limit(1)
+            .execute()
+        )
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else None
+    if not data:
+        raise EscrowError(f"User {profile_id} has no Circle wallet — run /start first")
+    wallets = data.get("gaming_circle_wallets") or {}
+    wallet_id = wallets.get(chain_id) or data.get("circle_wallet_id")
+    if not wallet_id:
+        raise EscrowError(f"User {profile_id} has no Circle wallet — run /start first")
+    return wallet_id, (data.get("gaming_deposit_address") or "")
 
 
 def _load_challenge(challenge_id: str) -> dict:
@@ -86,7 +118,7 @@ def _load_challenge(challenge_id: str) -> dict:
     )
     if not result.data:
         raise EscrowError(f"Challenge {challenge_id} not found")
-    return result.data
+    return normalize_challenge(result.data)
 
 
 def _record_audit(
@@ -100,7 +132,6 @@ def _record_audit(
     status: str = "pending",
     metadata: Optional[dict] = None,
 ) -> None:
-    """Insert an immutable audit row."""
     sb = _get_supabase()
     sb.schema("gaming").table("escrow_audit").insert(
         {
@@ -117,24 +148,65 @@ def _record_audit(
     ).execute()
 
 
-def _find_existing_audit(challenge_id: str, movement: str) -> Optional[dict]:
+def _find_existing_audit(
+    challenge_id: str,
+    movement: str,
+    profile_id: Optional[str] = None,
+    idempotency_key: Optional[str] = None,
+) -> Optional[dict]:
     sb = _get_supabase()
-    result = (
+    q = (
         sb.schema("gaming")
         .table("escrow_audit")
         .select("*")
         .eq("challenge_id", challenge_id)
         .eq("movement", movement)
-        .eq("status", "confirmed")
-        .maybe_single()
-        .execute()
     )
-    return result.data
+    if profile_id:
+        q = q.eq("profile_id", profile_id)
+    if idempotency_key:
+        q = q.eq("idempotency_key", idempotency_key)
+    result = q.in_("status", ["pending", "confirmed"]).limit(1).execute()
+    rows = result.data or []
+    return rows[0] if rows else None
 
 
 def _update_challenge(challenge_id: str, update: dict) -> None:
     sb = _get_supabase()
-    sb.schema("gaming").table("challenges").update(update).eq("id", challenge_id).execute()
+    sb.schema("gaming").table("challenges").update(denormalize_challenge(update)).eq(
+        "id", challenge_id
+    ).execute()
+
+
+async def _prepare_wallet(user_id: str, chain_id: str) -> tuple[str, str]:
+    """Ensure Circle wallet + native gas on the settlement chain."""
+    wallet = await ensure_user_wallet(user_id, chain_id=chain_id)
+    wallet_id = wallet["wallet_id"]
+    address = wallet.get("address") or ""
+    # Prefer mapped wallet id for this chain if ensure_user_wallet returned primary only
+    try:
+        mapped_id, mapped_addr = _load_profile_wallet(user_id, chain_id)
+        if mapped_id:
+            wallet_id = mapped_id
+        if mapped_addr:
+            address = mapped_addr
+    except EscrowError:
+        pass
+    # Only top up when we have a real checksummable address (skip unit-test stubs).
+    if address and address.startswith("0x") and len(address) == 42:
+        gas = ensure_native_gas(chain_id, address)
+        if not gas.get("ok") and gas.get("action") not in (
+            "skipped_usdc_gas_chain",
+            "already_funded",
+            "bad_address",
+        ):
+            logger.warning("[Escrow] Gas tank issue for %s on %s: %s", user_id, chain_id, gas)
+            if gas.get("action") in ("admin_low", "no_admin_key", "tx_failed"):
+                raise EscrowError(
+                    f"Not enough gas on {chain_id} for your wallet. "
+                    f"Platform gas tank: {gas.get('error') or gas.get('action')}"
+                )
+    return wallet_id, address
 
 
 async def approve_and_create_match(
@@ -142,27 +214,24 @@ async def approve_and_create_match(
     challenge_id: str,
     stake_usd: Decimal,
 ) -> dict:
-    """
-    Approve USDC for the escrow contract and call ClawEscrow.createMatch.
-
-    This is the challenger (player1) action. It must run before the opponent
-    can join. The actual transaction is signed by the user's Circle wallet.
-    """
-    _require_env()
-    await ensure_user_wallet(user_id)
-
+    """Challenger: approve USDC + createMatch on the challenge settlement chain."""
     challenge = _load_challenge(challenge_id)
+    chain_id = _challenge_chain(challenge)
+    escrow_address = _require_escrow(chain_id)
+
     if challenge["creator_id"] != user_id:
         raise EscrowError("Only the challenge creator can lock the creator stake")
     if challenge.get("creator_lock_tx_id"):
         raise EscrowError("Creator stake already locked")
 
-    wallet_id = _load_profile_wallet_id(user_id)
+    wallet_id, _ = await _prepare_wallet(user_id, chain_id)
     stake_wei = _usdc_to_wei(stake_usd)
     match_id = _challenge_id_to_bytes32(challenge_id)
 
     idempotency_key = f"approve-create-{challenge_id}"
-    existing = _find_existing_audit(challenge_id, "lock_in")
+    existing = _find_existing_audit(
+        challenge_id, "lock_in", profile_id=user_id, idempotency_key=idempotency_key
+    )
     if existing:
         return {
             "success": True,
@@ -170,28 +239,44 @@ async def approve_and_create_match(
             "tx_hash": existing.get("tx_hash", ""),
             "match_id": match_id,
             "stake_wei": stake_wei,
+            "chain_id": chain_id,
+            "explorer_url": get_explorer_tx(chain_id, existing.get("tx_hash") or ""),
         }
 
-    # 1. Approve the escrow contract to pull the stake.
-    logger.info("[Escrow] Approving USDC for user %s match %s", user_id, challenge_id)
-    approve_result = _circle().approve_usdc_transfer(
+    circle = _circle(chain_id)
+
+    logger.info("[Escrow] Approving USDC user=%s chain=%s match=%s", user_id, chain_id, challenge_id)
+    approve_result = circle.approve_usdc_transfer(
         wallet_id=wallet_id,
         amount_usdc=float(stake_usd),
-        spender_address=ESCROW_ADDRESS,
+        spender_address=escrow_address,
     )
     if not approve_result.get("success"):
         raise EscrowError(f"USDC approve failed: {approve_result.get('error')}")
 
-    # 2. Call createMatch(matchId, stake).
-    logger.info("[Escrow] Creating match %s for user %s", challenge_id, user_id)
-    create_result = _circle().execute_contract_function(
+    approve_tx_id = approve_result.get("transaction_id")
+    if approve_tx_id:
+        approve_wait = circle.wait_for_transaction(approve_tx_id, max_wait_seconds=120)
+        if not approve_wait.get("success"):
+            raise EscrowError(f"USDC approve not confirmed: {approve_wait.get('error')}")
+
+    logger.info("[Escrow] createMatch user=%s chain=%s match=%s", user_id, chain_id, challenge_id)
+    create_result = circle.execute_contract_function(
         wallet_id=wallet_id,
-        contract_address=ESCROW_ADDRESS,
+        contract_address=escrow_address,
         function_signature="createMatch(bytes32,uint256)",
         args=[match_id, str(stake_wei)],
     )
     if not create_result.get("success"):
         raise EscrowError(f"createMatch failed: {create_result.get('error')}")
+
+    create_tx_id = create_result.get("transaction_id")
+    tx_hash = create_result.get("tx_hash") or ""
+    if create_tx_id:
+        create_wait = circle.wait_for_transaction(create_tx_id, max_wait_seconds=180)
+        if not create_wait.get("success"):
+            raise EscrowError(f"createMatch not confirmed: {create_wait.get('error')}")
+        tx_hash = create_wait.get("tx_hash") or tx_hash
 
     _record_audit(
         challenge_id=challenge_id,
@@ -199,26 +284,28 @@ async def approve_and_create_match(
         movement="lock_in",
         amount=stake_usd,
         idempotency_key=idempotency_key,
-        circle_tx_id=create_result.get("transaction_id"),
-        tx_hash=create_result.get("tx_hash"),
-        status="pending",
-        metadata={"side": "creator", "match_id": match_id},
+        circle_tx_id=create_tx_id,
+        tx_hash=tx_hash,
+        status="confirmed" if tx_hash else "pending",
+        metadata={"side": "creator", "match_id": match_id, "chain": chain_id},
     )
     _update_challenge(
         challenge_id,
         {
             "status": "creator_locked",
-            "creator_lock_tx_id": create_result.get("transaction_id"),
-            "creator_lock_tx_hash": create_result.get("tx_hash"),
+            "creator_lock_tx_id": create_tx_id,
+            "creator_lock_tx_hash": tx_hash,
         },
     )
 
     return {
         "success": True,
-        "create_tx_id": create_result.get("transaction_id"),
-        "tx_hash": create_result.get("tx_hash"),
+        "create_tx_id": create_tx_id,
+        "tx_hash": tx_hash,
         "match_id": match_id,
         "stake_wei": stake_wei,
+        "chain_id": chain_id,
+        "explorer_url": get_explorer_tx(chain_id, tx_hash),
     }
 
 
@@ -227,16 +314,11 @@ async def approve_and_join_match(
     challenge_id: str,
     stake_usd: Decimal,
 ) -> dict:
-    """
-    Approve USDC for the escrow contract and call ClawEscrow.joinMatch.
-
-    This is the opponent (player2) action. The match must already be created
-    on-chain by the challenger.
-    """
-    _require_env()
-    await ensure_user_wallet(user_id)
-
+    """Opponent: approve USDC + joinMatch on the challenge settlement chain."""
     challenge = _load_challenge(challenge_id)
+    chain_id = _challenge_chain(challenge)
+    escrow_address = _require_escrow(chain_id)
+
     if challenge.get("opponent_id") and challenge["opponent_id"] != user_id:
         raise EscrowError("Another user is already the opponent for this challenge")
     if challenge["status"] not in ("accepted", "creator_locked"):
@@ -244,41 +326,65 @@ async def approve_and_join_match(
     if challenge.get("opponent_lock_tx_id"):
         raise EscrowError("Opponent stake already locked")
 
-    wallet_id = _load_profile_wallet_id(user_id)
+    if not challenge.get("creator_lock_tx_id") and challenge.get("status") not in (
+        "creator_locked",
+        "locked",
+    ):
+        raise EscrowError("Creator must lock stake before opponent can join")
+
+    wallet_id, _ = await _prepare_wallet(user_id, chain_id)
     stake_wei = _usdc_to_wei(stake_usd)
     match_id = _challenge_id_to_bytes32(challenge_id)
 
     idempotency_key = f"approve-join-{challenge_id}"
-    existing = _find_existing_audit(challenge_id, "lock_in")
-    if existing and challenge.get("creator_lock_tx_id"):
+    existing = _find_existing_audit(
+        challenge_id, "lock_in", profile_id=user_id, idempotency_key=idempotency_key
+    )
+    if existing:
         return {
             "success": True,
             "join_tx_id": existing["circle_tx_id"],
             "tx_hash": existing.get("tx_hash", ""),
             "match_id": match_id,
             "stake_wei": stake_wei,
+            "chain_id": chain_id,
+            "explorer_url": get_explorer_tx(chain_id, existing.get("tx_hash") or ""),
         }
 
-    # 1. Approve the escrow contract to pull the stake.
-    logger.info("[Escrow] Approving USDC for user %s match %s", user_id, challenge_id)
-    approve_result = _circle().approve_usdc_transfer(
+    circle = _circle(chain_id)
+
+    logger.info("[Escrow] Approving USDC opponent=%s chain=%s", user_id, chain_id)
+    approve_result = circle.approve_usdc_transfer(
         wallet_id=wallet_id,
         amount_usdc=float(stake_usd),
-        spender_address=ESCROW_ADDRESS,
+        spender_address=escrow_address,
     )
     if not approve_result.get("success"):
         raise EscrowError(f"USDC approve failed: {approve_result.get('error')}")
 
-    # 2. Call joinMatch(matchId).
-    logger.info("[Escrow] Joining match %s for user %s", challenge_id, user_id)
-    join_result = _circle().execute_contract_function(
+    approve_tx_id = approve_result.get("transaction_id")
+    if approve_tx_id:
+        approve_wait = circle.wait_for_transaction(approve_tx_id, max_wait_seconds=120)
+        if not approve_wait.get("success"):
+            raise EscrowError(f"USDC approve not confirmed: {approve_wait.get('error')}")
+
+    logger.info("[Escrow] joinMatch user=%s chain=%s", user_id, chain_id)
+    join_result = circle.execute_contract_function(
         wallet_id=wallet_id,
-        contract_address=ESCROW_ADDRESS,
+        contract_address=escrow_address,
         function_signature="joinMatch(bytes32)",
         args=[match_id],
     )
     if not join_result.get("success"):
         raise EscrowError(f"joinMatch failed: {join_result.get('error')}")
+
+    join_tx_id = join_result.get("transaction_id")
+    tx_hash = join_result.get("tx_hash") or ""
+    if join_tx_id:
+        join_wait = circle.wait_for_transaction(join_tx_id, max_wait_seconds=180)
+        if not join_wait.get("success"):
+            raise EscrowError(f"joinMatch not confirmed: {join_wait.get('error')}")
+        tx_hash = join_wait.get("tx_hash") or tx_hash
 
     _record_audit(
         challenge_id=challenge_id,
@@ -286,65 +392,61 @@ async def approve_and_join_match(
         movement="lock_in",
         amount=stake_usd,
         idempotency_key=idempotency_key,
-        circle_tx_id=join_result.get("transaction_id"),
-        tx_hash=join_result.get("tx_hash"),
-        status="pending",
-        metadata={"side": "opponent", "match_id": match_id},
+        circle_tx_id=join_tx_id,
+        tx_hash=tx_hash,
+        status="confirmed" if tx_hash else "pending",
+        metadata={"side": "opponent", "match_id": match_id, "chain": chain_id},
     )
     _update_challenge(
         challenge_id,
         {
             "status": "locked",
             "opponent_id": user_id,
-            "opponent_lock_tx_id": join_result.get("transaction_id"),
-            "opponent_lock_tx_hash": join_result.get("tx_hash"),
+            "opponent_lock_tx_id": join_tx_id,
+            "opponent_lock_tx_hash": tx_hash,
         },
     )
 
     return {
         "success": True,
-        "join_tx_id": join_result.get("transaction_id"),
-        "tx_hash": join_result.get("tx_hash"),
+        "join_tx_id": join_tx_id,
+        "tx_hash": tx_hash,
         "match_id": match_id,
         "stake_wei": stake_wei,
+        "chain_id": chain_id,
+        "explorer_url": get_explorer_tx(chain_id, tx_hash),
     }
 
 
-async def resolve_match(
-    challenge_id: str,
-    winner_address: str,
-) -> dict:
-    """
-    Resolve a locked match and pay the winner (minus platform fee).
-
-    This transaction is signed by the resolver/admin wallet via the shared
-    blockchain layer, not a Circle user wallet.
-    """
-    _require_env()
+async def resolve_match(challenge_id: str, winner_address: str) -> dict:
+    """Resolver wallet pays the winner (minus 7% fee) on the challenge chain."""
     challenge = _load_challenge(challenge_id)
-    if challenge.get("status") not in ("submitted", "disputed"):
+    chain_id = _challenge_chain(challenge)
+    _require_escrow(chain_id)
+
+    if challenge.get("status") not in ("submitted", "disputed", "locked"):
         raise EscrowError(f"Challenge status {challenge.get('status')} cannot be resolved")
 
     existing = _find_existing_audit(challenge_id, "payout")
     if existing:
-        logger.info("[Escrow] Resolve already executed for %s; idempotency guard", challenge_id)
         return {
             "success": True,
             "tx_hash": existing.get("tx_hash", ""),
             "block": None,
             "gas_used": None,
-            "explorer_url": None,
+            "explorer_url": get_explorer_tx(chain_id, existing.get("tx_hash") or ""),
+            "chain_id": chain_id,
         }
 
     try:
-        from backend.blockchain_layer import get_blockchain_layer
+        from backend.blockchain_layer import get_blockchain_layer_for_chain
 
-        bl = get_blockchain_layer()
+        bl = get_blockchain_layer_for_chain(chain_id)
         result = await bl.resolve_match_onchain(challenge_id, winner_address)
 
         winner_id = challenge.get("winner_id")
         amount = Decimal(str(challenge["amount_usdc"]))
-        payout = amount * Decimal("2") * Decimal("0.93")  # 7% fee
+        payout = amount * Decimal("2") * Decimal("0.93")
         fee = amount * Decimal("2") * Decimal("0.07")
 
         _record_audit(
@@ -355,8 +457,12 @@ async def resolve_match(
             idempotency_key=f"resolve-{challenge_id}",
             circle_tx_id=result.get("tx_hash"),
             tx_hash=result.get("tx_hash"),
-            status="pending",
-            metadata={"fee_usdc": float(fee), "total_pot_usdc": float(amount * 2)},
+            status="confirmed",
+            metadata={
+                "fee_usdc": float(fee),
+                "total_pot_usdc": float(amount * 2),
+                "chain": chain_id,
+            },
         )
         _record_audit(
             challenge_id=challenge_id,
@@ -364,8 +470,8 @@ async def resolve_match(
             movement="fee",
             amount=fee,
             idempotency_key=f"fee-{challenge_id}",
-            status="pending",
-            metadata={"winner_id": winner_id},
+            status="confirmed",
+            metadata={"winner_id": winner_id, "chain": chain_id},
         )
         _update_challenge(
             challenge_id,
@@ -377,7 +483,8 @@ async def resolve_match(
             "tx_hash": result.get("tx_hash"),
             "block": result.get("block"),
             "gas_used": result.get("gas_used"),
-            "explorer_url": result.get("explorer_url"),
+            "explorer_url": result.get("explorer_url") or get_explorer_tx(chain_id, result.get("tx_hash") or ""),
+            "chain_id": chain_id,
         }
     except Exception as exc:
         logger.exception("[Escrow] resolve_match failed for %s", challenge_id)
@@ -385,20 +492,22 @@ async def resolve_match(
 
 
 async def cancel_match(challenge_id: str) -> dict:
-    """Cancel a match and refund both players. Admin/resolver only."""
-    _require_env()
+    """Cancel a match and refund both players (resolver)."""
     challenge = _load_challenge(challenge_id)
+    chain_id = _challenge_chain(challenge)
+    _require_escrow(chain_id)
+
     if challenge.get("status") in ("resolved", "cancelled", "expired"):
         raise EscrowError(f"Challenge status {challenge.get('status')} cannot be cancelled")
 
     existing = _find_existing_audit(challenge_id, "refund")
     if existing:
-        return {"success": True, "tx_hash": existing.get("tx_hash", "")}
+        return {"success": True, "tx_hash": existing.get("tx_hash", ""), "chain_id": chain_id}
 
     try:
-        from backend.blockchain_layer import get_blockchain_layer
+        from backend.blockchain_layer import get_blockchain_layer_for_chain
 
-        bl = get_blockchain_layer()
+        bl = get_blockchain_layer_for_chain(chain_id)
         result = await bl.cancel_match_onchain(challenge_id)
 
         amount = Decimal(str(challenge["amount_usdc"]))
@@ -416,8 +525,8 @@ async def cancel_match(challenge_id: str) -> dict:
                 idempotency_key=f"cancel-{side}-{challenge_id}",
                 circle_tx_id=result.get("tx_hash"),
                 tx_hash=result.get("tx_hash"),
-                status="pending",
-                metadata={"side": side},
+                status="confirmed",
+                metadata={"side": side, "chain": chain_id},
             )
         _update_challenge(challenge_id, {"status": "cancelled"})
 
@@ -427,6 +536,7 @@ async def cancel_match(challenge_id: str) -> dict:
             "block": result.get("block"),
             "gas_used": result.get("gas_used"),
             "explorer_url": result.get("explorer_url"),
+            "chain_id": chain_id,
         }
     except Exception as exc:
         logger.exception("[Escrow] cancel_match failed for %s", challenge_id)
@@ -434,16 +544,18 @@ async def cancel_match(challenge_id: str) -> dict:
 
 
 async def flag_dispute(challenge_id: str) -> dict:
-    """Flag a match as disputed on-chain. Admin/resolver only."""
-    _require_env()
+    """Flag a match as disputed on-chain."""
     challenge = _load_challenge(challenge_id)
-    if challenge.get("status") not in ("submitted", "locked", "creator_locked"):
+    chain_id = _challenge_chain(challenge)
+    _require_escrow(chain_id)
+
+    if challenge.get("status") not in ("submitted", "locked", "creator_locked", "playing"):
         raise EscrowError(f"Challenge status {challenge.get('status')} cannot be disputed")
 
     try:
-        from backend.blockchain_layer import get_blockchain_layer
+        from backend.blockchain_layer import get_blockchain_layer_for_chain
 
-        bl = get_blockchain_layer()
+        bl = get_blockchain_layer_for_chain(chain_id)
         result = await bl.flag_dispute_onchain(challenge_id)
         _update_challenge(
             challenge_id,
@@ -458,6 +570,7 @@ async def flag_dispute(challenge_id: str) -> dict:
             "block": result.get("block"),
             "gas_used": result.get("gas_used"),
             "explorer_url": result.get("explorer_url"),
+            "chain_id": chain_id,
         }
     except Exception as exc:
         logger.exception("[Escrow] flag_dispute failed for %s", challenge_id)
@@ -465,13 +578,16 @@ async def flag_dispute(challenge_id: str) -> dict:
 
 
 def get_onchain_status(challenge_id: str) -> dict:
-    """Read the on-chain match state from ClawEscrow.sol."""
-    _require_env()
+    challenge = _load_challenge(challenge_id)
+    chain_id = _challenge_chain(challenge)
+    _require_escrow(chain_id)
     try:
-        from backend.blockchain_layer import get_blockchain_layer
+        from backend.blockchain_layer import get_blockchain_layer_for_chain
 
-        bl = get_blockchain_layer()
-        return bl.get_match_status(challenge_id)
+        bl = get_blockchain_layer_for_chain(chain_id)
+        status = bl.get_match_status(challenge_id)
+        status["chain_id"] = chain_id
+        return status
     except Exception as exc:
         logger.exception("[Escrow] get_onchain_status failed for %s", challenge_id)
         raise EscrowError(f"get_onchain_status failed: {exc}") from exc

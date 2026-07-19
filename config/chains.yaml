@@ -1,0 +1,70 @@
+# ClawStation supported settlement chains (Phase A/B)
+# Challenger picks one of these. Opponent must fund the same chain
+# (bridging / auto-bridge fee cut = Phase C — not enabled here).
+
+# Arc uses USDC for gas — best for users without testnet ETH
+default_settlement_chain: arc
+
+chains:
+  arc:
+    id: arc
+    label: Arc Testnet
+    recommended: true
+    circle_blockchain: ARC-TESTNET
+    chain_id: 5042002
+    rpc_url: https://rpc.testnet.arc.network
+    explorer_tx: https://testnet.arcscan.app/tx/
+    usdc_address: "0x3600000000000000000000000000000000000000"
+    # Circle W3S token UUID — override with CIRCLE_USDC_TOKEN_ID_ARC
+    circle_usdc_token_id: ""
+    gas_token: USDC
+    gas_mode: usdc_native
+    gas_tank_required: false
+    # Filled after deploy; override with env CLAW_ESCROW_ADDRESS_ARC
+    escrow_address: "0xFC44a06295d4fC58420027932A6FcB3C13D83859"
+    notes: "Preferred. Gas paid in USDC. Best UX for ClawStation."
+
+  base:
+    id: base
+    label: Base Sepolia
+    recommended: false
+    circle_blockchain: BASE-SEPOLIA
+    chain_id: 84532
+    rpc_url: https://sepolia.base.org
+    explorer_tx: https://sepolia.basescan.org/tx/
+    usdc_address: "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    # Known Circle Base Sepolia USDC token id
+    circle_usdc_token_id: "bdf128b4-827b-5267-8f9e-243694989b5f"
+    gas_token: ETH
+    gas_mode: native_eth
+    gas_tank_required: true
+    gas_tank_min_wei: "100000000000000"   # 0.0001 ETH
+    gas_tank_topup_wei: "1000000000000000" # 0.001 ETH
+    escrow_address: "0xDb76714390ccE1729558DF3c9EC4f45A1690dE78"
+    notes: "Live today. Platform gas tank tops up ETH before lock/send."
+
+  avalanche:
+    id: avalanche
+    label: Avalanche Fuji
+    recommended: false
+    circle_blockchain: AVAX-FUJI
+    chain_id: 43113
+    rpc_url: https://api.avax-test.network/ext/bc/C/rpc
+    explorer_tx: https://testnet.snowtrace.io/tx/
+    usdc_address: "0x5425890298aed601595a70AB815c96711a31Bc65"
+    circle_usdc_token_id: ""
+    gas_token: AVAX
+    gas_mode: native_avax
+    gas_tank_required: true
+    gas_tank_min_wei: "10000000000000000"   # 0.01 AVAX
+    gas_tank_topup_wei: "50000000000000000" # 0.05 AVAX
+    # Filled after deploy; override with env CLAW_ESCROW_ADDRESS_AVALANCHE
+    escrow_address: "0xFC44a06295d4fC58420027932A6FcB3C13D83859"
+    notes: "AVAX gas tank (same pattern as Base ETH tank)."
+
+# Phase C (later): if opponent lacks funds on settlement chain,
+# optional auto-bridge with extra fee_bps on their lock to cover CCTP costs.
+bridge:
+  enabled: false
+  extra_fee_bps: 50   # +0.5% on top of platform 7% when we bridge for them
+  supported_sources: [arc, base, avalanche]

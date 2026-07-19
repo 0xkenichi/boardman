@@ -7,6 +7,7 @@ from aiogram import Router, types
 from aiogram.filters import Command
 
 from backend.supabase_client import get_supabase
+from gaming.src.backend.services.challenge_compat import normalize_challenge
 from gaming.src.backend.services.clawstation_escrow import flag_dispute
 from gaming.src.bot.keyboards import back_menu
 from gaming.src.bot.utils.db import get_or_create_profile
@@ -45,7 +46,7 @@ async def cmd_dispute(message: types.Message) -> None:
         .maybe_single()
         .execute()
     )
-    challenge = result.data
+    challenge = normalize_challenge(result.data)
     if not challenge:
         await message.answer("❌ Challenge not found.", reply_markup=back_menu())
         return

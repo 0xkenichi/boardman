@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import logging
 import os
+from html import escape
 
 from aiogram import types, F
+from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram import Router
 
@@ -33,24 +35,34 @@ async def cmd_start(message: types.Message) -> None:
     if user is None:
         return
 
-    country = os.getenv("TELEGRAM_USER_COUNTRY")
+    # Geo-fence for Telegram is opt-in via TELEGRAM_USER_COUNTRY (ISO-2).
+    # Do NOT map language_code → country (e.g. "en" is not a region).
+    # API geo-fence still applies to HTTP; bot demos stay unblocked unless set.
     headers: dict = {}
+    country = os.getenv("TELEGRAM_USER_COUNTRY")
     if country:
-        headers["cf-ipcountry"] = country
-    elif getattr(user, "language_code", None):
-        # Best-effort signal only; never block solely on language code.
-        headers["cf-ipcountry"] = user.language_code.upper()
+        headers["cf-ipcountry"] = country.upper()
+
+    if headers:
+        try:
+            check_region(_FakeRequest(headers))
+        except BlockedRegionError:
+            await message.answer("ClawStation isn't available in your region yet.")
+            return
+        except Exception as exc:
+            logger.warning("[Start] Geo-fence check skipped due to error: %s", exc)
 
     try:
-        check_region(_FakeRequest(headers))
-    except BlockedRegionError:
-        await message.answer("ClawStation isn't available in your region yet.")
-        return
+        profile = await get_or_create_profile(user)
     except Exception as exc:
-        logger.warning("[Start] Geo-fence check skipped due to error: %s", exc)
+        logger.exception("[Start] Profile create failed for telegram_id=%s", user.id)
+        await message.answer(f"❌ Could not create your profile: {exc}")
+        return
 
-    profile = await get_or_create_profile(user)
-    await update_telegram_chat_id(profile["id"], message.chat.id)
+    try:
+        await update_telegram_chat_id(profile["id"], message.chat.id)
+    except Exception as exc:
+        logger.warning("[Start] chat id update failed: %s", exc)
 
     try:
         wallet = await ensure_user_wallet(profile["id"])
@@ -60,15 +72,49 @@ async def cmd_start(message: types.Message) -> None:
         await message.answer(f"❌ Wallet setup failed: {exc}")
         return
 
-    name = profile.get("display_name") or user.first_name or "Gamer"
-    short_addr = f"{address[:10]}...{address[-4:]}" if len(address) > 14 else address
+    # HTML parse mode — gaming tags contain underscores that break Markdown.
+    name = escape(str(profile.get("display_name") or user.first_name or "Gamer"))
+    raw_tag = str(profile.get("gaming_tag") or "—")
+    tag = escape(raw_tag)
+    addr = escape(str(address))
+    # Live on-chain balance if available.
+    bal_line = ""
+    try:
+        from gaming.src.backend.services.clawstation_circle import get_usdc_balance
+
+        bal = await get_usdc_balance(profile["id"])
+        bal_line = f"Balance: <b>${bal:,.2f} USDC</b>\n"
+    except Exception:
+        logger.warning("[Start] balance preview failed for %s", profile["id"], exc_info=True)
+
     text = (
-        f"🎮 *Welcome to ClawStation by sideQuest, {name}!*\n\n"
-        f"Your USDC deposit address (Base Sepolia):\n"
-        f"`{short_addr}`\n\n"
-        f"Send USDC here to fund your wallet. All gameplay happens in this chat. Tap \"How to use ClawStation\" for a guide."
+        f"🎮 <b>Welcome to ClawStation, {name}!</b>\n\n"
+        f"Your tag: <code>@{tag}</code>\n"
+        f"(friends use this to challenge you)\n\n"
+        f"{bal_line}"
+        f"Deposit address (same on all chains):\n"
+        f"<code>{addr}</code>\n\n"
+        f"<b>Use the buttons</b> — no typing codes.\n"
+        f"1. <b>Switch network</b> → Arc (USDC gas, no test ETH)\n"
+        f"2. Send Arc testnet USDC to the address above\n"
+        f"3. <b>New challenge</b> → taps → Accept → Lock → Side → photo\n\n"
+        f"How to: /howto"
     )
-    await message.answer(text, reply_markup=main_menu())
+    try:
+        await message.answer(text, reply_markup=main_menu(), parse_mode=ParseMode.HTML)
+    except Exception as exc:
+        # Never fail silent — fall back to plain text so the user always gets a reply.
+        logger.exception("[Start] Failed to send welcome HTML message: %s", exc)
+        plain = (
+            f"🎮 Welcome to ClawStation by sideQuest, {profile.get('display_name') or user.first_name}!\n\n"
+            f"Tag: {profile.get('gaming_tag') or '—'}\n\n"
+            f"Your USDC deposit address (Base Sepolia):\n"
+            f"{address}\n\n"
+            f"1. Send Base Sepolia USDC to that address\n"
+            f"2. Run /balance to confirm funds\n"
+            f"3. /challenge a player and /lock_stake after they accept"
+        )
+        await message.answer(plain, reply_markup=main_menu(), parse_mode=None)
 
 
 @router.callback_query(F.data == "m_main")
@@ -81,24 +127,33 @@ async def cb_main(callback: types.CallbackQuery) -> None:
     )
 
 
+def _callback_as_user_message(callback: types.CallbackQuery, text: str) -> types.Message:
+    """Build a Message whose ``from_user`` is the person who tapped the button.
+
+    Inline callbacks arrive on a bot-authored message, so reusing
+    ``callback.message`` alone makes handlers think the *bot* is the user
+    (wrong profile / empty wallet). Always stamp ``from_user`` from the callback.
+    """
+    assert callback.message is not None
+    assert callback.from_user is not None
+    return callback.message.model_copy(
+        update={
+            "text": text,
+            "from_user": callback.from_user,
+        }
+    )
+
+
 @router.callback_query(F.data == "menu:wallet")
 async def cb_menu_wallet(callback: types.CallbackQuery) -> None:
-    """Wallet button → show balance."""
+    """Wallet button → show balance for the user who tapped."""
     await callback.answer()
-    # Reuse the balance handler by constructing a fake message.
     from gaming.src.bot.handlers.balance import cmd_balance
-    await cmd_balance(callback.message)
+
+    await cmd_balance(_callback_as_user_message(callback, "/balance"))
 
 
-@router.callback_query(F.data == "menu:challenge")
-async def cb_menu_challenge(callback: types.CallbackQuery) -> None:
-    """Challenge button → start challenge creation."""
-    await callback.answer()
-    from gaming.src.bot.handlers.challenge import cmd_challenge
-    # Build a message with the usage text to start the flow.
-    # aiogram v3 Message instances are frozen; use model_copy to change text.
-    message = callback.message.model_copy(update={"text": "/challenge"})
-    await cmd_challenge(message)
+# menu:challenge is handled by simple_ui (button wizard) — do not override here.
 
 
 @router.callback_query(F.data == "menu:leaderboard")
@@ -113,12 +168,11 @@ async def cb_menu_leaderboard(callback: types.CallbackQuery) -> None:
 
 @router.callback_query(F.data == "menu:profile")
 async def cb_menu_profile(callback: types.CallbackQuery) -> None:
-    """Profile button → show own profile."""
+    """Profile button → show profile for the user who tapped."""
     await callback.answer()
     from gaming.src.bot.handlers.profile import cmd_profile
-    # aiogram v3 Message instances are frozen; use model_copy to change text.
-    message = callback.message.model_copy(update={"text": "/profile"})
-    await cmd_profile(message)
+
+    await cmd_profile(_callback_as_user_message(callback, "/profile"))
 
 
 CLAWSTATION_INFO_URL = "https://playingsidequest.fun/clawstation"
@@ -126,15 +180,15 @@ CLAWSTATION_INFO_URL = "https://playingsidequest.fun/clawstation"
 
 @router.callback_query(F.data == "menu:learn")
 async def cb_menu_learn(callback: types.CallbackQuery) -> None:
-    """Send the informational ClawStation page link."""
+    """In-bot how-to (simple steps)."""
     await callback.answer()
-    text = (
-        "📖 *How to use ClawStation*\n\n"
-        "Gameplay happens right here in Telegram.\n"
-        "Visit the guide for FAQs, commands, and step-by-step instructions:\n\n"
-        f"{CLAWSTATION_INFO_URL}"
+    from gaming.src.bot.utils.flow import how_to_play
+
+    await callback.message.edit_text(
+        how_to_play(),
+        reply_markup=back_menu(),
+        parse_mode=ParseMode.HTML,
     )
-    await callback.message.edit_text(text, reply_markup=back_menu())
 
 
 @router.callback_query(F.data == "menu:app")
@@ -150,26 +204,14 @@ async def cb_menu_app(callback: types.CallbackQuery) -> None:
 @router.message(Command("help"))
 async def cmd_help(message: types.Message) -> None:
     """Show all available commands."""
-    text = (
-        "📋 *ClawStation Commands*\n\n"
-        "🏠 *General*\n"
-        "  /start — Start ClawStation\n"
-        "  /help — Show this help message\n\n"
-        "💰 *Wallet & Transactions*\n"
-        "  /balance — Check USDC balance\n"
-        "  /send — Send USDC to a user or address\n"
-        "  /set_tx_password — Set transaction password\n"
-        "  /reset_tx_password — Reset transaction password\n\n"
-        "👤 *Profile & Social*\n"
-        "  /profile — View your profile\n"
-        "  /link_psn <psn_username> — Link PlayStation Network ID\n"
-        "  /link_xbox <xbox_gamertag> — Link Xbox Gamertag\n"
-        "  /link_email <email> — Link backup email\n"
-        "  /set_bio <bio_text> — Set your gaming bio\n\n"
-        "⚔️ *Gaming*\n"
-        "  /challenge — Create a challenge\n"
-        "  /dispute <challenge_id> — Raise a dispute on a challenge\n"
-        "  /lock_stake <challenge_id> — Lock your challenge stake on-chain\n"
-        "  /submit_score <challenge_id> <score> — Submit your match score\n"
-    )
-    await message.answer(text, reply_markup=back_menu())
+    from gaming.src.bot.utils.flow import short_help
+
+    await message.answer(short_help(), reply_markup=back_menu(), parse_mode=ParseMode.HTML)
+
+
+@router.message(Command("howto"))
+async def cmd_howto(message: types.Message) -> None:
+    """Full simple how-to."""
+    from gaming.src.bot.utils.flow import how_to_play
+
+    await message.answer(how_to_play(), reply_markup=back_menu(), parse_mode=ParseMode.HTML)

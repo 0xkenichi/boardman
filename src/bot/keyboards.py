@@ -1,4 +1,4 @@
-"""Inline keyboard builders for the ClawStation Telegram bot."""
+"""Inline keyboard builders for the ClawStation Telegram bot (simple UX)."""
 from __future__ import annotations
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -6,51 +6,241 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
 def main_menu(miniapp_url: str | None = None) -> InlineKeyboardMarkup:
-    """Return the main menu keyboard."""
+    """Big simple menu — no commands required."""
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="Wallet", callback_data="menu:wallet"),
-        InlineKeyboardButton(text="Challenge", callback_data="menu:challenge"),
-        InlineKeyboardButton(text="💸 Send", callback_data="m_send"),
+        InlineKeyboardButton(text="🎮 My match", callback_data="ui:match"),
+        InlineKeyboardButton(text="⚔️ New challenge", callback_data="ui:challenge"),
     )
     builder.row(
-        InlineKeyboardButton(text="Leaderboard", callback_data="menu:leaderboard"),
-        InlineKeyboardButton(text="Profile", callback_data="menu:profile"),
+        InlineKeyboardButton(text="💰 Wallet", callback_data="menu:wallet"),
+        InlineKeyboardButton(text="👤 Profile", callback_data="menu:profile"),
     )
     builder.row(
-        InlineKeyboardButton(text="📖 How to use ClawStation", callback_data="menu:learn"),
+        InlineKeyboardButton(text="🌐 Switch network", callback_data="ui:network"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="📖 How to play", callback_data="menu:learn"),
+        InlineKeyboardButton(text="🎮 $PLAY playbook", callback_data="ui:playbook"),
     )
     return builder.as_markup()
 
 
+def network_menu(current: str = "arc") -> InlineKeyboardMarkup:
+    """Pick preferred settlement / funding network."""
+    builder = InlineKeyboardBuilder()
+    opts = [
+        ("arc", "🟣 Arc Testnet (USDC gas) ★"),
+        ("base", "🔵 Base Sepolia (needs ETH gas)"),
+        ("avalanche", "🔴 Avalanche Fuji"),
+    ]
+    for cid, label in opts:
+        mark = " ✓" if cid == current else ""
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{label}{mark}",
+                callback_data=f"ui:network:set:{cid}",
+            )
+        )
+    builder.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
+    return builder.as_markup()
+
+
 def challenge_confirm_menu(match_id: str) -> InlineKeyboardMarkup:
-    """Return Accept / Decline inline buttons for a challenge."""
+    """Accept / Decline for an invite."""
+    builder = InlineKeyboardBuilder()
+    short = match_id[:8]
+    builder.row(
+        InlineKeyboardButton(text="✅ Accept", callback_data=f"challenge:accept:{match_id}"),
+        InlineKeyboardButton(text="❌ Decline", callback_data=f"challenge:decline:{match_id}"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="📋 Match status", callback_data=f"ui:info:{match_id}"),
+    )
+    return builder.as_markup()
+
+
+def match_actions_menu(challenge: dict, profile_id: str) -> InlineKeyboardMarkup:
+    """Context buttons for the user's active match — no typing IDs."""
+    cid = challenge["id"]
+    status = (challenge.get("status") or "").lower()
+    is_creator = profile_id == challenge.get("creator_id")
+    is_opp = profile_id == challenge.get("opponent_id")
+    builder = InlineKeyboardBuilder()
+
+    if status in ("accepted", "open", "creator_locked"):
+        # Lock stake if appropriate
+        if is_creator and status in ("accepted", "open") and not challenge.get("creator_lock_tx_id"):
+            builder.row(
+                InlineKeyboardButton(text="🔐 Lock my stake", callback_data=f"ui:lock:{cid}"),
+            )
+        if is_opp and status == "creator_locked" and not challenge.get("opponent_lock_tx_id"):
+            builder.row(
+                InlineKeyboardButton(text="🔐 Lock my stake", callback_data=f"ui:lock:{cid}"),
+            )
+        if is_creator and status == "creator_locked":
+            builder.row(
+                InlineKeyboardButton(
+                    text="⏳ Waiting for opponent to lock…",
+                    callback_data=f"ui:info:{cid}",
+                ),
+            )
+
+    if status in ("locked", "playing", "submitted"):
+        my_side = (
+            challenge.get("creator_side")
+            if is_creator
+            else challenge.get("opponent_side")
+        )
+        if not my_side:
+            builder.row(
+                InlineKeyboardButton(text="🏠 I am HOME", callback_data=f"ui:side:{cid}:home"),
+                InlineKeyboardButton(text="✈️ I am AWAY", callback_data=f"ui:side:{cid}:away"),
+            )
+        else:
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"Side: {my_side.upper()} ✓",
+                    callback_data=f"ui:side:{cid}:menu",
+                ),
+            )
+        builder.row(
+            InlineKeyboardButton(
+                text="📸 Submit result (photo)",
+                callback_data=f"ui:report:{cid}",
+            ),
+        )
+
+    if status == "submitted":
+        builder.row(
+            InlineKeyboardButton(text="⏳ Check settlement", callback_data=f"ui:settle:{cid}"),
+        )
+
+    if status == "disputed":
+        builder.row(
+            InlineKeyboardButton(text="⚠️ Disputed — status", callback_data=f"ui:info:{cid}"),
+        )
+
+    builder.row(
+        InlineKeyboardButton(text="📋 Match status", callback_data=f"ui:info:{cid}"),
+        InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"),
+    )
+    return builder.as_markup()
+
+
+def side_menu(match_id: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="Accept", callback_data=f"challenge:accept:{match_id}"),
-        InlineKeyboardButton(text="Decline", callback_data=f"challenge:decline:{match_id}"),
+        InlineKeyboardButton(text="🏠 HOME", callback_data=f"ui:side:{match_id}:home"),
+        InlineKeyboardButton(text="✈️ AWAY", callback_data=f"ui:side:{match_id}:away"),
+    )
+    builder.row(InlineKeyboardButton(text="« Back", callback_data=f"ui:info:{match_id}"))
+    return builder.as_markup()
+
+
+def stake_amount_menu() -> InlineKeyboardMarkup:
+    """Stake presets — only amounts at or under CLAW_MAX_STAKE_USDC."""
+    import os
+    from decimal import Decimal
+
+    try:
+        max_s = float(os.getenv("CLAW_MAX_STAKE_USDC", "25"))
+    except ValueError:
+        max_s = 25.0
+    builder = InlineKeyboardBuilder()
+    presets = [a for a in (1, 5, 10, 25) if a <= max_s + 1e-9]
+    if not presets:
+        presets = [1]
+    for amt in presets:
+        builder.add(
+            InlineKeyboardButton(text=f"${amt}", callback_data=f"ui:chal:amt:{amt}"),
+        )
+    builder.adjust(min(4, len(presets)))
+    builder.row(InlineKeyboardButton(text="❌ Cancel", callback_data="menu:main"))
+    return builder.as_markup()
+
+
+def game_menu() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for label, key in (
+        ("⚽ EA FC", "EAFC"),
+        ("🏀 NBA 2K", "NBA2K"),
+        ("🎮 Other", "Other"),
+    ):
+        builder.add(InlineKeyboardButton(text=label, callback_data=f"ui:chal:game:{key}"))
+    builder.adjust(1)
+    builder.row(InlineKeyboardButton(text="❌ Cancel", callback_data="menu:main"))
+    return builder.as_markup()
+
+
+def chain_menu() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text="🟣 Arc Testnet (USDC gas) ★",
+            callback_data="ui:chal:chain:arc",
+        ),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔵 Base Sepolia", callback_data="ui:chal:chain:base"),
+        InlineKeyboardButton(text="🔴 Avalanche Fuji", callback_data="ui:chal:chain:avalanche"),
+    )
+    builder.row(InlineKeyboardButton(text="❌ Cancel", callback_data="menu:main"))
+    return builder.as_markup()
+
+
+def confirm_challenge_menu() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="✅ Send challenge", callback_data="ui:chal:confirm"),
+        InlineKeyboardButton(text="❌ Cancel", callback_data="menu:main"),
+    )
+    return builder.as_markup()
+
+
+def after_report_menu(match_id: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="📋 Match status", callback_data=f"ui:info:{match_id}"),
+        InlineKeyboardButton(text="🏠 Menu", callback_data="menu:main"),
     )
     return builder.as_markup()
 
 
 def back_to_main() -> InlineKeyboardMarkup:
-    """Return a single Back button."""
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="Back", callback_data="menu:main"))
+    builder.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
     return builder.as_markup()
 
 
 def back_menu() -> InlineKeyboardMarkup:
-    """Alias for back_to_main for compatibility."""
     return back_to_main()
 
 
-def send_menu() -> InlineKeyboardMarkup:
-    """Return the send menu keyboard."""
+def wallet_menu() -> InlineKeyboardMarkup:
+    """Actions on the wallet / balance screen."""
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="👤 Send to @tag", callback_data="send_to_tag"),
-        InlineKeyboardButton(text="📤 Send to address", callback_data="send_to_address"),
+        InlineKeyboardButton(text="💸 Withdraw", callback_data="ui:withdraw"),
     )
-    builder.row(InlineKeyboardButton(text="Back", callback_data="m_main"))
+    builder.row(
+        InlineKeyboardButton(text="🌐 Switch network", callback_data="ui:network"),
+    )
+    builder.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
+    return builder.as_markup()
+
+
+def send_menu() -> InlineKeyboardMarkup:
+    """Withdraw / send destination picker."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="👤 To @tag (ClawStation)", callback_data="send_to_tag"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="📤 To 0x address (external)", callback_data="send_to_address"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="« Wallet", callback_data="menu:wallet"),
+        InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"),
+    )
     return builder.as_markup()

@@ -22,6 +22,8 @@ from gaming.src.bot.handlers import balance, challenge, profile, proof, send, st
 from gaming.src.bot.handlers import lock_stake  # noqa: E402
 from gaming.src.bot.handlers import submit_score  # noqa: E402
 from gaming.src.bot.handlers import dispute  # noqa: E402
+from gaming.src.bot.handlers import simple_ui  # noqa: E402
+from gaming.src.bot.handlers import admin_safety  # noqa: E402
 from gaming.src.bot.jobs.expiry import start_expiry_scheduler  # noqa: E402
 from gaming.src.bot.utils.notify import set_bot  # noqa: E402
 
@@ -30,37 +32,36 @@ logger = logging.getLogger(__name__)
 
 def _build_dispatcher() -> Dispatcher:
     dp = Dispatcher(storage=MemoryStorage())
+    # Button-first UX (FSM) — register early for menu callbacks
+    dp.include_router(simple_ui.router)
     dp.include_router(start.router)
     dp.include_router(balance.router)
     dp.include_router(profile.router)
     dp.include_router(challenge.router)
-    dp.include_router(proof.router)
     dp.include_router(tx_password.router)
     dp.include_router(send.router)
     dp.include_router(profile_links.router)
     dp.include_router(lock_stake.router)
+    # submit_score before proof so /submit_score photo captions hit AI path first
     dp.include_router(submit_score.router)
+    dp.include_router(proof.router)
     dp.include_router(dispute.router)
+    dp.include_router(admin_safety.router)
     return dp
 
 
 async def _set_bot_commands(bot: Bot) -> None:
     commands = [
-        BotCommand(command="start", description="Start ClawStation"),
-        BotCommand(command="balance", description="Check USDC balance"),
-        BotCommand(command="profile", description="View profile"),
-        BotCommand(command="challenge", description="Create a challenge"),
-        BotCommand(command="set_tx_password", description="Set transaction password"),
-        BotCommand(command="send", description="Send USDC to a user or address"),
-        BotCommand(command="link_psn", description="Link PlayStation Network ID"),
-        BotCommand(command="link_xbox", description="Link Xbox Gamertag"),
-        BotCommand(command="link_email", description="Link backup email"),
-        BotCommand(command="set_bio", description="Set your gaming bio"),
-        BotCommand(command="reset_tx_password", description="Reset transaction password"),
-        BotCommand(command="lock_stake", description="Lock your challenge stake on-chain"),
-        BotCommand(command="submit_score", description="Submit match score/screenshot"),
-        BotCommand(command="dispute", description="Raise a dispute on a challenge"),
-        BotCommand(command="help", description="Show all commands"),
+        BotCommand(command="start", description="Open menu (buttons)"),
+        BotCommand(command="howto", description="How to play — simple"),
+        BotCommand(command="help", description="Help"),
+        BotCommand(command="balance", description="USDC + $PLAY"),
+        BotCommand(command="profile", description="Profile · streak · tier"),
+        BotCommand(command="playbook", description="$PLAY points guide"),
+        BotCommand(command="withdraw", description="Withdraw USDC"),
+        BotCommand(command="safety", description="Stake/withdraw limits"),
+        BotCommand(command="challenge", description="(advanced) text challenge"),
+        BotCommand(command="dispute", description="Flag a problem"),
     ]
     await bot.set_my_commands(commands)
 
@@ -76,8 +77,11 @@ async def run_polling() -> None:
     scheduler = start_expiry_scheduler()
 
     try:
+        # Avoid TelegramConflictError when a webhook is still registered.
+        await bot.delete_webhook(drop_pending_updates=False)
         await _set_bot_commands(bot)
-        logger.info("[Bot] Starting polling")
+        me = await bot.get_me()
+        logger.info("[Bot] Starting polling as @%s (id=%s)", me.username, me.id)
         await dp.start_polling(bot, allowed_updates=settings.ALLOWED_UPDATES)
     finally:
         scheduler.shutdown(wait=False)
@@ -138,9 +142,20 @@ def main() -> None:
         level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    if settings.WEBHOOK_URL:
-        asyncio.run(run_webhook(settings.WEBHOOK_URL))
+    if settings.use_webhook:
+        asyncio.run(
+            run_webhook(
+                settings.WEBHOOK_URL,  # type: ignore[arg-type]
+                host=settings.WEBHOOK_HOST,
+                port=settings.WEBHOOK_PORT,
+            )
+        )
     else:
+        if settings.WEBHOOK_URL and settings.BOT_MODE != "webhook":
+            logging.getLogger(__name__).info(
+                "[Bot] WEBHOOK_URL is set but CLAWSTATION_BOT_MODE=%s — using polling",
+                settings.BOT_MODE,
+            )
         asyncio.run(run_polling())
 
 

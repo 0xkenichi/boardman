@@ -303,6 +303,29 @@ async def circle_webhook(
         return {"status": "unattributed"}
 
     credited = await _apply_credit(user_id, transfer["amount_usdc"], transfer["tx_hash"])
+    if credited:
+        # Telegram deposit confirmation (also logs if watcher already did)
+        try:
+            from gaming.src.backend.services.clawstation_circle import get_preferred_chain, get_usdc_balance
+            from gaming.src.backend.services.wallet_activity import notify_deposit, set_snapshot
+
+            chain = await get_preferred_chain(user_id)
+            try:
+                new_bal = await get_usdc_balance(user_id, chain_id=chain)
+            except Exception:
+                new_bal = transfer["amount_usdc"]
+            set_snapshot(user_id, chain, new_bal)
+            await notify_deposit(
+                user_id,
+                transfer["amount_usdc"],
+                new_bal,
+                chain,
+                tx_hash=transfer["tx_hash"],
+                log=False,  # credit audit already written by _apply_credit
+            )
+        except Exception:
+            logger.exception("[CircleWebhook] deposit notify failed for %s", user_id)
+
     return {
         "status": "credited" if credited else "already_processed",
         "tx_hash": transfer["tx_hash"],

@@ -2,6 +2,17 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+
+    # Worktree root (.env) — load before reading BOT_TOKEN
+    _root = Path(__file__).resolve().parents[3]
+    load_dotenv(_root / ".env")
+    load_dotenv()  # cwd fallback
+except ImportError:
+    pass
 
 from aiogram.enums import ParseMode
 
@@ -13,13 +24,23 @@ class Settings:
     BOT_USERNAME = os.getenv("TELEGRAM_BOT_USERNAME_CLAWSTATION") or os.getenv("TELEGRAM_BOT_USERNAME")
     MINIAPP_URL = os.getenv("MINIAPP_URL")
     WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+    # Default to polling so local demos work even if WEBHOOK_URL is set for other services.
+    # Production: set CLAWSTATION_BOT_MODE=webhook (and WEBHOOK_URL).
+    BOT_MODE = (os.getenv("CLAWSTATION_BOT_MODE") or os.getenv("BOT_MODE") or "polling").lower()
+    WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "0.0.0.0")
+    WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT", "8080"))
     ALLOWED_UPDATES = (
         [u.strip() for u in os.getenv("ALLOWED_UPDATES", "").split(",") if u.strip()]
         if os.getenv("ALLOWED_UPDATES")
         else None
     )
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-    PARSE_MODE = ParseMode.MARKDOWN
+    # HTML is safer than Markdown: gaming tags / addresses often contain `_`.
+    PARSE_MODE = ParseMode.HTML
+
+    @property
+    def use_webhook(self) -> bool:
+        return self.BOT_MODE in ("webhook", "wh") and bool(self.WEBHOOK_URL)
 
 
 settings = Settings()

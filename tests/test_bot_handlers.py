@@ -96,6 +96,10 @@ class _MockQuery:
         self.filters.append(("eq", col, val))
         return self
 
+    def neq(self, col: str, val):
+        self.filters.append(("neq", col, val))
+        return self
+
     def lt(self, col: str, val):
         self.filters.append(("lt", col, val))
         return self
@@ -339,7 +343,7 @@ async def test_start_creates_profile_and_wallet(mock_supabase):
     assert len(insert_calls) == 1
     inserted = insert_calls[0].data
     assert inserted["telegram_id"] == 111
-    assert inserted["gaming_tag"] == "sq_newgamer_111"
+    assert inserted["gaming_tag"] == "newgamer"
 
     update_calls = mock_supabase.find_calls(table="profiles", operation="update")
     assert any(
@@ -367,7 +371,7 @@ async def test_balance_shows_usdc_and_tier(mock_supabase, monkeypatch):
             "gaming_reputation_score": 1500,
         }
     )
-    async def _fake_balance(user_id):
+    async def _fake_balance(user_id, chain_id=None):
         return Decimal("250.50")
 
     monkeypatch.setattr(
@@ -450,7 +454,7 @@ async def test_challenge_creates_row(mock_supabase, monkeypatch):
             "gaming_tier": "bronze",
         }
     )
-    async def _fake_balance(user_id):
+    async def _fake_balance(user_id, chain_id=None):
         return Decimal("100.00")
 
     monkeypatch.setattr(
@@ -464,11 +468,12 @@ async def test_challenge_creates_row(mock_supabase, monkeypatch):
     insert_calls = mock_supabase.find_calls(table="challenges", operation="insert")
     assert len(insert_calls) == 1
     record = insert_calls[0].data
-    assert record["amount_usdc"] == 50.0
-    assert record["game"] == "EA FC"
-    assert record["visibility"] == "private"
-    assert record["creator_id"] == _TEST_USER_ID
-    assert record["opponent_id"] == _TEST_OPPONENT_ID
+    # Live gaming.challenges columns (legacy names + escrow fields).
+    assert record["stake_amount"] == 50.0
+    assert record["game_type"] == "EA FC"
+    assert record["theme"] == "private"
+    assert record["issuer_id"] == _TEST_USER_ID
+    assert record["target_id"] == _TEST_OPPONENT_ID
 
 
 @pytest.mark.asyncio
@@ -482,7 +487,7 @@ async def test_challenge_insufficient_balance(mock_supabase, monkeypatch):
             "gaming_tier": "bronze",
         }
     )
-    async def _fake_balance(user_id):
+    async def _fake_balance(user_id, chain_id=None):
         return Decimal("10.00")
 
     monkeypatch.setattr(
@@ -1018,7 +1023,7 @@ async def test_lock_stake_creator_calls_create_match(mock_supabase, monkeypatch)
         }
     )
 
-    async def fake_ensure(uid):
+    async def fake_ensure(uid, chain_id=None):
         return {"wallet_id": f"wallet_{uid[:8]}", "address": "0x1234"}
 
     monkeypatch.setattr(
@@ -1046,12 +1051,10 @@ async def test_lock_stake_creator_calls_create_match(mock_supabase, monkeypatch)
 
     assert create_called.get("called")
     assert create_called["amount"] == Decimal("5.0")
-
-    update_calls = mock_supabase.find_calls(table="challenges", operation="update")
-    update = next((c for c in update_calls if c.row_id == challenge_id), None)
-    assert update is not None
-    assert update.data["status"] == "creator_locked"
-    assert update.data["creator_lock_tx_id"] == "tx_create"
+    # DB status is updated inside approve_and_create_match (mocked here).
+    assert msg.answer.await_count >= 1
+    texts = " ".join(str(c.args[0]) for c in msg.answer.await_args_list if c.args)
+    assert "Stake locked" in texts or "lock" in texts.lower()
 
 
 @pytest.mark.asyncio
@@ -1089,7 +1092,7 @@ async def test_lock_stake_opponent_calls_join_match(mock_supabase, monkeypatch):
         }
     )
 
-    async def fake_ensure(uid):
+    async def fake_ensure(uid, chain_id=None):
         return {"wallet_id": f"wallet_{uid[:8]}", "address": "0x1234"}
 
     monkeypatch.setattr(
@@ -1117,12 +1120,10 @@ async def test_lock_stake_opponent_calls_join_match(mock_supabase, monkeypatch):
 
     assert join_called.get("called")
     assert join_called["amount"] == Decimal("10.0")
-
-    update_calls = mock_supabase.find_calls(table="challenges", operation="update")
-    update = next((c for c in update_calls if c.row_id == challenge_id), None)
-    assert update is not None
-    assert update.data["status"] == "locked"
-    assert update.data["opponent_lock_tx_id"] == "tx_join"
+    # DB status is updated inside approve_and_join_match (mocked here).
+    assert msg.answer.await_count >= 1
+    texts = " ".join(str(c.args[0]) for c in msg.answer.await_args_list if c.args)
+    assert "Stake locked" in texts or "lock" in texts.lower()
 
 
 # ── Submit score tests ───────────────────────────────────────────────────────

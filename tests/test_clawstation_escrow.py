@@ -12,9 +12,6 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-import gaming.src.backend.services.clawstation_escrow as _escrow_module  # noqa: E402
-_escrow_module.ESCROW_ADDRESS = "0xEscrowContractAddress"
-
 from gaming.src.backend.services.clawstation_escrow import (  # noqa: E402
     approve_and_create_match,
     approve_and_join_match,
@@ -23,20 +20,30 @@ from gaming.src.backend.services.clawstation_escrow import (  # noqa: E402
     resolve_match,
 )
 
+# Valid-looking checksum placeholders for multi-chain config / Web3
+_ESCROW = "0xDb76714390ccE1729558DF3c9EC4f45A1690dE78"
+_USER = "0xa51fbdcc5fe502d6a74044322ef605e7abfbec5d"
+_OPP = "0x95cff0fd86f0f62502178dc0fc0f79472659a16d"
+
 
 def _mock_supabase(monkeypatch, execute_results):
     """Return a mock supabase where execute() returns results in order."""
     mock = MagicMock()
     execute_iter = iter(execute_results)
 
-    def fake_execute():
+    def fake_execute(*_a, **_k):
         return next(execute_iter)
 
-    mock.schema.return_value.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.side_effect = fake_execute
-    mock.schema.return_value.table.return_value.select.return_value.eq.return_value.eq.return_value.eq.return_value.maybe_single.return_value.execute.side_effect = fake_execute
-    mock.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.side_effect = fake_execute
-    mock.schema.return_value.table.return_value.insert.return_value.execute.side_effect = fake_execute
-    mock.schema.return_value.table.return_value.update.return_value.eq.return_value.execute.side_effect = fake_execute
+    # Flexible chain: select/eq/in_/limit/maybe_single/insert/update all return mock
+    q = mock.schema.return_value.table.return_value
+    for meth in ("select", "eq", "in_", "limit", "maybe_single", "insert", "update"):
+        getattr(q, meth).return_value = q
+    q.execute.side_effect = fake_execute
+
+    t = mock.table.return_value
+    for meth in ("select", "eq", "maybe_single"):
+        getattr(t, meth).return_value = t
+    t.execute.side_effect = fake_execute
 
     monkeypatch.setattr("gaming.src.backend.services.clawstation_escrow.get_supabase", lambda: mock)
     return mock
@@ -44,12 +51,23 @@ def _mock_supabase(monkeypatch, execute_results):
 
 @pytest.fixture(autouse=True)
 def _set_env(monkeypatch):
-    monkeypatch.setenv("CLAW_ESCROW_ADDRESS_BASE_SEPOLIA", "0xEscrowContractAddress")
+    monkeypatch.setenv("CLAW_ESCROW_ADDRESS_BASE_SEPOLIA", _ESCROW)
+    monkeypatch.setenv("CSC_ADDRESS", _ESCROW)
+    # Skip real gas tank RPC in unit tests
+    monkeypatch.setattr(
+        "gaming.src.backend.services.clawstation_escrow.ensure_native_gas",
+        lambda *a, **k: {"ok": True, "action": "already_funded"},
+    )
+    # Force chain config escrow
+    monkeypatch.setattr(
+        "gaming.src.backend.services.clawstation_escrow.get_escrow_address",
+        lambda chain_id: _ESCROW,
+    )
 
 
 @pytest.mark.asyncio
 async def test_approve_and_create_match_approves_and_calls_create_match(monkeypatch):
-    mock_ensure = AsyncMock(return_value={"wallet_id": "user_wallet", "address": "0xUser"})
+    mock_ensure = AsyncMock(return_value={"wallet_id": "user_wallet", "address": _USER})
     monkeypatch.setattr(
         "gaming.src.backend.services.clawstation_escrow.ensure_user_wallet", mock_ensure
     )
@@ -60,13 +78,18 @@ async def test_approve_and_create_match_approves_and_calls_create_match(monkeypa
         "transaction_id": "tx_approve",
         "tx_hash": "0xApproveHash",
     }
+    mock_circle.wait_for_transaction.return_value = {
+        "success": True,
+        "tx_hash": "0xCreateHash",
+    }
     mock_circle.execute_contract_function.return_value = {
         "success": True,
         "transaction_id": "tx_create",
         "tx_hash": "0xCreateHash",
     }
     monkeypatch.setattr(
-        "gaming.src.backend.services.clawstation_escrow.CircleWalletService", lambda: mock_circle
+        "gaming.src.backend.services.clawstation_escrow.CircleWalletService",
+        lambda **kwargs: mock_circle,
     )
 
     challenge_result = MagicMock()
@@ -76,17 +99,16 @@ async def test_approve_and_create_match_approves_and_calls_create_match(monkeypa
         "opponent_id": None,
         "status": "accepted",
         "amount_usdc": 5.0,
+        "settlement_chain": "base",
     }
-    profile_result = MagicMock()
-    profile_result.data = {"circle_wallet_id": "user_wallet"}
-    audit_result = MagicMock()
-    audit_result.data = None
+    audit_empty = MagicMock()
+    audit_empty.data = []
     insert_result = MagicMock()
     update_result = MagicMock()
 
     _mock_supabase(
         monkeypatch,
-        [challenge_result, profile_result, audit_result, insert_result, update_result],
+        [challenge_result, audit_empty, insert_result, update_result],
     )
 
     result = await approve_and_create_match("user_1", "challenge_1", Decimal("5.0"))
@@ -96,18 +118,18 @@ async def test_approve_and_create_match_approves_and_calls_create_match(monkeypa
     mock_circle.approve_usdc_transfer.assert_called_once_with(
         wallet_id="user_wallet",
         amount_usdc=5.0,
-        spender_address="0xEscrowContractAddress",
+        spender_address=_ESCROW,
     )
     mock_circle.execute_contract_function.assert_called_once()
     call_kwargs = mock_circle.execute_contract_function.call_args.kwargs
     assert call_kwargs["wallet_id"] == "user_wallet"
-    assert call_kwargs["contract_address"] == "0xEscrowContractAddress"
+    assert call_kwargs["contract_address"] == _ESCROW
     assert call_kwargs["function_signature"] == "createMatch(bytes32,uint256)"
 
 
 @pytest.mark.asyncio
 async def test_approve_and_join_match_approves_and_calls_join_match(monkeypatch):
-    mock_ensure = AsyncMock(return_value={"wallet_id": "opp_wallet", "address": "0xOpp"})
+    mock_ensure = AsyncMock(return_value={"wallet_id": "opp_wallet", "address": _OPP})
     monkeypatch.setattr(
         "gaming.src.backend.services.clawstation_escrow.ensure_user_wallet", mock_ensure
     )
@@ -118,13 +140,18 @@ async def test_approve_and_join_match_approves_and_calls_join_match(monkeypatch)
         "transaction_id": "tx_approve",
         "tx_hash": "0xApproveHash",
     }
+    mock_circle.wait_for_transaction.return_value = {
+        "success": True,
+        "tx_hash": "0xJoinHash",
+    }
     mock_circle.execute_contract_function.return_value = {
         "success": True,
         "transaction_id": "tx_join",
         "tx_hash": "0xJoinHash",
     }
     monkeypatch.setattr(
-        "gaming.src.backend.services.clawstation_escrow.CircleWalletService", lambda: mock_circle
+        "gaming.src.backend.services.clawstation_escrow.CircleWalletService",
+        lambda **kwargs: mock_circle,
     )
 
     challenge_result = MagicMock()
@@ -135,17 +162,16 @@ async def test_approve_and_join_match_approves_and_calls_join_match(monkeypatch)
         "status": "creator_locked",
         "amount_usdc": 5.0,
         "creator_lock_tx_id": "tx_create",
+        "settlement_chain": "base",
     }
-    profile_result = MagicMock()
-    profile_result.data = {"circle_wallet_id": "opp_wallet"}
-    audit_result = MagicMock()
-    audit_result.data = None
+    audit_empty = MagicMock()
+    audit_empty.data = []
     insert_result = MagicMock()
     update_result = MagicMock()
 
     _mock_supabase(
         monkeypatch,
-        [challenge_result, profile_result, audit_result, insert_result, update_result],
+        [challenge_result, audit_empty, insert_result, update_result],
     )
 
     result = await approve_and_join_match("user_2", "challenge_1", Decimal("5.0"))
@@ -167,13 +193,14 @@ async def test_resolve_match_calls_blockchain_resolve(monkeypatch):
         "status": "submitted",
         "amount_usdc": 10.0,
         "winner_id": "user_1",
+        "settlement_chain": "base",
     }
-    audit_result = MagicMock()
-    audit_result.data = None
+    audit_empty = MagicMock()
+    audit_empty.data = []
     insert_result = MagicMock()
     update_result = MagicMock()
 
-    _mock_supabase(monkeypatch, [challenge_result, audit_result, insert_result, insert_result, update_result])
+    _mock_supabase(monkeypatch, [challenge_result, audit_empty, insert_result, insert_result, update_result])
 
     mock_bl = MagicMock()
     mock_bl.resolve_match_onchain = AsyncMock(
@@ -185,7 +212,7 @@ async def test_resolve_match_calls_blockchain_resolve(monkeypatch):
         }
     )
     monkeypatch.setattr(
-        "backend.blockchain_layer.get_blockchain_layer", lambda: mock_bl
+        "backend.blockchain_layer.get_blockchain_layer_for_chain", lambda chain: mock_bl
     )
 
     result = await resolve_match("challenge_1", "0xWinnerAddress")
@@ -205,15 +232,16 @@ async def test_resolve_match_idempotency_guard(monkeypatch):
         "status": "submitted",
         "amount_usdc": 10.0,
         "winner_id": "user_1",
+        "settlement_chain": "base",
     }
     audit_result = MagicMock()
-    audit_result.data = {"circle_tx_id": "old_tx", "tx_hash": "0xOldHash", "status": "confirmed"}
+    audit_result.data = [{"circle_tx_id": "old_tx", "tx_hash": "0xOldHash", "status": "confirmed"}]
 
     _mock_supabase(monkeypatch, [challenge_result, audit_result])
 
     mock_bl = MagicMock()
     monkeypatch.setattr(
-        "backend.blockchain_layer.get_blockchain_layer", lambda: mock_bl
+        "backend.blockchain_layer.get_blockchain_layer_for_chain", lambda chain: mock_bl
     )
 
     result = await resolve_match("challenge_1", "0xWinnerAddress")
@@ -231,13 +259,14 @@ async def test_cancel_match_calls_blockchain_cancel(monkeypatch):
         "opponent_id": "user_2",
         "status": "locked",
         "amount_usdc": 10.0,
+        "settlement_chain": "base",
     }
-    audit_result = MagicMock()
-    audit_result.data = None
+    audit_empty = MagicMock()
+    audit_empty.data = []
     insert_result = MagicMock()
     update_result = MagicMock()
 
-    _mock_supabase(monkeypatch, [challenge_result, audit_result, insert_result, insert_result, update_result])
+    _mock_supabase(monkeypatch, [challenge_result, audit_empty, insert_result, insert_result, update_result])
 
     mock_bl = MagicMock()
     mock_bl.cancel_match_onchain = AsyncMock(
@@ -249,7 +278,7 @@ async def test_cancel_match_calls_blockchain_cancel(monkeypatch):
         }
     )
     monkeypatch.setattr(
-        "backend.blockchain_layer.get_blockchain_layer", lambda: mock_bl
+        "backend.blockchain_layer.get_blockchain_layer_for_chain", lambda chain: mock_bl
     )
 
     result = await cancel_match("challenge_1")
@@ -268,6 +297,7 @@ async def test_flag_dispute_calls_blockchain_flag(monkeypatch):
         "opponent_id": "user_2",
         "status": "submitted",
         "amount_usdc": 10.0,
+        "settlement_chain": "base",
     }
     update_result = MagicMock()
 
@@ -283,7 +313,7 @@ async def test_flag_dispute_calls_blockchain_flag(monkeypatch):
         }
     )
     monkeypatch.setattr(
-        "backend.blockchain_layer.get_blockchain_layer", lambda: mock_bl
+        "backend.blockchain_layer.get_blockchain_layer_for_chain", lambda chain: mock_bl
     )
 
     result = await flag_dispute("challenge_1")

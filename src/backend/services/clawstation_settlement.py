@@ -1,11 +1,11 @@
 """
-gaming/src/backend/services/clawstation_settlement.py
-────────────────────────────────────────────────────
-Backend settlement worker for ClawStation (custodial escrow mode).
+ClawStation settlement: scores + AI vision → on-chain resolve.
 
-Reads challenges that have both scores submitted, resolves the winner,
-pays out from the sideQuest escrow wallet, and notifies both players.
-Disputes are escalated to admin resolution.
+Flow:
+  1. Both players submit scores and/or screenshots.
+  2. If scores agree (or AI vision agrees) → payout after dispute window
+     (window skipped when AI confidence is high).
+  3. If conflict unresolved → dispute for admin.
 """
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from decimal import Decimal
 from typing import Optional
 
 from backend.supabase_client import get_supabase
+from gaming.src.backend.services.challenge_compat import denormalize_challenge, normalize_challenge, normalize_list
 from gaming.src.backend.services.clawstation_escrow import (
     EscrowError,
     flag_dispute,
@@ -24,8 +25,9 @@ from gaming.src.backend.services.clawstation_escrow import (
 
 logger = logging.getLogger(__name__)
 
-# Dispute window: time after both scores are in before auto-payout is allowed.
-DEFAULT_DISPUTE_WINDOW_MINUTES = int(os.getenv("SETTLEMENT_DISPUTE_WINDOW_MINUTES", "15"))
+DEFAULT_DISPUTE_WINDOW_MINUTES = int(os.getenv("SETTLEMENT_DISPUTE_WINDOW_MINUTES", "5"))
+# When AI verifies both screenshots with high confidence, settle immediately.
+AI_FAST_SETTLE_CONFIDENCE = float(os.getenv("AI_FAST_SETTLE_CONFIDENCE", "0.75"))
 
 
 class SettlementError(Exception):
@@ -50,11 +52,10 @@ def _load_challenge(challenge_id: str) -> Optional[dict]:
         .maybe_single()
         .execute()
     )
-    return result.data
+    return normalize_challenge(result.data) if result.data else None
 
 
 def _load_submitted_challenges() -> list[dict]:
-    """Return challenges in 'submitted' status."""
     sb = _get_supabase()
     result = (
         sb.schema("gaming")
@@ -63,10 +64,10 @@ def _load_submitted_challenges() -> list[dict]:
         .eq("status", "submitted")
         .execute()
     )
-    return result.data or []
+    return normalize_list(result.data)
 
 
-def _load_profile_address(profile_id: str) -> Optional[str]:
+async def _load_profile_address(profile_id: str) -> Optional[str]:
     sb = _get_supabase()
     result = (
         sb.table("profiles")
@@ -80,16 +81,81 @@ def _load_profile_address(profile_id: str) -> Optional[str]:
     return None
 
 
-def _determine_winner(challenge: dict) -> Optional[str]:
-    """Return the winner profile ID based on submitted scores, or None for draw."""
+def _determine_winner_from_scores(challenge: dict) -> Optional[str]:
+    """Determine winner from full scorelines or legacy single scores.
+
+    Prefer home-away reports. If both players report the same home-away
+    scoreline, map winner using creator_side / opponent_side.
+    Fallback: higher self-reported ``creator_score`` / ``opponent_score``.
+    """
+    ch = challenge.get("creator_reported_home")
+    ca = challenge.get("creator_reported_away")
+    oh = challenge.get("opponent_reported_home")
+    oa = challenge.get("opponent_reported_away")
+
+    # Both full scorelines present
+    if None not in (ch, ca, oh, oa):
+        try:
+            ch, ca, oh, oa = int(ch), int(ca), int(oh), int(oa)
+        except (TypeError, ValueError):
+            pass
+        else:
+            if (ch, ca) != (oh, oa):
+                # Conflicting claims — let AI / dispute handle
+                return None
+            # Agreed scoreline
+            if ch == ca:
+                return None  # draw
+            if ch > ca:
+                # home won
+                if challenge.get("creator_side") == "home":
+                    return challenge["creator_id"]
+                if challenge.get("opponent_side") == "home":
+                    return challenge["opponent_id"]
+                # no sides set: creator treated as home (legacy)
+                return challenge["creator_id"]
+            # away won
+            if challenge.get("creator_side") == "away":
+                return challenge["creator_id"]
+            if challenge.get("opponent_side") == "away":
+                return challenge["opponent_id"]
+            return challenge.get("opponent_id")
+
+    # AI home-away available
+    ah, aa = challenge.get("ai_home_score"), challenge.get("ai_away_score")
+    if ah is not None and aa is not None:
+        try:
+            ah, aa = int(ah), int(aa)
+        except (TypeError, ValueError):
+            pass
+        else:
+            if ah == aa:
+                return None
+            home_wins = ah > aa
+            if home_wins:
+                if challenge.get("creator_side") == "home":
+                    return challenge["creator_id"]
+                if challenge.get("opponent_side") == "home":
+                    return challenge["opponent_id"]
+                return challenge["creator_id"]
+            if challenge.get("creator_side") == "away":
+                return challenge["creator_id"]
+            if challenge.get("opponent_side") == "away":
+                return challenge["opponent_id"]
+            return challenge.get("opponent_id")
+
+    # Legacy: each player's "my goals"
     creator_score = challenge.get("creator_score")
     opponent_score = challenge.get("opponent_score")
     if creator_score is None or opponent_score is None:
         return None
-
-    if creator_score > opponent_score:
+    try:
+        c, o = int(creator_score), int(opponent_score)
+    except (TypeError, ValueError):
+        return None
+    if c > o:
         return challenge["creator_id"]
-    if opponent_score > creator_score:
+    if o > c:
         return challenge["opponent_id"]
     return None  # draw
 
@@ -98,56 +164,183 @@ def _both_scores_present(challenge: dict) -> bool:
     return challenge.get("creator_score") is not None and challenge.get("opponent_score") is not None
 
 
+def _both_screenshots_present(challenge: dict) -> bool:
+    return bool(challenge.get("screenshot_creator_url") and challenge.get("screenshot_opponent_url"))
+
+
 def _dispute_window_elapsed(challenge: dict) -> bool:
-    """Return True if enough time has passed since the second score submission."""
-    # We don't know the exact timestamp of the second score, so we use updated_at
-    # as a conservative proxy once both scores are present.
-    updated_at = challenge.get("updated_at")
+    updated_at = challenge.get("updated_at") or challenge.get("ai_verified_at")
     if not updated_at:
         return False
     try:
-        updated = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+        updated = datetime.fromisoformat(str(updated_at).replace("Z", "+00:00"))
     except Exception:
         return False
-    elapsed = _utcnow() - updated
-    return elapsed >= timedelta(minutes=DEFAULT_DISPUTE_WINDOW_MINUTES)
+    return (_utcnow() - updated) >= timedelta(minutes=DEFAULT_DISPUTE_WINDOW_MINUTES)
 
 
-async def _verify_screenshot_scores(challenge: dict) -> Optional[str]:
+async def _resolve_screenshot_source(ref: str) -> str:
+    """Turn a Telegram file_id into a downloadable HTTPS URL when needed."""
+    if not ref:
+        return ref
+    if ref.startswith("http://") or ref.startswith("https://") or ref.startswith("data:"):
+        return ref
+    if len(ref) > 200 and "/" not in ref:
+        return ref  # already base64
+    # Telegram file_id → Bot API file URL
+    token = (
+        os.getenv("TELEGRAM_BOT_TOKEN_CLAWSTATION")
+        or os.getenv("TELEGRAM_BOT_TOKEN")
+        or ""
+    )
+    if not token:
+        return ref
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=20) as client:
+            meta = await client.get(
+                f"https://api.telegram.org/bot{token}/getFile",
+                params={"file_id": ref},
+            )
+            data = meta.json()
+            if not data.get("ok"):
+                logger.warning("[Settlement] getFile failed: %s", data)
+                return ref
+            path = data["result"]["file_path"]
+            return f"https://api.telegram.org/file/bot{token}/{path}"
+    except Exception as exc:
+        logger.warning("[Settlement] Telegram file resolve failed: %s", exc)
+        return ref
+
+
+async def verify_with_ai_vision(challenge: dict) -> dict:
     """
-    Optional AI-mediated verification when numeric scores disagree.
-    Returns the inferred winner profile ID, None for draw, or None if
-    verification fails.
+    Run AI vision on available screenshots.
+
+    Returns:
+        {
+          resolved: bool,
+          winner_id: optional profile id,
+          confidence: float,
+          verified_score: str,
+          reason: str,
+          skip_dispute_window: bool,
+        }
     """
-    creator_screenshot = challenge.get("screenshot_creator_url")
-    opponent_screenshot = challenge.get("screenshot_opponent_url")
-    if not creator_screenshot or not opponent_screenshot:
-        return None
+    creator_ss = challenge.get("screenshot_creator_url")
+    opponent_ss = challenge.get("screenshot_opponent_url")
+    if not creator_ss and not opponent_ss:
+        return {
+            "resolved": False,
+            "winner_id": None,
+            "confidence": 0.0,
+            "verified_score": None,
+            "reason": "no_screenshots",
+            "skip_dispute_window": False,
+        }
+
+    creator_ss = await _resolve_screenshot_source(creator_ss) if creator_ss else None
+    opponent_ss = await _resolve_screenshot_source(opponent_ss) if opponent_ss else None
+
+    try:
+        from gaming.src.backend.score_verifier import get_score_verifier
+
+        verifier = get_score_verifier()
+    except Exception as exc:
+        logger.warning("[Settlement] Score verifier unavailable: %s", exc)
+        return {
+            "resolved": False,
+            "winner_id": None,
+            "confidence": 0.0,
+            "verified_score": None,
+            "reason": f"verifier_unavailable: {exc}",
+            "skip_dispute_window": False,
+        }
 
     creator_score = challenge.get("creator_score")
     opponent_score = challenge.get("opponent_score")
     reported_p1 = f"{creator_score or 0}-{opponent_score or 0}"
     reported_p2 = f"{opponent_score or 0}-{creator_score or 0}"
 
-    try:
-        from gaming.src.backend.score_verifier import get_score_verifier
+    # Both screenshots → full dispute verification
+    if creator_ss and opponent_ss:
+        try:
+            result = await verifier.verify_dispute(
+                screenshot_p1=creator_ss,
+                screenshot_p2=opponent_ss,
+                reported_p1=reported_p1,
+                reported_p2=reported_p2,
+            )
+            winner_label = result.get("winner")
+            winner_id = None
+            if winner_label == "player1":
+                winner_id = challenge["creator_id"]
+            elif winner_label == "player2":
+                winner_id = challenge["opponent_id"]
+            conf = 0.0
+            p1 = result.get("p1_result")
+            p2 = result.get("p2_result")
+            if p1 is not None and hasattr(p1, "confidence"):
+                conf = max(conf, float(p1.confidence or 0))
+            if p2 is not None and hasattr(p2, "confidence"):
+                conf = max(conf, float(p2.confidence or 0))
+            return {
+                "resolved": bool(result.get("resolved")),
+                "winner_id": winner_id,
+                "confidence": conf,
+                "verified_score": result.get("verified_score"),
+                "reason": result.get("reason") or "",
+                "skip_dispute_window": conf >= AI_FAST_SETTLE_CONFIDENCE and bool(result.get("resolved")),
+            }
+        except Exception as exc:
+            logger.warning("[Settlement] verify_dispute failed: %s", exc)
+            return {
+                "resolved": False,
+                "winner_id": None,
+                "confidence": 0.0,
+                "verified_score": None,
+                "reason": str(exc),
+                "skip_dispute_window": False,
+            }
 
-        verifier = get_score_verifier()
-        result = await verifier.verify_dispute(
-            screenshot_p1=creator_screenshot,
-            screenshot_p2=opponent_screenshot,
-            reported_p1=reported_p1,
-            reported_p2=reported_p2,
-        )
-        winner_label = result.get("winner")
-        if winner_label == "player1":
-            return challenge["creator_id"]
-        if winner_label == "player2":
-            return challenge["opponent_id"]
-        return None
+    # Single screenshot — extract score and map winner by who is ahead
+    ss = creator_ss or opponent_ss
+    try:
+        single = await verifier.verify_screenshot(ss)
+        if not single.is_valid:
+            return {
+                "resolved": False,
+                "winner_id": None,
+                "confidence": float(single.confidence or 0),
+                "verified_score": None,
+                "reason": single.error or "unreadable",
+                "skip_dispute_window": False,
+            }
+        p1, p2 = int(single.player1_score or 0), int(single.player2_score or 0)
+        winner_id = None
+        if p1 > p2:
+            winner_id = challenge["creator_id"]
+        elif p2 > p1:
+            winner_id = challenge.get("opponent_id")
+        return {
+            "resolved": True,
+            "winner_id": winner_id,
+            "confidence": float(single.confidence or 0),
+            "verified_score": f"{p1}-{p2}",
+            "reason": "single_screenshot",
+            "skip_dispute_window": float(single.confidence or 0) >= AI_FAST_SETTLE_CONFIDENCE,
+        }
     except Exception as exc:
-        logger.warning("[Settlement] AI verification failed for %s: %s", challenge["id"], exc)
-        return None
+        logger.warning("[Settlement] single screenshot verify failed: %s", exc)
+        return {
+            "resolved": False,
+            "winner_id": None,
+            "confidence": 0.0,
+            "verified_score": None,
+            "reason": str(exc),
+            "skip_dispute_window": False,
+        }
 
 
 def _update_challenge(
@@ -155,7 +348,7 @@ def _update_challenge(
     status: str,
     winner_id: Optional[str] = None,
     tx_hash: Optional[str] = None,
-    ai_verified_at: bool = False,
+    ai_meta: Optional[dict] = None,
 ) -> None:
     sb = _get_supabase()
     update: dict = {"status": status}
@@ -163,9 +356,17 @@ def _update_challenge(
         update["winner_id"] = winner_id
     if tx_hash is not None:
         update["resolved_tx_hash"] = tx_hash
-    if ai_verified_at:
-        update["ai_verified_at"] = "now()"
-    sb.schema("gaming").table("challenges").update(update).eq("id", challenge_id).execute()
+    if ai_meta:
+        if ai_meta.get("verified_score"):
+            update["ai_verified_score"] = ai_meta["verified_score"]
+        if ai_meta.get("confidence") is not None:
+            update["ai_confidence"] = ai_meta["confidence"]
+        if ai_meta.get("winner_id"):
+            update["ai_winner_id"] = ai_meta["winner_id"]
+        update["ai_verified_at"] = datetime.now(timezone.utc).isoformat()
+    sb.schema("gaming").table("challenges").update(denormalize_challenge(update)).eq(
+        "id", challenge_id
+    ).execute()
 
 
 async def _notify_result(
@@ -173,40 +374,65 @@ async def _notify_result(
     winner_id: Optional[str],
     tx_hash: Optional[str],
 ) -> None:
-    from gaming.src.bot.utils.notify import notify_user
+    from gaming.src.bot.utils.notify import get_balance_snapshot, notify_user
+    from gaming.src.bot.utils.text import bold, code
 
     creator_id = challenge["creator_id"]
     opponent_id = challenge.get("opponent_id")
     amount = Decimal(str(challenge["amount_usdc"]))
     challenge_id = challenge["id"]
+    chain = challenge.get("settlement_chain") or "base"
+    tx_hash_disp = tx_hash or ""
+    if tx_hash_disp and not tx_hash_disp.startswith("0x"):
+        tx_hash_disp = "0x" + tx_hash_disp
+    tx_text = f"\nTx: <code>{tx_hash_disp}</code>" if tx_hash_disp else ""
+    explorer = ""
+    if tx_hash_disp and chain in ("base", "base_sepolia", None, ""):
+        explorer = f"\nhttps://sepolia.basescan.org/tx/{tx_hash_disp}"
 
-    tx_text = f"\nTx: `{tx_hash}`" if tx_hash else ""
+    pot = amount * 2 * Decimal("0.93")
+
+    async def _send(uid: str, you_won: Optional[bool]) -> None:
+        if you_won is True:
+            head = (
+                f"🏆 <b>You won</b> match <code>{challenge_id}</code>\n"
+                f"Payout: <b>${pot:,.2f} USDC</b> (after 7% fee)\n"
+                f"Chain: <b>{chain}</b>{tx_text}{explorer}"
+            )
+        elif you_won is False:
+            head = (
+                f"😔 <b>Match over</b> — you did not win "
+                f"<code>{challenge_id}</code>\n"
+                f"Winner received <b>${pot:,.2f} USDC</b> (after fee)\n"
+                f"Chain: <b>{chain}</b>{tx_text}"
+            )
+        else:
+            head = (
+                f"🤝 Challenge <code>{challenge_id}</code> ended in a <b>draw</b>.\n"
+                f"Stakes refunded.{tx_text}"
+            )
+        bal = await get_balance_snapshot(uid)
+        await notify_user(
+            uid,
+            f"{head}\n\n"
+            f"<b>Updated balances</b>\n{bal}\n\n"
+            f"/profile · /balance · /playbook",
+        )
 
     if winner_id is None:
-        result_text = (
-            f"🤝 Challenge `{challenge_id}` ended in a draw.\n"
-            f"Both players are refunded.{tx_text}"
-        )
+        await _send(creator_id, None)
+        if opponent_id:
+            await _send(opponent_id, None)
     else:
-        winner_name = "Creator" if winner_id == creator_id else "Opponent"
-        result_text = (
-            f"🏆 Challenge `{challenge_id}` resolved.\n"
-            f"Winner: *{winner_name}*\n"
-            f"Payout: *${amount:,.2f}* (minus 7% platform fee)\n"
-            f"{tx_text}"
-        )
-
-    await notify_user(creator_id, result_text)
-    if opponent_id:
-        await notify_user(opponent_id, result_text)
+        await _send(creator_id, creator_id == winner_id)
+        if opponent_id:
+            await _send(opponent_id, opponent_id == winner_id)
 
 
 async def _execute_payout(challenge: dict, winner_id: Optional[str]) -> str:
-    """Resolve the challenge in the DB and trigger the escrow payout."""
     challenge_id = challenge["id"]
 
     if winner_id is None:
-        # Draw: refund both players.
         from gaming.src.backend.services.clawstation_escrow import cancel_match
 
         result = await cancel_match(challenge_id)
@@ -216,21 +442,24 @@ async def _execute_payout(challenge: dict, winner_id: Optional[str]) -> str:
     if not winner_address:
         raise SettlementError(f"Winner {winner_id} has no deposit address")
 
-    # Pre-set winner in DB so resolve_match can validate.
     _update_challenge(challenge_id, "submitted", winner_id=winner_id)
-
     result = await resolve_match(challenge_id, winner_address)
     return result.get("tx_hash", "")
 
 
 async def settle_challenge(challenge_id: str, admin_winner_id: Optional[str] = None) -> dict:
     """
-    Resolve a single challenge.
+    Resolve a single challenge via scores and/or AI vision.
 
-    If admin_winner_id is provided, skip score verification and dispute window
-    (admin override). Otherwise auto-resolve only when scores agree and the
-    dispute window has elapsed.
+    Hard rules (non-admin):
+      • Never pay out on one-sided reports.
+      • Conflicting scorelines → dispute (unless AI resolves with high confidence).
+      • Prefer both screenshots when MATCH_REQUIRE_SCREENSHOTS=true.
     """
+    from gaming.src.backend.services.match_report import analyze_reports
+    from gaming.src.bot.utils.flow import conflict_message
+    from gaming.src.bot.utils.notify import notify_user
+
     challenge = _load_challenge(challenge_id)
     if not challenge:
         raise SettlementError(f"Challenge {challenge_id} not found")
@@ -238,48 +467,164 @@ async def settle_challenge(challenge_id: str, admin_winner_id: Optional[str] = N
     if challenge.get("status") == "resolved":
         return {"success": True, "action": "skipped", "reason": "already_resolved"}
 
-    if challenge.get("status") not in ("submitted", "disputed"):
+    if challenge.get("status") not in ("submitted", "disputed", "locked", "playing"):
         return {"success": True, "action": "skipped", "reason": f"status={challenge.get('status')}"}
+
+    skip_window = False
+    ai_meta: Optional[dict] = None
+    winner_id: Optional[str] = None
 
     if admin_winner_id:
         winner_id = admin_winner_id
-        logger.info("[Settlement] Admin resolving %s to winner %s", challenge_id, winner_id)
+        logger.info("[Settlement] Admin resolving %s → %s", challenge_id, winner_id)
+        skip_window = True
     else:
-        if not _both_scores_present(challenge):
-            return {"success": True, "action": "skipped", "reason": "missing_scores"}
+        analysis = analyze_reports(challenge)
+        action = analysis["action"]
 
-        winner_id = _determine_winner(challenge)
+        # One-sided / incomplete — never settle
+        if action in ("wait_both", "wait_opponent", "wait_creator", "incomplete"):
+            return {
+                "success": True,
+                "action": "waiting_reports",
+                "reason": analysis["reason"],
+                "challenge_id": challenge_id,
+            }
 
-        # If scores disagree, try AI screenshot verification.
-        if winner_id is None and challenge.get("creator_score") != challenge.get("opponent_score"):
-            ai_winner = await _verify_screenshot_scores(challenge)
-            if ai_winner:
-                winner_id = ai_winner
-
-        # Still unresolved → flag dispute and wait for admin.
-        if winner_id is None and challenge.get("creator_score") != challenge.get("opponent_score"):
-            logger.info("[Settlement] Scores disagree for %s; escalating to dispute", challenge_id)
+        if action == "sides_conflict":
             try:
                 await flag_dispute(challenge_id)
             except EscrowError as exc:
-                logger.warning("[Settlement] Could not flag dispute: %s", exc)
+                logger.warning("[Settlement] flag_dispute: %s", exc)
             _update_challenge(challenge_id, "disputed")
-            return {"success": True, "action": "disputed", "challenge_id": challenge_id}
+            msg = conflict_message(challenge_id, analysis["reason"])
+            await notify_user(challenge["creator_id"], msg)
+            if challenge.get("opponent_id"):
+                await notify_user(challenge["opponent_id"], msg)
+            return {"success": True, "action": "disputed", "reason": analysis["reason"]}
 
-        # Draw: still needs dispute window to pass in case a player wants to contest.
-        if winner_id is None:
-            if not _dispute_window_elapsed(challenge):
+        if action == "conflict":
+            # Try AI before permanent dispute
+            ai = await verify_with_ai_vision(challenge)
+            ai_meta = {
+                "verified_score": ai.get("verified_score"),
+                "confidence": ai.get("confidence"),
+                "winner_id": ai.get("winner_id"),
+            }
+            if ai.get("resolved") and ai.get("skip_dispute_window"):
+                winner_id = ai.get("winner_id")
+                skip_window = True
+            else:
+                try:
+                    await flag_dispute(challenge_id)
+                except EscrowError as exc:
+                    logger.warning("[Settlement] flag_dispute: %s", exc)
+                _update_challenge(challenge_id, "disputed", ai_meta=ai_meta)
+                msg = conflict_message(
+                    challenge_id,
+                    analysis["reason"]
+                    + (f" AI: {ai.get('reason')}" if ai.get("reason") else ""),
+                )
+                await notify_user(challenge["creator_id"], msg)
+                if challenge.get("opponent_id"):
+                    await notify_user(challenge["opponent_id"], msg)
+                return {
+                    "success": True,
+                    "action": "disputed",
+                    "reason": analysis["reason"],
+                    "challenge_id": challenge_id,
+                }
+
+        if action == "wait_screenshots":
+            # Scores may agree but we want photos — try AI if at least one shot exists
+            if challenge.get("screenshot_creator_url") or challenge.get("screenshot_opponent_url"):
+                ai = await verify_with_ai_vision(challenge)
+                if ai.get("resolved") and float(ai.get("confidence") or 0) >= AI_FAST_SETTLE_CONFIDENCE:
+                    winner_id = ai.get("winner_id")
+                    skip_window = True
+                    ai_meta = {
+                        "verified_score": ai.get("verified_score"),
+                        "confidence": ai.get("confidence"),
+                        "winner_id": ai.get("winner_id"),
+                    }
+                else:
+                    return {
+                        "success": True,
+                        "action": "waiting_screenshots",
+                        "reason": analysis["reason"],
+                        "challenge_id": challenge_id,
+                    }
+            else:
+                return {
+                    "success": True,
+                    "action": "waiting_screenshots",
+                    "reason": analysis["reason"],
+                    "challenge_id": challenge_id,
+                }
+
+        if action == "settle_ready" or winner_id is not None or skip_window:
+            if winner_id is None:
+                winner_id = _determine_winner_from_scores(challenge)
+
+            # AI when screenshots present (confirm / fill gaps)
+            if (
+                winner_id is None or _both_screenshots_present(challenge)
+            ) and (
+                challenge.get("screenshot_creator_url") or challenge.get("screenshot_opponent_url")
+            ):
+                ai = await verify_with_ai_vision(challenge)
+                ai_meta = {
+                    "verified_score": ai.get("verified_score"),
+                    "confidence": ai.get("confidence"),
+                    "winner_id": ai.get("winner_id"),
+                }
+                if ai.get("resolved"):
+                    # Prefer AI winner when confidence high or scorelines inconclusive
+                    if ai.get("winner_id") is not None and (
+                        winner_id is None
+                        or float(ai.get("confidence") or 0) >= AI_FAST_SETTLE_CONFIDENCE
+                    ):
+                        winner_id = ai.get("winner_id")
+                    if ai.get("skip_dispute_window"):
+                        skip_window = True
+                    # AI draw
+                    if ai.get("resolved") and ai.get("winner_id") is None and ai.get("verified_score"):
+                        # draw scoreline like 1-1
+                        if winner_id is None:
+                            skip_window = bool(ai.get("skip_dispute_window"))
+
+            # Still no winner and scores conflict path already handled
+            if winner_id is None and analysis.get("scorelines_agree") is False:
+                try:
+                    await flag_dispute(challenge_id)
+                except EscrowError as exc:
+                    logger.warning("[Settlement] flag_dispute: %s", exc)
+                _update_challenge(challenge_id, "disputed", ai_meta=ai_meta)
+                return {"success": True, "action": "disputed", "challenge_id": challenge_id}
+
+            # Draw is valid winner_id=None with agreeing scorelines
+            if winner_id is None and not _both_scores_present(challenge) and not (
+                ai_meta and ai_meta.get("verified_score")
+            ):
+                return {
+                    "success": True,
+                    "action": "skipped",
+                    "reason": "cannot_determine_winner",
+                    "challenge_id": challenge_id,
+                }
+
+            if not skip_window and not _dispute_window_elapsed(challenge):
                 return {
                     "success": True,
                     "action": "waiting_dispute_window",
                     "challenge_id": challenge_id,
+                    "winner_id": winner_id,
                 }
-
-        # Matching-score winner must also wait for dispute window.
-        if winner_id is not None and not _dispute_window_elapsed(challenge):
+        else:
             return {
                 "success": True,
-                "action": "waiting_dispute_window",
+                "action": "skipped",
+                "reason": analysis.get("reason") or action,
                 "challenge_id": challenge_id,
             }
 
@@ -289,8 +634,15 @@ async def settle_challenge(challenge_id: str, admin_winner_id: Optional[str] = N
         logger.exception("[Settlement] Payout failed for %s", challenge_id)
         raise SettlementError(f"payout failed: {exc}") from exc
 
-    _update_challenge(challenge_id, "resolved", winner_id=winner_id, tx_hash=tx_hash, ai_verified_at=True)
+    _update_challenge(
+        challenge_id,
+        "resolved",
+        winner_id=winner_id,
+        tx_hash=tx_hash,
+        ai_meta=ai_meta,
+    )
     await _notify_result(challenge, winner_id, tx_hash)
+    await _award_play_points(challenge, winner_id, no_show=False)
 
     return {
         "success": True,
@@ -301,13 +653,38 @@ async def settle_challenge(challenge_id: str, admin_winner_id: Optional[str] = N
     }
 
 
+async def _award_play_points(
+    challenge: dict,
+    winner_id: Optional[str],
+    *,
+    no_show: bool = False,
+) -> None:
+    """Best-effort $PLAY awards + DM with $PLAY line (balances already in result notify)."""
+    try:
+        from gaming.src.backend.services.play_points import (
+            award_match_play_points,
+            format_play_award_line,
+        )
+        from gaming.src.bot.utils.notify import get_balance_snapshot, notify_user
+
+        awards = await award_match_play_points(challenge, winner_id, no_show=no_show)
+        for a in awards:
+            pid = a.get("profile_id")
+            if not pid:
+                continue
+            # PLAY award message is redundant if result notify already sent balances;
+            # still send short PLAY line so streak is explicit.
+            await notify_user(pid, format_play_award_line(a))
+    except Exception:
+        logger.exception("[Settlement] $PLAY award failed for %s", challenge.get("id"))
+
+
 async def admin_resolve_challenge(
     challenge_id: str,
     admin_profile_id: str,
     winner_id: str,
     note: Optional[str] = None,
 ) -> dict:
-    """Admin manually resolves a disputed challenge."""
     challenge = _load_challenge(challenge_id)
     if not challenge:
         raise SettlementError(f"Challenge {challenge_id} not found")
@@ -315,7 +692,6 @@ async def admin_resolve_challenge(
     if winner_id not in (challenge["creator_id"], challenge.get("opponent_id")):
         raise SettlementError("Winner must be one of the challenge participants")
 
-    # Log admin decision in the challenge row.
     sb = _get_supabase()
     sb.schema("gaming").table("challenges").update(
         {
@@ -325,6 +701,144 @@ async def admin_resolve_challenge(
     ).eq("id", challenge_id).execute()
 
     return await settle_challenge(challenge_id, admin_winner_id=winner_id)
+
+
+async def settle_no_show(challenge_id: str, analysis: Optional[dict] = None) -> dict:
+    """
+    Settle when one player submitted proof and the other never reported (no-show).
+
+    Priority:
+      1. AI on reporter's screenshot (high confidence) → winner from AI + sides
+      2. Reporter's home-away scoreline + sides → winner
+      3. Else dispute (don't refund an honest winner with a photo)
+    """
+    from gaming.src.backend.services.match_report import (
+        NO_SHOW_AI_CONFIDENCE,
+        analyze_reports,
+        winner_from_reporter_claim,
+    )
+    from gaming.src.bot.utils.notify import notify_user
+    from gaming.src.bot.utils.text import bold, code
+
+    challenge = _load_challenge(challenge_id)
+    if not challenge:
+        raise SettlementError(f"Challenge {challenge_id} not found")
+    if challenge.get("status") == "resolved":
+        return {"success": True, "action": "skipped", "reason": "already_resolved"}
+
+    analysis = analysis or analyze_reports(challenge)
+    reporter = analysis.get("reporter")  # "creator" | "opponent"
+    if not reporter:
+        return {"success": False, "action": "skipped", "reason": "not_one_sided"}
+
+    ai_meta: Optional[dict] = None
+    winner_id: Optional[str] = None
+
+    # 1) AI on the single screenshot
+    ai = await verify_with_ai_vision(challenge)
+    conf = float(ai.get("confidence") or 0)
+    ai_meta = {
+        "verified_score": ai.get("verified_score"),
+        "confidence": conf,
+        "winner_id": ai.get("winner_id"),
+        "reason": f"no_show:{ai.get('reason')}",
+    }
+    if ai.get("resolved") and conf >= NO_SHOW_AI_CONFIDENCE:
+        winner_id = ai.get("winner_id")
+        # If AI only gives scoreline without profile mapping, use claim sides
+        if winner_id is None and ai.get("verified_score"):
+            winner_id = winner_from_reporter_claim(challenge, reporter)
+
+    # 2) Fall back to reporter's claimed scoreline + sides
+    if winner_id is None:
+        winner_id = winner_from_reporter_claim(challenge, reporter)
+
+    if winner_id is None and ai.get("resolved") and conf >= NO_SHOW_AI_CONFIDENCE:
+        # AI draw
+        winner_id = None  # refund path
+        try:
+            tx_hash = await _execute_payout(challenge, None)
+            _update_challenge(challenge_id, "resolved", winner_id=None, tx_hash=tx_hash, ai_meta=ai_meta)
+            await _notify_result(challenge, None, tx_hash)
+            await _award_play_points(challenge, None, no_show=False)
+            return {
+                "success": True,
+                "action": "resolved_no_show_draw",
+                "challenge_id": challenge_id,
+                "tx_hash": tx_hash,
+            }
+        except EscrowError as exc:
+            raise SettlementError(f"no-show draw payout failed: {exc}") from exc
+
+    if winner_id is None:
+        # Cannot decide fairly — dispute, don't cancel
+        try:
+            await flag_dispute(challenge_id)
+        except EscrowError as exc:
+            logger.warning("[Settlement] no-show flag_dispute: %s", exc)
+        _update_challenge(challenge_id, "disputed", ai_meta=ai_meta)
+        msg = (
+            f"⚠️ Match {code(challenge_id)}: opponent no-show, but we could not "
+            f"auto-verify the winner from one screenshot.\n"
+            f"Marked <b>disputed</b> for admin review.\n"
+            f"AI conf={conf:.0%}"
+        )
+        await notify_user(challenge["creator_id"], msg)
+        if challenge.get("opponent_id"):
+            await notify_user(challenge["opponent_id"], msg)
+        return {
+            "success": True,
+            "action": "disputed_no_show",
+            "challenge_id": challenge_id,
+            "confidence": conf,
+        }
+
+    # 3) Pay the winner
+    try:
+        # Ensure status allows resolve
+        if challenge.get("status") not in ("submitted", "disputed", "locked", "playing"):
+            _update_challenge(challenge_id, "submitted", winner_id=winner_id)
+        else:
+            _update_challenge(challenge_id, challenge.get("status") or "submitted", winner_id=winner_id)
+
+        # resolve_match requires submitted/disputed
+        challenge = _load_challenge(challenge_id) or challenge
+        if challenge.get("status") not in ("submitted", "disputed"):
+            _update_challenge(challenge_id, "submitted", winner_id=winner_id)
+
+        tx_hash = await _execute_payout(challenge, winner_id)
+    except EscrowError as exc:
+        logger.exception("[Settlement] no-show payout failed %s", challenge_id)
+        raise SettlementError(f"no-show payout failed: {exc}") from exc
+
+    _update_challenge(
+        challenge_id, "resolved", winner_id=winner_id, tx_hash=tx_hash, ai_meta=ai_meta
+    )
+    await _notify_result(challenge, winner_id, tx_hash)
+    await _award_play_points(challenge, winner_id, no_show=True)
+
+    silent = analysis.get("silent_id")
+    if silent:
+        await notify_user(
+            silent,
+            f"⌛ You did not report on {code(challenge_id)} in time.\n"
+            f"Match settled as a <b>no-show</b> using your opponent's proof.\n"
+            f"Winner paid out.",
+        )
+    await notify_user(
+        winner_id,
+        f"✅ Opponent no-show on {code(challenge_id)}.\n"
+        f"Your proof was verified — payout sent.",
+    )
+
+    return {
+        "success": True,
+        "action": "resolved_no_show",
+        "challenge_id": challenge_id,
+        "winner_id": winner_id,
+        "tx_hash": tx_hash,
+        "confidence": conf,
+    }
 
 
 async def settle_all_pending() -> list[dict]:

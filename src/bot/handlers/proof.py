@@ -12,18 +12,26 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
-@router.message(F.photo)
+@router.message(F.photo | F.document)
 async def cmd_proof_photo(message: types.Message) -> None:
     """Persist a photo file_id with a placeholder status.
 
-    Full AI verification is out of scope; the file_id is stored in
-    ``gaming.proof_of_play_receipts`` so it can be reviewed later.
+    Match screenshots for score AI use caption ``/submit_score …`` and are
+    handled by submit_score — skip those here.
     """
-    if not message.photo:
+    caption = message.caption or ""
+    if "/submit_score" in caption.lower():
+        return  # submit_score media handler owns this
+
+    # Don't eat bare images — submit_score already hints; only store if caption present
+    if not caption.strip():
+        return
+    if not message.photo and not (
+        message.document and (message.document.mime_type or "").startswith("image/")
+    ):
         return
 
     file_id = message.photo[-1].file_id
-    caption = message.caption or ""
     challenge_id = caption.split()[0] if caption else None
 
     sb = get_supabase()

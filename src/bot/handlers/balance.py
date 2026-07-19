@@ -1,12 +1,20 @@
-"""Handler for the /balance command."""
+"""Handler for the /balance command — multi-chain USDC + $PLAY."""
 from __future__ import annotations
 
 import logging
+from html import escape
 
 from aiogram import Router, types
+from aiogram.enums import ParseMode
 from aiogram.filters import Command
 
-from gaming.src.backend.services.clawstation_circle import get_usdc_balance
+from gaming.src.backend.services.clawstation_circle import (
+    get_all_chain_balances,
+    get_preferred_chain,
+    get_usdc_balance,
+)
+from gaming.src.backend.services.play_points import tier_from_play_points, tier_label
+from gaming.src.bot.keyboards import wallet_menu
 from gaming.src.bot.utils.db import get_or_create_profile
 
 logger = logging.getLogger(__name__)
@@ -16,25 +24,119 @@ router = Router()
 
 @router.message(Command("balance"))
 async def cmd_balance(message: types.Message) -> None:
-    """Show USDC balance plus reputation score and tier."""
+    """Show USDC (active chain first for speed) + $PLAY."""
+    import asyncio
+
     user = message.from_user
     if user is None:
         return
 
+    # Fast path: acknowledge immediately if called from a long chain of work
     profile = await get_or_create_profile(user)
+    pref = "arc"
     try:
-        balance = await get_usdc_balance(profile["id"])
-    except Exception as exc:
-        logger.exception("[Balance] Failed to fetch balance for %s", profile["id"])
-        await message.answer(f"❌ Could not fetch balance: {exc}")
-        return
+        pref = await get_preferred_chain(profile["id"])
+    except Exception:
+        pass
 
-    reputation = profile.get("gaming_reputation_score", 1000)
-    tier = profile.get("gaming_tier", "bronze")
-    text = (
-        f"💰 *Wallet Balance*\n\n"
-        f"USDC: *${balance:,.2f}*\n"
-        f"Reputation: *{reputation}*\n"
-        f"Tier: *{tier.title()}*"
+    lines = []
+    address = ""
+
+    # Parallel: preferred balance + deposit address + play stats (fast wallet open)
+    async def _pref_bal():
+        try:
+            return await get_usdc_balance(profile["id"], chain_id=pref)
+        except Exception:
+            return None
+
+    async def _address():
+        try:
+            from gaming.src.backend.services.clawstation_circle import get_deposit_address
+
+            return await get_deposit_address(profile["id"], chain_id=pref)
+        except Exception:
+            return ""
+
+    async def _play():
+        try:
+            from backend.supabase_client import get_supabase
+
+            r = (
+                get_supabase()
+                .table("profiles")
+                .select("play_points,play_win_streak,play_best_streak")
+                .eq("id", profile["id"])
+                .limit(1)
+                .execute()
+            )
+            row = (r.data or [None])[0] if r.data else None
+            if not row:
+                return 0, 0, 0
+            return (
+                int(row.get("play_points") or 0),
+                int(row.get("play_win_streak") or 0),
+                int(row.get("play_best_streak") or 0),
+            )
+        except Exception:
+            return 0, 0, 0
+
+    bal, address, play_tuple = await asyncio.gather(_pref_bal(), _address(), _play())
+    play, streak, best = play_tuple
+
+    from gaming.src.backend.services.chains import get_chain
+
+    pref_label = get_chain(pref).get("label", pref)
+    if bal is not None:
+        gas = get_chain(pref).get("gas_token", "?")
+        gas_note = "USDC gas" if get_chain(pref).get("gas_mode") == "usdc_native" else f"{gas} gas"
+        lines.append(
+            f"• <b>{escape(pref_label)}</b>: <b>${bal:,.2f}</b> USDC ({gas_note}) ← active"
+        )
+    else:
+        lines.append(f"• <b>{escape(pref_label)}</b>: (could not load)")
+
+    # Other chains in background style — only if FAST_WALLET is not set
+    import os
+
+    if os.getenv("CLAW_WALLET_ALL_CHAINS", "1") == "1":
+        try:
+            rows = await asyncio.wait_for(get_all_chain_balances(profile["id"]), timeout=18)
+            for r in rows:
+                if r["id"] == pref:
+                    if r.get("address"):
+                        address = address or r["address"]
+                    continue
+                gas = "USDC gas" if r.get("gas_mode") == "usdc_native" else f"{r.get('gas_token')} gas"
+                lines.append(
+                    f"• <b>{escape(r['label'])}</b>: "
+                    f"<b>${r['balance_usdc']:,.2f}</b> USDC ({gas})"
+                )
+                if r.get("address"):
+                    address = address or r["address"]
+        except Exception:
+            logger.warning("[Balance] other chains timed out or failed")
+
+    tier = tier_from_play_points(play)
+    streak_txt = f"🔥 {streak}" if streak else "0"
+    addr_line = (
+        f"\nDeposit address (same on all chains):\n<code>{escape(address)}</code>\n"
+        if address
+        else "\n"
     )
-    await message.answer(text)
+
+    text = (
+        f"💰 <b>Wallet</b>\n\n"
+        f"<b>USDC by network</b>\n"
+        + ("\n".join(lines) if lines else "—")
+        + f"\n{addr_line}"
+        f"Active network: <b>{escape(pref)}</b> "
+        f"(withdrawals use this network)\n\n"
+        f"🎮 $PLAY: <b>{play:,}</b>\n"
+        f"Hot streak: <b>{streak_txt}</b> (best {best})\n"
+        f"Tier: <b>{escape(tier_label(tier))}</b>\n\n"
+        f"• <b>Deposit</b> — send USDC to the address above on the network you play\n"
+        f"• <b>Withdraw</b> — tap the button below to send USDC out\n"
+        f"• <b>Arc</b> uses USDC for gas (no test ETH needed)\n"
+        f"• Limits: /safety"
+    )
+    await message.answer(text, parse_mode=ParseMode.HTML, reply_markup=wallet_menu())

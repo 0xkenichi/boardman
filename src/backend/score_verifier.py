@@ -35,22 +35,27 @@ import httpx
 logger = logging.getLogger(__name__)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-GEMINI_API_KEY = os.getenv("Google_AI_Studio", "")
+GEMINI_API_KEY = os.getenv("Google_AI_Studio", "") or os.getenv("GEMINI_API_KEY", "")
 OLLAMA_URL     = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL   = os.getenv("OLLAMA_MODEL", "llama3.2:11b-vision-preview")
 
-# NVIDIA NIM API (free vision at build.nvidia.com)
-NIM_API_KEY = os.getenv("NIM_API_KEY", "")
+# NVIDIA NIM API (free vision at build.nvidia.com) — accept common env aliases
+NIM_API_KEY = (
+    os.getenv("NIM_API_KEY", "")
+    or os.getenv("NVIDIA_NIM_KEY", "")
+    or os.getenv("NVIDIA_API_KEY", "")
+)
 NIM_BASE_URL = os.getenv("NIM_BASE_URL", "https://integrate.api.nvidia.com")
 
 # Support for Google Cloud Vision (OCR)
 GOOGLE_VISION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
 
-AI_PROVIDER = os.getenv("AI_PROVIDER", 
-    "nim" if NIM_API_KEY else 
-    "gemini" if GEMINI_API_KEY else 
-    "google_vision" if GOOGLE_VISION_CREDENTIALS else 
-    "openai" if OPENAI_API_KEY else "ollama")
+AI_PROVIDER = os.getenv("AI_PROVIDER",
+    "openai" if OPENAI_API_KEY else
+    "nim" if NIM_API_KEY else
+    "gemini" if GEMINI_API_KEY else
+    "google_vision" if GOOGLE_VISION_CREDENTIALS else
+    "ollama")
 
 SYSTEM_PROMPT = """You are a competitive gaming score verification AI for sideQuest, a gaming platform.
 
@@ -146,16 +151,53 @@ class ScoreVerifier:
         except Exception as e:
             return ScoreResult(None, None, 0.0, None, error=f"image_load_failed: {e}")
 
-        if AI_PROVIDER == "nim" and NIM_API_KEY:
-            return await self._verify_nim(image_b64)
-        elif AI_PROVIDER == "gemini" and GEMINI_API_KEY:
-            return await self._verify_gemini(image_b64)
-        elif AI_PROVIDER == "google_vision" and GOOGLE_VISION_CREDENTIALS:
-            return await self._verify_google_vision_ocr(image_b64)
-        elif AI_PROVIDER == "openai" and OPENAI_API_KEY:
-            return await self._verify_openai(image_b64)
-        else:
-            return await self._verify_ollama(image_b64)
+        return await self._verify_with_prompt(image_b64, SYSTEM_PROMPT)
+
+    async def verify_screenshot_with_context(
+        self, image_path: str, context: Optional[dict] = None
+    ) -> ScoreResult:
+        """Vision extract with known home/away teams and console IDs as hints."""
+        try:
+            image_b64 = await self._load_image_b64(image_path)
+        except Exception as e:
+            return ScoreResult(None, None, 0.0, None, error=f"image_load_failed: {e}")
+
+        ctx = context or {}
+        hint_lines = [
+            "Match context provided by players (use to disambiguate, do not invent):",
+            f"- Expected home team: {ctx.get('home_team') or 'unknown'}",
+            f"- Expected away team: {ctx.get('away_team') or 'unknown'}",
+            f"- Creator side: {ctx.get('creator_side') or 'unknown'}",
+            f"- Opponent side: {ctx.get('opponent_side') or 'unknown'}",
+            f"- Creator console ID: {ctx.get('creator_console_id') or 'unknown'}",
+            f"- Opponent console ID: {ctx.get('opponent_console_id') or 'unknown'}",
+            f"- Platform: {ctx.get('console_platform') or 'unknown'}",
+            f"- Game: {ctx.get('game') or 'unknown'}",
+            "If a club crest/logo is visible, name the club exactly.",
+            "If PSN/Xbox gamertags appear, extract them into player1_id / player2_id.",
+            "player1 = left side of screenshot; player2 = right side.",
+        ]
+        prompt = SYSTEM_PROMPT + "\n\n" + "\n".join(hint_lines)
+        return await self._verify_with_prompt(image_b64, prompt)
+
+    async def _verify_with_prompt(self, image_b64: str, system_prompt: str) -> ScoreResult:
+        # Temporarily swap prompt for provider calls that close over SYSTEM_PROMPT
+        global SYSTEM_PROMPT
+        old = SYSTEM_PROMPT
+        SYSTEM_PROMPT = system_prompt
+        try:
+            if AI_PROVIDER == "nim" and NIM_API_KEY:
+                return await self._verify_nim(image_b64)
+            elif AI_PROVIDER == "gemini" and GEMINI_API_KEY:
+                return await self._verify_gemini(image_b64)
+            elif AI_PROVIDER == "google_vision" and GOOGLE_VISION_CREDENTIALS:
+                return await self._verify_google_vision_ocr(image_b64)
+            elif AI_PROVIDER == "openai" and OPENAI_API_KEY:
+                return await self._verify_openai(image_b64)
+            else:
+                return await self._verify_ollama(image_b64)
+        finally:
+            SYSTEM_PROMPT = old
 
     async def verify_match_outcome(
         self,
@@ -538,7 +580,7 @@ class ScoreVerifier:
 
     @staticmethod
     async def _load_image_b64(image_path: str) -> str:
-        """Load an image file and return as base64 string."""
+        """Load an image from path, URL, data-URL, or raw base64 string."""
         if image_path.startswith("http://") or image_path.startswith("https://"):
             try:
                 import httpx
@@ -551,10 +593,22 @@ class ScoreVerifier:
                 raise FileNotFoundError(f"Failed to download image from {image_path}: {e}")
 
         if image_path.startswith("data:image"):
-            # Already base64 data URL
             return image_path.split(",", 1)[1]
+
+        # Telegram file_id is short alphanumeric — not an image; caller should download first.
+        # Raw base64 from bot download path (long, no path separators).
+        if len(image_path) > 200 and "/" not in image_path and not image_path.startswith("AgAC"):
+            try:
+                base64.b64decode(image_path[:64] + "==", validate=False)
+                return image_path
+            except Exception:
+                pass
+
         path = Path(image_path)
         if not path.exists():
+            # Last resort: treat as raw base64 (Telegram bot path passes b64)
+            if len(image_path) > 64:
+                return image_path
             raise FileNotFoundError(f"Image not found: {image_path}")
         with open(path, "rb") as f:
             return base64.b64encode(f.read()).decode()

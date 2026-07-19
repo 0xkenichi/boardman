@@ -1,22 +1,39 @@
 # ClawStation Contracts
 
-## Base Sepolia
+## Deployed (testnets)
 
-| Contract | Address | Deployed At |
-|----------|---------|-------------|
-| ClawEscrow | `0xDb76714390ccE1729558DF3c9EC4f45A1690dE78` | 2026-07-07 |
+| Chain | Network | ClawEscrow | USDC | Explorer |
+|-------|---------|------------|------|----------|
+| **base** | Base Sepolia (`84532`) | `0xDb76714390ccE1729558DF3c9EC4f45A1690dE78` | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | [Basescan](https://sepolia.basescan.org/address/0xDb76714390ccE1729558DF3c9EC4f45A1690dE78) |
+| **arc** | Arc Testnet (`5042002`) | `0xFC44a06295d4fC58420027932A6FcB3C13D83859` | `0x3600000000000000000000000000000000000000` | [Arcscan](https://testnet.arcscan.app/address/0xFC44a06295d4fC58420027932A6FcB3C13D83859#code) |
+| **avalanche** | Avalanche Fuji (`43113`) | `0xFC44a06295d4fC58420027932A6FcB3C13D83859` | `0x5425890298aed601595a70AB815c96711a31Bc65` | [Snowtrace](https://testnet.snowtrace.io/address/0xFC44a06295d4fC58420027932A6FcB3C13D83859) |
 
-## Configuration
+> Arc + Avalanche share the same CREATE address (same deployer nonce on both chains). Base used an earlier deploy.
 
-- **Network:** Base Sepolia (`chainId: 84532`)
-- **USDC:** `0x036CbD53842c5426634e7929541eC2318f3dCF7e`
+## Shared config (Arc / Avalanche deploys)
+
+- **Deployer:** `0xB2CCcac46cE93C2ac27fDBF7248938CC57F29424`
 - **Fee Recipient:** `0x39EcF94ed35451A67006dcCE4A467aecdfAB6940`
-- **Resolver:** `0x118d994c999923de4665Ca1A31e73A7872beAd56`
+- **Resolver:** `0x39EcF94ed35451A67006dcCE4A467aecdfAB6940`
 - **Platform Fee:** 7% (`FEE_BPS = 700`)
 - **Max Stake:** $10,000 USDC per match
 
-## Notes
+## Env
 
-- Re-deployed with `FEE_BPS` bumped from 300 (3%) to 700 (7%) per the ClawStation Foundation plan.
-- The contract is owned by the deployer; ownership can be transferred to a multi-sig or governance contract before mainnet launch.
-- Verification on BaseScan was attempted but failed due to the deprecated Etherscan v1 API endpoint in the current Hardhat config. Retry verification manually or migrate the config to Etherscan v2.
+```
+CLAW_ESCROW_ADDRESS_BASE_SEPOLIA=0xDb76714390ccE1729558DF3c9EC4f45A1690dE78
+CLAW_ESCROW_ADDRESS_ARC=0xFC44a06295d4fC58420027932A6FcB3C13D83859
+CLAW_ESCROW_ADDRESS_AVALANCHE=0xFC44a06295d4fC58420027932A6FcB3C13D83859
+CSC_ADDRESS=0xDb76714390ccE1729558DF3c9EC4f45A1690dE78
+```
+
+Also mirrored in `gaming/config/chains.yaml` and `contracts/deployments/*.json`.
+
+## Redeploy
+
+```bash
+cd contracts
+npx hardhat run scripts/deploy_escrow.js --network arcTestnet
+npx hardhat run scripts/deploy_escrow.js --network avalancheFuji
+npx hardhat run scripts/deploy_escrow.js --network baseSepolia
+```

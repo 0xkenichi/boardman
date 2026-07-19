@@ -1,0 +1,52 @@
+# Free-tier friendly Render Blueprint
+# https://render.com — free web services sleep after idle; keep alive with
+# free cron-job.org pinging /api/healthz every 10 minutes.
+#
+# Deploy: connect this repo in Render Dashboard → New Blueprint → render.yaml
+# Set all secrets in the Render dashboard (never commit .env).
+
+services:
+  - type: web
+    name: clawstation-api
+    runtime: docker
+    dockerfilePath: ./gaming/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /api/healthz
+    envVars:
+      - key: CLAWSTATION_BOT_MODE
+        value: polling
+      - key: CLAW_DEFAULT_CHAIN
+        value: arc
+      - key: CLAW_MAX_STAKE_USDC
+        value: "25"
+      - key: CLAW_MAX_WITHDRAW_USDC
+        value: "50"
+      - key: CLAW_DAILY_WITHDRAW_CAP_USDC
+        value: "100"
+      - key: CLAW_PAUSED
+        value: "0"
+      - key: LOG_LEVEL
+        value: INFO
+      # Add secrets in dashboard:
+      # TELEGRAM_BOT_TOKEN_CLAWSTATION, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
+      # CIRCLE_API_KEY, CIRCLE_ENTITY_SECRET, CIRCLE_WALLET_SET_ID, etc.
+
+  # Background bot worker (also free on some Render plans as a private service;
+  # if free workers unavailable, run bot on the same web process — see FREE_24_7.md)
+  - type: worker
+    name: clawstation-bot
+    runtime: docker
+    dockerfilePath: ./gaming/Dockerfile
+    dockerContext: .
+    plan: free
+    dockerCommand: python -m gaming.src.bot.main
+    envVars:
+      - key: CLAWSTATION_BOT_MODE
+        value: polling
+      - key: CLAW_DEFAULT_CHAIN
+        value: arc
+      - key: WALLET_WATCH_INTERVAL_SEC
+        value: "45"
+      - key: LOG_LEVEL
+        value: INFO
