@@ -1,8 +1,13 @@
 """
-$PLAY points + one-active-match gate for ClawStation.
+PLAY points + one-active-match gate for Rematch (sideQuest).
 
-$PLAY is a participation score (not USDC). Both winners and losers earn
-points so every match feels valued. Hot streaks multiply win rewards.
+PLAY points are participation vouchers (not USDC, not 1:1 $PLAY token).
+Both winners and losers earn so every match feels valued.
+
+Multipliers (stack, then apply to base awards):
+  • Hot streak (wins only)
+  • Settlement chain: Arc > Avalanche > Base (testnet volume push)
+  • Rival novelty: new Telegram rivals pay more than endless rematches
 """
 from __future__ import annotations
 
@@ -30,6 +35,24 @@ ACTIVE_MATCH_STATUSES = (
 PLAY_WIN = int(os.getenv("PLAY_POINTS_WIN", "100"))
 PLAY_LOSS = int(os.getenv("PLAY_POINTS_LOSS", "40"))
 PLAY_DRAW = int(os.getenv("PLAY_POINTS_DRAW", "50"))
+
+# Testnet chain weights — Arc highest (grants / mainnet story)
+# Override via env e.g. PLAY_CHAIN_MULT_ARC=1.6
+def _chain_mult_map() -> dict[str, float]:
+    return {
+        "arc": float(os.getenv("PLAY_CHAIN_MULT_ARC", "1.50")),
+        "avalanche": float(os.getenv("PLAY_CHAIN_MULT_AVALANCHE", "1.25")),
+        "base": float(os.getenv("PLAY_CHAIN_MULT_BASE", "1.00")),
+    }
+
+
+# First settled match vs a given rival → high mult; decays toward floor
+NEW_RIVAL_MULT = float(os.getenv("PLAY_NEW_RIVAL_MULT", "1.45"))
+# After this many prior settled matches with same rival, floor applies
+REMATCH_DECAY_AFTER = int(os.getenv("PLAY_REMATCH_DECAY_AFTER", "3"))
+REMATCH_FLOOR_MULT = float(os.getenv("PLAY_REMATCH_FLOOR_MULT", "0.90"))
+# Opponent's first ever settled match on Rematch (brand-new user)
+FIRST_EVER_OPPONENT_MULT = float(os.getenv("PLAY_FIRST_EVER_OPPONENT_MULT", "1.25"))
 
 
 def _no_show_penalty() -> int:
@@ -102,6 +125,158 @@ def stake_bonus(amount_usdc: Any) -> int:
     except (TypeError, ValueError):
         a = 0.0
     return int(min(STAKE_BONUS_CAP, max(0, round(a * STAKE_BONUS_PER_USDC))))
+
+
+def chain_multiplier(chain_id: Optional[str]) -> float:
+    """Arc earns most PLAY; then Avalanche; Base is baseline."""
+    if not chain_id:
+        return 1.0
+    key = str(chain_id).strip().lower()
+    if key in ("base_sepolia", "base-sepolia"):
+        key = "base"
+    if key in ("avax", "fuji", "avax-fuji"):
+        key = "avalanche"
+    return float(_chain_mult_map().get(key, 1.0))
+
+
+def _count_prior_settled_between(a: str, b: str, exclude_challenge_id: Optional[str] = None) -> int:
+    """How many resolved matches these two profiles already finished together."""
+    if not a or not b:
+        return 0
+    sb = _sb()
+    total = 0
+    # Live schema: issuer_id / target_id
+    pairs = [
+        ("issuer_id", "target_id", a, b),
+        ("issuer_id", "target_id", b, a),
+    ]
+    for col1, col2, v1, v2 in pairs:
+        try:
+            q = (
+                sb.schema("gaming")
+                .table("challenges")
+                .select("id")
+                .eq(col1, v1)
+                .eq(col2, v2)
+                .eq("status", "resolved")
+            )
+            if exclude_challenge_id:
+                q = q.neq("id", exclude_challenge_id)
+            r = q.limit(50).execute()
+            total += len(r.data or [])
+        except Exception:
+            pass
+    # Fallback creator/opponent column names
+    if total == 0:
+        for col1, col2, v1, v2 in [
+            ("creator_id", "opponent_id", a, b),
+            ("creator_id", "opponent_id", b, a),
+        ]:
+            try:
+                q = (
+                    sb.schema("gaming")
+                    .table("challenges")
+                    .select("id")
+                    .eq(col1, v1)
+                    .eq(col2, v2)
+                    .eq("status", "resolved")
+                )
+                if exclude_challenge_id:
+                    q = q.neq("id", exclude_challenge_id)
+                r = q.limit(50).execute()
+                total += len(r.data or [])
+            except Exception:
+                pass
+    return total
+
+
+def _settled_match_count(profile_id: str) -> int:
+    """Total resolved matches this profile has finished (any opponent)."""
+    if not profile_id:
+        return 0
+    sb = _sb()
+    n = 0
+    for col in ("issuer_id", "target_id", "creator_id", "opponent_id"):
+        try:
+            r = (
+                sb.schema("gaming")
+                .table("challenges")
+                .select("id")
+                .eq(col, profile_id)
+                .eq("status", "resolved")
+                .limit(200)
+                .execute()
+            )
+            n = max(n, len(r.data or []))
+        except Exception:
+            continue
+    return n
+
+
+def rival_novelty_multiplier(
+    profile_id: str,
+    opponent_id: Optional[str],
+    *,
+    challenge_id: Optional[str] = None,
+) -> tuple[float, dict]:
+    """Higher PLAY when you play new people; rematches still pay (floor).
+
+    Returns (multiplier, metadata).
+    """
+    if not opponent_id:
+        return 1.0, {"rival": "solo"}
+
+    prior = _count_prior_settled_between(profile_id, opponent_id, exclude_challenge_id=challenge_id)
+    opp_career = _settled_match_count(opponent_id)
+
+    # Brand-new Telegram user (first ever resolve)
+    first_ever = opp_career <= 0
+    if prior <= 0:
+        mult = NEW_RIVAL_MULT
+        if first_ever:
+            mult = round(mult * FIRST_EVER_OPPONENT_MULT, 3)
+        return mult, {
+            "rival": "new",
+            "prior_together": 0,
+            "opponent_first_ever": first_ever,
+        }
+
+    if prior < REMATCH_DECAY_AFTER:
+        # Linear decay from NEW_RIVAL_MULT toward 1.0
+        t = prior / max(1, REMATCH_DECAY_AFTER)
+        mult = NEW_RIVAL_MULT + (1.0 - NEW_RIVAL_MULT) * t
+        return round(mult, 3), {"rival": "fresh", "prior_together": prior}
+
+    # Regular rematch — still rewarded, slight floor under 1.0 optional
+    return REMATCH_FLOOR_MULT, {"rival": "rematch", "prior_together": prior}
+
+
+def combined_play_multiplier(
+    *,
+    chain_id: Optional[str],
+    streak_after_win: int = 0,
+    is_win: bool = False,
+    profile_id: str = "",
+    opponent_id: Optional[str] = None,
+    challenge_id: Optional[str] = None,
+) -> tuple[float, dict]:
+    """Stack chain × rival × (optional) streak. Cap overall for safety."""
+    chain_m = chain_multiplier(chain_id)
+    rival_m, rival_meta = rival_novelty_multiplier(
+        profile_id, opponent_id, challenge_id=challenge_id
+    )
+    streak_m = streak_multiplier(streak_after_win) if is_win else 1.0
+    raw = chain_m * rival_m * streak_m
+    # Soft cap so farming cannot explode
+    cap = float(os.getenv("PLAY_MULT_CAP", "4.0"))
+    mult = round(min(cap, max(0.5, raw)), 3)
+    return mult, {
+        "chain_mult": chain_m,
+        "rival_mult": rival_m,
+        "streak_mult": streak_m,
+        **rival_meta,
+        "combined": mult,
+    }
 
 
 def get_active_challenge(profile_id: str) -> Optional[dict]:
@@ -262,6 +437,7 @@ async def award_match_play_points(
     opponent_id = challenge.get("opponent_id") or challenge.get("target_id")
     challenge_id = challenge.get("id")
     amount = challenge.get("amount_usdc") or challenge.get("stake_amount") or 0
+    chain_id = challenge.get("settlement_chain") or challenge.get("chain") or "arc"
     bonus = stake_bonus(amount)
 
     results: list[dict] = []
@@ -270,25 +446,42 @@ async def award_match_play_points(
     if not participants:
         return results
 
+    def _other(pid: str) -> Optional[str]:
+        if pid == creator_id:
+            return opponent_id
+        return creator_id
+
     # Draw
     if winner_id is None and not no_show:
         for pid in participants:
             stats = _load_play_stats(pid)
             streak = int(stats.get("play_win_streak") or 0)
-            pts = PLAY_DRAW + bonus
+            mult, mmeta = combined_play_multiplier(
+                chain_id=chain_id,
+                is_win=False,
+                profile_id=pid,
+                opponent_id=_other(pid),
+                challenge_id=challenge_id,
+            )
+            pts = int(round((PLAY_DRAW + bonus) * mult))
             results.append(
                 _credit(
                     pid,
                     pts,
                     reason="draw",
                     challenge_id=challenge_id,
-                    multiplier=1.0,
+                    multiplier=mult,
                     streak_before=streak,
                     streak_after=streak,
                     extra_profile={
                         "gaming_draws": int(stats.get("gaming_draws") or 0) + 1,
                     },
-                    metadata={"stake_bonus": bonus, "base": PLAY_DRAW},
+                    metadata={
+                        "stake_bonus": bonus,
+                        "base": PLAY_DRAW,
+                        "chain": chain_id,
+                        **mmeta,
+                    },
                 )
             )
         return results
@@ -301,9 +494,16 @@ async def award_match_play_points(
 
         if pid == winner_id:
             streak_after = streak_before + 1
-            mult = streak_multiplier(streak_after)
+            mult, mmeta = combined_play_multiplier(
+                chain_id=chain_id,
+                streak_after_win=streak_after,
+                is_win=True,
+                profile_id=pid,
+                opponent_id=_other(pid),
+                challenge_id=challenge_id,
+            )
             base = PLAY_WIN
-            pts = int(round(base * mult)) + bonus
+            pts = int(round(base * mult)) + int(round(bonus * chain_multiplier(chain_id)))
             results.append(
                 _credit(
                     pid,
@@ -318,6 +518,8 @@ async def award_match_play_points(
                         "stake_bonus": bonus,
                         "base": base,
                         "hot_streak": streak_after,
+                        "chain": chain_id,
+                        **mmeta,
                     },
                 )
             )
@@ -327,18 +529,32 @@ async def award_match_play_points(
                 pts = _no_show_penalty()  # always < 0
                 assert pts < 0, "no-show must never award points"
                 reason = "no_show_loss"
-                meta = {"base": pts, "penalty": True, "bad_behaviour": True}
+                meta = {"base": pts, "penalty": True, "bad_behaviour": True, "chain": chain_id}
+                mult = 1.0
             else:
-                pts = max(0, PLAY_LOSS) + max(0, bonus // 2)
+                mult, mmeta = combined_play_multiplier(
+                    chain_id=chain_id,
+                    is_win=False,
+                    profile_id=pid,
+                    opponent_id=_other(pid),
+                    challenge_id=challenge_id,
+                )
+                base_loss = max(0, PLAY_LOSS) + max(0, bonus // 2)
+                pts = int(round(base_loss * mult))
                 reason = "loss"
-                meta = {"stake_bonus": max(0, bonus // 2), "base": PLAY_LOSS}
+                meta = {
+                    "stake_bonus": max(0, bonus // 2),
+                    "base": PLAY_LOSS,
+                    "chain": chain_id,
+                    **mmeta,
+                }
             results.append(
                 _credit(
                     pid,
                     pts,
                     reason=reason,
                     challenge_id=challenge_id,
-                    multiplier=1.0,
+                    multiplier=mult,
                     streak_before=streak_before,
                     streak_after=0,
                     extra_profile={"gaming_losses": losses + 1},
@@ -358,15 +574,18 @@ def format_play_award_line(award: dict) -> str:
     sign = f"+{pts}" if pts >= 0 else str(pts)
     if reason == "win" and mult and mult > 1:
         return (
-            f"🎮 {sign} $PLAY (win ×{mult:.2f} hot streak {streak}) · total {bal}"
+            f"🎮 {sign} PLAY (win ×{mult:.2f}"
+            f"{f' streak {streak}' if streak else ''}) · total {bal}"
         )
     if reason == "no_show_loss":
         return (
-            f"🎮 {sign} $PLAY (no-show penalty — ghosting is not rewarded) · total {bal}"
+            f"🎮 {sign} PLAY (no-show penalty — ghosting is not rewarded) · total {bal}"
         )
+    if mult and mult != 1.0 and pts > 0:
+        return f"🎮 {sign} PLAY ({reason} ×{mult:.2f}) · total {bal}"
     labels = {
         "win": "win",
         "loss": "played",
         "draw": "draw",
     }
-    return f"🎮 {sign} $PLAY ({labels.get(reason, reason)}) · total {bal}"
+    return f"🎮 {sign} PLAY ({labels.get(reason, reason)}) · total {bal}"

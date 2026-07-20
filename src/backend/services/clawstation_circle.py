@@ -54,25 +54,28 @@ class _SupabaseProfileStore:
     @staticmethod
     async def get_profile(user_id: str) -> Optional[dict]:
         sb = await _SupabaseProfileStore._get_supabase()
-        try:
-            result = (
-                sb.table("profiles")
-                .select(
-                    "id, gaming_deposit_address, circle_wallet_id, "
-                    "gaming_preferred_chain, gaming_circle_wallets"
+        selects = [
+            "id, gaming_deposit_address, circle_wallet_id, "
+            "gaming_preferred_chain, gaming_circle_wallets",
+            "id, gaming_deposit_address, circle_wallet_id, gaming_circle_wallets",
+            "id, gaming_deposit_address, circle_wallet_id",
+        ]
+        result = None
+        for cols in selects:
+            try:
+                result = (
+                    sb.table("profiles")
+                    .select(cols)
+                    .eq("id", user_id)
+                    .limit(1)
+                    .execute()
                 )
-                .eq("id", user_id)
-                .limit(1)
-                .execute()
-            )
-        except Exception:
-            result = (
-                sb.table("profiles")
-                .select("id, gaming_deposit_address, circle_wallet_id")
-                .eq("id", user_id)
-                .limit(1)
-                .execute()
-            )
+                break
+            except Exception:
+                result = None
+                continue
+        if result is None:
+            return None
         data = result.data
         if isinstance(data, list):
             return data[0] if data else None
@@ -143,7 +146,13 @@ async def set_preferred_chain(user_id: str, chain_id: str) -> str:
 
 
 async def ensure_user_wallet(user_id: str, chain_id: Optional[str] = None) -> dict:
-    """Ensure Circle wallet for chain; same address reused when possible."""
+    """Ensure a Circle wallet that can *sign* on the requested chain.
+
+    Circle developer EOAs are bound to one blockchain. Reusing the Base
+    wallet_id for Arc/Avalanche makes contractExecution run on BASE-SEPOLIA
+    (createMatch then fails). We store one Circle wallet id per chain in
+    ``gaming_circle_wallets``.
+    """
     try:
         UUID(user_id)
     except Exception as exc:
@@ -157,63 +166,58 @@ async def ensure_user_wallet(user_id: str, chain_id: Optional[str] = None) -> di
         raise CircleWalletError(f"Profile not found for user {user_id}")
 
     wallets_map = dict(profile.get("gaming_circle_wallets") or {})
-    # Prefer per-chain id, then legacy circle_wallet_id for base
-    wallet_id = wallets_map.get(cid) or (
-        profile.get("circle_wallet_id") if cid == "base" else None
-    )
-    # Fallback: use primary wallet id for any chain (same EOA signing)
-    if not wallet_id:
+    # Per-chain wallet only — do NOT fall back to Base wallet for other chains
+    wallet_id = wallets_map.get(cid)
+    if not wallet_id and cid == "base":
         wallet_id = profile.get("circle_wallet_id")
-
-    cached_address = profile.get("gaming_deposit_address")
-
-    if wallet_id and cached_address:
-        # Ensure map has this chain entry
-        if cid not in wallets_map:
-            try:
-                await _SupabaseProfileStore.set_chain_wallet(
-                    user_id, cid, wallet_id, cached_address
-                )
-            except Exception:
-                pass
-        return {
-            "wallet_id": wallet_id,
-            "address": cached_address,
-            "blockchain": blockchain,
-            "chain_id": cid,
-        }
 
     circle = _circle_for_chain(cid)
 
-    if wallet_id and not cached_address:
+    # Validate cached wallet is actually on this blockchain
+    if wallet_id:
         fetched = circle.get_wallet(wallet_id)
         if fetched.get("success") and fetched.get("wallet_address"):
-            address = fetched["wallet_address"]
-            await _SupabaseProfileStore.set_chain_wallet(user_id, cid, wallet_id, address)
-            return {
-                "wallet_id": wallet_id,
-                "address": address,
-                "blockchain": fetched.get("blockchain") or blockchain,
-                "chain_id": cid,
-            }
+            wb = (fetched.get("blockchain") or "").upper().replace("_", "-")
+            want = blockchain.upper().replace("_", "-")
+            if wb and want and wb != want and want not in wb and wb not in want:
+                logger.warning(
+                    "[Circle] wallet %s is %s, need %s — creating chain wallet",
+                    wallet_id,
+                    wb,
+                    want,
+                )
+                wallet_id = None
+            else:
+                address = fetched["wallet_address"]
+                try:
+                    await _SupabaseProfileStore.set_chain_wallet(
+                        user_id, cid, wallet_id, address
+                    )
+                except Exception:
+                    pass
+                return {
+                    "wallet_id": wallet_id,
+                    "address": address,
+                    "blockchain": fetched.get("blockchain") or blockchain,
+                    "chain_id": cid,
+                }
 
-    # Create wallet on this blockchain (Circle may support ARC-TESTNET / AVAX-FUJI)
+    # Create a dedicated Circle wallet on this blockchain
     result = circle.create_custodial_wallet_for_user(
         profile_id=user_id,
         phone_number=None,
     )
     if not result.get("success"):
-        # Fallback: try base wallet for address, still return for deposits
-        if cid != "base":
-            base_c = _circle_for_chain("base")
-            result = base_c.create_custodial_wallet_for_user(profile_id=user_id)
-        if not result.get("success"):
-            raise CircleWalletError(f"Circle wallet creation failed: {result.get('error')}")
+        raise CircleWalletError(
+            f"Circle wallet creation failed on {blockchain}: {result.get('error')}. "
+            f"For Arc/Avalanche you need a wallet on that chain — fund the address "
+            f"shown after Switch network."
+        )
 
     wallet_id = result["wallet_id"]
     address = result["wallet_address"]
     await _SupabaseProfileStore.set_chain_wallet(user_id, cid, wallet_id, address)
-    logger.info("[Circle] Wallet %s chain=%s user=%s", wallet_id, cid, user_id)
+    logger.info("[Circle] Wallet %s chain=%s user=%s addr=%s", wallet_id, cid, user_id, address)
     return {
         "wallet_id": wallet_id,
         "address": address,
@@ -243,20 +247,22 @@ async def get_usdc_balance(user_id: str, chain_id: Optional[str] = None) -> Deci
 
 
 async def get_all_chain_balances(user_id: str) -> list[dict[str, Any]]:
-    """USDC balance on each configured chain for the same deposit address."""
+    """USDC balance per chain.
+
+    Circle uses a **different wallet address per blockchain**. Do not assume
+    one deposit address works for signing on every chain.
+    """
     out = []
-    address = None
-    try:
-        address = await get_deposit_address(user_id)
-    except Exception:
-        pass
     for c in list_chains():
         cid = c["id"]
         bal = Decimal("0")
+        address = ""
         try:
+            w = await ensure_user_wallet(user_id, chain_id=cid)
+            address = w.get("address") or ""
             bal = await get_usdc_balance(user_id, chain_id=cid)
         except Exception:
-            pass
+            logger.warning("[Circle] balance row failed chain=%s", cid, exc_info=True)
         out.append(
             {
                 "id": cid,
@@ -266,6 +272,7 @@ async def get_all_chain_balances(user_id: str) -> list[dict[str, Any]]:
                 "gas_mode": c.get("gas_mode"),
                 "escrow_ready": bool(c.get("escrow_address")),
                 "address": address,
+                "circle_blockchain": c.get("circle_blockchain"),
             }
         )
     return out

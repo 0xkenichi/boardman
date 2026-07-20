@@ -61,7 +61,8 @@ async def _set_bot_commands(bot: Bot) -> None:
         BotCommand(command="withdraw", description="Withdraw USDC"),
         BotCommand(command="safety", description="Stake/withdraw limits"),
         BotCommand(command="challenge", description="(advanced) text challenge"),
-        BotCommand(command="dispute", description="Flag a problem"),
+        BotCommand(command="dispute", description="Flag a problem (+ support ID)"),
+        BotCommand(command="support_id", description="Show full ID for support only"),
     ]
     await bot.set_my_commands(commands)
 

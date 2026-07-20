@@ -48,12 +48,12 @@ async def cmd_lock_stake(message: types.Message) -> None:
     if user is None or not message.text:
         return
 
-    challenge_id = _parse_args(message.text)
-    if not challenge_id:
+    challenge_ref = _parse_args(message.text)
+    if not challenge_ref:
         await message.answer(
-            "Usage: /lock_stake CHALLENGE_ID\n\n"
-            "Example: /lock_stake 550e8400-e29b-41d4-a716-446655440000\n\n"
-            "Creator locks first, then opponent.",
+            "Usage: /lock_stake MATCH_CODE\n\n"
+            "Example: /lock_stake K7M2P9QX\n\n"
+            "Creator locks first, then opponent. Use My match for buttons.",
             reply_markup=back_menu(),
             parse_mode=None,
         )
@@ -62,26 +62,19 @@ async def cmd_lock_stake(message: types.Message) -> None:
     profile = await get_or_create_profile(user)
 
     from gaming.src.backend.services.safety import assert_money_ops_allowed
+    from gaming.src.backend.services.match_codes import load_challenge_by_ref, display_code
 
     gate = assert_money_ops_allowed(profile["id"], action="lock", kind="lock")
     if gate:
         await message.answer(gate, parse_mode=ParseMode.HTML, reply_markup=back_menu())
         return
 
-    sb = get_supabase()
-    result = (
-        sb.schema("gaming")
-        .table("challenges")
-        .select("*")
-        .eq("id", challenge_id)
-        .limit(1)
-        .execute()
-    )
-    row = (result.data or [None])[0] if result.data else None
-    challenge = normalize_challenge(row)
+    challenge = load_challenge_by_ref(challenge_ref)
     if not challenge:
         await message.answer("❌ Challenge not found.", reply_markup=back_menu(), parse_mode=None)
         return
+    challenge_id = challenge["id"]
+    match_code = display_code(challenge)
 
     chain_id = normalize_chain_id(challenge.get("settlement_chain") or default_chain_id())
     status = challenge.get("status")
@@ -90,7 +83,7 @@ async def cmd_lock_stake(message: types.Message) -> None:
             await message.answer(
                 f"✅ Stakes already locked ({bold(status)}).\n"
                 f"Play, then submit proof:\n"
-                f"{code(f'/submit_score {challenge_id} <your_goals>')}\n"
+                f"{code(f'/submit_score {match_code} <your_goals>')}\n"
                 f"or send a screenshot with that caption.",
                 reply_markup=back_menu(),
                 parse_mode=ParseMode.HTML,
@@ -135,7 +128,7 @@ async def cmd_lock_stake(message: types.Message) -> None:
 
     if is_creator and challenge["status"] not in ("accepted", "creator_locked"):
         if challenge["status"] == "open" and challenge.get("opponent_id"):
-            sb.schema("gaming").table("challenges").update({"status": "accepted"}).eq(
+            get_supabase().schema("gaming").table("challenges").update({"status": "accepted"}).eq(
                 "id", challenge_id
             ).execute()
         else:
@@ -179,7 +172,7 @@ async def cmd_lock_stake(message: types.Message) -> None:
                 await notify_user(
                     challenge["opponent_id"],
                     f"🔐 Challenger locked stake on {bold(chain_id)}.\n"
-                    f"Your turn: {code(f'/lock_stake {challenge_id}')}",
+                    f"Your turn: {code(f'/lock_stake {match_code}')}",
                 )
         else:
             result = await approve_and_join_match(profile["id"], challenge_id, amount)

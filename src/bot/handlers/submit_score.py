@@ -26,20 +26,21 @@ from gaming.src.bot.keyboards import back_menu
 from gaming.src.bot.utils.db import get_or_create_profile
 from gaming.src.bot.utils.notify import notify_user
 from gaming.src.bot.utils.text import bold, code, h
+from gaming.src.backend.services.match_codes import display_code as _match_code
 
 logger = logging.getLogger(__name__)
 
 router = Router()
 
 _USAGE = (
-    "Usage:\n"
-    "• /submit_score ID 5-3          full scoreline (home-away)\n"
-    "• /submit_score ID 3            your goals only\n"
-    "• Send a PHOTO with caption:    /submit_score ID [5-3]\n\n"
+    "Usage (use short match code, e.g. K7M2P9QX):\n"
+    "• /submit_score CODE 5-3          full scoreline (home-away)\n"
+    "• /submit_score CODE 3            your goals only\n"
+    "• Send a PHOTO with caption:      /submit_score CODE [5-3]\n\n"
     "Also set sides before playing:\n"
-    "• /set_side ID home|away\n"
-    "• /set_team ID home \"Real Madrid\"\n"
-    "• /set_team ID away \"Barcelona\"\n"
+    "• /set_side CODE home|away\n"
+    "• /set_team CODE home \"Real Madrid\"\n"
+    "• /set_team CODE away \"Barcelona\"\n"
     "• /link_psn or /link_xbox for console IDs\n\n"
     "⚠️ AI vision only works on Telegram photos (attach image in chat).\n"
     "Do NOT paste a Mac/PC file path as text."
@@ -114,18 +115,12 @@ def _extract_image_file_id(message: types.Message) -> Optional[str]:
 
 
 async def _load_challenge(challenge_id: str) -> Optional[dict]:
+    """Accept short public match code or internal UUID."""
     if not challenge_id:
         return None
-    sb = get_supabase()
-    result = (
-        sb.schema("gaming")
-        .table("challenges")
-        .select("*")
-        .eq("id", challenge_id)
-        .limit(1)
-        .execute()
-    )
-    return normalize_challenge(_safe_row(result))
+    from gaming.src.backend.services.match_codes import load_challenge_by_ref
+
+    return load_challenge_by_ref(challenge_id)
 
 
 def _side_for(profile_id: str, challenge: dict) -> Optional[str]:
@@ -158,6 +153,9 @@ async def _store_report(
     challenge = await _load_challenge(challenge_id)
     if not challenge:
         raise ValueError("Challenge not found")
+
+    # Always use internal UUID for DB ops (user may pass short public_code)
+    uuid_id = challenge["id"]
 
     is_creator = profile_id == challenge["creator_id"]
     is_opponent = profile_id == challenge.get("opponent_id")
@@ -202,9 +200,9 @@ async def _store_report(
         update["status"] = "playing"
 
     sb.schema("gaming").table("challenges").update(denormalize_challenge(update)).eq(
-        "id", challenge_id
+        "id", uuid_id
     ).execute()
-    return (await _load_challenge(challenge_id)) or challenge
+    return (await _load_challenge(uuid_id)) or challenge
 
 
 async def _download_photo_b64(bot: Bot, file_id: str) -> str:
@@ -346,7 +344,7 @@ async def cmd_submit_score(message: types.Message, bot: Bot) -> None:
             "Do this instead:\n"
             "1. Tap 📎 → Photo or File\n"
             "2. Pick the screenshot\n"
-            "3. Caption: <code>/submit_score CHALLENGE_ID 5-3</code>\n"
+            "3. Caption: <code>/submit_score MATCH_CODE 5-3</code>\n"
             "4. Send\n\n"
             "Or: send the image first, then <b>reply</b> to it with the command.",
             parse_mode=ParseMode.HTML,
@@ -389,11 +387,11 @@ async def cmd_submit_score(message: types.Message, bot: Bot) -> None:
     await message.answer(
         f"✅ <b>Report confirmed</b>\n"
         f"Scoreline: {bold(score_txt)}\n"
-        f"Match: {code(challenge_id)}\n\n"
+        f"Match: {code(_match_code(None, challenge_id))}\n\n"
         f"{report_status(challenge)}\n\n"
         f"<b>Your balances</b>\n{bal}\n\n"
         f"💡 Optional proof: attach FT photo with caption\n"
-        f"{code(f'/submit_score {challenge_id} {score_txt}')}",
+        f"{code(f'/submit_score {_match_code(None, challenge_id)} {score_txt}')}",
         reply_markup=back_menu(),
         parse_mode=ParseMode.HTML,
     )
@@ -413,9 +411,9 @@ async def cmd_submit_score(message: types.Message, bot: Bot) -> None:
         if other_id and other_id != profile["id"]:
             await notify_user(
                 other_id,
-                f"📊 Your opponent reported on {code(challenge_id)}.\n"
+                f"📊 Your opponent reported on {code(_match_code(None, challenge_id))}.\n"
                 f"Your turn — FT photo + caption:\n"
-                f"{code(f'/submit_score {challenge_id} 5-3')}",
+                f"{code(f'/submit_score {_match_code(None, challenge_id)} 5-3')}",
             )
     elif analysis["action"] in ("settle_ready", "wait_screenshots", "conflict"):
         other_id = (
@@ -426,8 +424,8 @@ async def cmd_submit_score(message: types.Message, bot: Bot) -> None:
         if other_id:
             await notify_user(
                 other_id,
-                f"📊 Update on {code(challenge_id)}: {analysis['reason']}\n"
-                f"{code(f'/match_info {challenge_id}')}",
+                f"📊 Update on {code(_match_code(None, challenge_id))}: {analysis['reason']}\n"
+                f"{code(f'/match_info {_match_code(None, challenge_id)}')}",
             )
         await _maybe_settle(challenge_id)
 
@@ -447,7 +445,7 @@ async def media_submit_score(message: types.Message, bot: Bot) -> None:
             if not (message.caption or "").strip():
                 await message.answer(
                     "📸 Got an image. To use it as match proof, <b>edit/resend</b> with caption:\n"
-                    "<code>/submit_score CHALLENGE_ID 5-3</code>\n\n"
+                    "<code>/submit_score MATCH_CODE 5-3</code>\n\n"
                     "Or: reply to this image with that command.",
                     parse_mode=ParseMode.HTML,
                 )
@@ -483,11 +481,11 @@ async def _process_screenshot_message(
     if user is None:
         return
 
-    challenge_id, single, home, away = _parse_args(caption)
-    if not challenge_id:
+    challenge_ref, single, home, away = _parse_args(caption)
+    if not challenge_ref:
         await message.answer(
-            "❌ Caption must be: /submit_score CHALLENGE_ID [5-3]\n"
-            "Example: /submit_score df0626e5-e8cf-4fe8-8c0a-f6268d881b10 5-3",
+            "❌ Caption must be: /submit_score MATCH_CODE [5-3]\n"
+            "Example: /submit_score K7M2P9QX 5-3",
             reply_markup=back_menu(),
             parse_mode=None,
         )
@@ -496,10 +494,12 @@ async def _process_screenshot_message(
     await message.answer("📥 Got your screenshot — processing…", parse_mode=None)
 
     profile = await get_or_create_profile(user)
-    challenge = await _load_challenge(challenge_id)
+    challenge = await _load_challenge(challenge_ref)
     if not challenge:
         await message.answer("❌ Challenge not found.", reply_markup=back_menu(), parse_mode=None)
         return
+    challenge_id = challenge["id"]  # internal UUID only
+    match_code = _match_code(challenge)
 
     is_creator = profile["id"] == challenge["creator_id"]
     is_opponent = profile["id"] == challenge.get("opponent_id")
@@ -520,7 +520,7 @@ async def _process_screenshot_message(
     if not file_id:
         await message.answer(
             "❌ No image found. Send as Photo or File (PNG/JPG), not a path.\n"
-            "Or reply to the image with /submit_score ID 5-3",
+            f"Or reply to the image with /submit_score {match_code} 5-3",
             reply_markup=back_menu(),
             parse_mode=None,
         )
@@ -628,7 +628,7 @@ async def _process_screenshot_message(
     else:
         reply += (
             f"\nCould not get a score. Reply with:\n"
-            f"{code(f'/submit_score {challenge_id} 5-3')}"
+            f"{code(f'/submit_score {_match_code(None, challenge_id)} 5-3')}"
         )
 
     from gaming.src.bot.utils.notify import get_balance_snapshot
@@ -664,8 +664,8 @@ async def _process_screenshot_message(
         if other_id:
             await notify_user(
                 other_id,
-                f"📊 Proof in for {code(challenge_id)}. Settling if ready…\n"
-                f"{code(f'/match_info {challenge_id}')}",
+                f"📊 Proof in for {code(_match_code(None, challenge_id))}. Settling if ready…\n"
+                f"{code(f'/match_info {_match_code(None, challenge_id)}')}",
             )
         await _maybe_settle(challenge_id)
         # After settle, re-send balances if match resolved
@@ -689,17 +689,19 @@ async def cmd_set_side(message: types.Message) -> None:
     parts = message.text.split()
     if len(parts) < 3 or parts[2].lower() not in ("home", "away"):
         await message.answer(
-            "Usage: /set_side CHALLENGE_ID home|away\n"
+            "Usage: /set_side MATCH_CODE home|away\n"
             "Example: /set_side df0626e5-… home",
             parse_mode=None,
         )
         return
-    challenge_id, side = parts[1], parts[2].lower()
+    challenge_ref, side = parts[1], parts[2].lower()
     profile = await get_or_create_profile(user)
-    challenge = await _load_challenge(challenge_id)
+    challenge = await _load_challenge(challenge_ref)
     if not challenge:
         await message.answer("❌ Challenge not found.", parse_mode=None)
         return
+    challenge_id = challenge["id"]
+    match_code = _match_code(challenge)
     is_creator = profile["id"] == challenge["creator_id"]
     is_opponent = profile["id"] == challenge.get("opponent_id")
     if not is_creator and not is_opponent:
@@ -737,8 +739,8 @@ async def cmd_set_side(message: types.Message) -> None:
     ).eq("id", challenge_id).execute()
 
     await message.answer(
-        f"✅ You are {bold(side.upper())} for {code(challenge_id)}.\n"
-        f"Optional: {code(f'/set_team {challenge_id} {side} \"Club Name\"')}",
+        f"✅ You are {bold(side.upper())} for {code(match_code)}.\n"
+        f"Optional: {code(f'/set_team {match_code} {side} \"Club Name\"')}",
         parse_mode=ParseMode.HTML,
     )
 
@@ -753,17 +755,18 @@ async def cmd_set_team(message: types.Message) -> None:
     parts = message.text.split(maxsplit=3)
     if len(parts) < 4 or parts[2].lower() not in ("home", "away"):
         await message.answer(
-            'Usage: /set_team CHALLENGE_ID home|away Club Name\n'
+            'Usage: /set_team MATCH_CODE home|away Club Name\n'
             'Example: /set_team df06… home Real Madrid',
             parse_mode=None,
         )
         return
-    challenge_id, which, team = parts[1], parts[2].lower(), parts[3].strip().strip('"')
+    challenge_ref, which, team = parts[1], parts[2].lower(), parts[3].strip().strip('"')
     profile = await get_or_create_profile(user)
-    challenge = await _load_challenge(challenge_id)
+    challenge = await _load_challenge(challenge_ref)
     if not challenge:
         await message.answer("❌ Challenge not found.", parse_mode=None)
         return
+    challenge_id = challenge["id"]
     if profile["id"] not in (challenge["creator_id"], challenge.get("opponent_id")):
         await message.answer("❌ Not a participant.", parse_mode=None)
         return
@@ -774,7 +777,7 @@ async def cmd_set_team(message: types.Message) -> None:
     ).eq("id", challenge_id).execute()
 
     await message.answer(
-        f"✅ {which.upper()} team set to {bold(team)}\nChallenge: {code(challenge_id)}",
+        f"✅ {which.upper()} team set to {bold(team)}\nMatch: {code(_match_code(challenge))}",
         parse_mode=ParseMode.HTML,
     )
 
@@ -787,7 +790,7 @@ async def cmd_match_info(message: types.Message) -> None:
         return
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
-        await message.answer("Usage: /match_info CHALLENGE_ID", parse_mode=None)
+        await message.answer("Usage: /match_info MATCH_CODE", parse_mode=None)
         return
     challenge = await _load_challenge(parts[1].strip())
     if not challenge:

@@ -76,7 +76,13 @@ def _get_supabase():
 
 
 def _load_profile_wallet(profile_id: str, chain_id: str = "base") -> tuple[str, str]:
-    """Return (wallet_id, address) for a profile on a given chain."""
+    """Return (wallet_id, address) for a profile on a given chain.
+
+    Never fall back to the Base ``circle_wallet_id`` for arc/avalanche —
+    Circle EOAs are one-blockchain-per-wallet; wrong id runs on BASE-SEPOLIA.
+    ``gaming_deposit_address`` may be another chain's address; only use it
+    as a hint for base.
+    """
     sb = _get_supabase()
     try:
         result = (
@@ -100,10 +106,19 @@ def _load_profile_wallet(profile_id: str, chain_id: str = "base") -> tuple[str, 
     if not data:
         raise EscrowError(f"User {profile_id} has no Circle wallet — run /start first")
     wallets = data.get("gaming_circle_wallets") or {}
-    wallet_id = wallets.get(chain_id) or data.get("circle_wallet_id")
+    # Per-chain only — Base may use legacy circle_wallet_id as last resort
+    wallet_id = wallets.get(chain_id)
+    if not wallet_id and chain_id == "base":
+        wallet_id = data.get("circle_wallet_id")
     if not wallet_id:
-        raise EscrowError(f"User {profile_id} has no Circle wallet — run /start first")
-    return wallet_id, (data.get("gaming_deposit_address") or "")
+        raise EscrowError(
+            f"User {profile_id} has no Circle wallet for chain={chain_id} — "
+            "open Wallet / /start so we provision that chain"
+        )
+    address = ""
+    if chain_id == "base":
+        address = data.get("gaming_deposit_address") or ""
+    return wallet_id, address
 
 
 def _load_challenge(challenge_id: str) -> dict:
@@ -179,17 +194,32 @@ def _update_challenge(challenge_id: str, update: dict) -> None:
 
 
 async def _prepare_wallet(user_id: str, chain_id: str) -> tuple[str, str]:
-    """Ensure Circle wallet + native gas on the settlement chain."""
+    """Ensure Circle wallet + native gas on the settlement chain.
+
+    Always uses ``ensure_user_wallet(chain_id)`` so Arc/Avalanche never
+    sign with a Base wallet id (that was the createMatch FAILED bug).
+    """
     wallet = await ensure_user_wallet(user_id, chain_id=chain_id)
     wallet_id = wallet["wallet_id"]
     address = wallet.get("address") or ""
-    # Prefer mapped wallet id for this chain if ensure_user_wallet returned primary only
+    want = get_circle_blockchain(chain_id).upper().replace("_", "-")
+    got = (wallet.get("blockchain") or "").upper().replace("_", "-")
+    if got and want and got != want and want not in got and got not in want:
+        raise EscrowError(
+            f"Wallet chain mismatch for {chain_id}: wallet is on {got}, need {want}. "
+            "Refusing to lock — open Wallet to re-provision this chain."
+        )
+    # Sanity: mapped id for this chain must match what ensure returned
     try:
-        mapped_id, mapped_addr = _load_profile_wallet(user_id, chain_id)
-        if mapped_id:
-            wallet_id = mapped_id
-        if mapped_addr:
-            address = mapped_addr
+        mapped_id, _ = _load_profile_wallet(user_id, chain_id)
+        if mapped_id and mapped_id != wallet_id:
+            logger.warning(
+                "[Escrow] chain wallet mismatch user=%s chain=%s ensure=%s map=%s — using ensure",
+                user_id,
+                chain_id,
+                wallet_id,
+                mapped_id,
+            )
     except EscrowError:
         pass
     # Only top up when we have a real checksummable address (skip unit-test stubs).

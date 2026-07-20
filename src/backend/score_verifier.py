@@ -35,6 +35,17 @@ import httpx
 logger = logging.getLogger(__name__)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+# Optional gateway (e.g. OpenRouter / OpenGateway). Empty = api.openai.com
+OPENAI_BASE_URL = (os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE") or "").rstrip("/")
+OPENAI_VISION_MODEL = os.getenv("OPENAI_VISION_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-4o"
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_BASE_URL = (os.getenv("OPENROUTER_BASE_URL") or "https://openrouter.ai/api/v1").rstrip("/")
+OPENROUTER_VISION_MODEL = os.getenv(
+    "OPENROUTER_VISION_MODEL", "openai/gpt-4o-mini"
+)
+LIGHTNING_API_KEY = os.getenv("LIGHTNING_API_KEY", "")
+LIGHTNING_BASE_URL = (os.getenv("LIGHTNING_BASE_URL") or "https://lightning.ai/api/v1").rstrip("/")
+LIGHTNING_VISION_MODEL = os.getenv("LIGHTNING_VISION_MODEL", "openai/gpt-5")
 GEMINI_API_KEY = os.getenv("Google_AI_Studio", "") or os.getenv("GEMINI_API_KEY", "")
 OLLAMA_URL     = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL   = os.getenv("OLLAMA_MODEL", "llama3.2:11b-vision-preview")
@@ -46,16 +57,45 @@ NIM_API_KEY = (
     or os.getenv("NVIDIA_API_KEY", "")
 )
 NIM_BASE_URL = os.getenv("NIM_BASE_URL", "https://integrate.api.nvidia.com")
+NIM_VISION_MODEL = os.getenv(
+    "NIM_VISION_MODEL", "meta/llama-3.2-11b-vision-instruct"
+)
 
 # Support for Google Cloud Vision (OCR)
 GOOGLE_VISION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
 
-AI_PROVIDER = os.getenv("AI_PROVIDER",
-    "openai" if OPENAI_API_KEY else
-    "nim" if NIM_API_KEY else
-    "gemini" if GEMINI_API_KEY else
-    "google_vision" if GOOGLE_VISION_CREDENTIALS else
-    "ollama")
+
+def _looks_like_openai_key(key: str) -> bool:
+    """Real OpenAI keys are sk-…; ogw_live_ etc. are other gateways."""
+    k = (key or "").strip()
+    return k.startswith("sk-") and not k.startswith("sk-or-")
+
+
+def _default_provider() -> str:
+    """Pick a provider that is actually configured for vision.
+
+    Prefer NVIDIA NIM when present — OPENAI_API_KEY in this project is often
+    a non-OpenAI gateway token (ogw_live_…) which 401s on api.openai.com.
+    """
+    forced = (os.getenv("AI_PROVIDER") or "").strip().lower()
+    if forced:
+        return forced
+    if NIM_API_KEY:
+        return "nim"
+    if OPENROUTER_API_KEY:
+        return "openrouter"
+    if _looks_like_openai_key(OPENAI_API_KEY) or OPENAI_BASE_URL:
+        return "openai"
+    if LIGHTNING_API_KEY:
+        return "lightning"
+    if GEMINI_API_KEY:
+        return "gemini"
+    if GOOGLE_VISION_CREDENTIALS:
+        return "google_vision"
+    return "ollama"
+
+
+AI_PROVIDER = _default_provider()
 
 SYSTEM_PROMPT = """You are a competitive gaming score verification AI for sideQuest, a gaming platform.
 
@@ -186,16 +226,82 @@ class ScoreVerifier:
         old = SYSTEM_PROMPT
         SYSTEM_PROMPT = system_prompt
         try:
-            if AI_PROVIDER == "nim" and NIM_API_KEY:
-                return await self._verify_nim(image_b64)
-            elif AI_PROVIDER == "gemini" and GEMINI_API_KEY:
-                return await self._verify_gemini(image_b64)
-            elif AI_PROVIDER == "google_vision" and GOOGLE_VISION_CREDENTIALS:
-                return await self._verify_google_vision_ocr(image_b64)
-            elif AI_PROVIDER == "openai" and OPENAI_API_KEY:
-                return await self._verify_openai(image_b64)
-            else:
-                return await self._verify_ollama(image_b64)
+            # Ordered cascade: try preferred first, then any other configured
+            # vision backend so a dead OpenAI key never blocks settlement.
+            preferred = (AI_PROVIDER or "nim").lower()
+            order = [
+                "nim",
+                "openrouter",
+                "openai",
+                "lightning",
+                "gemini",
+                "google_vision",
+                "ollama",
+            ]
+            providers = [preferred] + [p for p in order if p != preferred]
+            errors: list[str] = []
+            for provider in providers:
+                result: Optional[ScoreResult] = None
+                try:
+                    if provider == "nim" and NIM_API_KEY:
+                        result = await self._verify_nim(image_b64)
+                    elif provider == "openrouter" and OPENROUTER_API_KEY:
+                        result = await self._verify_openrouter(image_b64)
+                    elif provider == "openai" and (
+                        _looks_like_openai_key(OPENAI_API_KEY) or OPENAI_BASE_URL
+                    ):
+                        result = await self._verify_openai(image_b64)
+                    elif provider == "lightning" and LIGHTNING_API_KEY:
+                        result = await self._verify_lightning(image_b64)
+                    elif provider == "gemini" and GEMINI_API_KEY:
+                        result = await self._verify_gemini(image_b64)
+                    elif provider == "google_vision" and GOOGLE_VISION_CREDENTIALS:
+                        result = await self._verify_google_vision_ocr(image_b64)
+                    elif provider == "ollama":
+                        result = await self._verify_ollama(image_b64)
+                except Exception as exc:
+                    errors.append(f"{provider}:{exc}")
+                    logger.warning("[ScoreVerifier] %s raised: %s", provider, exc)
+                    continue
+
+                if result is None:
+                    continue
+                if result.error:
+                    errors.append(f"{provider}:{result.error}")
+                    # Auth/quota failures → try next provider
+                    err_l = (result.error or "").lower()
+                    if any(
+                        x in err_l
+                        for x in (
+                            "401",
+                            "402",
+                            "403",
+                            "429",
+                            "unauthorized",
+                            "insufficient",
+                            "credit",
+                            "quota",
+                            "balance",
+                        )
+                    ):
+                        logger.warning(
+                            "[ScoreVerifier] %s failed (%s) — trying next",
+                            provider,
+                            result.error,
+                        )
+                        continue
+                    # Unreadable / parse errors from a working model — return as-is
+                    return result
+                logger.info("[ScoreVerifier] score read via %s conf=%.2f", provider, result.confidence)
+                return result
+
+            return ScoreResult(
+                None,
+                None,
+                0.0,
+                None,
+                error="all_vision_providers_failed: " + "; ".join(errors[:4]),
+            )
         finally:
             SYSTEM_PROMPT = old
 
@@ -477,15 +583,15 @@ class ScoreVerifier:
         try:
             import httpx
             
-            # Use llama-3.2-11b-vision which has free endpoint for vision
-            model_name = "meta/llama-3.2-11b-vision-instruct"
-            
+            model_name = NIM_VISION_MODEL
+
             async with httpx.AsyncClient(timeout=60) as client:
                 resp = await client.post(
-                    f"{NIM_BASE_URL}/v1/chat/completions",
+                    f"{NIM_BASE_URL.rstrip('/')}/v1/chat/completions",
                     headers={
                         "Authorization": f"Bearer {NIM_API_KEY}",
                         "Content-Type": "application/json",
+                        "Accept": "application/json",
                     },
                     json={
                         "model": model_name,
@@ -519,16 +625,34 @@ class ScoreVerifier:
     async def _verify_openai(self, image_b64: str) -> ScoreResult:
         try:
             import httpx
-            async with httpx.AsyncClient(timeout=30) as client:
+
+            base = OPENAI_BASE_URL or "https://api.openai.com/v1"
+            if not base.endswith("/v1") and "openai.com" in base:
+                base = base.rstrip("/") + "/v1"
+            url = f"{base.rstrip('/')}/chat/completions"
+            # Gateway keys (ogw_live_…) only work against their own base URL
+            if not OPENAI_BASE_URL and not _looks_like_openai_key(OPENAI_API_KEY):
+                return ScoreResult(
+                    None,
+                    None,
+                    0.0,
+                    None,
+                    error="openai_error: invalid OPENAI_API_KEY for api.openai.com",
+                )
+            model = OPENAI_VISION_MODEL
+            # Vision needs a multimodal model — avoid pure text Claude names on gateways
+            if "claude" in (model or "").lower() and not OPENAI_BASE_URL:
+                model = "gpt-4o"
+            async with httpx.AsyncClient(timeout=45) as client:
                 resp = await client.post(
-                    "https://api.openai.com/v1/chat/completions",
+                    url,
                     headers={
                         "Authorization": f"Bearer {OPENAI_API_KEY}",
                         "Content-Type": "application/json",
                     },
                     json={
-                        "model": "gpt-4o",
-                        "max_tokens": 200,
+                        "model": model,
+                        "max_tokens": 300,
                         "messages": [
                             {"role": "system", "content": SYSTEM_PROMPT},
                             {
@@ -541,7 +665,10 @@ class ScoreVerifier:
                                             "detail": "high",
                                         },
                                     },
-                                    {"type": "text", "text": "Extract the final score from this game screenshot."},
+                                    {
+                                        "type": "text",
+                                        "text": "Extract the final score from this game screenshot. Return only JSON.",
+                                    },
                                 ],
                             },
                         ],
@@ -553,6 +680,92 @@ class ScoreVerifier:
         except Exception as e:
             logger.error(f"[ScoreVerifier] OpenAI error: {e}")
             return ScoreResult(None, None, 0.0, None, error=f"openai_error: {e}")
+
+    async def _verify_openrouter(self, image_b64: str) -> ScoreResult:
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.post(
+                    f"{OPENROUTER_BASE_URL}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": "https://playingsidequest.fun",
+                        "X-Title": "ClawStation Score Verifier",
+                    },
+                    json={
+                        "model": OPENROUTER_VISION_MODEL,
+                        "max_tokens": 300,
+                        "messages": [
+                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {
+                                            "url": f"data:image/jpeg;base64,{image_b64}"
+                                        },
+                                    },
+                                    {
+                                        "type": "text",
+                                        "text": "Extract the final score from this game screenshot. Return only JSON.",
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                )
+            resp.raise_for_status()
+            content = resp.json()["choices"][0]["message"]["content"]
+            return self._parse_ai_response(content)
+        except Exception as e:
+            logger.error(f"[ScoreVerifier] OpenRouter error: {e}")
+            return ScoreResult(None, None, 0.0, None, error=f"openrouter_error: {e}")
+
+    async def _verify_lightning(self, image_b64: str) -> ScoreResult:
+        try:
+            import httpx
+
+            base = LIGHTNING_BASE_URL.rstrip("/")
+            url = f"{base}/chat/completions"
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.post(
+                    url,
+                    headers={
+                        "Authorization": f"Bearer {LIGHTNING_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": LIGHTNING_VISION_MODEL,
+                        "max_tokens": 300,
+                        "messages": [
+                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {
+                                            "url": f"data:image/jpeg;base64,{image_b64}"
+                                        },
+                                    },
+                                    {
+                                        "type": "text",
+                                        "text": "Extract the final score from this game screenshot. Return only JSON.",
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                )
+            resp.raise_for_status()
+            content = resp.json()["choices"][0]["message"]["content"]
+            return self._parse_ai_response(content)
+        except Exception as e:
+            logger.error(f"[ScoreVerifier] Lightning error: {e}")
+            return ScoreResult(None, None, 0.0, None, error=f"lightning_error: {e}")
 
     # ─── Ollama Fallback ─────────────────────────────────────────────────────
 

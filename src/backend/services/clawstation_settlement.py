@@ -67,7 +67,32 @@ def _load_submitted_challenges() -> list[dict]:
     return normalize_list(result.data)
 
 
-async def _load_profile_address(profile_id: str) -> Optional[str]:
+async def _load_profile_address(
+    profile_id: str, chain_id: Optional[str] = None
+) -> Optional[str]:
+    """Winner address must be the Circle wallet that locked on the settlement chain.
+
+    ``gaming_deposit_address`` is often the Base wallet and will revert
+    resolveMatch with InvalidWinner when the match was created on Arc/Avalanche.
+    """
+    try:
+        from gaming.src.backend.services.clawstation_circle import ensure_user_wallet
+        from gaming.src.backend.services.chains import default_chain_id, normalize_chain_id
+
+        cid = normalize_chain_id(chain_id or default_chain_id())
+        wallet = await ensure_user_wallet(profile_id, chain_id=cid)
+        addr = (wallet or {}).get("address")
+        if addr:
+            return addr
+    except Exception as exc:
+        logger.warning(
+            "[Settlement] chain wallet lookup failed profile=%s chain=%s: %s",
+            profile_id,
+            chain_id,
+            exc,
+        )
+
+    # Last resort legacy field (Base-only matches)
     sb = _get_supabase()
     result = (
         sb.table("profiles")
@@ -376,11 +401,13 @@ async def _notify_result(
 ) -> None:
     from gaming.src.bot.utils.notify import get_balance_snapshot, notify_user
     from gaming.src.bot.utils.text import bold, code
+    from gaming.src.backend.services.match_codes import display_code
 
     creator_id = challenge["creator_id"]
     opponent_id = challenge.get("opponent_id")
     amount = Decimal(str(challenge["amount_usdc"]))
     challenge_id = challenge["id"]
+    match_code = display_code(challenge)
     chain = challenge.get("settlement_chain") or "base"
     tx_hash_disp = tx_hash or ""
     if tx_hash_disp and not tx_hash_disp.startswith("0x"):
@@ -395,20 +422,20 @@ async def _notify_result(
     async def _send(uid: str, you_won: Optional[bool]) -> None:
         if you_won is True:
             head = (
-                f"🏆 <b>You won</b> match <code>{challenge_id}</code>\n"
+                f"🏆 <b>You won</b> match <code>{match_code}</code>\n"
                 f"Payout: <b>${pot:,.2f} USDC</b> (after 7% fee)\n"
                 f"Chain: <b>{chain}</b>{tx_text}{explorer}"
             )
         elif you_won is False:
             head = (
                 f"😔 <b>Match over</b> — you did not win "
-                f"<code>{challenge_id}</code>\n"
+                f"<code>{match_code}</code>\n"
                 f"Winner received <b>${pot:,.2f} USDC</b> (after fee)\n"
                 f"Chain: <b>{chain}</b>{tx_text}"
             )
         else:
             head = (
-                f"🤝 Challenge <code>{challenge_id}</code> ended in a <b>draw</b>.\n"
+                f"🤝 Match <code>{match_code}</code> ended in a <b>draw</b>.\n"
                 f"Stakes refunded.{tx_text}"
             )
         bal = await get_balance_snapshot(uid)
@@ -438,9 +465,16 @@ async def _execute_payout(challenge: dict, winner_id: Optional[str]) -> str:
         result = await cancel_match(challenge_id)
         return result.get("tx_hash", "")
 
-    winner_address = await _load_profile_address(winner_id)
+    from gaming.src.backend.services.chains import default_chain_id, normalize_chain_id
+
+    chain_id = normalize_chain_id(
+        challenge.get("settlement_chain") or default_chain_id()
+    )
+    winner_address = await _load_profile_address(winner_id, chain_id=chain_id)
     if not winner_address:
-        raise SettlementError(f"Winner {winner_id} has no deposit address")
+        raise SettlementError(
+            f"Winner {winner_id} has no deposit address on chain={chain_id}"
+        )
 
     _update_challenge(challenge_id, "submitted", winner_id=winner_id)
     result = await resolve_match(challenge_id, winner_address)
@@ -719,12 +753,14 @@ async def settle_no_show(challenge_id: str, analysis: Optional[dict] = None) -> 
     )
     from gaming.src.bot.utils.notify import notify_user
     from gaming.src.bot.utils.text import bold, code
+    from gaming.src.backend.services.match_codes import display_code
 
     challenge = _load_challenge(challenge_id)
     if not challenge:
         raise SettlementError(f"Challenge {challenge_id} not found")
     if challenge.get("status") == "resolved":
         return {"success": True, "action": "skipped", "reason": "already_resolved"}
+    match_code = display_code(challenge)
 
     analysis = analysis or analyze_reports(challenge)
     reporter = analysis.get("reporter")  # "creator" | "opponent"
@@ -777,11 +813,14 @@ async def settle_no_show(challenge_id: str, analysis: Optional[dict] = None) -> 
         except EscrowError as exc:
             logger.warning("[Settlement] no-show flag_dispute: %s", exc)
         _update_challenge(challenge_id, "disputed", ai_meta=ai_meta)
+        from gaming.src.backend.services.match_codes import support_id_block
+
         msg = (
-            f"⚠️ Match {code(challenge_id)}: opponent no-show, but we could not "
+            f"⚠️ Match {code(match_code)}: opponent no-show, but we could not "
             f"auto-verify the winner from one screenshot.\n"
             f"Marked <b>disputed</b> for admin review.\n"
-            f"AI conf={conf:.0%}"
+            f"AI conf={conf:.0%}\n\n"
+            f"{support_id_block(challenge)}"
         )
         await notify_user(challenge["creator_id"], msg)
         if challenge.get("opponent_id"):
@@ -821,13 +860,13 @@ async def settle_no_show(challenge_id: str, analysis: Optional[dict] = None) -> 
     if silent:
         await notify_user(
             silent,
-            f"⌛ You did not report on {code(challenge_id)} in time.\n"
+            f"⌛ You did not report on {code(match_code)} in time.\n"
             f"Match settled as a <b>no-show</b> using your opponent's proof.\n"
             f"Winner paid out.",
         )
     await notify_user(
         winner_id,
-        f"✅ Opponent no-show on {code(challenge_id)}.\n"
+        f"✅ Opponent no-show on {code(match_code)}.\n"
         f"Your proof was verified — payout sent.",
     )
 

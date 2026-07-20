@@ -47,7 +47,7 @@ async def cmd_start(message: types.Message) -> None:
         try:
             check_region(_FakeRequest(headers))
         except BlockedRegionError:
-            await message.answer("ClawStation isn't available in your region yet.")
+            await message.answer("Rematch isn't available in your region yet.")
             return
         except Exception as exc:
             logger.warning("[Start] Geo-fence check skipped due to error: %s", exc)
@@ -88,16 +88,21 @@ async def cmd_start(message: types.Message) -> None:
         logger.warning("[Start] balance preview failed for %s", profile["id"], exc_info=True)
 
     text = (
-        f"🎮 <b>Welcome to ClawStation, {name}!</b>\n\n"
+        f"🎮 <b>Welcome to Rematch, {name}!</b>\n"
+        f"<i>by sideQuest · testnet</i>\n\n"
         f"Your tag: <code>@{tag}</code>\n"
         f"(friends use this to challenge you)\n\n"
         f"{bal_line}"
         f"Deposit address (same on all chains):\n"
         f"<code>{addr}</code>\n\n"
-        f"<b>Use the buttons</b> — no typing codes.\n"
-        f"1. <b>Switch network</b> → Arc (USDC gas, no test ETH)\n"
-        f"2. Send Arc testnet USDC to the address above\n"
-        f"3. <b>New challenge</b> → taps → Accept → Lock → Side → photo\n\n"
+        f"🧪 <b>Testnet mission:</b> real locks & volume — "
+        f"<b>Arc pays 1.5× PLAY</b>, Avalanche 1.25×, Base 1×. "
+        f"New rivals &gt; same friend loop.\n\n"
+        f"<b>Buttons only:</b>\n"
+        f"1. <b>Switch network</b> → Arc (USDC gas)\n"
+        f"2. Fund testnet USDC → <b>New challenge</b>\n"
+        f"3. Accept → Lock → Side → FT photo\n\n"
+        f"Docs: playingsidequest.fun/rematch · /playbook for PLAY rules\n\n"
         f"How to: /howto"
     )
     try:
@@ -106,13 +111,13 @@ async def cmd_start(message: types.Message) -> None:
         # Never fail silent — fall back to plain text so the user always gets a reply.
         logger.exception("[Start] Failed to send welcome HTML message: %s", exc)
         plain = (
-            f"🎮 Welcome to ClawStation by sideQuest, {profile.get('display_name') or user.first_name}!\n\n"
+            f"🎮 Welcome to Rematch by sideQuest, {profile.get('display_name') or user.first_name}!\n\n"
             f"Tag: {profile.get('gaming_tag') or '—'}\n\n"
-            f"Your USDC deposit address (Base Sepolia):\n"
+            f"Your USDC deposit address:\n"
             f"{address}\n\n"
-            f"1. Send Base Sepolia USDC to that address\n"
-            f"2. Run /balance to confirm funds\n"
-            f"3. /challenge a player and /lock_stake after they accept"
+            f"1. Switch network → Arc · fund testnet USDC\n"
+            f"2. New challenge → Lock → Side → FT photo\n"
+            f"Docs: playingsidequest.fun/rematch"
         )
         await message.answer(plain, reply_markup=main_menu(), parse_mode=None)
 

@@ -135,11 +135,15 @@ async def _create_challenge(
     visibility: str,
     settlement_chain: str,
 ) -> dict:
+    from gaming.src.backend.services.match_codes import new_challenge_public_code
+
     challenge_id = str(uuid.uuid4())
+    public_code = new_challenge_public_code()
     expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
     record = denormalize_challenge(
         {
             "id": challenge_id,
+            "public_code": public_code,
             "creator_id": creator_id,
             "opponent_id": opponent_id,
             "amount_usdc": float(amount),
@@ -155,9 +159,13 @@ async def _create_challenge(
     try:
         result = sb.schema("gaming").table("challenges").insert(record).execute()
     except Exception as exc:
-        # Older DBs without settlement_chain — retry without it.
-        if "settlement_chain" in str(exc).lower() or "column" in str(exc).lower():
-            record.pop("settlement_chain", None)
+        # Older DBs without optional columns — retry without them.
+        err = str(exc).lower()
+        if "column" in err or "schema cache" in err:
+            if "public_code" in err:
+                record.pop("public_code", None)
+            if "settlement_chain" in err:
+                record.pop("settlement_chain", None)
             result = sb.schema("gaming").table("challenges").insert(record).execute()
         else:
             raise
@@ -167,16 +175,9 @@ async def _create_challenge(
 
 
 async def _get_open_challenge(challenge_id: str) -> Optional[dict]:
-    sb = get_supabase()
-    result = (
-        sb.schema("gaming")
-        .table("challenges")
-        .select("*")
-        .eq("id", challenge_id)
-        .maybe_single()
-        .execute()
-    )
-    return normalize_challenge(result.data) if result.data else None
+    from gaming.src.backend.services.match_codes import load_challenge_by_ref
+
+    return load_challenge_by_ref(challenge_id)
 
 
 async def _update_challenge_status(challenge_id: str, status: str) -> None:
@@ -304,7 +305,10 @@ async def cmd_challenge(message: types.Message) -> None:
         await message.answer(f"❌ Could not create challenge: {h(exc)}", parse_mode=ParseMode.HTML)
         return
 
+    from gaming.src.backend.services.match_codes import display_code, ensure_public_code
+
     my_tag = profile.get("gaming_tag") or "player"
+    match_code = ensure_public_code(challenge) if challenge.get("id") else display_code(challenge)
     challenge_text = (
         f"⚔️ {bold('Challenge Created')}\n\n"
         f"From: {code('@' + my_tag)}\n"
@@ -312,7 +316,7 @@ async def cmd_challenge(message: types.Message) -> None:
         f"Stake: {bold(f'${amount:,.2f} USDC')}\n"
         f"Chain: {bold(chain_meta.get('label') or chain_id)}\n"
         f"Visibility: {bold(visibility.title())}\n"
-        f"ID: {code(challenge['id'])}"
+        f"Match: {code(match_code)}"
     )
 
     if visibility == "private" and opponent:
@@ -326,7 +330,7 @@ async def cmd_challenge(message: types.Message) -> None:
             logger.exception("[Challenge] notify opponent failed")
         await message.answer(
             f"✅ Private challenge sent to {code('@' + (opponent.get('gaming_tag') or opponent_tag))}.\n"
-            f"Challenge ID: {code(challenge['id'])}\n"
+            f"Match code: {code(match_code)}\n"
             f"Chain: {bold(chain_id)}",
             parse_mode=ParseMode.HTML,
         )
@@ -440,9 +444,12 @@ async def cb_decline(callback: types.CallbackQuery) -> None:
 
     await _update_challenge_status(challenge_id, "declined")
     await callback.message.answer("❌ Challenge declined.", parse_mode=None)
+    from gaming.src.backend.services.match_codes import display_code
+
     await notify_user(
         challenge["creator_id"],
-        f"🚫 {code(decliner.get('gaming_tag') or 'opponent')} declined your challenge {code(challenge_id)}.",
+        f"🚫 {code(decliner.get('gaming_tag') or 'opponent')} declined your challenge "
+        f"{code(display_code(challenge))}.",
     )
 
 

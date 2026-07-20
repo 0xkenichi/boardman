@@ -47,9 +47,11 @@ def network_menu(current: str = "arc") -> InlineKeyboardMarkup:
 
 
 def challenge_confirm_menu(match_id: str) -> InlineKeyboardMarkup:
-    """Accept / Decline for an invite."""
+    """Accept / Decline for an invite.
+
+    Callbacks keep the internal UUID (not shown to users in text).
+    """
     builder = InlineKeyboardBuilder()
-    short = match_id[:8]
     builder.row(
         InlineKeyboardButton(text="✅ Accept", callback_data=f"challenge:accept:{match_id}"),
         InlineKeyboardButton(text="❌ Decline", callback_data=f"challenge:decline:{match_id}"),

@@ -32,6 +32,7 @@ _TO_DB = {
 # Columns that may not exist on older DBs — strip on insert if insert fails handled by caller.
 OPTIONAL_COLUMNS = {
     "settlement_chain",
+    "public_code",
     "ai_creator_score",
     "ai_opponent_score",
     "ai_confidence",

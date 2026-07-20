@@ -1,4 +1,4 @@
-"""Simple player-facing flow copy for ClawStation (button-first)."""
+"""Simple player-facing flow copy for Rematch (button-first)."""
 from __future__ import annotations
 
 from typing import Any, Optional
@@ -6,49 +6,56 @@ from typing import Any, Optional
 
 def how_to_play() -> str:
     return (
-        "🎮 <b>How to play</b> (easy mode)\n\n"
-        "You mostly use <b>buttons</b>. No need to copy long IDs.\n\n"
-        "<b>1. Network + fund</b>\n"
-        "Tap <b>Switch network</b> → pick <b>Arc Testnet</b> (USDC gas, no test ETH).\n"
-        "Open Wallet → send USDC on that network to your address "
-        "(same address on Base / Arc / Avalanche — balances are separate).\n\n"
-        "<b>2. Challenge</b>\n"
-        "Tap <b>New challenge</b> → @tag → stake → game → network (Arc recommended) → Send.\n"
-        "They tap <b>Accept</b>.\n\n"
-        "<b>3. Lock money</b>\n"
-        "Tap <b>My match</b> → <b>Lock my stake</b> (challenger first, then you).\n\n"
-        "<b>4. Pick side</b>\n"
-        "Tap <b>I am HOME</b> or <b>I am AWAY</b>.\n\n"
-        "<b>5. Play</b> on console.\n\n"
-        "<b>6. Report</b>\n"
-        "Tap <b>Submit result</b> → send FT <b>photo</b> with caption like:\n"
-        "<code>5-3</code>  (home goals – away goals)\n\n"
-        "When both report the same score, the winner is paid automatically.\n\n"
-        "<b>$PLAY points</b>\n"
-        "Win +100 (streak bonus) · Loss +40 · No-show −50\n"
-        "Tier = Bronze→Diamond from total $PLAY\n"
-        "Tap <b>$PLAY playbook</b> for details.\n\n"
+        "🎮 <b>Rematch — how to play</b> (testnet)\n\n"
+        "Buttons only. No long IDs needed.\n\n"
+        "<b>1. Pick Arc (recommended)</b>\n"
+        "Switch network → <b>Arc Testnet</b> — gas in USDC, best PLAY points.\n"
+        "Wallet → copy address → send <b>testnet USDC</b> on that network.\n\n"
+        "<b>2. Challenge a friend</b>\n"
+        "New challenge → their @tag → stake → game → network → Send.\n"
+        "They Accept in Telegram.\n\n"
+        "<b>3. Both lock</b>\n"
+        "My match → Lock my stake (you first if you challenged).\n\n"
+        "<b>4. HOME / AWAY → play console → Submit FT photo</b>\n"
+        "Caption like <code>5-3</code>. AI reads the score. Winner paid in USDC.\n\n"
+        "<b>Testnet mission</b>\n"
+        "We need real matches + volume on testnets (esp. <b>Arc</b>) for grants & mainnet.\n"
+        "PLAY points: <b>Arc 1.5×</b> · Avalanche 1.25× · Base 1.0×\n"
+        "New rivals / new Telegram users → higher mult than endless rematches.\n"
+        "Multi-chain players (all three) get noted for seasons.\n\n"
         "<b>Rules</b>\n"
         "• One match at a time\n"
-        "• Loser who never reports can lose by no-show if you sent a photo\n"
-        "• Ghosting costs $PLAY (not rewarded)"
+        "• Ghosting = −PLAY (no reward)\n"
+        "• Test tokens only — see /playbook disclaimer"
     )
 
 
 def short_help() -> str:
     return (
-        "📋 <b>Simple mode</b>\n\n"
-        "Use the buttons on the main menu:\n"
-        "🎮 My match · ⚔️ New challenge · 💰 Wallet · 👤 Profile\n\n"
-        "Advanced commands still work if you want them:\n"
-        "/challenge /lock_stake /set_side /submit_score /match_info\n"
-        "/playbook /balance /profile /howto /withdraw /safety\n"
+        "📋 <b>Rematch</b> · sideQuest\n\n"
+        "🎮 My match · ⚔️ New challenge · 💰 Wallet · 🌐 Network · 👤 Profile\n\n"
+        "Prefer <b>Arc</b> for max PLAY. Bring new players for higher mults.\n"
+        "/howto · /playbook · /balance · /support_id"
+    )
+
+
+def testnet_push_banner() -> str:
+    return (
+        "🧪 <b>Testnet season</b>\n"
+        "Play real locks on <b>Arc</b> (best), Avalanche, Base.\n"
+        "Settled volume helps us qualify for chain grants & mainnet.\n"
+        "PLAY points ≠ money — see /playbook."
     )
 
 
 def report_status(challenge: dict) -> str:
     """Human summary of who reported what."""
-    cid = challenge.get("id", "?")
+    from gaming.src.backend.services.match_codes import display_code, ensure_public_code
+
+    try:
+        match_code = ensure_public_code(challenge)
+    except Exception:
+        match_code = display_code(challenge)
     status = challenge.get("status", "?")
     c_score = challenge.get("creator_score")
     o_score = challenge.get("opponent_score")
@@ -76,6 +83,7 @@ def report_status(challenge: dict) -> str:
 
     lines = [
         f"⚔️ <b>Your match</b>",
+        f"Code: <code>{match_code}</code>",
         f"Status: <b>{status}</b> · Stake ${stake} · {chain}",
         f"Sides: creator=<b>{cs}</b> · opponent=<b>{os_}</b>",
         f"Clubs: <b>{ht}</b> (H) vs <b>{at}</b> (A)",
@@ -107,8 +115,12 @@ def report_status(challenge: dict) -> str:
         lines.append("Both reported — payout should run if scores match.")
     elif status == "disputed":
         lines.append("Disputed — admin will review.")
+        lines.append(
+            f"If support asks to confirm: "
+            f"<code>/support_id {match_code}</code>"
+        )
     elif status == "resolved":
-        lines.append("Done. Check Wallet for USDC + $PLAY.")
+        lines.append("Done. Check Wallet for USDC + PLAY. Rematch?")
     elif status in ("cancelled", "expired", "declined"):
         lines.append("Match closed.")
 
@@ -134,8 +146,13 @@ def waiting_on_opponent(challenge_id: str, who: str = "opponent") -> str:
 
 
 def conflict_message(challenge_id: str, reason: str) -> str:
+    from gaming.src.backend.services.match_codes import display_code
+
+    match_code = display_code(None, challenge_id=challenge_id)
     return (
         f"⚠️ <b>Reports don't match</b>\n"
+        f"Match: <code>{match_code}</code>\n"
         f"{reason}\n\n"
-        f"Match disputed. Send clearer FT photos via <b>Submit result</b>."
+        f"Match disputed. Send clearer FT photos via <b>Submit result</b>.\n"
+        f"If support asks to confirm: <code>/support_id {match_code}</code>"
     )

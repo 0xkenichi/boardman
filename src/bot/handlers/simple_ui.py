@@ -83,6 +83,17 @@ def _safe_row(result) -> Optional[dict]:
 
 
 async def _load_challenge(cid: str) -> Optional[dict]:
+    """Load by UUID (callbacks) or public short code (user input)."""
+    from gaming.src.backend.services.match_codes import load_challenge_by_ref, is_uuid
+
+    if not cid:
+        return None
+    # Prefer resolver (handles short codes + UUID + ensures public_code)
+    ch = load_challenge_by_ref(cid)
+    if ch:
+        return ch
+    if not is_uuid(cid):
+        return None
     r = (
         get_supabase()
         .schema("gaming")
@@ -96,7 +107,9 @@ async def _load_challenge(cid: str) -> Optional[dict]:
 
 
 def _short(cid: str) -> str:
-    return (cid or "")[:8]
+    from gaming.src.backend.services.match_codes import display_code
+
+    return display_code(None, challenge_id=cid)
 
 
 # ── Main menu hooks ──────────────────────────────────────────────────────────
@@ -142,11 +155,10 @@ async def ui_network_menu(callback: types.CallbackQuery) -> None:
 
     await callback.message.answer(
         "🌐 <b>Switch network</b>\n\n"
-        "Same wallet address on all chains — balances are separate.\n"
-        "<b>Arc Testnet</b> is best if you don't have test ETH "
-        "(gas is paid in USDC).\n\n"
+        "Each network has its own Circle deposit address.\n"
+        "<b>Arc</b> uses USDC for gas (no test ETH).\n\n"
         + "\n".join(lines)
-        + "\n\nYour active network is used for new challenges and wallet view.\n"
+        + "\n\nActive network = new challenges + Lock stake.\n"
         "Pick a network:",
         parse_mode=ParseMode.HTML,
         reply_markup=network_menu(pref),
@@ -169,22 +181,31 @@ async def ui_network_set(callback: types.CallbackQuery) -> None:
 
     try:
         cid = await set_preferred_chain(profile["id"], chain)
-        # Ensure wallet exists for this chain (Circle may create ARC wallet id)
-        await ensure_user_wallet(profile["id"], chain_id=cid)
+        # Dedicated Circle wallet per chain (required for signing locks)
+        wallet = await ensure_user_wallet(profile["id"], chain_id=cid)
         bal = await get_usdc_balance(profile["id"], chain_id=cid)
         label = get_chain(cid).get("label", cid)
         gas = get_chain(cid).get("gas_token", "?")
+        addr = wallet.get("address") or ""
         note = (
             "Gas is paid in USDC — no test ETH needed."
             if get_chain(cid).get("gas_mode") == "usdc_native"
             else f"You may need a little {gas} for gas (platform can top up when possible)."
         )
+        faucet = (
+            "\n\nArc faucet: https://faucet.circle.com/ → <b>Arc Testnet</b> → USDC"
+            if cid == "arc"
+            else ""
+        )
         await callback.message.answer(
             f"✅ Active network: <b>{h(label)}</b>\n"
             f"USDC on this network: <b>${bal:,.2f}</b>\n\n"
             f"{note}\n\n"
-            f"New challenges will use this network by default.\n"
-            f"Send USDC to your deposit address on <b>{h(label)}</b>.",
+            f"<b>Deposit address for {h(label)} only</b> "
+            f"(different from Base):\n<code>{h(addr)}</code>\n\n"
+            f"New challenges default to this network. "
+            f"Fund this address before Lock stake."
+            f"{faucet}",
             parse_mode=ParseMode.HTML,
             reply_markup=main_menu(),
         )
@@ -469,11 +490,15 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
         )
         return
 
+    from gaming.src.backend.services.match_codes import new_challenge_public_code, display_code
+
     challenge_id = str(uuid.uuid4())
+    public_code = new_challenge_public_code()
     expires = datetime.now(timezone.utc) + timedelta(hours=24)
     record = denormalize_challenge(
         {
             "id": challenge_id,
+            "public_code": public_code,
             "creator_id": profile["id"],
             "opponent_id": opponent_id,
             "amount_usdc": float(amount),
@@ -489,13 +514,18 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
         get_supabase().schema("gaming").table("challenges").insert(record).execute()
     except Exception as exc:
         logger.exception("[UI] challenge insert failed")
-        # retry without settlement_chain
+        # retry without optional columns
         record.pop("settlement_chain", None)
         try:
             get_supabase().schema("gaming").table("challenges").insert(record).execute()
-        except Exception as exc2:
-            await callback.message.answer(f"❌ Could not create: {h(exc2)}", parse_mode=ParseMode.HTML)
-            return
+        except Exception:
+            record.pop("public_code", None)
+            try:
+                get_supabase().schema("gaming").table("challenges").insert(record).execute()
+                public_code = display_code(None, challenge_id=challenge_id)
+            except Exception as exc2:
+                await callback.message.answer(f"❌ Could not create: {h(exc2)}", parse_mode=ParseMode.HTML)
+                return
 
     await state.clear()
     from gaming.src.bot.keyboards import challenge_confirm_menu
@@ -504,6 +534,7 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
         await notify_user(
             opponent_id,
             f"⚔️ <b>Challenge from @{h(profile.get('gaming_tag') or 'player')}</b>\n\n"
+            f"Match: <code>{h(public_code)}</code>\n"
             f"Stake: <b>${amount:,.2f} USDC</b>\n"
             f"Game: <b>{h(game)}</b>\n"
             f"Network: <b>{h(chain)}</b>\n\n"
@@ -514,7 +545,8 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
         logger.exception("[UI] notify opponent failed")
 
     await callback.message.answer(
-        f"✅ Challenge sent to <b>@{h(opponent_tag)}</b>\n\n"
+        f"✅ Challenge sent to <b>@{h(opponent_tag)}</b>\n"
+        f"Match code: <code>{h(public_code)}</code>\n\n"
         f"When they Accept, both of you tap <b>Lock my stake</b>.\n"
         f"Use <b>My match</b> anytime.",
         parse_mode=ParseMode.HTML,
@@ -561,6 +593,34 @@ async def ui_lock(callback: types.CallbackQuery) -> None:
     dup = check_idempotent(idem_key)
     if dup:
         await callback.message.answer(dup, reply_markup=match_actions_menu(ch, profile["id"]))
+        return
+
+    # Preflight: chain-specific Circle wallet + balance (Arc ≠ Base wallet)
+    try:
+        wallet = await ensure_user_wallet(profile["id"], chain_id=chain)
+        bal = await get_usdc_balance(profile["id"], chain_id=chain)
+        if bal < amount:
+            label = get_chain(chain).get("label", chain)
+            await callback.message.answer(
+                f"❌ Not enough USDC on <b>{h(label)}</b> for this match.\n"
+                f"Need <b>${amount:,.2f}</b>, have <b>${bal:,.2f}</b>.\n\n"
+                f"Deposit address on {h(label)}:\n<code>{h(wallet.get('address') or '')}</code>\n\n"
+                f"⚠️ Each network has its own Circle wallet. Funds on Base "
+                f"do not auto-appear on Arc (and vice versa).",
+                parse_mode=ParseMode.HTML,
+                reply_markup=match_actions_menu(ch, profile["id"]),
+            )
+            clear_idempotent(idem_key)
+            return
+    except Exception as exc:
+        logger.exception("[UI] lock preflight failed")
+        await callback.message.answer(
+            f"❌ Wallet not ready on {h(chain)}: {h(exc)}\n"
+            f"Try <b>Base Sepolia</b> for this match, or Switch network + fund first.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=main_menu(),
+        )
+        clear_idempotent(idem_key)
         return
 
     await callback.message.answer(

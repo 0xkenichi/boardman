@@ -98,13 +98,23 @@ async def cmd_balance(message: types.Message) -> None:
     # Other chains in background style — only if FAST_WALLET is not set
     import os
 
+    addr_lines = []
+    if address:
+        addr_lines.append(
+            f"<b>{escape(pref_label)}</b> deposit:\n<code>{escape(address)}</code>"
+        )
+
     if os.getenv("CLAW_WALLET_ALL_CHAINS", "1") == "1":
         try:
             rows = await asyncio.wait_for(get_all_chain_balances(profile["id"]), timeout=18)
             for r in rows:
                 if r["id"] == pref:
                     if r.get("address"):
-                        address = address or r["address"]
+                        address = r["address"]
+                        addr_lines = [
+                            f"<b>{escape(r['label'])}</b> deposit:\n"
+                            f"<code>{escape(r['address'])}</code>"
+                        ]
                     continue
                 gas = "USDC gas" if r.get("gas_mode") == "usdc_native" else f"{r.get('gas_token')} gas"
                 lines.append(
@@ -112,15 +122,19 @@ async def cmd_balance(message: types.Message) -> None:
                     f"<b>${r['balance_usdc']:,.2f}</b> USDC ({gas})"
                 )
                 if r.get("address"):
-                    address = address or r["address"]
+                    addr_lines.append(
+                        f"<b>{escape(r['label'])}</b>:\n<code>{escape(r['address'])}</code>"
+                    )
         except Exception:
             logger.warning("[Balance] other chains timed out or failed")
 
     tier = tier_from_play_points(play)
     streak_txt = f"🔥 {streak}" if streak else "0"
-    addr_line = (
-        f"\nDeposit address (same on all chains):\n<code>{escape(address)}</code>\n"
-        if address
+    addr_block = (
+        "\n\n<b>Deposit addresses</b> (per network — not interchangeable)\n"
+        + "\n".join(addr_lines)
+        + "\n"
+        if addr_lines
         else "\n"
     )
 
@@ -128,9 +142,9 @@ async def cmd_balance(message: types.Message) -> None:
         f"💰 <b>Wallet</b>\n\n"
         f"<b>USDC by network</b>\n"
         + ("\n".join(lines) if lines else "—")
-        + f"\n{addr_line}"
-        f"Active network: <b>{escape(pref)}</b> "
-        f"(withdrawals use this network)\n\n"
+        + addr_block
+        + f"\nActive network: <b>{escape(pref)}</b> "
+        f"(lock + withdraw use this network)\n\n"
         f"🎮 $PLAY: <b>{play:,}</b>\n"
         f"Hot streak: <b>{streak_txt}</b> (best {best})\n"
         f"Tier: <b>{escape(tier_label(tier))}</b>\n\n"
