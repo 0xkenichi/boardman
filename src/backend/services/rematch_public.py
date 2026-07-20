@@ -246,6 +246,56 @@ def get_match_history(profile_id: str, limit: int = 15) -> list[dict[str, Any]]:
     return out
 
 
+def get_recent_rivals(profile_id: str, limit: int = 8) -> list[dict[str, Any]]:
+    """Past opponents for one-tap rematch (most recent first, unique)."""
+    history_rows: list = []
+    for col in ("issuer_id", "target_id"):
+        try:
+            r = (
+                _sb()
+                .schema("gaming")
+                .table("challenges")
+                .select("*")
+                .eq(col, profile_id)
+                .in_("status", ["resolved", "cancelled", "disputed"])
+                .order("created_at", desc=True)
+                .limit(40)
+                .execute()
+            )
+            history_rows.extend(r.data or [])
+        except Exception:
+            pass
+
+    seen: set[str] = set()
+    rivals: list[dict[str, Any]] = []
+    for raw in history_rows:
+        ch = normalize_challenge(raw)
+        if not ch:
+            continue
+        a = ch.get("creator_id")
+        b = ch.get("opponent_id")
+        other = b if a == profile_id else a if b == profile_id else None
+        if not other or other in seen:
+            continue
+        seen.add(other)
+        tag = _tag_for_profile(other)
+        stake = float(ch.get("amount_usdc") or ch.get("stake_amount") or 1)
+        rivals.append(
+            {
+                "profile_id": other,
+                "tag": tag,
+                "stake": stake,
+                "game": ch.get("game") or ch.get("game_type") or "EAFC",
+                "chain": ch.get("settlement_chain") or "arc",
+                "last_code": display_code(ch),
+                "last_status": ch.get("status"),
+            }
+        )
+        if len(rivals) >= limit:
+            break
+    return rivals
+
+
 def format_leaderboard_text(rows: list[dict], limit: int = 10) -> str:
     if not rows:
         return "No ranked players yet — settle a match to appear."

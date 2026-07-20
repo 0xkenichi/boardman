@@ -362,6 +362,98 @@ async def ui_cancel_match(callback: types.CallbackQuery) -> None:
                 )
 
 
+@router.callback_query(F.data == "ui:rematch")
+async def ui_rematch_list(callback: types.CallbackQuery, state: FSMContext) -> None:
+    """List past rivals for one-tap rematch."""
+    await callback.answer()
+    await state.clear()
+    user = callback.from_user
+    if not user:
+        return
+    profile = await get_or_create_profile(user)
+    from gaming.src.backend.services.play_points import assert_can_start_or_accept
+    from gaming.src.backend.services.rematch_public import get_recent_rivals
+    from gaming.src.bot.keyboards import rematch_rivals_menu
+
+    blocked = assert_can_start_or_accept(profile["id"])
+    if blocked:
+        await callback.message.answer(f"❌ {blocked}", parse_mode=None, reply_markup=main_menu())
+        return
+
+    rivals = get_recent_rivals(profile["id"], 8)
+    if not rivals:
+        await callback.message.answer(
+            "🔄 <b>Rematch</b>\n\n"
+            "No past rivals yet.\n"
+            "Play someone once (New challenge), then Rematch skips the setup.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=main_menu(),
+        )
+        return
+
+    await callback.message.answer(
+        "🔄 <b>Rematch</b> — same stake, game & network as last time.\n"
+        "Tap a rival → they Accept → both Lock. Almost instant.\n\n"
+        "<i>New rivals still earn higher PLAY; rematches still pay.</i>",
+        parse_mode=ParseMode.HTML,
+        reply_markup=rematch_rivals_menu(rivals),
+    )
+
+
+@router.callback_query(F.data.startswith("ui:rematch:go:"))
+async def ui_rematch_go(callback: types.CallbackQuery, state: FSMContext) -> None:
+    """Create challenge with last setup vs chosen rival."""
+    try:
+        await callback.answer("Starting rematch…")
+    except Exception:
+        pass
+    await state.clear()
+    user = callback.from_user
+    if not user:
+        return
+    opponent_id = callback.data.split(":")[-1]
+    profile = await get_or_create_profile(user)
+
+    from gaming.src.backend.services.rematch_quick import create_quick_rematch
+    from gaming.src.bot.keyboards import challenge_confirm_menu
+
+    try:
+        result = await create_quick_rematch(profile["id"], opponent_id)
+    except Exception as exc:
+        logger.exception("[UI] quick rematch failed")
+        await callback.message.answer(
+            f"❌ {h(exc)}",
+            parse_mode=ParseMode.HTML,
+            reply_markup=main_menu(),
+        )
+        return
+
+    code = result["public_code"]
+    tag = result.get("opponent_tag") or "player"
+    try:
+        await notify_user(
+            opponent_id,
+            f"🔄 <b>Rematch?</b> from @{h(profile.get('gaming_tag') or 'player')}\n\n"
+            f"Match: <code>{h(code)}</code>\n"
+            f"Stake: <b>${result['stake']:,.2f} USDC</b>\n"
+            f"Game: <b>{h(result['game'])}</b>\n"
+            f"Network: <b>{h(result['chain'])}</b>\n\n"
+            f"Same setup as last time. Accept to run it back:",
+            buttons=challenge_confirm_menu(result["challenge_id"]),
+        )
+    except Exception:
+        logger.exception("[UI] rematch notify failed")
+
+    await callback.message.answer(
+        f"🔄 <b>Rematch sent</b> to @{h(tag)}\n"
+        f"Code: <code>{h(code)}</code>\n"
+        f"${result['stake']:,.2f} · {h(result['game'])} · {h(result['chain'])}\n\n"
+        f"When they Accept → both <b>Lock</b>.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=main_menu(),
+    )
+
+
 @router.callback_query(F.data == "ui:match")
 async def ui_my_match(callback: types.CallbackQuery, state: FSMContext) -> None:
     try:

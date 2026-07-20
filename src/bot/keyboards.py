@@ -18,6 +18,9 @@ def main_menu(miniapp_url: str | None = None) -> InlineKeyboardMarkup:
     web = miniapp_url or REMATCH_WEB
     builder.row(
         InlineKeyboardButton(text="🎮 My match", callback_data="ui:match"),
+        InlineKeyboardButton(text="🔄 Rematch", callback_data="ui:rematch"),
+    )
+    builder.row(
         InlineKeyboardButton(text="⚔️ New challenge", callback_data="ui:challenge"),
     )
     builder.row(
@@ -73,6 +76,49 @@ def network_menu(current: str = "arc") -> InlineKeyboardMarkup:
             )
         )
     builder.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
+    return builder.as_markup()
+
+
+def rematch_rivals_menu(rivals: list) -> InlineKeyboardMarkup:
+    """One-tap rematch against past opponents."""
+    builder = InlineKeyboardBuilder()
+    if not rivals:
+        builder.row(
+            InlineKeyboardButton(text="⚔️ New challenge instead", callback_data="ui:challenge")
+        )
+    else:
+        for r in rivals[:8]:
+            pid = r.get("profile_id") or ""
+            tag = r.get("tag") or "player"
+            stake = r.get("stake") or 1
+            chain = r.get("chain") or "arc"
+            game = r.get("game") or "EAFC"
+            label = f"🔄 @{tag} · ${stake:.0f} · {game} · {chain}"
+            if len(label) > 64:
+                label = f"🔄 @{tag} · ${stake:.0f} · {chain}"
+            builder.row(
+                InlineKeyboardButton(
+                    text=label[:64],
+                    callback_data=f"ui:rematch:go:{pid}",
+                )
+            )
+    builder.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
+    return builder.as_markup()
+
+
+def rematch_after_result_menu(opponent_id: str, label: str = "🔄 Rematch same setup") -> InlineKeyboardMarkup:
+    """Shown after a match resolves — instant rematch with that opponent."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text=label[:64],
+            callback_data=f"ui:rematch:go:{opponent_id}",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(text="🎮 My match", callback_data="ui:match"),
+        InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"),
+    )
     return builder.as_markup()
 
 

@@ -419,7 +419,7 @@ async def _notify_result(
 
     pot = amount * 2 * Decimal("0.93")
 
-    async def _send(uid: str, you_won: Optional[bool]) -> None:
+    async def _send(uid: str, you_won: Optional[bool], rival_id: Optional[str]) -> None:
         if you_won is True:
             head = (
                 f"🏆 <b>You won</b> match <code>{match_code}</code>\n"
@@ -439,21 +439,30 @@ async def _notify_result(
                 f"Stakes refunded.{tx_text}"
             )
         bal = await get_balance_snapshot(uid)
+        buttons = None
+        if rival_id:
+            try:
+                from gaming.src.bot.keyboards import rematch_after_result_menu
+
+                buttons = rematch_after_result_menu(rival_id)
+            except Exception:
+                buttons = None
         await notify_user(
             uid,
             f"{head}\n\n"
             f"<b>Updated balances</b>\n{bal}\n\n"
-            f"/profile · /balance · /playbook",
+            f"Tap <b>Rematch</b> for the same setup — or /profile · /playbook",
+            buttons=buttons,
         )
 
     if winner_id is None:
-        await _send(creator_id, None)
+        await _send(creator_id, None, opponent_id)
         if opponent_id:
-            await _send(opponent_id, None)
+            await _send(opponent_id, None, creator_id)
     else:
-        await _send(creator_id, creator_id == winner_id)
+        await _send(creator_id, creator_id == winner_id, opponent_id)
         if opponent_id:
-            await _send(opponent_id, opponent_id == winner_id)
+            await _send(opponent_id, opponent_id == winner_id, creator_id)
 
 
 async def _execute_payout(challenge: dict, winner_id: Optional[str]) -> str:
