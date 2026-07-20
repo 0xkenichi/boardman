@@ -1,13 +1,21 @@
-"""Inline keyboard builders for the ClawStation Telegram bot (simple UX)."""
+"""Inline keyboard builders for the Rematch Telegram bot (simple UX)."""
 from __future__ import annotations
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+import os
+
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+REMATCH_WEB = os.getenv("REMATCH_WEB_URL", "https://playingsidequest.fun/rematch")
+REMATCH_BOARD = os.getenv(
+    "REMATCH_LEADERBOARD_URL", "https://playingsidequest.fun/rematch/leaderboard"
+)
 
 
 def main_menu(miniapp_url: str | None = None) -> InlineKeyboardMarkup:
     """Big simple menu — no commands required."""
     builder = InlineKeyboardBuilder()
+    web = miniapp_url or REMATCH_WEB
     builder.row(
         InlineKeyboardButton(text="🎮 My match", callback_data="ui:match"),
         InlineKeyboardButton(text="⚔️ New challenge", callback_data="ui:challenge"),
@@ -18,10 +26,32 @@ def main_menu(miniapp_url: str | None = None) -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(text="🌐 Switch network", callback_data="ui:network"),
+        InlineKeyboardButton(text="📋 Public board", callback_data="ui:board"),
     )
+    # url= always works; WebApp needs BotFather domain — optional via env
+    use_webapp = os.getenv("REMATCH_USE_WEBAPP", "").lower() in ("1", "true", "yes")
+    if use_webapp:
+        builder.row(
+            InlineKeyboardButton(
+                text="🏆 Leaderboard",
+                web_app=WebAppInfo(url=REMATCH_BOARD),
+            ),
+            InlineKeyboardButton(
+                text="🌐 Rematch site",
+                web_app=WebAppInfo(url=web),
+            ),
+        )
+    else:
+        builder.row(
+            InlineKeyboardButton(text="🏆 Leaderboard", url=REMATCH_BOARD),
+            InlineKeyboardButton(text="🌐 Rematch site", url=web),
+        )
     builder.row(
         InlineKeyboardButton(text="📖 How to play", callback_data="menu:learn"),
-        InlineKeyboardButton(text="🎮 $PLAY playbook", callback_data="ui:playbook"),
+        InlineKeyboardButton(text="📜 Rules", callback_data="ui:rules"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🎮 PLAY playbook", callback_data="ui:playbook"),
     )
     return builder.as_markup()
 
@@ -122,6 +152,47 @@ def match_actions_menu(challenge: dict, profile_id: str) -> InlineKeyboardMarkup
         builder.row(
             InlineKeyboardButton(text="⚠️ Disputed — status", callback_data=f"ui:info:{cid}"),
         )
+
+    # Cancel: free / refund / mutual propose-confirm
+    has_lock = bool(
+        challenge.get("creator_lock_tx_id") or challenge.get("opponent_lock_tx_id")
+    )
+    if status in ("open", "accepted") and not has_lock:
+        builder.row(
+            InlineKeyboardButton(text="❌ Cancel match", callback_data=f"ui:cancel:{cid}"),
+        )
+    elif status == "creator_locked" or (
+        challenge.get("creator_lock_tx_id") and not challenge.get("opponent_lock_tx_id")
+    ):
+        builder.row(
+            InlineKeyboardButton(
+                text="❌ Cancel & refund", callback_data=f"ui:cancel:{cid}"
+            ),
+        )
+    elif status in ("locked", "playing", "submitted"):
+        note = str(challenge.get("admin_resolution_note") or "")
+        if note.startswith("cancel_proposed:"):
+            proposer = note.split(":")[1] if ":" in note else ""
+            if proposer and proposer != profile_id:
+                builder.row(
+                    InlineKeyboardButton(
+                        text="✅ Confirm cancel (refund both)",
+                        callback_data=f"ui:cancel:{cid}",
+                    ),
+                )
+            else:
+                builder.row(
+                    InlineKeyboardButton(
+                        text="⏳ Cancel proposed — waiting…",
+                        callback_data=f"ui:info:{cid}",
+                    ),
+                )
+        else:
+            builder.row(
+                InlineKeyboardButton(
+                    text="🤝 Propose cancel", callback_data=f"ui:cancel:{cid}"
+                ),
+            )
 
     builder.row(
         InlineKeyboardButton(text="📋 Match status", callback_data=f"ui:info:{cid}"),

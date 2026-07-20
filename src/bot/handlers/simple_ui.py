@@ -221,18 +221,145 @@ async def ui_network_set(callback: types.CallbackQuery) -> None:
 @router.callback_query(F.data == "ui:playbook")
 async def ui_playbook(callback: types.CallbackQuery) -> None:
     await callback.answer()
-    from gaming.src.bot.handlers.profile import cmd_playbook
-
-    # Reuse text via fake message is messy — inline short version
     text = (
-        "🎮 <b>$PLAY playbook</b>\n\n"
-        "• Win <b>+100</b> × streak · Loss <b>+40</b> · Draw <b>+50</b>\n"
-        "• No-show (ghost) <b>−50</b>\n"
-        "• Tier = Bronze→Diamond from total $PLAY\n"
+        "🎮 <b>PLAY playbook</b> (Rematch)\n\n"
+        "• Win <b>+100</b> · Loss <b>+40</b> · Draw <b>+50</b> · No-show <b>−50</b>\n"
+        "• <b>Arc ×1.5</b> · Avalanche ×1.25 · Base ×1.0\n"
+        "• New rivals higher mult · rematches still earn\n"
         "• One match at a time\n\n"
-        "Full: /playbook"
+        "Points ≠ cash. Token only if seasons funded.\n"
+        "Full: /playbook · playingsidequest.fun/rematch"
     )
     await callback.message.answer(text, parse_mode=ParseMode.HTML, reply_markup=back_menu())
+
+
+@router.callback_query(F.data == "ui:rules")
+@router.callback_query(F.data == "menu:learn")
+async def ui_rules_tutorial(callback: types.CallbackQuery) -> None:
+    await callback.answer()
+    from gaming.src.bot.utils.flow import how_to_play
+
+    rules = (
+        "\n\n📜 <b>Rules (short)</b>\n"
+        "• Skill match + proof — not a casino\n"
+        "• One match at a time\n"
+        "• Cancel free before both lock; after lock need <b>mutual cancel</b>\n"
+        "• Ghosting = PLAY penalty\n"
+        "• Dispute: /dispute CODE · Support ID: /support_id CODE\n"
+        "• Testnet only — funds may reset\n"
+    )
+    await callback.message.answer(
+        how_to_play() + rules,
+        parse_mode=ParseMode.HTML,
+        reply_markup=main_menu(),
+    )
+
+
+@router.callback_query(F.data == "ui:board")
+async def ui_public_board(callback: types.CallbackQuery) -> None:
+    await callback.answer()
+    from gaming.src.backend.services.rematch_public import (
+        format_leaderboard_text,
+        format_metrics_text,
+        get_chain_metrics,
+        get_leaderboard,
+        get_open_public_challenges,
+    )
+    from gaming.src.bot.keyboards import REMATCH_BOARD, REMATCH_WEB
+    from aiogram.types import InlineKeyboardButton, WebAppInfo
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    try:
+        board = get_open_public_challenges(12)
+        lb = get_leaderboard(8)
+        metrics = get_chain_metrics()
+    except Exception as exc:
+        logger.exception("[UI] board load failed")
+        await callback.message.answer(
+            f"❌ Board unavailable: {h(exc)}",
+            parse_mode=ParseMode.HTML,
+            reply_markup=main_menu(),
+        )
+        return
+
+    lines = ["📋 <b>Public board</b> (open challenges)\n"]
+    if not board:
+        lines.append("No open public challenges right now.\nCreate one with visibility <b>public</b>.\n")
+    else:
+        for b in board:
+            lines.append(
+                f"• <code>{b['code']}</code> · ${b['stake']:.0f} · {b['game']} · "
+                f"{b['chain']} · @{b['creator_tag']}"
+            )
+    lines.append("")
+    lines.append(format_leaderboard_text(lb, 8))
+    lines.append("")
+    lines.append(format_metrics_text(metrics))
+
+    kb = InlineKeyboardBuilder()
+    kb.row(InlineKeyboardButton(text="🏆 Open leaderboard", url=REMATCH_BOARD))
+    kb.row(InlineKeyboardButton(text="🌐 Rematch site", url=REMATCH_WEB))
+    kb.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
+    await callback.message.answer(
+        "\n".join(lines),
+        parse_mode=ParseMode.HTML,
+        reply_markup=kb.as_markup(),
+    )
+
+
+@router.callback_query(F.data.startswith("ui:cancel:"))
+async def ui_cancel_match(callback: types.CallbackQuery) -> None:
+    try:
+        await callback.answer()
+    except Exception:
+        pass
+    cid = callback.data.split(":", 2)[2]
+    user = callback.from_user
+    if not user:
+        return
+    profile = await get_or_create_profile(user)
+    from gaming.src.backend.services.rematch_cancel import execute_cancel
+    from gaming.src.bot.utils.notify import notify_user
+
+    try:
+        result = await execute_cancel(profile["id"], cid)
+    except Exception as exc:
+        logger.exception("[UI] cancel failed")
+        await callback.message.answer(
+            f"❌ Cancel failed: {h(exc)}",
+            parse_mode=ParseMode.HTML,
+            reply_markup=main_menu(),
+        )
+        return
+
+    msg = result.get("message") or "Done."
+    await callback.message.answer(
+        f"{'✅' if result.get('success') else 'ℹ️'} {h(msg)}",
+        parse_mode=ParseMode.HTML,
+        reply_markup=main_menu(),
+    )
+
+    # Notify other party
+    ch = await _load_challenge(cid)
+    if ch:
+        other = (
+            ch.get("opponent_id")
+            if profile["id"] == ch.get("creator_id")
+            else ch.get("creator_id")
+        )
+        if other and result.get("success"):
+            mode = result.get("mode")
+            if mode == "propose":
+                await notify_user(
+                    other,
+                    f"🤝 Opponent proposed cancel on match <code>{h(result.get('code'))}</code>.\n"
+                    f"Open <b>My match</b> → Confirm cancel (both refunded) or keep playing.",
+                )
+            elif mode in ("free", "refund", "confirm"):
+                await notify_user(
+                    other,
+                    f"❌ Match <code>{h(result.get('code'))}</code> was cancelled.",
+                )
 
 
 @router.callback_query(F.data == "ui:match")
@@ -318,16 +445,55 @@ async def ui_challenge_start(callback: types.CallbackQuery, state: FSMContext) -
                 f"❌ {blocked}", reply_markup=main_menu(), parse_mode=None
             )
             return
-        await state.set_state(ChallengeWizard.waiting_tag)
+        from aiogram.types import InlineKeyboardButton
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+        kb = InlineKeyboardBuilder()
+        kb.row(
+            InlineKeyboardButton(
+                text="👤 Challenge a friend", callback_data="ui:chal:mode:private"
+            )
+        )
+        kb.row(
+            InlineKeyboardButton(
+                text="📋 Post to public board", callback_data="ui:chal:mode:public"
+            )
+        )
+        kb.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
         await callback.message.answer(
             "⚔️ <b>New challenge</b>\n\n"
-            "Send their gaming tag or Telegram @username.\n"
-            "Example: <code>@stillkenichi</code>\n\n"
-            f"Stake limits: $1 – ${MAX_STAKE_USDC:,.0f} USDC\n"
-            "They must have opened this bot once (/start).",
+            "• <b>Friend</b> — invite one @tag\n"
+            "• <b>Public board</b> — first to accept in the bot / website\n\n"
+            f"Stake limits: $1 – ${MAX_STAKE_USDC:,.0f} USDC",
             parse_mode=ParseMode.HTML,
-            reply_markup=back_menu(),
+            reply_markup=kb.as_markup(),
         )
+
+
+@router.callback_query(F.data == "ui:chal:mode:private")
+async def ui_chal_mode_private(callback: types.CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    await state.update_data(visibility="private")
+    await state.set_state(ChallengeWizard.waiting_tag)
+    await callback.message.answer(
+        "Send their gaming tag or Telegram @username.\n"
+        "Example: <code>@stillkenichi</code>\n\n"
+        "They must have opened this bot once (/start).",
+        parse_mode=ParseMode.HTML,
+        reply_markup=back_menu(),
+    )
+
+
+@router.callback_query(F.data == "ui:chal:mode:public")
+async def ui_chal_mode_public(callback: types.CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    await state.update_data(visibility="public", opponent_id=None, opponent_tag="public")
+    await state.set_state(ChallengeWizard.waiting_amount)
+    await callback.message.answer(
+        "📋 <b>Public challenge</b>\n\nHow much USDC to stake?",
+        parse_mode=ParseMode.HTML,
+        reply_markup=stake_amount_menu(),
+    )
     except Exception as exc:
         logger.exception("[UI] New challenge failed")
         await callback.message.answer(
@@ -454,10 +620,11 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
     profile = await get_or_create_profile(user)
     data = await state.get_data()
     amount = Decimal(str(data.get("amount", 1)))
-    chain = data.get("chain") or "base"
+    chain = data.get("chain") or "arc"
     game = data.get("game") or "EAFC"
     opponent_id = data.get("opponent_id")
     opponent_tag = data.get("opponent_tag") or "player"
+    visibility = data.get("visibility") or ("public" if not opponent_id else "private")
 
     gate = assert_money_ops_allowed(
         profile["id"], action="challenge", amount=amount, kind="stake"
@@ -503,10 +670,10 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
             "opponent_id": opponent_id,
             "amount_usdc": float(amount),
             "game": game,
-            "visibility": "private",
+            "visibility": visibility,
             "status": "open",
             "expires_at": expires.isoformat(),
-            "message": "ClawStation challenge",
+            "message": "Rematch challenge",
             "settlement_chain": chain,
         }
     )
@@ -528,30 +695,41 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
                 return
 
     await state.clear()
-    from gaming.src.bot.keyboards import challenge_confirm_menu
+    from gaming.src.bot.keyboards import challenge_confirm_menu, REMATCH_BOARD
 
-    try:
-        await notify_user(
-            opponent_id,
-            f"⚔️ <b>Challenge from @{h(profile.get('gaming_tag') or 'player')}</b>\n\n"
-            f"Match: <code>{h(public_code)}</code>\n"
-            f"Stake: <b>${amount:,.2f} USDC</b>\n"
-            f"Game: <b>{h(game)}</b>\n"
-            f"Network: <b>{h(chain)}</b>\n\n"
-            f"Tap Accept or Decline:",
-            buttons=challenge_confirm_menu(challenge_id),
+    if opponent_id:
+        try:
+            await notify_user(
+                opponent_id,
+                f"⚔️ <b>Challenge from @{h(profile.get('gaming_tag') or 'player')}</b>\n\n"
+                f"Match: <code>{h(public_code)}</code>\n"
+                f"Stake: <b>${amount:,.2f} USDC</b>\n"
+                f"Game: <b>{h(game)}</b>\n"
+                f"Network: <b>{h(chain)}</b>\n\n"
+                f"Tap Accept or Decline:",
+                buttons=challenge_confirm_menu(challenge_id),
+            )
+        except Exception:
+            logger.exception("[UI] notify opponent failed")
+        await callback.message.answer(
+            f"✅ Challenge sent to <b>@{h(opponent_tag)}</b>\n"
+            f"Match code: <code>{h(public_code)}</code>\n\n"
+            f"When they Accept, both of you tap <b>Lock my stake</b>.\n"
+            f"Use <b>My match</b> anytime.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=main_menu(),
         )
-    except Exception:
-        logger.exception("[UI] notify opponent failed")
-
-    await callback.message.answer(
-        f"✅ Challenge sent to <b>@{h(opponent_tag)}</b>\n"
-        f"Match code: <code>{h(public_code)}</code>\n\n"
-        f"When they Accept, both of you tap <b>Lock my stake</b>.\n"
-        f"Use <b>My match</b> anytime.",
-        parse_mode=ParseMode.HTML,
-        reply_markup=main_menu(),
-    )
+    else:
+        await callback.message.answer(
+            f"✅ <b>Public challenge posted</b>\n"
+            f"Match: <code>{h(public_code)}</code>\n"
+            f"Stake: <b>${amount:,.2f}</b> · {h(game)} · {h(chain)}\n\n"
+            f"Anyone can accept from <b>Public board</b> or\n"
+            f"{h(REMATCH_BOARD)}\n\n"
+            f"You will lock after someone accepts.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=main_menu(),
+        )
 
 
 # ── Lock stake (button) ──────────────────────────────────────────────────────

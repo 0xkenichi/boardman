@@ -63,6 +63,8 @@ async def _set_bot_commands(bot: Bot) -> None:
         BotCommand(command="challenge", description="(advanced) text challenge"),
         BotCommand(command="dispute", description="Flag a problem (+ support ID)"),
         BotCommand(command="support_id", description="Show full ID for support only"),
+        BotCommand(command="leaderboard", description="PLAY board + metrics"),
+        BotCommand(command="board", description="Public board"),
     ]
     await bot.set_my_commands(commands)
 

@@ -8,7 +8,7 @@ from aiogram import Router, types
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
 
-from gaming.src.bot.keyboards import back_menu
+from gaming.src.bot.keyboards import back_menu, main_menu
 from gaming.src.bot.utils.db import get_or_create_profile, get_profile_by_tag
 
 logger = logging.getLogger(__name__)
@@ -16,8 +16,9 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
-def _format_profile(profile: dict) -> str:
+def _format_profile(profile: dict, history: list | None = None) -> str:
     from gaming.src.backend.services.play_points import tier_from_play_points, tier_label
+    from gaming.src.backend.services.rematch_public import reputation_score
 
     name = escape(str(profile.get("display_name") or "Anonymous"))
     tag = escape(str(profile.get("gaming_tag") or "Not set"))
@@ -28,17 +29,29 @@ def _format_profile(profile: dict) -> str:
     wins = int(profile.get("gaming_wins") or profile.get("total_wins") or 0)
     losses = int(profile.get("gaming_losses") or profile.get("total_losses") or 0)
     draws = int(profile.get("gaming_draws") or 0)
+    rep = reputation_score(wins, losses, draws, play)
     streak_txt = f"🔥 {streak}" if streak else "0"
-    return (
-        f"👤 <b>Profile</b>\n\n"
+    text = (
+        f"👤 <b>Rematch profile</b>\n\n"
         f"Name: <b>{name}</b>\n"
         f"Tag: <code>@{tag}</code>\n\n"
-        f"🎮 <b>$PLAY:</b> <b>{play:,}</b>\n"
+        f"🎮 <b>PLAY:</b> <b>{play:,}</b>\n"
         f"Tier: <b>{escape(tier_label(tier))}</b>\n"
+        f"Reputation: <b>{rep}/100</b>\n"
         f"Hot streak: <b>{streak_txt}</b> (best {best})\n"
-        f"W / L / D: <b>{wins}</b> / <b>{losses}</b> / <b>{draws}</b>\n\n"
-        f"Tier climbs with $PLAY — /playbook"
+        f"W / L / D: <b>{wins}</b> / <b>{losses}</b> / <b>{draws}</b>\n"
     )
+    if history:
+        text += "\n📜 <b>Recent matches</b>\n"
+        for h in history[:8]:
+            text += (
+                f"• <code>{escape(str(h.get('code')))}</code> "
+                f"{escape(str(h.get('result') or '—'))} "
+                f"${h.get('stake') or '?'} {escape(str(h.get('chain') or ''))} "
+                f"({escape(str(h.get('status') or ''))})\n"
+            )
+    text += "\nLeaderboard: playingsidequest.fun/rematch/leaderboard"
+    return text
 
 
 @router.message(Command("profile"))
@@ -58,12 +71,19 @@ async def cmd_profile(message: types.Message) -> None:
                 parse_mode=ParseMode.HTML,
             )
             return
-        # Refresh play fields if missing from select
-        await message.answer(_format_profile(opponent), parse_mode=ParseMode.HTML)
+        history = []
+        try:
+            from gaming.src.backend.services.rematch_public import get_match_history
+
+            history = get_match_history(opponent["id"], 6)
+        except Exception:
+            pass
+        await message.answer(
+            _format_profile(opponent, history), parse_mode=ParseMode.HTML
+        )
         return
 
     profile = await get_or_create_profile(user)
-    # Reload with play columns
     try:
         from backend.supabase_client import get_supabase
 
@@ -84,35 +104,56 @@ async def cmd_profile(message: types.Message) -> None:
     except Exception:
         logger.warning("[Profile] extended select failed", exc_info=True)
 
+    history = []
+    try:
+        from gaming.src.backend.services.rematch_public import get_match_history
+
+        history = get_match_history(profile["id"], 8)
+    except Exception:
+        logger.warning("[Profile] history failed", exc_info=True)
+
     await message.answer(
-        _format_profile(profile), parse_mode=ParseMode.HTML, reply_markup=back_menu()
+        _format_profile(profile, history),
+        parse_mode=ParseMode.HTML,
+        reply_markup=back_menu(),
     )
 
 
 @router.message(Command("playbook"))
 async def cmd_playbook(message: types.Message) -> None:
-    """In-bot $PLAY playbook (short)."""
+    """In-bot PLAY playbook (short)."""
     text = (
-        "📖 <b>$PLAY Playbook</b>\n\n"
-        "$PLAY is ClawStation participation score — <b>not USDC</b>.\n"
-        "Both winners <i>and</i> losers earn points. Streaks boost wins.\n"
-        "May unlock perks later.\n\n"
+        "📖 <b>PLAY Playbook · Rematch</b>\n\n"
+        "PLAY points are a <b>score / voucher</b> — <b>not USDC</b>, not 1:1 token.\n\n"
         "<b>Earn</b>\n"
-        "• Win: <b>+100</b> × hot streak\n"
-        "• Loss: <b>+40</b> (you showed up)\n"
-        "• Draw: <b>+50</b> each\n"
-        "• No-show (ghosted): <b>−50</b> — never reward bad behaviour\n"
-        "• Stake bonus: up to <b>+50</b>\n\n"
-        "<b>Hot streak</b> (wins only)\n"
-        "2-win: ×1.15 · 5-win: ×1.60 · 10-win: ×2.50\n"
-        "A loss resets the streak.\n\n"
-        "<b>Tier</b> (from $PLAY total)\n"
-        "Bronze 0 · Silver 500 · Gold 2k · Platinum 5k · Diamond 10k\n"
-        "Badge for how much you play — future perks possible.\n\n"
-        "<b>Rules</b>\n"
-        "• One match at a time\n"
-        "• Report with FT photo so no-show can't steal your win\n"
-        "• /balance · /profile\n\n"
-        "Full doc: gaming/docs/PLAYBOOK.md"
+        "• Win +100 · Loss +40 · Draw +50 · No-show −50\n"
+        "• <b>Arc ×1.5</b> · Avalanche ×1.25 · Base ×1.0\n"
+        "• New rivals higher · rematches still earn\n"
+        "• Hot streak boosts wins\n\n"
+        "<b>Tier</b> Bronze→Diamond from total PLAY\n\n"
+        "<b>Disclaimer</b>\n"
+        "Testnet only. If we never fund a token season, points stay a free score — "
+        "no airdrop obligation.\n\n"
+        "Docs: playingsidequest.fun/rematch"
     )
     await message.answer(text, parse_mode=ParseMode.HTML, reply_markup=back_menu())
+
+
+@router.message(Command("leaderboard"))
+@router.message(Command("board"))
+@router.message(Command("stats"))
+async def cmd_board(message: types.Message) -> None:
+    """Leaderboard + metrics shortcut."""
+    from gaming.src.backend.services.rematch_public import (
+        format_leaderboard_text,
+        format_metrics_text,
+        get_chain_metrics,
+        get_leaderboard,
+    )
+
+    try:
+        text = format_leaderboard_text(get_leaderboard(15), 15)
+        text += "\n\n" + format_metrics_text(get_chain_metrics())
+    except Exception as exc:
+        text = f"❌ Could not load board: {escape(str(exc))}"
+    await message.answer(text, parse_mode=ParseMode.HTML, reply_markup=main_menu())
