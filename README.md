@@ -1,31 +1,57 @@
-# Gaming Vertical
+# Rematch
 
-This folder is the single home for paused SideQuest gaming work.
+**Lock in. Play. Settle. Run it back.**
 
-It owns everything related to Telegram bot gaming, 1v1 staking, gaming quests, console-style game sessions, GameX Pro-adjacent experiments, proof-of-play, game verification, gaming-token/blockchain escrow notes, and paused WhatsApp follow-up for the gaming bot surface.
+Rematch is a Telegram app for **1v1 console skill matches** with **USDC escrow**. Players challenge friends, lock stakes, play (EA FC first), and settle with **AI screenshot proof**.
 
-## Current Product Direction
+Built by [sideQuest](https://playingsidequest.fun).
 
-- Primary focus is Social Quest + City Quest.
-- Gaming is paused, not deleted.
-- Telegram bot gaming comes before WhatsApp if bot work resumes.
-- Telegram and WhatsApp bot work should remain available in the repo, but both are paused for now.
+## Play
 
-## Source Code
+| | |
+|--|--|
+| **Bot** | [t.me/ClawStationOfficialBot](https://t.me/ClawStationOfficialBot) |
+| **Site** | [playingsidequest.fun/rematch](https://playingsidequest.fun/rematch) |
+| **Leaderboard** | [playingsidequest.fun/rematch/leaderboard](https://playingsidequest.fun/rematch/leaderboard) |
+| **Get USDC** | [playingsidequest.fun/rematch/get-usdc](https://playingsidequest.fun/rematch/get-usdc) · [Circle faucet](https://faucet.circle.com/) |
 
-- `src/backend/` contains paused backend source for Telegram bot gaming and game-session flows.
-- `src/backend/bot/` contains Telegram bot handlers, keyboards, and trust/safety commands for gaming bot flows.
-- `src/backend/routes/gaming.py` contains the paused gaming API route implementation.
-- Thin compatibility shims remain in `backend/` so existing imports and route registration do not break while the vertical is paused.
+## How it works
 
-## Documentation
+1. Open the bot → **Get USDC** → fund your wallet  
+2. **New challenge** a friend → they Accept  
+3. Both **Lock** stake  
+4. HOME / AWAY → play on console → submit full-time photo  
+5. Winner paid in USDC · both earn PLAY score  
 
-- `PROOF_OF_PLAY_SYSTEM.md`
-- `docs/lite_papers/02_gaming_staking.md`
-- `docs/api/` for blockchain, Circle escrow, and game coverage docs
-- `docs/guides/` for Base Sepolia, testnet, and match-type guides
-- `docs/architecture/BLOCKCHAIN_SECURITY_AUDIT.md`
+## Stack
 
-## Shared Code Left Outside Gaming
+- **Telegram** bot (button-first UX)  
+- **Circle** developer-controlled wallets · USDC  
+- **ClawEscrow** dual-lock / resolve  
+- **AI vision** for scoreline from FT screenshots  
+- Chains: **Arc** (default), Avalanche Fuji, Base Sepolia  
 
-Some gaming-adjacent files remain outside `gaming/` because they are shared with active Social Quest or City Quest flows, route registration, webhooks, wallet services, database access, or package/runtime entrypoints. See `REORG_REPORT.md` for the full risk list.
+## Repo layout
+
+This repository is the **Rematch product codebase** (bot, gaming backend, escrow integration, docs).
+
+```
+src/bot/           Telegram bot
+src/backend/       Settlement, Circle, matches
+docs/              Product & ops notes
+deploy/            Hosting configs
+```
+
+Parent monorepo (full sideQuest app):  
+https://github.com/playingsidequest-dotplay/sideQuest  
+Branch: `rematch`
+
+## Status
+
+Live product · shipping weekly · multi-chain testnets · mainnet path in progress.
+
+## License / contact
+
+© sideQuest · Rematch  
+Grants / builders: open an issue or contact via Telegram bot support.
+
