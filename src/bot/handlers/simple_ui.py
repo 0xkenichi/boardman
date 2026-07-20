@@ -560,6 +560,13 @@ async def ui_challenge_start(callback: types.CallbackQuery, state: FSMContext) -
             parse_mode=ParseMode.HTML,
             reply_markup=kb.as_markup(),
         )
+    except Exception as exc:
+        logger.exception("[UI] New challenge failed")
+        await callback.message.answer(
+            f"❌ Could not start challenge: {h(exc)}",
+            parse_mode=ParseMode.HTML,
+            reply_markup=main_menu(),
+        )
 
 
 @router.callback_query(F.data == "ui:chal:mode:private")
@@ -586,13 +593,6 @@ async def ui_chal_mode_public(callback: types.CallbackQuery, state: FSMContext) 
         parse_mode=ParseMode.HTML,
         reply_markup=stake_amount_menu(),
     )
-    except Exception as exc:
-        logger.exception("[UI] New challenge failed")
-        await callback.message.answer(
-            f"❌ Could not start challenge: {h(exc)}",
-            parse_mode=ParseMode.HTML,
-            reply_markup=main_menu(),
-        )
 
 
 @router.message(ChallengeWizard.waiting_tag)
