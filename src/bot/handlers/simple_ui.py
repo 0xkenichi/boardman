@@ -127,48 +127,83 @@ async def ui_main(callback: types.CallbackQuery, state: FSMContext) -> None:
     )
 
 
-@router.callback_query(F.data == "ui:network")
-async def ui_network_menu(callback: types.CallbackQuery) -> None:
-    """Show network switcher + balances."""
-    await callback.answer()
+@router.callback_query(F.data == "ui:get_usdc")
+async def ui_get_usdc(callback: types.CallbackQuery) -> None:
+    """Load Arc address → try Circle API drip → else fund helper + web faucet."""
+    await callback.answer("Loading…")
     user = callback.from_user
     if not user:
         return
     profile = await get_or_create_profile(user)
-    from gaming.src.backend.services.clawstation_circle import (
-        get_all_chain_balances,
-        get_preferred_chain,
+    from gaming.src.backend.services.circle_faucet import (
+        CIRCLE_FAUCET_URL,
+        fund_helper_url,
+        request_arc_usdc,
     )
-    from gaming.src.bot.keyboards import network_menu
+    from gaming.src.bot.keyboards import get_usdc_menu
 
-    pref = await get_preferred_chain(profile["id"])
-    lines = []
+    addr = ""
     try:
-        for r in await get_all_chain_balances(profile["id"]):
-            mark = " ✓" if r["id"] == pref else ""
-            gas = "USDC gas" if r.get("gas_mode") == "usdc_native" else f"{r.get('gas_token')} gas"
-            lines.append(
-                f"• <b>{h(r['label'])}</b>: ${r['balance_usdc']:,.2f} ({gas}){mark}"
-            )
-    except Exception:
-        lines = ["(could not load balances)"]
+        from gaming.src.backend.services.clawstation_circle import set_preferred_chain
 
+        await set_preferred_chain(profile["id"], "arc")
+        wallet = await ensure_user_wallet(profile["id"], chain_id="arc")
+        addr = wallet.get("address") or ""
+    except Exception as exc:
+        logger.exception("[UI] get_usdc wallet failed")
+        await callback.message.answer(
+            f"❌ Could not load wallet: {h(exc)}",
+            parse_mode=ParseMode.HTML,
+            reply_markup=main_menu(),
+        )
+        return
+
+    if not addr:
+        await callback.message.answer(
+            "❌ No deposit address yet. Tap /start and try again.",
+            reply_markup=main_menu(),
+        )
+        return
+
+    # Best path: Circle API auto-drip (needs account permission; often fails on free keys)
+    drip = await request_arc_usdc(addr)
+    helper = fund_helper_url(addr)
+
+    if drip.get("ok"):
+        await callback.message.answer(
+            "💧 <b>USDC requested</b>\n\n"
+            f"Address:\n<code>{h(addr)}</code>\n\n"
+            f"{h(drip.get('message') or 'Wait ~30s, then open Wallet.')}",
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_usdc_menu(
+                faucet_url=CIRCLE_FAUCET_URL,
+                helper_url=helper,
+            ),
+            disable_web_page_preview=True,
+        )
+        return
+
+    # Fallback: address shown (tap-to-copy on Telegram) + fund page with address prefilled
     await callback.message.answer(
-        "🌐 <b>Switch network</b>\n\n"
-        "Each network has its own Circle deposit address.\n"
-        "<b>Arc</b> uses USDC for gas (no test ETH).\n\n"
-        + "\n".join(lines)
-        + "\n\nActive network = new challenges + Lock stake.\n"
-        "Pick a network:",
+        "💧 <b>Get USDC on Arc</b>\n\n"
+        f"Your address (tap to copy):\n<code>{h(addr)}</code>\n\n"
+        "1. Tap <b>Fund page</b> — address is ready to copy\n"
+        "2. Open faucet → <b>Arc Testnet</b> → <b>USDC</b> → paste\n"
+        "3. Back here → Wallet → Refresh\n\n"
+        "Gas is paid in USDC — you only need USDC.",
         parse_mode=ParseMode.HTML,
-        reply_markup=network_menu(pref),
+        reply_markup=get_usdc_menu(
+            faucet_url=CIRCLE_FAUCET_URL,
+            helper_url=helper,
+        ),
+        disable_web_page_preview=True,
     )
 
 
-@router.callback_query(F.data.startswith("ui:network:set:"))
-async def ui_network_set(callback: types.CallbackQuery) -> None:
+@router.callback_query(F.data == "ui:network")
+async def ui_network_menu(callback: types.CallbackQuery) -> None:
+    """Arc-only network screen (product is Arc-first for now)."""
     await callback.answer()
-    chain = callback.data.split(":")[-1]
     user = callback.from_user
     if not user:
         return
@@ -180,76 +215,84 @@ async def ui_network_set(callback: types.CallbackQuery) -> None:
     from gaming.src.bot.keyboards import network_menu
 
     try:
-        cid = await set_preferred_chain(profile["id"], chain)
-        # Dedicated Circle wallet per chain (required for signing locks)
-        wallet = await ensure_user_wallet(profile["id"], chain_id=cid)
-        bal = await get_usdc_balance(profile["id"], chain_id=cid)
-        label = get_chain(cid).get("label", cid)
-        gas = get_chain(cid).get("gas_token", "?")
+        await set_preferred_chain(profile["id"], "arc")
+        wallet = await ensure_user_wallet(profile["id"], chain_id="arc")
+        bal = await get_usdc_balance(profile["id"], chain_id="arc")
         addr = wallet.get("address") or ""
-        note = (
-            "Gas is paid in USDC — no test ETH needed."
-            if get_chain(cid).get("gas_mode") == "usdc_native"
-            else f"You may need a little {gas} for gas (platform can top up when possible)."
-        )
-        faucet = (
-            "\n\nArc faucet: https://faucet.circle.com/ → <b>Arc Testnet</b> → USDC"
-            if cid == "arc"
-            else ""
-        )
+    except Exception as exc:
         await callback.message.answer(
-            f"✅ Active network: <b>{h(label)}</b>\n"
-            f"USDC on this network: <b>${bal:,.2f}</b>\n\n"
-            f"{note}\n\n"
-            f"<b>Deposit address for {h(label)} only</b> "
-            f"(different from Base):\n<code>{h(addr)}</code>\n\n"
-            f"New challenges default to this network. "
-            f"Fund this address before Lock stake."
-            f"{faucet}",
+            f"❌ {h(exc)}",
             parse_mode=ParseMode.HTML,
             reply_markup=main_menu(),
+        )
+        return
+
+    await callback.message.answer(
+        "🌐 <b>Network</b>\n\n"
+        "Rematch runs on <b>Arc</b>.\n"
+        f"Balance: <b>${bal:,.2f} USDC</b>\n\n"
+        f"Deposit:\n<code>{h(addr)}</code>\n\n"
+        "Need funds? Tap <b>Get USDC</b>.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=network_menu("arc"),
+    )
+
+
+@router.callback_query(F.data.startswith("ui:network:set:"))
+async def ui_network_set(callback: types.CallbackQuery) -> None:
+    """Force Arc for now — ignore other chain ids from old menus."""
+    await callback.answer()
+    user = callback.from_user
+    if not user:
+        return
+    profile = await get_or_create_profile(user)
+    from gaming.src.backend.services.clawstation_circle import (
+        get_usdc_balance,
+        set_preferred_chain,
+    )
+    from gaming.src.bot.keyboards import get_usdc_menu
+
+    try:
+        await set_preferred_chain(profile["id"], "arc")
+        wallet = await ensure_user_wallet(profile["id"], chain_id="arc")
+        bal = await get_usdc_balance(profile["id"], chain_id="arc")
+        addr = wallet.get("address") or ""
+        await callback.message.answer(
+            f"✅ You're on <b>Arc</b>\n"
+            f"USDC: <b>${bal:,.2f}</b>\n\n"
+            f"Deposit:\n<code>{h(addr)}</code>\n\n"
+            f"Fund via <b>Get USDC</b> before locking a stake.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_usdc_menu(),
         )
     except Exception as exc:
         logger.exception("[UI] network set failed")
         await callback.message.answer(
             f"❌ Could not switch: {h(exc)}",
             parse_mode=ParseMode.HTML,
-            reply_markup=network_menu(chain),
+            reply_markup=main_menu(),
         )
 
 
 @router.callback_query(F.data == "ui:playbook")
 async def ui_playbook(callback: types.CallbackQuery) -> None:
     await callback.answer()
-    text = (
-        "🎮 <b>PLAY playbook</b> (Rematch)\n\n"
-        "• Win <b>+100</b> · Loss <b>+40</b> · Draw <b>+50</b> · No-show <b>−50</b>\n"
-        "• <b>Arc ×1.5</b> · Avalanche ×1.25 · Base ×1.0\n"
-        "• New rivals higher mult · rematches still earn\n"
-        "• One match at a time\n\n"
-        "Points ≠ cash. Token only if seasons funded.\n"
-        "Full: /playbook · playingsidequest.fun/rematch"
+    from gaming.src.bot.utils.flow import play_points_short
+
+    await callback.message.answer(
+        play_points_short(),
+        parse_mode=ParseMode.HTML,
+        reply_markup=back_menu(),
     )
-    await callback.message.answer(text, parse_mode=ParseMode.HTML, reply_markup=back_menu())
 
 
 @router.callback_query(F.data == "ui:rules")
-@router.callback_query(F.data == "menu:learn")
-async def ui_rules_tutorial(callback: types.CallbackQuery) -> None:
+async def ui_rules(callback: types.CallbackQuery) -> None:
     await callback.answer()
-    from gaming.src.bot.utils.flow import how_to_play
+    from gaming.src.bot.utils.flow import rules_short
 
-    rules = (
-        "\n\n📜 <b>Rules (short)</b>\n"
-        "• Skill match + proof — not a casino\n"
-        "• One match at a time\n"
-        "• Cancel free before both lock; after lock need <b>mutual cancel</b>\n"
-        "• Ghosting = PLAY penalty\n"
-        "• Dispute: /dispute CODE · Support ID: /support_id CODE\n"
-        "• Testnet only — funds may reset\n"
-    )
     await callback.message.answer(
-        how_to_play() + rules,
+        rules_short(),
         parse_mode=ParseMode.HTML,
         reply_markup=main_menu(),
     )
@@ -392,9 +435,9 @@ async def ui_rematch_list(callback: types.CallbackQuery, state: FSMContext) -> N
         return
 
     await callback.message.answer(
-        "🔄 <b>Rematch</b> — same stake, game & network as last time.\n"
-        "Tap a rival → they Accept → both Lock. Almost instant.\n\n"
-        "<i>New rivals still earn higher PLAY; rematches still pay.</i>",
+        "🔄 <b>Rematch</b>\n"
+        "Same stake & game as last time.\n"
+        "Tap a rival → they Accept → both Lock.",
         parse_mode=ParseMode.HTML,
         reply_markup=rematch_rivals_menu(rivals),
     )
@@ -648,51 +691,37 @@ async def ui_chal_amt(callback: types.CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(ChallengeWizard.waiting_game, F.data.startswith("ui:chal:game:"))
 async def ui_chal_game(callback: types.CallbackQuery, state: FSMContext) -> None:
+    """Pick game → Arc is fixed (no chain picker)."""
     await callback.answer()
     game = callback.data.split(":")[-1]
-    await state.update_data(game=game)
-    # Prefer user's active network; still allow pick
-    from gaming.src.backend.services.clawstation_circle import get_preferred_chain
-
-    user = callback.from_user
-    pref = "arc"
-    if user:
-        try:
-            pref = await get_preferred_chain((await get_or_create_profile(user))["id"])
-        except Exception:
-            pref = "arc"
-    await state.set_state(ChallengeWizard.waiting_chain)
+    await state.update_data(game=game, chain="arc")
+    data = await state.get_data()
+    await state.set_state(ChallengeWizard.confirm)
     await callback.message.answer(
-        f"Game: <b>{h(game)}</b>\n\n"
-        f"Which network?\n"
-        f"<b>Arc</b> = USDC gas (recommended if no test ETH).\n"
-        f"Your active network is <b>{h(pref)}</b>.",
+        f"📝 <b>Confirm challenge</b>\n\n"
+        f"To: @{h(data.get('opponent_tag'))}\n"
+        f"Stake: <b>${data.get('amount')}</b> USDC\n"
+        f"Game: <b>{h(game)}</b>\n"
+        f"Network: <b>Arc</b>\n\n"
+        f"Send it?",
         parse_mode=ParseMode.HTML,
-        reply_markup=chain_menu(),
+        reply_markup=confirm_challenge_menu(),
     )
 
 
 @router.callback_query(ChallengeWizard.waiting_chain, F.data.startswith("ui:chal:chain:"))
 async def ui_chal_chain(callback: types.CallbackQuery, state: FSMContext) -> None:
+    """Legacy path if a user still has an old wizard state — force Arc."""
     await callback.answer()
-    chain = callback.data.split(":")[-1]
-    if not chain_has_escrow(chain):
-        await callback.message.answer(
-            f"❌ {chain} not ready yet. Pick Base.",
-            reply_markup=chain_menu(),
-            parse_mode=None,
-        )
-        return
-    await state.update_data(chain=chain)
+    await state.update_data(chain="arc")
     data = await state.get_data()
     await state.set_state(ChallengeWizard.confirm)
-    label = get_chain(chain).get("label", chain)
     await callback.message.answer(
         f"📝 <b>Confirm challenge</b>\n\n"
         f"To: @{h(data.get('opponent_tag'))}\n"
         f"Stake: <b>${data.get('amount')}</b> USDC\n"
         f"Game: <b>{h(data.get('game'))}</b>\n"
-        f"Network: <b>{h(label)}</b>\n\n"
+        f"Network: <b>Arc</b>\n\n"
         f"Send it?",
         parse_mode=ParseMode.HTML,
         reply_markup=confirm_challenge_menu(),
@@ -712,7 +741,7 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
     profile = await get_or_create_profile(user)
     data = await state.get_data()
     amount = Decimal(str(data.get("amount", 1)))
-    chain = data.get("chain") or "arc"
+    chain = "arc"  # product surface is Arc-only for now
     game = data.get("game") or "EAFC"
     opponent_id = data.get("opponent_id")
     opponent_tag = data.get("opponent_tag") or "player"
@@ -740,11 +769,12 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
         await callback.message.answer(f"❌ Balance error: {h(exc)}", parse_mode=ParseMode.HTML)
         return
     if bal < amount:
+        from gaming.src.bot.keyboards import get_usdc_menu
+
         await callback.message.answer(
-            f"❌ Not enough USDC on <b>{h(chain)}</b>. You have ${bal:,.2f} there.\n"
-            f"Fund your deposit address on that network (Switch network → see address).\n"
-            f"Arc uses USDC for gas — no ETH needed.",
-            reply_markup=main_menu(),
+            f"❌ Not enough USDC. You have <b>${bal:,.2f}</b>.\n"
+            f"Tap <b>Get USDC</b> to fund your Arc wallet, then try again.",
+            reply_markup=get_usdc_menu(),
             parse_mode=ParseMode.HTML,
         )
         return
@@ -871,22 +901,23 @@ async def ui_lock(callback: types.CallbackQuery) -> None:
         bal = await get_usdc_balance(profile["id"], chain_id=chain)
         if bal < amount:
             label = get_chain(chain).get("label", chain)
+            from gaming.src.bot.keyboards import get_usdc_menu
+
             await callback.message.answer(
-                f"❌ Not enough USDC on <b>{h(label)}</b> for this match.\n"
+                f"❌ Not enough USDC for this match.\n"
                 f"Need <b>${amount:,.2f}</b>, have <b>${bal:,.2f}</b>.\n\n"
-                f"Deposit address on {h(label)}:\n<code>{h(wallet.get('address') or '')}</code>\n\n"
-                f"⚠️ Each network has its own Circle wallet. Funds on Base "
-                f"do not auto-appear on Arc (and vice versa).",
+                f"Your address:\n<code>{h(wallet.get('address') or '')}</code>\n\n"
+                f"Tap <b>Get USDC</b>, then lock again.",
                 parse_mode=ParseMode.HTML,
-                reply_markup=match_actions_menu(ch, profile["id"]),
+                reply_markup=get_usdc_menu(),
             )
             clear_idempotent(idem_key)
             return
     except Exception as exc:
         logger.exception("[UI] lock preflight failed")
         await callback.message.answer(
-            f"❌ Wallet not ready on {h(chain)}: {h(exc)}\n"
-            f"Try <b>Base Sepolia</b> for this match, or Switch network + fund first.",
+            f"❌ Wallet not ready: {h(exc)}\n"
+            f"Open <b>Get USDC</b> / Wallet and try again.",
             parse_mode=ParseMode.HTML,
             reply_markup=main_menu(),
         )
@@ -894,7 +925,7 @@ async def ui_lock(callback: types.CallbackQuery) -> None:
         return
 
     await callback.message.answer(
-        f"⏳ Locking <b>${amount:,.2f}</b> on {h(chain)}… (30–90s)",
+        f"⏳ Locking <b>${amount:,.2f}</b> USDC…",
         parse_mode=ParseMode.HTML,
     )
 

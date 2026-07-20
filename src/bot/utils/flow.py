@@ -3,48 +3,73 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+# Public faucet — Arc USDC only (keep in one place)
+ARC_FAUCET_URL = "https://faucet.circle.com/"
+ARC_FAUCET_HINT = "Circle Faucet → Arc Testnet → USDC"
+
 
 def how_to_play() -> str:
     return (
-        "🎮 <b>Rematch — how to play</b> (testnet)\n\n"
-        "Buttons only. No long IDs needed.\n\n"
-        "<b>1. Pick Arc (recommended)</b>\n"
-        "Switch network → <b>Arc Testnet</b> — gas in USDC, best PLAY points.\n"
-        "Wallet → copy address → send <b>testnet USDC</b> on that network.\n\n"
+        "🎮 <b>How to play Rematch</b>\n\n"
+        "<b>1. Get USDC</b>\n"
+        "Wallet → <b>Get USDC</b> → fund your Arc address.\n\n"
         "<b>2. Challenge a friend</b>\n"
-        "New challenge → their @tag → stake → game → network → Send.\n"
+        "New challenge → their @tag → stake → game → Send.\n"
         "They Accept in Telegram.\n\n"
         "<b>3. Both lock</b>\n"
-        "My match → Lock my stake (you first if you challenged).\n\n"
-        "<b>4. HOME / AWAY → play console → Submit FT photo</b>\n"
-        "Caption like <code>5-3</code>. AI reads the score. Winner paid in USDC.\n\n"
-        "<b>Testnet mission</b>\n"
-        "We need real matches + volume on testnets (esp. <b>Arc</b>) for grants & mainnet.\n"
-        "PLAY points: <b>Arc 1.5×</b> · Avalanche 1.25× · Base 1.0×\n"
-        "New rivals / new Telegram users → higher mult than endless rematches.\n"
-        "Multi-chain players (all three) get noted for seasons.\n\n"
+        "My match → Lock my stake.\n\n"
+        "<b>4. Play &amp; settle</b>\n"
+        "HOME or AWAY → play on console → Submit FT photo\n"
+        "Caption like <code>5-3</code>. Winner is paid in USDC.\n\n"
         "<b>Rules</b>\n"
         "• One match at a time\n"
-        "• Ghosting = −PLAY (no reward)\n"
-        "• Test tokens only — see /playbook disclaimer"
+        "• Fair play — no ghosting\n"
+        "• Skill matches with proof"
     )
 
 
 def short_help() -> str:
     return (
         "📋 <b>Rematch</b> · sideQuest\n\n"
-        "🎮 My match · ⚔️ New challenge · 💰 Wallet · 🌐 Network · 👤 Profile\n\n"
-        "Prefer <b>Arc</b> for max PLAY. Bring new players for higher mults.\n"
-        "/howto · /playbook · /balance · /support_id"
+        "🎮 My match · ⚔️ Challenge · 💰 Wallet · 👤 Profile\n\n"
+        "/howto · /balance · /support_id"
     )
 
 
-def testnet_push_banner() -> str:
+def rules_short() -> str:
     return (
-        "🧪 <b>Testnet season</b>\n"
-        "Play real locks on <b>Arc</b> (best), Avalanche, Base.\n"
-        "Settled volume helps us qualify for chain grants & mainnet.\n"
-        "PLAY points ≠ money — see /playbook."
+        "📜 <b>Rules</b>\n\n"
+        "• Skill match with proof — play fair\n"
+        "• One match at a time\n"
+        "• Cancel free before both lock; after lock both must agree\n"
+        "• Dispute: /dispute CODE\n"
+        "• Support: /support_id CODE\n"
+        "• Only stake what you can afford to lose"
+    )
+
+
+def play_points_short() -> str:
+    return (
+        "🎮 <b>PLAY points</b>\n\n"
+        "Score for competing on Rematch.\n"
+        "• Win <b>+100</b> · Loss <b>+40</b> · Draw <b>+50</b>\n"
+        "• No-show <b>−50</b>\n"
+        "• New rivals earn more than endless rematches\n"
+        "• Tiers: Bronze → Diamond\n\n"
+        "PLAY is a score — not cash."
+    )
+
+
+def get_usdc_copy(address: str) -> str:
+    addr = address or "—"
+    return (
+        "💧 <b>Get USDC on Arc</b>\n\n"
+        f"Your address (tap to copy):\n<code>{addr}</code>\n\n"
+        "1. Tap <b>Fund page</b> or open the faucet\n"
+        "2. Choose <b>Arc Testnet</b> → <b>USDC</b>\n"
+        "3. Paste address → request\n"
+        "4. Wallet → Refresh\n\n"
+        "Gas on Arc is paid in USDC — nothing else to fund."
     )
 
 
@@ -79,12 +104,13 @@ def report_status(challenge: dict) -> str:
     opp_ph = _mark(o_shot)
 
     stake = challenge.get("amount_usdc") or challenge.get("stake_amount") or "?"
-    chain = challenge.get("settlement_chain") or "base"
+    chain = challenge.get("settlement_chain") or "arc"
+    chain_label = "Arc" if str(chain).lower() in ("arc", "arc-testnet") else str(chain)
 
     lines = [
         f"⚔️ <b>Your match</b>",
         f"Code: <code>{match_code}</code>",
-        f"Status: <b>{status}</b> · Stake ${stake} · {chain}",
+        f"Status: <b>{status}</b> · Stake ${stake} · {chain_label}",
         f"Sides: creator=<b>{cs}</b> · opponent=<b>{os_}</b>",
         f"Clubs: <b>{ht}</b> (H) vs <b>{at}</b> (A)",
         "",
@@ -114,13 +140,12 @@ def report_status(challenge: dict) -> str:
     elif status == "submitted":
         lines.append("Both reported — payout should run if scores match.")
     elif status == "disputed":
-        lines.append("Disputed — admin will review.")
+        lines.append("Disputed — support will review.")
         lines.append(
-            f"If support asks to confirm: "
-            f"<code>/support_id {match_code}</code>"
+            f"If support asks: <code>/support_id {match_code}</code>"
         )
     elif status == "resolved":
-        lines.append("Done. Check Wallet for USDC + PLAY. Rematch?")
+        lines.append("Done. Check Wallet. Rematch?")
     elif status in ("cancelled", "expired", "declined"):
         lines.append("Match closed.")
 
@@ -154,5 +179,5 @@ def conflict_message(challenge_id: str, reason: str) -> str:
         f"Match: <code>{match_code}</code>\n"
         f"{reason}\n\n"
         f"Match disputed. Send clearer FT photos via <b>Submit result</b>.\n"
-        f"If support asks to confirm: <code>/support_id {match_code}</code>"
+        f"If support asks: <code>/support_id {match_code}</code>"
     )

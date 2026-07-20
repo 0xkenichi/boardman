@@ -95,26 +95,21 @@ async def cmd_balance(message: types.Message) -> None:
     else:
         lines.append(f"• <b>{escape(pref_label)}</b>: (could not load)")
 
-    # Other chains in background style — only if FAST_WALLET is not set
+    # Arc-first UI: other chains only if CLAW_WALLET_ALL_CHAINS=1
     import os
 
     addr_lines = []
     if address:
-        addr_lines.append(
-            f"<b>{escape(pref_label)}</b> deposit:\n<code>{escape(address)}</code>"
-        )
+        addr_lines.append(f"<code>{escape(address)}</code>")
 
-    if os.getenv("CLAW_WALLET_ALL_CHAINS", "1") == "1":
+    if os.getenv("CLAW_WALLET_ALL_CHAINS", "0") == "1":
         try:
             rows = await asyncio.wait_for(get_all_chain_balances(profile["id"]), timeout=18)
             for r in rows:
                 if r["id"] == pref:
                     if r.get("address"):
                         address = r["address"]
-                        addr_lines = [
-                            f"<b>{escape(r['label'])}</b> deposit:\n"
-                            f"<code>{escape(r['address'])}</code>"
-                        ]
+                        addr_lines = [f"<code>{escape(r['address'])}</code>"]
                     continue
                 gas = "USDC gas" if r.get("gas_mode") == "usdc_native" else f"{r.get('gas_token')} gas"
                 lines.append(
@@ -131,26 +126,18 @@ async def cmd_balance(message: types.Message) -> None:
     tier = tier_from_play_points(play)
     streak_txt = f"🔥 {streak}" if streak else "0"
     addr_block = (
-        "\n\n<b>Deposit addresses</b> (per network — not interchangeable)\n"
-        + "\n".join(addr_lines)
-        + "\n"
-        if addr_lines
-        else "\n"
+        "\n\n<b>Your Arc address</b>\n" + "\n".join(addr_lines) + "\n" if addr_lines else "\n"
     )
 
     text = (
         f"💰 <b>Wallet</b>\n\n"
-        f"<b>USDC by network</b>\n"
+        f"<b>Balance</b>\n"
         + ("\n".join(lines) if lines else "—")
         + addr_block
-        + f"\nActive network: <b>{escape(pref)}</b> "
-        f"(lock + withdraw use this network)\n\n"
-        f"🎮 $PLAY: <b>{play:,}</b>\n"
-        f"Hot streak: <b>{streak_txt}</b> (best {best})\n"
+        + f"\n"
+        f"🎮 PLAY: <b>{play:,}</b> · streak <b>{streak_txt}</b> (best {best})\n"
         f"Tier: <b>{escape(tier_label(tier))}</b>\n\n"
-        f"• <b>Deposit</b> — send USDC to the address above on the network you play\n"
-        f"• <b>Withdraw</b> — tap the button below to send USDC out\n"
-        f"• <b>Arc</b> uses USDC for gas (no test ETH needed)\n"
-        f"• Limits: /safety"
+        f"Need funds? Tap <b>Get USDC</b>.\n"
+        f"Withdraw when you're ready."
     )
     await message.answer(text, parse_mode=ParseMode.HTML, reply_markup=wallet_menu())

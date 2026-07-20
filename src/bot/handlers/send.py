@@ -184,8 +184,7 @@ async def cb_send_to_address(callback: types.CallbackQuery, state: FSMContext) -
         "💸 <b>Withdraw to an external wallet</b>\n\n"
         "Reply with: <code>0xAddress amount</code>\n"
         "Example: <code>0x1234…abcd 25</code>\n\n"
-        "⚠️ Use the same network as your active ClawStation network "
-        "(Arc / Base / Avalanche). Wrong network = lost funds.",
+        "⚠️ Withdraw on <b>Arc</b> only (same network as Rematch).",
         parse_mode=ParseMode.HTML,
         reply_markup=back_menu(),
     )

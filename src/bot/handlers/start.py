@@ -64,8 +64,16 @@ async def cmd_start(message: types.Message) -> None:
     except Exception as exc:
         logger.warning("[Start] chat id update failed: %s", exc)
 
+    # Arc-only product surface for now
     try:
-        wallet = await ensure_user_wallet(profile["id"])
+        from gaming.src.backend.services.clawstation_circle import set_preferred_chain
+
+        await set_preferred_chain(profile["id"], "arc")
+    except Exception:
+        logger.warning("[Start] set preferred arc failed for %s", profile["id"], exc_info=True)
+
+    try:
+        wallet = await ensure_user_wallet(profile["id"], chain_id="arc")
         address = wallet.get("address", "Not linked")
     except Exception as exc:
         logger.exception("[Start] Failed to ensure wallet for %s", profile["id"])
@@ -82,28 +90,24 @@ async def cmd_start(message: types.Message) -> None:
     try:
         from gaming.src.backend.services.clawstation_circle import get_usdc_balance
 
-        bal = await get_usdc_balance(profile["id"])
+        bal = await get_usdc_balance(profile["id"], chain_id="arc")
         bal_line = f"Balance: <b>${bal:,.2f} USDC</b>\n"
     except Exception:
         logger.warning("[Start] balance preview failed for %s", profile["id"], exc_info=True)
 
     text = (
         f"🎮 <b>Welcome to Rematch, {name}!</b>\n"
-        f"<i>by sideQuest · testnet</i>\n\n"
+        f"<i>by sideQuest</i>\n\n"
         f"Your tag: <code>@{tag}</code>\n"
-        f"(friends use this to challenge you)\n\n"
+        f"Friends challenge you with this.\n\n"
         f"{bal_line}"
-        f"Deposit address (same on all chains):\n"
+        f"Your Arc deposit address:\n"
         f"<code>{addr}</code>\n\n"
-        f"🧪 <b>Testnet mission:</b> real locks & volume — "
-        f"<b>Arc pays 1.5× PLAY</b>, Avalanche 1.25×, Base 1×. "
-        f"New rivals &gt; same friend loop.\n\n"
-        f"<b>Buttons only:</b>\n"
-        f"1. <b>Switch network</b> → Arc (USDC gas)\n"
-        f"2. Fund testnet USDC → <b>New challenge</b>\n"
+        f"<b>Get started</b>\n"
+        f"1. <b>Get USDC</b> → fund your address\n"
+        f"2. <b>New challenge</b> a friend\n"
         f"3. Accept → Lock → Side → FT photo\n\n"
-        f"Docs: playingsidequest.fun/rematch · /playbook for PLAY rules\n\n"
-        f"How to: /howto"
+        f"Tap <b>How to play</b> anytime."
     )
     try:
         await message.answer(text, reply_markup=main_menu(), parse_mode=ParseMode.HTML)
@@ -111,13 +115,12 @@ async def cmd_start(message: types.Message) -> None:
         # Never fail silent — fall back to plain text so the user always gets a reply.
         logger.exception("[Start] Failed to send welcome HTML message: %s", exc)
         plain = (
-            f"🎮 Welcome to Rematch by sideQuest, {profile.get('display_name') or user.first_name}!\n\n"
+            f"🎮 Welcome to Rematch, {profile.get('display_name') or user.first_name}!\n\n"
             f"Tag: {profile.get('gaming_tag') or '—'}\n\n"
-            f"Your USDC deposit address:\n"
+            f"Your Arc deposit address:\n"
             f"{address}\n\n"
-            f"1. Switch network → Arc · fund testnet USDC\n"
-            f"2. New challenge → Lock → Side → FT photo\n"
-            f"Docs: playingsidequest.fun/rematch"
+            f"1. Get USDC → fund address\n"
+            f"2. New challenge → Lock → Side → FT photo"
         )
         await message.answer(plain, reply_markup=main_menu(), parse_mode=None)
 
@@ -180,7 +183,7 @@ async def cb_menu_profile(callback: types.CallbackQuery) -> None:
     await cmd_profile(_callback_as_user_message(callback, "/profile"))
 
 
-CLAWSTATION_INFO_URL = "https://playingsidequest.fun/clawstation"
+REMATCH_INFO_URL = "https://playingsidequest.fun/rematch"
 
 
 @router.callback_query(F.data == "menu:learn")
@@ -198,10 +201,10 @@ async def cb_menu_learn(callback: types.CallbackQuery) -> None:
 
 @router.callback_query(F.data == "menu:app")
 async def cb_menu_app(callback: types.CallbackQuery) -> None:
-    """Send the informational ClawStation page link."""
+    """Send the Rematch site link."""
     await callback.answer()
     await callback.message.edit_text(
-        f"📖 Learn how to use ClawStation:\n\n{CLAWSTATION_INFO_URL}",
+        f"🌐 Rematch\n\n{REMATCH_INFO_URL}",
         reply_markup=back_menu(),
     )
 

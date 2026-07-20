@@ -121,22 +121,14 @@ async def cmd_profile(message: types.Message) -> None:
 
 @router.message(Command("playbook"))
 async def cmd_playbook(message: types.Message) -> None:
-    """In-bot PLAY playbook (short)."""
-    text = (
-        "📖 <b>PLAY Playbook · Rematch</b>\n\n"
-        "PLAY points are a <b>score / voucher</b> — <b>not USDC</b>, not 1:1 token.\n\n"
-        "<b>Earn</b>\n"
-        "• Win +100 · Loss +40 · Draw +50 · No-show −50\n"
-        "• <b>Arc ×1.5</b> · Avalanche ×1.25 · Base ×1.0\n"
-        "• New rivals higher · rematches still earn\n"
-        "• Hot streak boosts wins\n\n"
-        "<b>Tier</b> Bronze→Diamond from total PLAY\n\n"
-        "<b>Disclaimer</b>\n"
-        "Testnet only. If we never fund a token season, points stay a free score — "
-        "no airdrop obligation.\n\n"
-        "Docs: playingsidequest.fun/rematch"
+    """In-bot PLAY score guide (short — what players need only)."""
+    from gaming.src.bot.utils.flow import play_points_short
+
+    await message.answer(
+        play_points_short(),
+        parse_mode=ParseMode.HTML,
+        reply_markup=back_menu(),
     )
-    await message.answer(text, parse_mode=ParseMode.HTML, reply_markup=back_menu())
 
 
 @router.message(Command("leaderboard"))

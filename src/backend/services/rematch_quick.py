@@ -45,7 +45,8 @@ async def create_quick_rematch(
     prior = next((r for r in rivals if r["profile_id"] == opponent_id), None)
     amount = Decimal(str(stake if stake is not None else (prior or {}).get("stake") or 1))
     game_s = game or (prior or {}).get("game") or "EAFC"
-    chain_s = chain or (prior or {}).get("chain") or "arc"
+    # Product surface is Arc-only for now (ignore prior chain if Base/Ava)
+    chain_s = "arc" if not chain else chain
 
     err = validate_stake(amount)
     if err:

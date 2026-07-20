@@ -13,7 +13,7 @@ REMATCH_BOARD = os.getenv(
 
 
 def main_menu(miniapp_url: str | None = None) -> InlineKeyboardMarkup:
-    """Big simple menu — no commands required."""
+    """Big simple menu — Arc-first, no commands required."""
     builder = InlineKeyboardBuilder()
     web = miniapp_url or REMATCH_WEB
     builder.row(
@@ -25,11 +25,11 @@ def main_menu(miniapp_url: str | None = None) -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(text="💰 Wallet", callback_data="menu:wallet"),
-        InlineKeyboardButton(text="👤 Profile", callback_data="menu:profile"),
+        InlineKeyboardButton(text="💧 Get USDC", callback_data="ui:get_usdc"),
     )
     builder.row(
-        InlineKeyboardButton(text="🌐 Switch network", callback_data="ui:network"),
-        InlineKeyboardButton(text="📋 Public board", callback_data="ui:board"),
+        InlineKeyboardButton(text="👤 Profile", callback_data="menu:profile"),
+        InlineKeyboardButton(text="📋 Board", callback_data="ui:board"),
     )
     # url= always works; WebApp needs BotFather domain — optional via env
     use_webapp = os.getenv("REMATCH_USE_WEBAPP", "").lower() in ("1", "true", "yes")
@@ -40,41 +40,34 @@ def main_menu(miniapp_url: str | None = None) -> InlineKeyboardMarkup:
                 web_app=WebAppInfo(url=REMATCH_BOARD),
             ),
             InlineKeyboardButton(
-                text="🌐 Rematch site",
+                text="🌐 Site",
                 web_app=WebAppInfo(url=web),
             ),
         )
     else:
         builder.row(
             InlineKeyboardButton(text="🏆 Leaderboard", url=REMATCH_BOARD),
-            InlineKeyboardButton(text="🌐 Rematch site", url=web),
+            InlineKeyboardButton(text="🌐 Site", url=web),
         )
     builder.row(
         InlineKeyboardButton(text="📖 How to play", callback_data="menu:learn"),
         InlineKeyboardButton(text="📜 Rules", callback_data="ui:rules"),
     )
-    builder.row(
-        InlineKeyboardButton(text="🎮 PLAY playbook", callback_data="ui:playbook"),
-    )
     return builder.as_markup()
 
 
 def network_menu(current: str = "arc") -> InlineKeyboardMarkup:
-    """Pick preferred settlement / funding network."""
+    """Arc-only for now (other chains kept in backend, not offered in UI)."""
     builder = InlineKeyboardBuilder()
-    opts = [
-        ("arc", "🟣 Arc Testnet (USDC gas) ★"),
-        ("base", "🔵 Base Sepolia (needs ETH gas)"),
-        ("avalanche", "🔴 Avalanche Fuji"),
-    ]
-    for cid, label in opts:
-        mark = " ✓" if cid == current else ""
-        builder.row(
-            InlineKeyboardButton(
-                text=f"{label}{mark}",
-                callback_data=f"ui:network:set:{cid}",
-            )
+    builder.row(
+        InlineKeyboardButton(
+            text="🟣 Arc ✓",
+            callback_data="ui:network:set:arc",
         )
+    )
+    builder.row(
+        InlineKeyboardButton(text="💧 Get USDC", callback_data="ui:get_usdc"),
+    )
     builder.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
     return builder.as_markup()
 
@@ -293,16 +286,13 @@ def game_menu() -> InlineKeyboardMarkup:
 
 
 def chain_menu() -> InlineKeyboardMarkup:
+    """Arc-only challenge network (legacy callback kept for in-flight wizards)."""
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
-            text="🟣 Arc Testnet (USDC gas) ★",
+            text="🟣 Arc",
             callback_data="ui:chal:chain:arc",
         ),
-    )
-    builder.row(
-        InlineKeyboardButton(text="🔵 Base Sepolia", callback_data="ui:chal:chain:base"),
-        InlineKeyboardButton(text="🔴 Avalanche Fuji", callback_data="ui:chal:chain:avalanche"),
     )
     builder.row(InlineKeyboardButton(text="❌ Cancel", callback_data="menu:main"))
     return builder.as_markup()
@@ -340,10 +330,31 @@ def wallet_menu() -> InlineKeyboardMarkup:
     """Actions on the wallet / balance screen."""
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="💸 Withdraw", callback_data="ui:withdraw"),
+        InlineKeyboardButton(text="💧 Get USDC", callback_data="ui:get_usdc"),
+        InlineKeyboardButton(text="🔄 Refresh", callback_data="menu:wallet"),
     )
     builder.row(
-        InlineKeyboardButton(text="🌐 Switch network", callback_data="ui:network"),
+        InlineKeyboardButton(text="💸 Withdraw", callback_data="ui:withdraw"),
+    )
+    builder.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
+    return builder.as_markup()
+
+
+def get_usdc_menu(
+    faucet_url: str = "https://faucet.circle.com/",
+    helper_url: str | None = None,
+) -> InlineKeyboardMarkup:
+    """Fund helper (address prefilled) + Circle faucet + refresh wallet."""
+    builder = InlineKeyboardBuilder()
+    if helper_url:
+        builder.row(
+            InlineKeyboardButton(text="📋 Fund page (your address)", url=helper_url),
+        )
+    builder.row(
+        InlineKeyboardButton(text="🔗 Open Circle faucet", url=faucet_url),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔄 I funded — refresh", callback_data="menu:wallet"),
     )
     builder.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
     return builder.as_markup()
