@@ -1,0 +1,27 @@
+# Secrets / local env
+.env
+.env.*
+!.env.example
+.vercel
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Local runtime data
+/tmp/
+data/wallet_watch_snapshots.json
+data/*.session
+
+# Standalone import shims (created locally; monorepo uses real gaming/ package)
+/backend
+/gaming/

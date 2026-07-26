@@ -7,9 +7,12 @@ from pathlib import Path
 try:
     from dotenv import load_dotenv
 
-    # Worktree root (.env) — load before reading BOT_TOKEN
-    _root = Path(__file__).resolve().parents[3]
-    load_dotenv(_root / ".env")
+    # Load .env from likely roots:
+    # - standalone: rematch/src/bot/config.py -> parents[2] = rematch/
+    # - monorepo:   gaming/src/bot/config.py  -> parents[3] = sideQuest/
+    _here = Path(__file__).resolve()
+    for _root in (_here.parents[2], _here.parents[3], Path.cwd()):
+        load_dotenv(_root / ".env")
     load_dotenv()  # cwd fallback
 except ImportError:
     pass

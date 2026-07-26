@@ -33,18 +33,23 @@ Built by [sideQuest](https://playingsidequest.fun).
 
 ## Repo layout
 
-This repository is the **Rematch product codebase** (bot, gaming backend, escrow integration, docs).
+This repository is the **Rematch product codebase** (bot, gaming backend, escrow, public web, contracts).
 
 ```
-src/bot/           Telegram bot
-src/backend/       Settlement, Circle, matches
-docs/              Product & ops notes
-deploy/            Hosting configs
+src/bot/                 Telegram bot
+src/backend/             Settlement, Circle, matches, public API
+frontend/                Next.js /rematch pages + public API route
+frontend/public/         rematch-logo assets
+contracts/               ClawEscrow (Hardhat) + deployments
+docs/                    Product & ops notes
+deploy/                  Hosting configs
 ```
 
-Parent monorepo (full sideQuest app):  
-https://github.com/playingsidequest-dotplay/sideQuest  
-Branch: `rematch`
+sideQuest monorepo (social app only — Rematch product code lives **here**):  
+https://github.com/playingsidequest-dotplay/sideQuest
+
+On playingsidequest.fun, `/rematch` is a thin redirect to the Telegram bot.  
+Host the real docs/leaderboard from `frontend/` in this repo (see `frontend/README.md`).
 
 ## Status
 

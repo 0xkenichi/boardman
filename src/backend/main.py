@@ -20,6 +20,7 @@ from gaming.src.backend.api import (
     health_router,
     settlement_router,
     webhooks_router,
+    rematch_router,
 )
 from gaming.src.backend.middleware import BlockedRegionError, check_region
 from gaming.src.backend.services.clawstation_circle import start_deposit_expiry_task
@@ -55,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router, prefix="/api")
     app.include_router(settlement_router, prefix="/api")
     app.include_router(webhooks_router)
+    app.include_router(rematch_router)
 
     return app
 

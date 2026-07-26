@@ -1,0 +1,14 @@
+{
+  "network": "baseSepolia",
+  "chainId": 84532,
+  "contracts": {
+    "ClawEscrow": "0xFC44a06295d4fC58420027932A6FcB3C13D83859"
+  },
+  "config": {
+    "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    "feeRecipient": "0x39EcF94ed35451A67006dcCE4A467aecdfAB6940",
+    "resolver": "0x39EcF94ed35451A67006dcCE4A467aecdfAB6940"
+  },
+  "deployedAt": "2026-04-14T01:58:36.455Z",
+  "deployer": "0xB2CCcac46cE93C2ac27fDBF7248938CC57F29424"
+}

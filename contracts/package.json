@@ -1,0 +1,17 @@
+{
+  "name": "claw-contracts",
+  "version": "1.0.0",
+  "description": "ClawEscrow smart contract for sideQuest",
+  "scripts": {
+    "deploy:testnet": "hardhat run scripts/deploy_escrow.js --network baseSepolia",
+    "deploy:mainnet": "hardhat run scripts/deploy_escrow.js --network baseMainnet",
+    "test": "hardhat test",
+    "compile": "hardhat compile"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@openzeppelin/contracts": "^5.6.1",
+    "dotenv": "^16.4.0",
+    "hardhat": "^2.19.0"
+  }
+}

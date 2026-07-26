@@ -738,9 +738,10 @@ async def cmd_set_side(message: types.Message) -> None:
         denormalize_challenge(update)
     ).eq("id", challenge_id).execute()
 
+    team_hint = f'/set_team {match_code} {side} "Club Name"'
     await message.answer(
         f"✅ You are {bold(side.upper())} for {code(match_code)}.\n"
-        f"Optional: {code(f'/set_team {match_code} {side} \"Club Name\"')}",
+        f"Optional: {code(team_hint)}",
         parse_mode=ParseMode.HTML,
     )
 

@@ -1,18 +1,35 @@
 #!/usr/bin/env bash
-# Run ClawStation for free on your own machine (Mac/Linux) 24/7 while the lid stays open
-# or when connected to power + caffeinate. For true always-on free hosts, see FREE_24_7.md
+# Run Rematch / ClawStation on your laptop (Mac/Linux).
+# Keep the lid open or plug in power; uses caffeinate on macOS.
 #
-# Usage (from repo root / worktree root):
-#   chmod +x gaming/deploy/start_free_local.sh
-#   ./gaming/deploy/start_free_local.sh
+# Usage (from rematch repo root):
+#   chmod +x deploy/start_free_local.sh
+#   ./deploy/start_free_local.sh
 
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 if [[ ! -f .env ]]; then
   echo "Missing .env in $ROOT"
+  echo "Copy .env.example → .env and fill TELEGRAM_BOT_TOKEN_CLAWSTATION, SUPABASE_*, CIRCLE_*"
   exit 1
+fi
+
+# Ensure monorepo-style imports resolve in this standalone checkout
+if [[ ! -e gaming/src ]]; then
+  mkdir -p gaming
+  ln -sfn ../src gaming/src
+  touch gaming/__init__.py
+fi
+if [[ ! -e backend ]]; then
+  ln -sfn src/backend backend
+fi
+if [[ ! -e gaming/config ]]; then
+  ln -sfn ../config gaming/config
+fi
+if [[ ! -e gaming/data ]]; then
+  ln -sfn ../data gaming/data
 fi
 
 # shellcheck disable=SC1091
@@ -27,6 +44,8 @@ export CLAW_PAUSED="${CLAW_PAUSED:-0}"
 export WALLET_WATCH_INTERVAL_SEC="${WALLET_WATCH_INTERVAL_SEC:-45}"
 export LOG_LEVEL="${LOG_LEVEL:-INFO}"
 export PYTHONUNBUFFERED=1
+export PYTHONPATH="${ROOT}${PYTHONPATH:+:$PYTHONPATH}"
+export BLOCKED_REGIONS_FILE="${BLOCKED_REGIONS_FILE:-$ROOT/config/blocked_regions.json}"
 
 mkdir -p /tmp/clawstation-logs
 API_LOG=/tmp/clawstation-logs/api.log
@@ -35,6 +54,14 @@ BOT_LOG=/tmp/clawstation-logs/bot.log
 PY="${ROOT}/.venv/bin/python"
 if [[ ! -x "$PY" ]]; then
   PY=python3
+fi
+
+# Stop previous local instances if any
+if [[ -f /tmp/clawstation-logs/api.pid ]]; then
+  kill "$(cat /tmp/clawstation-logs/api.pid)" 2>/dev/null || true
+fi
+if [[ -f /tmp/clawstation-logs/bot.pid ]]; then
+  kill "$(cat /tmp/clawstation-logs/bot.pid)" 2>/dev/null || true
 fi
 
 echo "[free-local] starting API → $API_LOG"
@@ -53,5 +80,5 @@ if command -v caffeinate >/dev/null 2>&1; then
 fi
 
 echo "[free-local] API pid=$(cat /tmp/clawstation-logs/api.pid) BOT pid=$(cat /tmp/clawstation-logs/bot.pid)"
-echo "[free-local] health: curl -s localhost:8000/api/healthz"
-echo "[free-local] stop:   kill \$(cat /tmp/clawstation-logs/*.pid)"
+echo "[free-local] health: curl -s localhost:8000/ || curl -s localhost:8000/api/healthz"
+echo "[free-local] stop:   kill \$(cat /tmp/clawstation-logs/api.pid /tmp/clawstation-logs/bot.pid)"

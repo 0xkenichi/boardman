@@ -4,10 +4,15 @@ from __future__ import annotations
 # Allow imports relative to repo root when running directly.
 import os
 import sys
+from pathlib import Path
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-if REPO_ROOT not in sys.path:
-    sys.path.insert(0, REPO_ROOT)
+# standalone: rematch/src/bot/main.py -> parents[2] = rematch root
+# monorepo:   gaming/src/bot/main.py  -> parents[3] = sideQuest root
+_here = Path(__file__).resolve()
+for _root in (_here.parents[2], _here.parents[3]):
+    _root_s = str(_root)
+    if _root_s not in sys.path:
+        sys.path.insert(0, _root_s)
 
 import asyncio  # noqa: E402
 import logging  # noqa: E402
