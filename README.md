@@ -45,8 +45,6 @@ docs/                    Product & ops notes
 deploy/                  Hosting configs
 ```
 
-sideQuest monorepo (social app only — Rematch product code lives **here**):  
-https://github.com/playingsidequest-dotplay/sideQuest
 
 On playingsidequest.fun, `/rematch` is a thin redirect to the Telegram bot.  
 Host the real docs/leaderboard from `frontend/` in this repo (see `frontend/README.md`).
