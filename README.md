@@ -29,19 +29,31 @@ Built by [sideQuest](https://playingsidequest.fun).
 - **Circle** developer-controlled wallets · USDC  
 - **ClawEscrow** dual-lock / resolve  
 - **AI vision** for scoreline from FT screenshots  
-- Chains: **Arc** (default), Avalanche Fuji, Base Sepolia  
+- Chains: **Arc Testnet only** (live) · Avalanche Fuji next · Base Sepolia legacy  
+
+### Rematch Stack (platform)
+
+Infrastructure under the bot so **other builders** can ship new experiences on the same rails (wallets, escrow, match lifecycle, proof, PLAY).
+
+| | |
+|--|--|
+| Design | [`docs/REMATCH_STACK.md`](docs/REMATCH_STACK.md) |
+| Package | `src/stack/` |
+| HTTP | `GET /api/stack/v0/health` · `/catalog` · `/chains` · `/public/board` |
+| Builders | [`src/stack/README.md`](src/stack/README.md) |
 
 ## Repo layout
 
-This repository is the **Rematch product codebase** (bot, gaming backend, escrow, public web, contracts).
+This repository is the **Rematch product codebase** (bot, gaming backend, escrow, public web, contracts) **and** the **Rematch Stack** platform layer.
 
 ```
-src/bot/                 Telegram bot
+src/bot/                 Telegram Rematch experience
 src/backend/             Settlement, Circle, matches, public API
+src/stack/               Rematch Stack (builder-facing façade + API)
 frontend/                Next.js /rematch pages + public API route
 frontend/public/         rematch-logo assets
 contracts/               ClawEscrow (Hardhat) + deployments
-docs/                    Product & ops notes
+docs/                    Product, ops, REMATCH_STACK.md
 deploy/                  Hosting configs
 ```
 

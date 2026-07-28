@@ -29,8 +29,12 @@ logger = logging.getLogger(__name__)
 
 
 def create_app() -> FastAPI:
-    """Build the ClawStation FastAPI application with the geo-fence wired in."""
-    app = FastAPI(title="ClawStation API", version="0.1.0")
+    """Build the ClawStation / Rematch Stack FastAPI application."""
+    app = FastAPI(
+        title="Rematch Stack API",
+        version="0.1.0",
+        description="Rematch product API + Rematch Stack (builder platform) surface",
+    )
 
     @app.middleware("http")
     async def geo_fence_middleware(request: Request, call_next):
@@ -50,13 +54,23 @@ def create_app() -> FastAPI:
 
     @app.get("/")
     async def root():
-        return {"status": "ok"}
+        return {
+            "status": "ok",
+            "product": "rematch",
+            "stack": "/api/stack/v0",
+            "docs": "/docs",
+        }
 
     app.include_router(deposit_router, prefix="/api")
     app.include_router(health_router, prefix="/api")
     app.include_router(settlement_router, prefix="/api")
     app.include_router(webhooks_router)
     app.include_router(rematch_router)
+
+    # Rematch Stack — builder platform surface
+    from gaming.src.stack.api import router as stack_router
+
+    app.include_router(stack_router)
 
     return app
 

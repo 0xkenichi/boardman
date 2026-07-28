@@ -1,7 +1,12 @@
 """
-Multi-chain config for ClawStation (Arc / Base / Avalanche).
+Multi-chain config for ClawStation / Rematch.
 
-Phase A/B: settlement chain is chosen per challenge.
+Product posture (now):
+  - testnet only
+  - Arc enabled for users
+  - Avalanche next (config kept, enabled: false)
+  - Base legacy (enabled: false)
+
 Phase C (disabled): bridge-on-behalf + extra fee cut.
 """
 from __future__ import annotations
@@ -25,7 +30,9 @@ _FALLBACK_CHAINS: dict[str, Any] = {
         "arc": {
             "id": "arc",
             "label": "Arc Testnet",
+            "enabled": True,
             "recommended": True,
+            "status": "live",
             "circle_blockchain": "ARC-TESTNET",
             "chain_id": 5042002,
             "rpc_url": "https://rpc.testnet.arc.network",
@@ -35,12 +42,33 @@ _FALLBACK_CHAINS: dict[str, Any] = {
             "gas_token": "USDC",
             "gas_mode": "usdc_native",
             "gas_tank_required": False,
-            "escrow_address": "",
+            "escrow_address": "0xFC44a06295d4fC58420027932A6FcB3C13D83859",
+        },
+        "avalanche": {
+            "id": "avalanche",
+            "label": "Avalanche Fuji",
+            "enabled": False,
+            "recommended": False,
+            "status": "next",
+            "circle_blockchain": "AVAX-FUJI",
+            "chain_id": 43113,
+            "rpc_url": "https://api.avax-test.network/ext/bc/C/rpc",
+            "explorer_tx": "https://testnet.snowtrace.io/tx/",
+            "usdc_address": "0x5425890298aed601595a70AB815c96711a31Bc65",
+            "circle_usdc_token_id": "",
+            "gas_token": "AVAX",
+            "gas_mode": "native_avax",
+            "gas_tank_required": True,
+            "gas_tank_min_wei": "10000000000000000",
+            "gas_tank_topup_wei": "50000000000000000",
+            "escrow_address": "0xFC44a06295d4fC58420027932A6FcB3C13D83859",
         },
         "base": {
             "id": "base",
             "label": "Base Sepolia",
+            "enabled": False,
             "recommended": False,
+            "status": "legacy",
             "circle_blockchain": "BASE-SEPOLIA",
             "chain_id": 84532,
             "rpc_url": "https://sepolia.base.org",
@@ -53,23 +81,6 @@ _FALLBACK_CHAINS: dict[str, Any] = {
             "gas_tank_min_wei": "100000000000000",
             "gas_tank_topup_wei": "1000000000000000",
             "escrow_address": "0xDb76714390ccE1729558DF3c9EC4f45A1690dE78",
-        },
-        "avalanche": {
-            "id": "avalanche",
-            "label": "Avalanche Fuji",
-            "recommended": False,
-            "circle_blockchain": "AVAX-FUJI",
-            "chain_id": 43113,
-            "rpc_url": "https://api.avax-test.network/ext/bc/C/rpc",
-            "explorer_tx": "https://testnet.snowtrace.io/tx/",
-            "usdc_address": "0x5425890298aed601595a70AB815c96711a31Bc65",
-            "circle_usdc_token_id": "",
-            "gas_token": "AVAX",
-            "gas_mode": "native_avax",
-            "gas_tank_required": True,
-            "gas_tank_min_wei": "10000000000000000",
-            "gas_tank_topup_wei": "50000000000000000",
-            "escrow_address": "",
         },
     },
     "bridge": {"enabled": False, "extra_fee_bps": 50},
@@ -148,24 +159,66 @@ def reload_chains_config() -> dict[str, Any]:
     return load_chains_config()
 
 
+def _env_enabled_set() -> Optional[set[str]]:
+    """Optional override: CLAW_ENABLED_CHAINS=arc or arc,avalanche."""
+    raw = (os.getenv("CLAW_ENABLED_CHAINS") or "").strip().lower()
+    if not raw:
+        return None
+    return {p.strip() for p in raw.split(",") if p.strip()}
+
+
+def is_chain_enabled(chain_id: str) -> bool:
+    """Whether a chain is offered for *new* user activity."""
+    # Do not call normalize_chain_id() here — it may call default_chain_id() → recursion.
+    cid = _ALIASES.get((chain_id or "").lower().strip(), (chain_id or "").lower().strip())
+    chains = load_chains_config().get("chains") or {}
+    if cid not in chains:
+        return False
+    env_set = _env_enabled_set()
+    if env_set is not None:
+        return cid in env_set
+    # Default: explicit enabled flag (missing → True only for arc for safety)
+    c = chains[cid]
+    if "enabled" in c:
+        return bool(c.get("enabled"))
+    return cid == "arc"
+
+
 def default_chain_id() -> str:
     cfg = load_chains_config()
     env_default = (os.getenv("CLAW_DEFAULT_CHAIN") or "").strip().lower()
-    if env_default in cfg.get("chains", {}):
-        return env_default
-    # Prefer a chain that already has an escrow address.
+    if env_default and is_chain_enabled(env_default):
+        return normalize_chain_id(env_default)
+    # Prefer default_settlement_chain if enabled
+    preferred = cfg.get("default_settlement_chain") or "arc"
+    if is_chain_enabled(preferred):
+        return normalize_chain_id(preferred)
     for cid, c in (cfg.get("chains") or {}).items():
-        if c.get("escrow_address"):
+        if is_chain_enabled(cid) and c.get("escrow_address"):
             return cid
-    return cfg.get("default_settlement_chain") or "arc"
+    for cid in (cfg.get("chains") or {}):
+        if is_chain_enabled(cid):
+            return cid
+    return "arc"
 
 
-def list_chains() -> list[dict[str, Any]]:
+def list_chains(*, include_disabled: bool = False) -> list[dict[str, Any]]:
+    """User/product chain list. Pass include_disabled=True for ops/Stack full map."""
     cfg = load_chains_config()
     out = []
     for cid, c in (cfg.get("chains") or {}).items():
-        out.append({**c, "id": cid})
-    out.sort(key=lambda x: (0 if x.get("recommended") else 1, x.get("id")))
+        row = {**c, "id": cid}
+        row["enabled"] = is_chain_enabled(cid)
+        if not include_disabled and not row["enabled"]:
+            continue
+        out.append(row)
+    out.sort(
+        key=lambda x: (
+            0 if x.get("recommended") else 1,
+            0 if x.get("enabled") else 1,
+            x.get("id") or "",
+        )
+    )
     return out
 
 
@@ -174,15 +227,26 @@ def normalize_chain_id(chain_id: Optional[str]) -> str:
     return _ALIASES.get(cid, cid)
 
 
-def get_chain(chain_id: str) -> dict[str, Any]:
+def get_chain(chain_id: str, *, require_enabled: bool = False) -> dict[str, Any]:
+    """Load chain config. require_enabled=True rejects disabled chains (new activity)."""
     cid = normalize_chain_id(chain_id)
     chains = load_chains_config().get("chains") or {}
     if cid not in chains:
+        enabled_ids = [c["id"] for c in list_chains()]
         raise ValueError(
-            f"Unsupported chain '{chain_id}'. Supported: {', '.join(sorted(chains))} "
+            f"Unsupported chain '{chain_id}'. "
+            f"Live chains: {', '.join(enabled_ids) or 'none'} "
             f"(default: {default_chain_id()})"
         )
-    return {**chains[cid], "id": cid}
+    if require_enabled and not is_chain_enabled(cid):
+        raise ValueError(
+            f"Chain '{cid}' is not live for users yet "
+            f"(status={chains[cid].get('status') or 'disabled'}). "
+            f"Use: {', '.join(c['id'] for c in list_chains()) or 'arc'}"
+        )
+    row = {**chains[cid], "id": cid}
+    row["enabled"] = is_chain_enabled(cid)
+    return row
 
 
 def chain_has_escrow(chain_id: str) -> bool:
@@ -235,7 +299,8 @@ def get_explorer_tx(chain_id: str, tx_hash: str = "") -> str:
 
 
 def circle_blockchains_for_wallets() -> list[str]:
-    return [c["circle_blockchain"] for c in list_chains()]
+    # Wallet fan-out only on live chains (Arc-only today)
+    return [c["circle_blockchain"] for c in list_chains(include_disabled=False)]
 
 
 def gas_tank_required(chain_id: str) -> bool:
@@ -247,14 +312,20 @@ def bridge_config() -> dict[str, Any]:
 
 
 def format_chain_help() -> str:
-    lines = ["Supported settlement chains (challenger chooses one):"]
-    for c in list_chains():
-        star = " ★ recommended" if c.get("recommended") else ""
-        ready = " [live]" if chain_has_escrow(c["id"]) else " [deploy pending]"
-        gas = c.get("gas_token", "?")
-        mode = "USDC gas" if c.get("gas_mode") == "usdc_native" else f"{gas} gas (platform tank)"
-        lines.append(f"  • {c['id']} — {c['label']} ({mode}){star}{ready}")
+    lines = [
+        "Settlement network (testnet):",
+        "  • arc — Arc Testnet ★ live (USDC gas)",
+    ]
+    # Roadmap hint without offering other chains
+    disabled = list_chains(include_disabled=True)
+    upcoming = [c for c in disabled if not c.get("enabled") and c.get("status") == "next"]
+    if upcoming:
+        lines.append(
+            "  · next: "
+            + ", ".join(f"{c['id']} ({c['label']})" for c in upcoming)
+            + " — not ready yet"
+        )
     lines.append("")
-    lines.append(f"Default: {default_chain_id()}")
-    lines.append("Example: /challenge @rival 5 EAFC private base")
+    lines.append(f"Default / only live chain: {default_chain_id()}")
+    lines.append("Example: /challenge @rival 5 EAFC private arc")
     return "\n".join(lines)
