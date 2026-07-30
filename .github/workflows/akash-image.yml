@@ -54,3 +54,18 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Catch the CrashLoop class of bugs before Akash wastes a lease
+      - name: Smoke import check
+        run: |
+          IMAGE="ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/rematch:latest"
+          docker pull "$IMAGE"
+          docker run --rm "$IMAGE" python -c "
+          import os, sys
+          sys.path.insert(0, '/app')
+          assert os.path.exists('/app/backend/supabase_client.py'), 'missing /app/backend symlink'
+          assert os.path.exists('/app/gaming/src/bot/main.py'), 'missing gaming.src layout'
+          import backend.supabase_client
+          import gaming.src.backend.main
+          print('SMOKE_OK backend+api import')
+          "

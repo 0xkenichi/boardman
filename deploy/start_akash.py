@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Akash entrypoint: run API + Telegram bot; exit if either dies.
 
-Uses pure Python so the image does not depend on bash (python:slim often has none).
-Logs to stdout for Akash Console.
+Pure Python (no bash). Creates monorepo-compat symlinks and preflights imports
+so crash reasons show up clearly in Akash logs.
 """
 from __future__ import annotations
 
@@ -11,10 +11,48 @@ import signal
 import subprocess
 import sys
 import time
+import traceback
+
+
+def _ensure_layout() -> None:
+    """Match start_free_local.sh package layout used by imports."""
+    os.chdir("/app")
+    os.makedirs("/app/gaming", exist_ok=True)
+
+    links = {
+        "/app/gaming/src": "/app/src",
+        "/app/gaming/config": "/app/config",
+        "/app/backend": "/app/src/backend",
+    }
+    for dest, src in links.items():
+        if os.path.islink(dest) or os.path.exists(dest):
+            continue
+        try:
+            os.symlink(src, dest)
+            print(f"[akash] linked {dest} -> {src}", flush=True)
+        except FileExistsError:
+            pass
+
+    init = "/app/gaming/__init__.py"
+    if not os.path.exists(init):
+        open(init, "a", encoding="utf-8").close()
+
+
+def _preflight() -> None:
+    """Fail fast with a clear traceback if imports are broken."""
+    print("[akash] preflight: checking imports…", flush=True)
+    try:
+        import backend.supabase_client  # noqa: F401
+        import gaming.src.backend.main  # noqa: F401
+        import gaming.src.bot.main  # noqa: F401
+    except Exception:
+        print("[akash] FATAL: preflight import failed:", flush=True)
+        traceback.print_exc()
+        raise SystemExit(1)
+    print("[akash] preflight: OK", flush=True)
 
 
 def main() -> int:
-    os.chdir("/app")
     os.environ.setdefault("PYTHONUNBUFFERED", "1")
     os.environ.setdefault("PYTHONPATH", "/app")
     os.environ.setdefault("CLAWSTATION_BOT_MODE", "polling")
@@ -26,16 +64,7 @@ def main() -> int:
         os.environ.get("BLOCKED_REGIONS_FILE", "/app/config/blocked_regions.json"),
     )
 
-    # gaming.src.* layout
-    gaming = "/app/gaming"
-    src = "/app/src"
-    if not os.path.exists(f"{gaming}/src"):
-        os.makedirs(gaming, exist_ok=True)
-        try:
-            os.symlink(src, f"{gaming}/src")
-        except FileExistsError:
-            pass
-        open(f"{gaming}/__init__.py", "a").close()
+    _ensure_layout()
 
     token = os.environ.get("TELEGRAM_BOT_TOKEN_CLAWSTATION") or os.environ.get(
         "TELEGRAM_BOT_TOKEN"
@@ -46,6 +75,19 @@ def main() -> int:
             flush=True,
         )
         return 1
+
+    print(
+        f"[akash] env ok token_len={len(token)} chain={os.environ.get('CLAW_DEFAULT_CHAIN')} mode={os.environ.get('CLAWSTATION_BOT_MODE')}",
+        flush=True,
+    )
+
+    try:
+        _preflight()
+    except SystemExit as e:
+        return int(e.code or 1)
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = "/app"
 
     print(f"[akash] starting API on :{port}", flush=True)
     api = subprocess.Popen(
@@ -59,13 +101,16 @@ def main() -> int:
             "--port",
             str(port),
         ],
-        env=os.environ.copy(),
+        env=env,
     )
+
+    # Give API a moment so bot and API don't stampede CPU on 0.5 cores
+    time.sleep(2)
 
     print("[akash] starting Rematch bot (polling)", flush=True)
     bot = subprocess.Popen(
         [sys.executable, "-m", "gaming.src.bot.main"],
-        env=os.environ.copy(),
+        env=env,
     )
 
     procs = [api, bot]
@@ -88,7 +133,6 @@ def main() -> int:
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
 
-    # Supervise: if either exits, tear down and exit non-zero so Akash restarts.
     while True:
         for name, p in (("api", api), ("bot", bot)):
             code = p.poll()
