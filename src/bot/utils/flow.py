@@ -64,7 +64,7 @@ def play_points_short() -> str:
 def get_usdc_copy(address: str) -> str:
     addr = address or "—"
     return (
-        "💧 <b>Get USDC on Arc</b>\n\n"
+        "💧 <b>Get money</b>\n\n"
         f"Your address (tap to copy):\n<code>{addr}</code>\n\n"
         "1. Tap <b>Fund page</b> or open the faucet\n"
         "2. Choose <b>Arc Testnet</b> → <b>USDC</b>\n"

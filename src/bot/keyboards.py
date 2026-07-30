@@ -62,7 +62,7 @@ def network_menu(current: str = "arc") -> InlineKeyboardMarkup:
         )
     )
     builder.row(
-        InlineKeyboardButton(text="💧 Get USDC", callback_data="ui:get_usdc"),
+        InlineKeyboardButton(text="💧 Get money", callback_data="ui:get_usdc"),
     )
     builder.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
     return builder.as_markup()

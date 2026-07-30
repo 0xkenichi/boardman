@@ -244,7 +244,7 @@ async def ui_network_menu(callback: types.CallbackQuery) -> None:
         "Rematch runs on <b>Arc</b>.\n"
         f"Balance: <b>${bal:,.2f} USDC</b>\n\n"
         f"Deposit:\n<code>{h(addr)}</code>\n\n"
-        "Need funds? Tap <b>Get USDC</b>.",
+        "Need funds? Tap <b>Get money</b>.",
         parse_mode=ParseMode.HTML,
         reply_markup=network_menu("arc"),
     )
@@ -273,7 +273,7 @@ async def ui_network_set(callback: types.CallbackQuery) -> None:
             f"✅ You're on <b>Arc</b>\n"
             f"USDC: <b>${bal:,.2f}</b>\n\n"
             f"Deposit:\n<code>{h(addr)}</code>\n\n"
-            f"Fund via <b>Get USDC</b> before locking a stake.",
+            f"Fund via <b>Get money</b> before locking a stake.",
             parse_mode=ParseMode.HTML,
             reply_markup=get_usdc_menu(),
         )
@@ -785,7 +785,7 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
 
         await callback.message.answer(
             f"❌ Not enough USDC. You have <b>${bal:,.2f}</b>.\n"
-            f"Tap <b>Get USDC</b> to fund your Arc wallet, then try again.",
+            f"Tap <b>Get money</b> to fund your wallet, then try again.",
             reply_markup=get_usdc_menu(),
             parse_mode=ParseMode.HTML,
         )
@@ -919,7 +919,7 @@ async def ui_lock(callback: types.CallbackQuery) -> None:
                 f"❌ Not enough USDC for this match.\n"
                 f"Need <b>${amount:,.2f}</b>, have <b>${bal:,.2f}</b>.\n\n"
                 f"Your address:\n<code>{h(wallet.get('address') or '')}</code>\n\n"
-                f"Tap <b>Get USDC</b>, then lock again.",
+                f"Tap <b>Get money</b>, then lock again.",
                 parse_mode=ParseMode.HTML,
                 reply_markup=get_usdc_menu(),
             )
@@ -929,7 +929,7 @@ async def ui_lock(callback: types.CallbackQuery) -> None:
         logger.exception("[UI] lock preflight failed")
         await callback.message.answer(
             f"❌ Wallet not ready: {h(exc)}\n"
-            f"Open <b>Get USDC</b> / Wallet and try again.",
+            f"Open <b>Get money</b> / Wallet and try again.",
             parse_mode=ParseMode.HTML,
             reply_markup=main_menu(),
         )

@@ -84,11 +84,11 @@ async def cmd_balance(message: types.Message) -> None:
         text += (
             f"\n📒 Account credit on file: <b>${ledger:,.2f}</b>\n"
             f"<i>Not on your play address yet — it can't be staked until you "
-            f"fund with <b>Get USDC</b> (on-chain).</i>\n"
+            f"fund with <b>Get money</b> (on-chain).</i>\n"
         )
     elif spendable < 0.01:
         text += (
-            "\nYou're empty for matches. Tap <b>Get USDC</b>, wait ~30s, then "
+            "\nYou're empty for matches. Tap <b>Get money</b>, wait ~30s, then "
             "<b>Refresh</b>.\n"
         )
 
