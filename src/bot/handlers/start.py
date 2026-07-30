@@ -85,13 +85,20 @@ async def cmd_start(message: types.Message) -> None:
     raw_tag = str(profile.get("gaming_tag") or "—")
     tag = escape(raw_tag)
     addr = escape(str(address))
-    # Live on-chain balance if available.
+    # Spendable balance (on-chain) — abstracted as plain $
     bal_line = ""
     try:
-        from gaming.src.backend.services.clawstation_circle import get_usdc_balance
+        from gaming.src.backend.services.clawstation_circle import get_balance_summary
 
-        bal = await get_usdc_balance(profile["id"], chain_id="arc")
-        bal_line = f"Balance: <b>${bal:,.2f} USDC</b>\n"
+        s = await get_balance_summary(profile["id"], chain_id="arc")
+        spend = float(s.get("spendable_usdc") or 0)
+        ledger = float(s.get("ledger_usdc") or 0)
+        bal_line = f"Balance: <b>${spend:,.2f}</b>\n"
+        if ledger > 0.009 and ledger > spend + 0.009:
+            bal_line += (
+                f"📒 Credit on file: ${ledger:,.2f} "
+                f"<i>(fund address to stake)</i>\n"
+            )
     except Exception:
         logger.warning("[Start] balance preview failed for %s", profile["id"], exc_info=True)
 
@@ -101,13 +108,13 @@ async def cmd_start(message: types.Message) -> None:
         f"Your tag: <code>@{tag}</code>\n"
         f"Friends challenge you with this.\n\n"
         f"{bal_line}"
-        f"Your Arc deposit address:\n"
+        f"Your fund address:\n"
         f"<code>{addr}</code>\n\n"
         f"<b>Get started</b>\n"
-        f"1. <b>Get USDC</b> → fund your address\n"
-        f"2. <b>New challenge</b> a friend\n"
+        f"1. <b>Get money</b> → fund your address\n"
+        f"2. <b>Challenge</b> a friend\n"
         f"3. Accept → Lock → Side → FT photo\n\n"
-        f"Tap <b>How to play</b> anytime."
+        f"Tap <b>How to play</b> under More anytime."
     )
     try:
         await message.answer(text, reply_markup=main_menu(), parse_mode=ParseMode.HTML)

@@ -65,17 +65,20 @@ def _ensure_bot() -> Optional[Bot]:
 
 
 async def get_balance_snapshot(user_id: str) -> str:
-    """HTML lines: balance in $ (abstracted) + $PLAY — no chain names."""
+    """HTML lines: spendable $ (abstracted) + $PLAY — no chain names."""
     usdc_s = "—"
     play_s = "—"
     streak_s = ""
+    note = ""
     try:
-        from gaming.src.backend.services.clawstation_circle import get_usdc_balance
-        from gaming.src.backend.services.clawstation_circle import get_preferred_chain
+        from gaming.src.backend.services.clawstation_circle import get_balance_summary
 
-        pref = await get_preferred_chain(user_id)
-        bal = await get_usdc_balance(user_id, chain_id=pref)
-        usdc_s = f"${bal:,.2f}"
+        s = await get_balance_summary(user_id)
+        spend = float(s.get("spendable_usdc") or 0)
+        ledger = float(s.get("ledger_usdc") or 0)
+        usdc_s = f"${spend:,.2f}"
+        if ledger > 0.009 and ledger > spend + 0.009:
+            note = f"\n📒 Credit on file: ${ledger:,.2f} (not stakeable yet)"
     except Exception:
         logger.warning("[Notify] USDC balance fetch failed for %s", user_id, exc_info=True)
     try:
@@ -95,7 +98,7 @@ async def get_balance_snapshot(user_id: str) -> str:
                 streak_s = f" · 🔥 streak {st}"
     except Exception:
         logger.warning("[Notify] PLAY balance fetch failed for %s", user_id, exc_info=True)
-    return f"💵 Balance: <b>{usdc_s}</b>\n🎮 $PLAY: <b>{play_s}</b>{streak_s}"
+    return f"💵 Balance: <b>{usdc_s}</b>{note}\n🎮 $PLAY: <b>{play_s}</b>{streak_s}"
 
 
 async def notify_user(

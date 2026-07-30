@@ -121,8 +121,20 @@ async def ui_main(callback: types.CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     await state.clear()
     await callback.message.answer(
-        "🏠 <b>ClawStation</b>\n\nTap a button — you don't need to type commands.",
+        "🏠 <b>Rematch</b>\n\nTap a button — no commands needed.",
         reply_markup=main_menu(),
+        parse_mode=ParseMode.HTML,
+    )
+
+
+@router.callback_query(F.data == "ui:more")
+async def ui_more(callback: types.CallbackQuery) -> None:
+    await callback.answer()
+    from gaming.src.bot.keyboards import more_menu
+
+    await callback.message.answer(
+        "⋯ <b>More</b>",
+        reply_markup=more_menu(),
         parse_mode=ParseMode.HTML,
     )
 
@@ -185,10 +197,10 @@ async def ui_get_usdc(callback: types.CallbackQuery) -> None:
 
     # Fallback: address shown (tap-to-copy on Telegram) + fund page with address prefilled
     await callback.message.answer(
-        "💧 <b>Get USDC on Arc</b>\n\n"
+        "💧 <b>Get money</b>\n\n"
         f"Your address (tap to copy):\n<code>{h(addr)}</code>\n\n"
-        "1. Tap <b>Fund page</b> — address is ready to copy\n"
-        "2. Open faucet → <b>Arc Testnet</b> → <b>USDC</b> → paste\n"
+        "1. Tap <b>Fund page</b> — address ready to copy\n"
+        "2. Open faucet → pick <b>Arc Testnet</b> → <b>USDC</b> → paste\n"
         "3. Back here → Wallet → Refresh\n\n"
         "Gas is paid in USDC — you only need USDC.",
         parse_mode=ParseMode.HTML,

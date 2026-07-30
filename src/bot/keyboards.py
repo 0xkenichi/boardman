@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 REMATCH_WEB = os.getenv("REMATCH_WEB_URL", "https://playingsidequest.fun/rematch")
@@ -13,46 +13,42 @@ REMATCH_BOARD = os.getenv(
 
 
 def main_menu(miniapp_url: str | None = None) -> InlineKeyboardMarkup:
-    """Big simple menu — Arc-first, no commands required."""
+    """Minimal button-first home — no crypto jargon, few choices."""
     builder = InlineKeyboardBuilder()
-    web = miniapp_url or REMATCH_WEB
     builder.row(
         InlineKeyboardButton(text="🎮 My match", callback_data="ui:match"),
-        InlineKeyboardButton(text="🔄 Rematch", callback_data="ui:rematch"),
-    )
-    builder.row(
-        InlineKeyboardButton(text="⚔️ New challenge", callback_data="ui:challenge"),
+        InlineKeyboardButton(text="⚔️ Challenge", callback_data="ui:challenge"),
     )
     builder.row(
         InlineKeyboardButton(text="💰 Wallet", callback_data="menu:wallet"),
-        InlineKeyboardButton(text="💧 Get USDC", callback_data="ui:get_usdc"),
+        InlineKeyboardButton(text="💧 Get money", callback_data="ui:get_usdc"),
     )
     builder.row(
+        InlineKeyboardButton(text="🔄 Rematch", callback_data="ui:rematch"),
         InlineKeyboardButton(text="👤 Profile", callback_data="menu:profile"),
-        InlineKeyboardButton(text="📋 Board", callback_data="ui:board"),
     )
-    # url= always works; WebApp needs BotFather domain — optional via env
-    use_webapp = os.getenv("REMATCH_USE_WEBAPP", "").lower() in ("1", "true", "yes")
-    if use_webapp:
-        builder.row(
-            InlineKeyboardButton(
-                text="🏆 Leaderboard",
-                web_app=WebAppInfo(url=REMATCH_BOARD),
-            ),
-            InlineKeyboardButton(
-                text="🌐 Site",
-                web_app=WebAppInfo(url=web),
-            ),
-        )
-    else:
-        builder.row(
-            InlineKeyboardButton(text="🏆 Leaderboard", url=REMATCH_BOARD),
-            InlineKeyboardButton(text="🌐 Site", url=web),
-        )
     builder.row(
-        InlineKeyboardButton(text="📖 How to play", callback_data="menu:learn"),
+        InlineKeyboardButton(text="⋯ More", callback_data="ui:more"),
+    )
+    return builder.as_markup()
+
+
+def more_menu(miniapp_url: str | None = None) -> InlineKeyboardMarkup:
+    """Secondary links — board, site, rules (keeps main menu clean)."""
+    builder = InlineKeyboardBuilder()
+    web = miniapp_url or REMATCH_WEB
+    builder.row(
+        InlineKeyboardButton(text="📋 Board", callback_data="ui:board"),
+        InlineKeyboardButton(text="🏆 Leaderboard", url=REMATCH_BOARD),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🌐 Site", url=web),
         InlineKeyboardButton(text="📜 Rules", callback_data="ui:rules"),
     )
+    builder.row(
+        InlineKeyboardButton(text="📖 How to play", callback_data="menu:learn"),
+    )
+    builder.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
     return builder.as_markup()
 
 
@@ -330,7 +326,7 @@ def wallet_menu() -> InlineKeyboardMarkup:
     """Actions on the wallet / balance screen."""
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="💧 Get USDC", callback_data="ui:get_usdc"),
+        InlineKeyboardButton(text="💧 Get money", callback_data="ui:get_usdc"),
         InlineKeyboardButton(text="🔄 Refresh", callback_data="menu:wallet"),
     )
     builder.row(
@@ -348,10 +344,10 @@ def get_usdc_menu(
     builder = InlineKeyboardBuilder()
     if helper_url:
         builder.row(
-            InlineKeyboardButton(text="📋 Fund page (your address)", url=helper_url),
+            InlineKeyboardButton(text="📋 Fund page (copy address)", url=helper_url),
         )
     builder.row(
-        InlineKeyboardButton(text="🔗 Open Circle faucet", url=faucet_url),
+        InlineKeyboardButton(text="🔗 Open faucet", url=faucet_url),
     )
     builder.row(
         InlineKeyboardButton(text="🔄 I funded — refresh", callback_data="menu:wallet"),

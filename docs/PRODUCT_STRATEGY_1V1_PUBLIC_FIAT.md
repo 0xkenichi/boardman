@@ -165,6 +165,15 @@ If they create a challenge and accept but never start within the window → expi
 
 Under the hood: **USDC + Circle wallets + ClawEscrow**.
 
+**Spendable vs ledger (important bug class):**
+
+| Field | Meaning |
+|-------|---------|
+| **Balance** (bot) | On-chain USDC at fund address — **can stake** |
+| `profiles.wallet_balance_usdc` | Legacy internal credit — **cannot** lock escrow until funded on-chain |
+
+Example: `@stillkenichi` had **$57 ledger** + **$0 Arc on-chain** → Wallet showed $0 for staking. UX now shows spendable clearly and notes credit-on-file.
+
 ### 5.2 Why Arc is the best first real-money rail
 
 | | Arc | Avalanche / Base |

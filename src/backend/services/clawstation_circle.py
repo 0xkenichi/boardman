@@ -232,11 +232,19 @@ async def get_deposit_address(user_id: str, chain_id: Optional[str] = None) -> s
 
 
 async def get_usdc_balance(user_id: str, chain_id: Optional[str] = None) -> Decimal:
-    """On-chain USDC for the given chain (default: preferred network)."""
+    """On-chain USDC for the given chain (default: preferred network).
+
+    This is the **spendable / stakeable** balance for Rematch escrow.
+    """
     cid = normalize_chain_id(chain_id or await get_preferred_chain(user_id))
     try:
         address = await get_deposit_address(user_id, chain_id=cid)
         circle = _circle_for_chain(cid)
+        # Always pass chain RPC (do not rely on bare RPC_URL env)
+        if not circle.rpc_url:
+            circle.rpc_url = get_rpc_url(cid)
+        if not circle.usdc_address:
+            circle.usdc_address = get_usdc_address(cid)
         result = circle.get_wallet_balance(address)
         if result.get("success"):
             return Decimal(str(result.get("balance_usdc", 0)))
@@ -244,6 +252,61 @@ async def get_usdc_balance(user_id: str, chain_id: Optional[str] = None) -> Deci
     except Exception:
         logger.warning("[Circle] balance exception %s %s", user_id, cid, exc_info=True)
     return Decimal("0")
+
+
+async def get_ledger_balance_usdc(user_id: str) -> Decimal:
+    """Internal profiles.wallet_balance_usdc (legacy / off-chain credit).
+
+    Not used for on-chain escrow locks — shown so users aren't confused when
+    the DB says $57 but Arc stakeable is $0.
+    """
+    try:
+        from backend.supabase_client import get_supabase
+
+        r = (
+            get_supabase()
+            .table("profiles")
+            .select("wallet_balance_usdc")
+            .eq("id", user_id)
+            .limit(1)
+            .execute()
+        )
+        row = (r.data or [None])[0] if r.data else None
+        if not row:
+            return Decimal("0")
+        return Decimal(str(row.get("wallet_balance_usdc") or 0))
+    except Exception:
+        logger.warning("[Circle] ledger balance failed %s", user_id, exc_info=True)
+        return Decimal("0")
+
+
+async def get_balance_summary(
+    user_id: str, chain_id: Optional[str] = None
+) -> dict[str, Any]:
+    """Unified wallet snapshot for bot UX (abstracted money language).
+
+    Returns:
+      spendable_usdc  — on-chain, can stake
+      ledger_usdc     — internal DB credit (legacy)
+      address         — deposit address for preferred chain
+      chain_id
+    """
+    cid = normalize_chain_id(chain_id or await get_preferred_chain(user_id))
+    address = ""
+    spendable = Decimal("0")
+    try:
+        wallet = await ensure_user_wallet(user_id, chain_id=cid)
+        address = wallet.get("address") or ""
+        spendable = await get_usdc_balance(user_id, chain_id=cid)
+    except Exception:
+        logger.warning("[Circle] spendable summary failed %s", user_id, exc_info=True)
+    ledger = await get_ledger_balance_usdc(user_id)
+    return {
+        "spendable_usdc": spendable,
+        "ledger_usdc": ledger,
+        "address": address,
+        "chain_id": cid,
+    }
 
 
 async def get_all_chain_balances(user_id: str) -> list[dict[str, Any]]:
