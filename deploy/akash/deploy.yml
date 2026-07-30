@@ -51,11 +51,11 @@ services:
       - PYTHONUNBUFFERED=1
       - BLOCKED_REGIONS_FILE=/app/config/blocked_regions.json
       - REMATCH_WEB_URL=https://playingsidequest.fun/rematch
-    # Optional: if you use a private registry, configure credentials in Console
+    # If GHCR package is private, uncomment and set a GitHub PAT (read:packages):
     # credentials:
-    #   host: docker.io
-    #   username:
-    #   password:
+    #   host: ghcr.io
+    #   username: YOUR_GITHUB_USERNAME
+    #   password: ghp_...
 
 profiles:
   compute:

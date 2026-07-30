@@ -60,7 +60,23 @@ Image published to:
 ghcr.io/playingsidequest-dotplay/rematch:latest
 ```
 
-Make the GHCR package **public** (Packages → rematch → Package settings), or pass registry credentials in Akash Console.
+**CI status (first push):** workflow `Akash image` on `main` — green when build succeeds:  
+https://github.com/playingsidequest-dotplay/rematch/actions/workflows/akash-image.yml
+
+Make the GHCR package **public** (required for Akash pull without registry secrets):
+
+1. Open https://github.com/playingsidequest-dotplay?tab=packages  
+2. Click **rematch**  
+3. **Package settings** → **Change visibility** → **Public**  
+4. Confirm
+
+Or keep it private and add Docker registry credentials in Akash Console:
+
+| Field | Value |
+|-------|--------|
+| Host | `ghcr.io` |
+| Username | your GitHub username |
+| Password | GitHub PAT with `read:packages` |
 
 ### Option B — Local Docker / Colima
 
