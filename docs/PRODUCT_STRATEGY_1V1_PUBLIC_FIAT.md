@@ -1,9 +1,18 @@
 # Rematch Product Strategy — 1v1 · Public · Mobile · Fiat · Deploy
 
 **Status:** canonical decision log (do not re-litigate casually)  
-**Date:** 2026-07-30  
+**Date:** 2026-07-30 · **last ops update:** same day  
 **Product:** Rematch (sideQuest) — Telegram 1v1 staked skill matches  
-**Related:** `REMATCH_PRODUCT_BRIEF.md`, `GROWTH_TOURNAMENTS_AFFILIATES.md`, `SIMPLE_UX.md`, `GRANTS_AND_CHAIN_STRATEGY.md`, `AGENTIC_ECONOMY.md`, `deploy/akash/`
+**Related:** `REMATCH_PRODUCT_BRIEF.md`, `GROWTH_TOURNAMENTS_AFFILIATES.md`, `SIMPLE_UX.md`, `GRANTS_AND_CHAIN_STRATEGY.md`, `AGENTIC_ECONOMY.md`, `docs/AKASH_DEPLOY.md`, `deploy/akash/`
+
+### Ops snapshot (Akash)
+
+| Item | State |
+|------|--------|
+| Always-on target | Akash **CPU** (no GPU) |
+| Image | `ghcr.io/playingsidequest-dotplay/rematch:latest` (CI green) |
+| Next human step | Public GHCR package → upload `deploy/akash/deploy.generated.yml` on Console |
+| Full runbook | `docs/AKASH_DEPLOY.md` |
 
 This document captures the full product strategy from product brainstorms so we **know it and never forget**.
 
@@ -251,7 +260,7 @@ Rough cost class discussed: often **well under ~$10/month** for a thin bot (not 
 
 ## 8. Build priority queue
 
-1. **Deploy bot+API 24/7 on Akash** (this repo: `docs/AKASH_DEPLOY.md`)
+1. **Deploy bot+API 24/7 on Akash** — image ready; finish Console deploy (`docs/AKASH_DEPLOY.md`)
 2. **Public challenge** channel post + claim + dual lock
 3. **Timers** accept/lock/start/proof expiry
 4. **Copy** wallet UI = balance in $, not chain names

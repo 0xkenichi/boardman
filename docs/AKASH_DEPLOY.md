@@ -4,6 +4,20 @@
 **Resources:** CPU only (~0.5 vCPU, 512Mi RAM). **No GPU.**  
 **Product context:** `docs/PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md`
 
+## Current status (2026-07-30)
+
+| Step | Status |
+|------|--------|
+| Strategy doc | Done — `docs/PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md` |
+| `Dockerfile.akash` + SDL + scripts | On `main` |
+| GHCR image build (CI) | **Success** — `ghcr.io/playingsidequest-dotplay/rematch:latest` |
+| Make package **Public** | **You** — [Packages](https://github.com/playingsidequest-dotplay?tab=packages) → rematch → settings |
+| Upload SDL to Console | **You** — `deploy/akash/deploy.generated.yml` → [console.akash.network](https://console.akash.network/) |
+| Accept CPU bid + health check | After deploy is running |
+
+Local secrets SDL (gitignored): regenerate anytime with  
+`./deploy/akash/render_sdl_from_env.sh` (needs `.env`).
+
 ---
 
 ## What runs in the container
