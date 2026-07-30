@@ -1,0 +1,81 @@
+# Rematch on Akash Network (CPU only — Telegram bot + API)
+#
+# 1. Build & push image (see docs/AKASH_DEPLOY.md):
+#      # local:
+#      docker build -f Dockerfile.akash -t YOUR_DOCKERHUB_USER/rematch:latest .
+#      docker push YOUR_DOCKERHUB_USER/rematch:latest
+#      # or CI: .github/workflows/akash-image.yml → ghcr.io/<owner>/rematch:latest
+# 2. Replace image: below with your pushed tag (GHCR example pre-filled after first CI run).
+# 3. Set env secrets in Akash Console (or env section below for CLI deploy).
+# 4. Deploy via https://console.akash.network/ → Upload SDL
+#
+# Resources: thin bot — ~0.5 CPU, 512Mi–1Gi RAM. No GPU.
+
+---
+version: "2.0"
+
+services:
+  rematch:
+    # After CI: ghcr.io/playingsidequest-dotplay/rematch:latest (make package public)
+    # Or Docker Hub: YOUR_DOCKERHUB_USER/rematch:latest
+    image: ghcr.io/playingsidequest-dotplay/rematch:latest
+    expose:
+      - port: 8000
+        as: 80
+        to:
+          - global: true
+        accept:
+          - http
+          - https
+    env:
+      # --- required secrets (set real values in Console before deploy) ---
+      - TELEGRAM_BOT_TOKEN_CLAWSTATION=
+      - SUPABASE_URL=
+      - SUPABASE_SERVICE_ROLE_KEY=
+      - CIRCLE_API_KEY=
+      - CIRCLE_ENTITY_SECRET=
+      - CIRCLE_WALLET_SET_ID=
+      # --- optional / defaults ---
+      - CIRCLE_CLIENT_KEY=
+      - TELEGRAM_BOT_USERNAME_CLAWSTATION=ClawStationOfficialBot
+      - CLAWSTATION_BOT_MODE=polling
+      - CLAW_DEFAULT_CHAIN=arc
+      - CLAW_MAX_STAKE_USDC=25
+      - CLAW_MAX_WITHDRAW_USDC=50
+      - CLAW_DAILY_WITHDRAW_CAP_USDC=100
+      - CLAW_PAUSED=0
+      - WALLET_WATCH_INTERVAL_SEC=45
+      - LOG_LEVEL=INFO
+      - PORT=8000
+      - NETWORK=testnet
+      - PYTHONUNBUFFERED=1
+      - BLOCKED_REGIONS_FILE=/app/config/blocked_regions.json
+      - REMATCH_WEB_URL=https://playingsidequest.fun/rematch
+    # Optional: if you use a private registry, configure credentials in Console
+    # credentials:
+    #   host: docker.io
+    #   username:
+    #   password:
+
+profiles:
+  compute:
+    rematch:
+      resources:
+        cpu:
+          units: 0.5
+        memory:
+          size: 512Mi
+        storage:
+          size: 1Gi
+  placement:
+    akash:
+      pricing:
+        rematch:
+          denom: uakt
+          amount: 10000
+
+deployment:
+  rematch:
+    akash:
+      profile: rematch
+      count: 1

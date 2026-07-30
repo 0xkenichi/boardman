@@ -25,3 +25,4 @@ data/*.session
 # Standalone import shims (created locally; monorepo uses real gaming/ package)
 /backend
 /gaming/
+deploy/akash/deploy.generated.yml

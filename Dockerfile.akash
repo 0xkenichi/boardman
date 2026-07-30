@@ -1,0 +1,53 @@
+# syntax=docker/dockerfile:1
+# Standalone Rematch image for Akash (bot + API).
+# Build from repo root:
+#   docker build -f Dockerfile.akash -t rematch:latest .
+FROM python:3.12-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    libffi-dev \
+    libssl-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install deps first for layer cache
+COPY src/backend/requirements.txt /app/requirements.txt
+RUN python -m venv /app/.venv \
+    && /app/.venv/bin/pip install --no-cache-dir --upgrade pip \
+    && /app/.venv/bin/pip install --no-cache-dir -r /app/requirements.txt
+
+# App code + config
+COPY src /app/src
+COPY config /app/config
+COPY deploy/start_akash.sh /app/deploy/start_akash.sh
+
+# Code imports as gaming.src.* — mirror local start_free_local.sh layout
+RUN mkdir -p /app/gaming \
+    && ln -sfn /app/src /app/gaming/src \
+    && touch /app/gaming/__init__.py \
+    && ln -sfn /app/config /app/gaming/config \
+    && chmod +x /app/deploy/start_akash.sh
+
+RUN groupadd -r rematch && useradd -r -g rematch -d /app rematch \
+    && chown -R rematch:rematch /app
+
+USER rematch
+
+ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONPATH=/app
+ENV CLAWSTATION_BOT_MODE=polling
+ENV PORT=8000
+ENV BLOCKED_REGIONS_FILE=/app/config/blocked_regions.json
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD curl -f http://localhost:8000/api/healthz || exit 1
+
+CMD ["/app/deploy/start_akash.sh"]

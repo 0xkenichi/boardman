@@ -65,6 +65,14 @@ Host the real docs/leaderboard from `frontend/` in this repo (see `frontend/READ
 
 Live product · shipping weekly · multi-chain testnets · mainnet path in progress.
 
+## Strategy & 24/7 deploy
+
+| Doc | Content |
+|-----|---------|
+| [`docs/PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md`](docs/PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md) | **Canonical** 1v1 / public / mobile / fiat / Arc decisions — do not forget |
+| [`docs/AKASH_DEPLOY.md`](docs/AKASH_DEPLOY.md) | Always-on bot on Akash (CPU) |
+| `Dockerfile.akash` · `deploy/akash/deploy.yml` | Image + SDL |
+
 ## License / contact
 
 © sideQuest · Rematch  
