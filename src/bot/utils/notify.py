@@ -65,7 +65,7 @@ def _ensure_bot() -> Optional[Bot]:
 
 
 async def get_balance_snapshot(user_id: str) -> str:
-    """HTML lines: spendable $ (abstracted) + $PLAY — no chain names."""
+    """HTML lines: total known $ + play/other split + $PLAY."""
     usdc_s = "—"
     play_s = "—"
     streak_s = ""
@@ -75,10 +75,16 @@ async def get_balance_snapshot(user_id: str) -> str:
 
         s = await get_balance_summary(user_id)
         spend = float(s.get("spendable_usdc") or 0)
+        other = float(s.get("other_usdc") or 0)
         ledger = float(s.get("ledger_usdc") or 0)
-        usdc_s = f"${spend:,.2f}"
-        if ledger > 0.009 and ledger > spend + 0.009:
-            note = f"\n📒 Credit on file: ${ledger:,.2f} (not stakeable yet)"
+        total = spend + other
+        usdc_s = f"${total:,.2f}"
+        if other > 0.009:
+            note = (
+                f"\n⚠️ ${other:,.2f} on a linked/old address — move to play wallet to stake"
+            )
+        elif ledger > 0.009 and ledger > spend + 0.009:
+            note = f"\n📒 Legacy credit: ${ledger:,.2f} (not on-chain)"
     except Exception:
         logger.warning("[Notify] USDC balance fetch failed for %s", user_id, exc_info=True)
     try:

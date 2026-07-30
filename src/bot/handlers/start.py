@@ -85,19 +85,19 @@ async def cmd_start(message: types.Message) -> None:
     raw_tag = str(profile.get("gaming_tag") or "—")
     tag = escape(raw_tag)
     addr = escape(str(address))
-    # Spendable balance (on-chain) — abstracted as plain $
     bal_line = ""
     try:
         from gaming.src.backend.services.clawstation_circle import get_balance_summary
 
         s = await get_balance_summary(profile["id"], chain_id="arc")
         spend = float(s.get("spendable_usdc") or 0)
-        ledger = float(s.get("ledger_usdc") or 0)
-        bal_line = f"Balance: <b>${spend:,.2f}</b>\n"
-        if ledger > 0.009 and ledger > spend + 0.009:
+        other = float(s.get("other_usdc") or 0)
+        total = spend + other
+        bal_line = f"Balance: <b>${total:,.2f}</b>\n"
+        if other > 0.009:
             bal_line += (
-                f"📒 Credit on file: ${ledger:,.2f} "
-                f"<i>(fund address to stake)</i>\n"
+                f"⚠️ ${other:,.2f} is on a linked/old address — "
+                f"send it to your play address to stake.\n"
             )
     except Exception:
         logger.warning("[Start] balance preview failed for %s", profile["id"], exc_info=True)
@@ -108,10 +108,10 @@ async def cmd_start(message: types.Message) -> None:
         f"Your tag: <code>@{tag}</code>\n"
         f"Friends challenge you with this.\n\n"
         f"{bal_line}"
-        f"Your fund address:\n"
+        f"Your <b>play</b> fund address:\n"
         f"<code>{addr}</code>\n\n"
         f"<b>Get started</b>\n"
-        f"1. <b>Get money</b> → fund your address\n"
+        f"1. <b>Get money</b> → fund that play address only\n"
         f"2. <b>Challenge</b> a friend\n"
         f"3. Accept → Lock → Side → FT photo\n\n"
         f"Tap <b>How to play</b> under More anytime."

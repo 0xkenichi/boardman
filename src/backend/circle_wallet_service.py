@@ -241,49 +241,70 @@ class CircleWalletService:
         """
         Get USDC balance of a wallet via on-chain RPC.
 
-        Args:
-            wallet_address: The wallet's blockchain address
+        Arc: USDC is native gas + optional ERC-20 facade at 0x3600… (6 decimals).
+        We read ERC-20 balanceOf first (recommended by Arc docs), and also check
+        native balance (18 decimals on Arc) so we never report $0 when funds sit
+        as native USDC only.
 
-        Returns:
-            {
-                "success": bool,
-                "balance_usdc": float,
-                "balance_wei": str,
-                "wallet_address": str
-            }
+        Returns success=False on RPC errors — callers must NOT treat that as $0.
         """
         try:
             from web3 import Web3
 
             if not self.rpc_url:
                 return {"success": False, "error": "RPC_URL not configured"}
+            if not wallet_address or not str(wallet_address).startswith("0x"):
+                return {"success": False, "error": "invalid wallet_address"}
 
-            w3 = Web3(Web3.HTTPProvider(self.rpc_url))
+            w3 = Web3(Web3.HTTPProvider(self.rpc_url, request_kwargs={"timeout": 20}))
             if not w3.is_connected():
                 return {"success": False, "error": "Cannot connect to RPC"}
 
-            # USDC ERC20 ABI (minimal for balanceOf)
-            usdc_abi = [
-                {
-                    "constant": True,
-                    "inputs": [{"name": "_owner", "type": "address"}],
-                    "name": "balanceOf",
-                    "outputs": [{"name": "balance", "type": "uint256"}],
-                    "type": "function"
-                }
-            ]
-
-            checksum_usdc = Web3.to_checksum_address(self.usdc_address)
             checksum_wallet = Web3.to_checksum_address(wallet_address)
-            contract = w3.eth.contract(address=checksum_usdc, abi=usdc_abi)
-            balance_wei = contract.functions.balanceOf(checksum_wallet).call()
-            balance_usdc = balance_wei / 1_000_000  # USDC has 6 decimals
+            erc20_usdc = 0.0
+            native_as_usdc = 0.0
+            balance_wei = 0
+
+            # ERC-20 facade (6 decimals) — preferred read path
+            if self.usdc_address:
+                usdc_abi = [
+                    {
+                        "constant": True,
+                        "inputs": [{"name": "_owner", "type": "address"}],
+                        "name": "balanceOf",
+                        "outputs": [{"name": "balance", "type": "uint256"}],
+                        "type": "function",
+                    }
+                ]
+                try:
+                    checksum_usdc = Web3.to_checksum_address(self.usdc_address)
+                    contract = w3.eth.contract(address=checksum_usdc, abi=usdc_abi)
+                    balance_wei = int(contract.functions.balanceOf(checksum_wallet).call())
+                    erc20_usdc = balance_wei / 1_000_000
+                except Exception as e:
+                    logger.warning("[Circle] ERC20 balanceOf failed %s: %s", wallet_address, e)
+
+            # Native balance — on Arc this IS USDC (18 decimals for gas unit)
+            try:
+                native_wei = int(w3.eth.get_balance(checksum_wallet))
+                chain = (self.blockchain or "").upper()
+                if "ARC" in chain:
+                    native_as_usdc = native_wei / 1e18
+                else:
+                    # non-Arc: native is ETH/AVAX etc — not USDC
+                    native_as_usdc = 0.0
+            except Exception as e:
+                logger.warning("[Circle] native balance failed %s: %s", wallet_address, e)
+
+            balance_usdc = max(erc20_usdc, native_as_usdc)
 
             return {
                 "success": True,
-                "balance_usdc": balance_usdc,
+                "balance_usdc": float(balance_usdc),
                 "balance_wei": str(balance_wei),
-                "wallet_address": wallet_address
+                "erc20_usdc": float(erc20_usdc),
+                "native_usdc": float(native_as_usdc),
+                "wallet_address": wallet_address,
             }
 
         except Exception as e:

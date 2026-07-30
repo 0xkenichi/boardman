@@ -145,13 +145,28 @@ async def set_preferred_chain(user_id: str, chain_id: str) -> str:
     return cid
 
 
+def _on_chain_usdc(address: str, chain_id: str) -> tuple[Optional[Decimal], Optional[str]]:
+    """Read USDC for an address. Returns (balance, error). error set ⇒ do not treat as $0."""
+    if not address or not str(address).startswith("0x"):
+        return None, "invalid address"
+    cid = normalize_chain_id(chain_id)
+    circle = _circle_for_chain(cid)
+    if not circle.rpc_url:
+        circle.rpc_url = get_rpc_url(cid)
+    if not circle.usdc_address:
+        circle.usdc_address = get_usdc_address(cid)
+    result = circle.get_wallet_balance(address)
+    if not result.get("success"):
+        return None, str(result.get("error") or "rpc failed")
+    return Decimal(str(result.get("balance_usdc", 0))), None
+
+
 async def ensure_user_wallet(user_id: str, chain_id: Optional[str] = None) -> dict:
     """Ensure a Circle wallet that can *sign* on the requested chain.
 
-    Circle developer EOAs are bound to one blockchain. Reusing the Base
-    wallet_id for Arc/Avalanche makes contractExecution run on BASE-SEPOLIA
-    (createMatch then fails). We store one Circle wallet id per chain in
-    ``gaming_circle_wallets``.
+    CRITICAL: never silently mint a second wallet for a chain when one already
+    exists. Replacing the play address is how users "lose" funds in the UI
+    (money stays on the old address; Wallet shows the new empty one).
     """
     try:
         UUID(user_id)
@@ -172,6 +187,7 @@ async def ensure_user_wallet(user_id: str, chain_id: Optional[str] = None) -> di
         wallet_id = profile.get("circle_wallet_id")
 
     circle = _circle_for_chain(cid)
+    prev_deposit = (profile.get("gaming_deposit_address") or "").lower()
 
     # Validate cached wallet is actually on this blockchain
     if wallet_id:
@@ -180,44 +196,87 @@ async def ensure_user_wallet(user_id: str, chain_id: Optional[str] = None) -> di
             wb = (fetched.get("blockchain") or "").upper().replace("_", "-")
             want = blockchain.upper().replace("_", "-")
             if wb and want and wb != want and want not in wb and wb not in want:
-                logger.warning(
-                    "[Circle] wallet %s is %s, need %s — creating chain wallet",
+                # Wrong chain — do NOT invent a new wallet if we already stored
+                # an address with funds; raise so ops can fix mapping.
+                logger.error(
+                    "[Circle] wallet %s is %s, need %s user=%s — NOT auto-creating",
                     wallet_id,
                     wb,
                     want,
+                    user_id[:8],
                 )
-                wallet_id = None
-            else:
-                address = fetched["wallet_address"]
-                try:
-                    await _SupabaseProfileStore.set_chain_wallet(
-                        user_id, cid, wallet_id, address
-                    )
-                except Exception:
-                    pass
-                return {
-                    "wallet_id": wallet_id,
-                    "address": address,
-                    "blockchain": fetched.get("blockchain") or blockchain,
-                    "chain_id": cid,
-                }
+                raise CircleWalletError(
+                    f"Saved wallet is on {wb}, need {want}. Contact support — "
+                    f"we will not create a second address (protects your funds)."
+                )
+            address = fetched["wallet_address"]
+            try:
+                await _SupabaseProfileStore.set_chain_wallet(
+                    user_id, cid, wallet_id, address
+                )
+            except Exception:
+                pass
+            return {
+                "wallet_id": wallet_id,
+                "address": address,
+                "blockchain": fetched.get("blockchain") or blockchain,
+                "chain_id": cid,
+            }
+        # Fetch failed — keep wallet_id, do not create a replacement
+        logger.error(
+            "[Circle] get_wallet failed for %s user=%s: %s — not creating replacement",
+            wallet_id,
+            user_id[:8],
+            fetched.get("error"),
+        )
+        if prev_deposit:
+            return {
+                "wallet_id": wallet_id,
+                "address": prev_deposit,
+                "blockchain": blockchain,
+                "chain_id": cid,
+            }
+        raise CircleWalletError(
+            f"Could not load wallet {wallet_id}: {fetched.get('error')}"
+        )
 
-    # Create a dedicated Circle wallet on this blockchain
+    # No wallet_id for this chain yet — create once
+    # If profile already has a deposit address with funds, refuse to orphan it
+    if prev_deposit:
+        bal, err = _on_chain_usdc(prev_deposit, cid)
+        if err is None and bal is not None and bal > Decimal("0.009"):
+            logger.error(
+                "[Circle] refuse new wallet — %s already holds $%s on %s user=%s",
+                prev_deposit[:12],
+                bal,
+                cid,
+                user_id[:8],
+            )
+            raise CircleWalletError(
+                f"You already have ${bal:,.2f} at {prev_deposit}. "
+                f"We will not create a second play address. /support"
+            )
+
     result = circle.create_custodial_wallet_for_user(
         profile_id=user_id,
         phone_number=None,
     )
     if not result.get("success"):
         raise CircleWalletError(
-            f"Circle wallet creation failed on {blockchain}: {result.get('error')}. "
-            f"For Arc/Avalanche you need a wallet on that chain — fund the address "
-            f"shown after Switch network."
+            f"Circle wallet creation failed on {blockchain}: {result.get('error')}."
         )
 
     wallet_id = result["wallet_id"]
     address = result["wallet_address"]
     await _SupabaseProfileStore.set_chain_wallet(user_id, cid, wallet_id, address)
-    logger.info("[Circle] Wallet %s chain=%s user=%s addr=%s", wallet_id, cid, user_id, address)
+    logger.info(
+        "[Circle] NEW wallet %s chain=%s user=%s addr=%s (prev_deposit=%s)",
+        wallet_id,
+        cid,
+        user_id[:8],
+        address,
+        (prev_deposit or "")[:12],
+    )
     return {
         "wallet_id": wallet_id,
         "address": address,
@@ -232,34 +291,32 @@ async def get_deposit_address(user_id: str, chain_id: Optional[str] = None) -> s
 
 
 async def get_usdc_balance(user_id: str, chain_id: Optional[str] = None) -> Decimal:
-    """On-chain USDC for the given chain (default: preferred network).
+    """Stakeable on-chain USDC at the **play** (Circle) address only.
 
-    This is the **spendable / stakeable** balance for Rematch escrow.
+    RPC failure returns 0 only after logging — prefer get_usdc_balance_strict
+    for deposit detection.
     """
+    bal, err = await get_usdc_balance_strict(user_id, chain_id=chain_id)
+    if err:
+        logger.warning("[Circle] balance fail user=%s: %s", user_id[:8], err)
+        return Decimal("0")
+    return bal or Decimal("0")
+
+
+async def get_usdc_balance_strict(
+    user_id: str, chain_id: Optional[str] = None
+) -> tuple[Optional[Decimal], Optional[str]]:
+    """Strict balance for play wallet. (balance, error) — never invent $0 on error."""
     cid = normalize_chain_id(chain_id or await get_preferred_chain(user_id))
     try:
         address = await get_deposit_address(user_id, chain_id=cid)
-        circle = _circle_for_chain(cid)
-        # Always pass chain RPC (do not rely on bare RPC_URL env)
-        if not circle.rpc_url:
-            circle.rpc_url = get_rpc_url(cid)
-        if not circle.usdc_address:
-            circle.usdc_address = get_usdc_address(cid)
-        result = circle.get_wallet_balance(address)
-        if result.get("success"):
-            return Decimal(str(result.get("balance_usdc", 0)))
-        logger.warning("[Circle] balance fail %s %s: %s", user_id, cid, result.get("error"))
-    except Exception:
-        logger.warning("[Circle] balance exception %s %s", user_id, cid, exc_info=True)
-    return Decimal("0")
+    except Exception as exc:
+        return None, str(exc)
+    return _on_chain_usdc(address, cid)
 
 
 async def get_ledger_balance_usdc(user_id: str) -> Decimal:
-    """Internal profiles.wallet_balance_usdc (legacy / off-chain credit).
-
-    Not used for on-chain escrow locks — shown so users aren't confused when
-    the DB says $57 but Arc stakeable is $0.
-    """
+    """Internal profiles.wallet_balance_usdc (legacy). Not stakeable on-chain."""
     try:
         from backend.supabase_client import get_supabase
 
@@ -280,32 +337,104 @@ async def get_ledger_balance_usdc(user_id: str) -> Decimal:
         return Decimal("0")
 
 
+async def _candidate_addresses(user_id: str, play_address: str) -> list[str]:
+    """All addresses we should scan so we never hide funds after wallet rotation."""
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def _add(a: Optional[str]) -> None:
+        if not a:
+            return
+        al = a.strip().lower()
+        if not al.startswith("0x") or al in seen:
+            return
+        seen.add(al)
+        out.append(al)
+
+    _add(play_address)
+    try:
+        profile = await _SupabaseProfileStore.get_profile(user_id) or {}
+        _add(profile.get("gaming_deposit_address"))
+        _add(profile.get("wallet_address"))
+        _add(profile.get("linked_wallet"))
+        # full profile for withdrawal_wallet if present
+        from backend.supabase_client import get_supabase
+
+        r = (
+            get_supabase()
+            .table("profiles")
+            .select("wallet_address,linked_wallet,gaming_deposit_address,withdrawal_wallet")
+            .eq("id", user_id)
+            .limit(1)
+            .execute()
+        )
+        row = (r.data or [None])[0] or {}
+        for k in (
+            "wallet_address",
+            "linked_wallet",
+            "gaming_deposit_address",
+            "withdrawal_wallet",
+        ):
+            _add(row.get(k))
+    except Exception:
+        logger.warning("[Circle] candidate address scan failed", exc_info=True)
+    return out
+
+
 async def get_balance_summary(
     user_id: str, chain_id: Optional[str] = None
 ) -> dict[str, Any]:
-    """Unified wallet snapshot for bot UX (abstracted money language).
+    """Unified wallet snapshot — never hide funds on a linked/old address.
 
     Returns:
-      spendable_usdc  — on-chain, can stake
-      ledger_usdc     — internal DB credit (legacy)
-      address         — deposit address for preferred chain
+      spendable_usdc   — play wallet only (can stake)
+      other_usdc       — max/sum on other known addresses (NOT stakeable until moved)
+      other_address    — address holding other_usdc (if any)
+      ledger_usdc      — internal DB credit
+      address          — play deposit address
       chain_id
+      balance_error    — if play wallet RPC failed
     """
     cid = normalize_chain_id(chain_id or await get_preferred_chain(user_id))
     address = ""
     spendable = Decimal("0")
+    balance_error = None
     try:
         wallet = await ensure_user_wallet(user_id, chain_id=cid)
-        address = wallet.get("address") or ""
-        spendable = await get_usdc_balance(user_id, chain_id=cid)
-    except Exception:
+        address = (wallet.get("address") or "").lower()
+        bal, err = _on_chain_usdc(address, cid)
+        if err:
+            balance_error = err
+        else:
+            spendable = bal or Decimal("0")
+    except Exception as exc:
+        balance_error = str(exc)
         logger.warning("[Circle] spendable summary failed %s", user_id, exc_info=True)
+
+    other_usdc = Decimal("0")
+    other_address = ""
+    try:
+        for addr in await _candidate_addresses(user_id, address):
+            if address and addr == address.lower():
+                continue
+            bal, err = _on_chain_usdc(addr, cid)
+            if err or bal is None:
+                continue
+            if bal > other_usdc:
+                other_usdc = bal
+                other_address = addr
+    except Exception:
+        logger.warning("[Circle] other-address scan failed", exc_info=True)
+
     ledger = await get_ledger_balance_usdc(user_id)
     return {
         "spendable_usdc": spendable,
+        "other_usdc": other_usdc,
+        "other_address": other_address,
         "ledger_usdc": ledger,
         "address": address,
         "chain_id": cid,
+        "balance_error": balance_error,
     }
 
 

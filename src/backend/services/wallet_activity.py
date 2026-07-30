@@ -363,27 +363,41 @@ async def process_balance_change(
 
 
 async def watch_user_balances(user_id: str) -> dict[str, str]:
-    """Poll all chains for one user. Returns chain → action."""
+    """Poll all chains for one user. Returns chain → action.
+
+    Uses strict balance (RPC error ≠ $0) so we never fake a deposit/outflow
+    when the node is flaky or the play address just rotated.
+    """
     import asyncio
 
-    from gaming.src.backend.services.clawstation_circle import get_usdc_balance
+    from gaming.src.backend.services.clawstation_circle import get_usdc_balance_strict
 
     actions: dict[str, str] = {}
     chains = [c["id"] for c in list_chains()]
 
-    async def _one(cid: str) -> tuple[str, Optional[Decimal]]:
+    async def _one(cid: str) -> tuple[str, Optional[Decimal], Optional[str]]:
         try:
-            bal = await asyncio.wait_for(get_usdc_balance(user_id, chain_id=cid), timeout=12)
-            return cid, bal
+            bal, err = await asyncio.wait_for(
+                get_usdc_balance_strict(user_id, chain_id=cid), timeout=12
+            )
+            if err:
+                logger.warning(
+                    "[WalletWatch] balance fail %s %s: %s", user_id[:8], cid, err
+                )
+                return cid, None, err
+            return cid, bal, None
         except Exception as exc:
             logger.warning("[WalletWatch] balance fail %s %s: %s", user_id[:8], cid, exc)
-            return cid, None
+            return cid, None, str(exc)
 
     results = await asyncio.gather(*[_one(c) for c in chains])
-    for cid, bal in results:
+    for cid, bal, err in results:
         if bal is None:
             actions[cid] = "error"
             continue
+        # Snapshot key includes nothing about address rotation recovery —
+        # first observation after a large unexplained jump to zero is still
+        # notified as outflow (real spend). RPC errors no longer produce jumps.
         old = get_snapshot(user_id, cid)
         actions[cid] = await process_balance_change(user_id, cid, old, bal) or "none"
     return actions
