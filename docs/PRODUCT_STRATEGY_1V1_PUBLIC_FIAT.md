@@ -292,3 +292,33 @@ Public lobbies, tournaments, mobile, and iMessage are **apps/modes on the same r
 > Ship **always-on bot** now; fiat when legal + rails exist; tournaments as bracketed 1v1s later.
 
 **If someone asks “what about COD teams / Free Fire / Naira / Avalanche gas?” — re-read this file.**
+
+---
+
+## 11. Voice & zingers (product personality)
+
+After every settle, the bot sends a **creative, non-repetitive** one-liner:
+
+- Winner: flex / respect / “who the boss is”
+- Loser: roast-with-love / “where’s the ego” / rematch fuel  
+- Blowouts and close games get score-aware lines  
+- Draws get their own pool  
+
+Implementation: `src/bot/utils/zingers.py` · wired in settlement DMs  
+Never sound like a bank receipt first — money line + **zinger**, then balance + Rematch button.
+
+---
+
+## 12. Where this doc lives (do not lose it)
+
+| Copy | Path |
+|------|------|
+| **Canonical** | `docs/PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md` |
+| Deploy | `docs/AKASH_DEPLOY.md` |
+| Linked from | `README.md` → Strategy & 24/7 deploy |
+
+Absolute on this machine (worktree):
+
+```text
+/Users/kenichi/.grok/worktrees/rematch-rematch/scaling/docs/PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md
+```

@@ -394,50 +394,95 @@ def _update_challenge(
     ).execute()
 
 
+def _score_from_challenge(challenge: dict) -> tuple[Optional[int], Optional[int], str]:
+    """Best-effort final scoreline for zingers."""
+    home = away = None
+    for key in ("final_home", "home_score", "creator_home", "ai_home"):
+        if challenge.get(key) is not None:
+            try:
+                home = int(challenge[key])
+                break
+            except (TypeError, ValueError):
+                pass
+    for key in ("final_away", "away_score", "creator_away", "ai_away"):
+        if challenge.get(key) is not None:
+            try:
+                away = int(challenge[key])
+                break
+            except (TypeError, ValueError):
+                pass
+    raw = (
+        challenge.get("final_score")
+        or challenge.get("scoreline")
+        or challenge.get("ai_scoreline")
+        or ""
+    )
+    if home is None and away is None and raw:
+        import re
+
+        m = re.search(r"(\d+)\s*[-:]\s*(\d+)", str(raw))
+        if m:
+            home, away = int(m.group(1)), int(m.group(2))
+    scoreline = f"{home}-{away}" if home is not None and away is not None else str(raw or "")
+    return home, away, scoreline
+
+
 async def _notify_result(
     challenge: dict,
     winner_id: Optional[str],
     tx_hash: Optional[str],
 ) -> None:
     from gaming.src.bot.utils.notify import get_balance_snapshot, notify_user
-    from gaming.src.bot.utils.text import bold, code
+    from gaming.src.bot.utils.zingers import format_result_banner
     from gaming.src.backend.services.match_codes import display_code
 
     creator_id = challenge["creator_id"]
     opponent_id = challenge.get("opponent_id")
     amount = Decimal(str(challenge["amount_usdc"]))
-    challenge_id = challenge["id"]
     match_code = display_code(challenge)
-    chain = challenge.get("settlement_chain") or "base"
+    # Money UX: hide chain noise; optional tx for power users only
     tx_hash_disp = tx_hash or ""
     if tx_hash_disp and not tx_hash_disp.startswith("0x"):
         tx_hash_disp = "0x" + tx_hash_disp
-    tx_text = f"\nTx: <code>{tx_hash_disp}</code>" if tx_hash_disp else ""
-    explorer = ""
-    if tx_hash_disp and chain in ("base", "base_sepolia", None, ""):
-        explorer = f"\nhttps://sepolia.basescan.org/tx/{tx_hash_disp}"
+    tx_text = f"\n<code>{tx_hash_disp[:10]}…</code>" if len(tx_hash_disp) > 12 else (
+        f"\n<code>{tx_hash_disp}</code>" if tx_hash_disp else ""
+    )
 
-    pot = amount * 2 * Decimal("0.93")
+    pot = float(amount * 2 * Decimal("0.93"))
+    home, away, scoreline = _score_from_challenge(challenge)
+
+    def _tag_for(uid: Optional[str]) -> str:
+        if not uid:
+            return ""
+        try:
+            from backend.supabase_client import get_supabase
+
+            r = (
+                get_supabase()
+                .table("profiles")
+                .select("gaming_tag")
+                .eq("id", uid)
+                .limit(1)
+                .execute()
+            )
+            row = (r.data or [None])[0]
+            return (row or {}).get("gaming_tag") or ""
+        except Exception:
+            return ""
 
     async def _send(uid: str, you_won: Optional[bool], rival_id: Optional[str]) -> None:
-        if you_won is True:
-            head = (
-                f"🏆 <b>You won</b> match <code>{match_code}</code>\n"
-                f"Payout: <b>${pot:,.2f} USDC</b> (after 7% fee)\n"
-                f"Chain: <b>{chain}</b>{tx_text}{explorer}"
-            )
-        elif you_won is False:
-            head = (
-                f"😔 <b>Match over</b> — you did not win "
-                f"<code>{match_code}</code>\n"
-                f"Winner received <b>${pot:,.2f} USDC</b> (after fee)\n"
-                f"Chain: <b>{chain}</b>{tx_text}"
-            )
-        else:
-            head = (
-                f"🤝 Match <code>{match_code}</code> ended in a <b>draw</b>.\n"
-                f"Stakes refunded.{tx_text}"
-            )
+        rival_tag = _tag_for(rival_id)
+        head = format_result_banner(
+            won=you_won,
+            match_code=match_code,
+            pot_usdc=pot if you_won is not None else None,
+            scoreline=scoreline,
+            home=home,
+            away=away,
+            rival_tag=rival_tag,
+        )
+        if you_won is True and tx_text:
+            head = f"{head}{tx_text}"
         bal = await get_balance_snapshot(uid)
         buttons = None
         if rival_id:
@@ -450,8 +495,8 @@ async def _notify_result(
         await notify_user(
             uid,
             f"{head}\n\n"
-            f"<b>Updated balances</b>\n{bal}\n\n"
-            f"Tap <b>Rematch</b> for the same setup — or /profile · /playbook",
+            f"<b>Balance</b>\n{bal}\n\n"
+            f"Tap <b>Rematch</b> — or open Wallet.",
             buttons=buttons,
         )
 
