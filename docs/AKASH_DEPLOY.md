@@ -10,7 +10,8 @@
 |------|--------|
 | Strategy doc | Done — `docs/PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md` |
 | `Dockerfile.akash` + SDL + scripts | On `main` |
-| GHCR image build (CI) | **Success** — `ghcr.io/playingsidequest-dotplay/rematch:latest` |
+| GHCR image build (CI) | Rebuild on push — `ghcr.io/playingsidequest-dotplay/rematch:latest` |
+| CrashLoopBackOff (first deploy) | Fixed: entrypoint is pure Python (slim had no bash) — redeploy after new image |
 | Make package **Public** | **You** — [Packages](https://github.com/playingsidequest-dotplay?tab=packages) → rematch → settings |
 | Upload SDL to Console | **You** — `deploy/akash/deploy.generated.yml` → [console.akash.network](https://console.akash.network/) |
 | Accept CPU bid + health check | After deploy is running |

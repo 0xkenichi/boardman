@@ -16,6 +16,7 @@ on:
     paths:
       - "Dockerfile.akash"
       - "deploy/start_akash.sh"
+      - "deploy/start_akash.py"
       - "src/**"
       - "config/**"
       - ".github/workflows/akash-image.yml"

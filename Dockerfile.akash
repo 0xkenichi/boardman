@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev \
     libssl-dev \
     curl \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -24,13 +25,17 @@ RUN python -m venv /app/.venv \
 COPY src /app/src
 COPY config /app/config
 COPY deploy/start_akash.sh /app/deploy/start_akash.sh
+COPY deploy/start_akash.py /app/deploy/start_akash.py
 
 # Code imports as gaming.src.* — mirror local start_free_local.sh layout
+# Use a real package dir (not only symlink) so imports are robust as non-root.
 RUN mkdir -p /app/gaming \
     && ln -sfn /app/src /app/gaming/src \
     && touch /app/gaming/__init__.py \
     && ln -sfn /app/config /app/gaming/config \
-    && chmod +x /app/deploy/start_akash.sh
+    && chmod +x /app/deploy/start_akash.sh /app/deploy/start_akash.py \
+    && test -f /app/gaming/src/bot/main.py \
+    && test -f /app/gaming/src/backend/main.py
 
 RUN groupadd -r rematch && useradd -r -g rematch -d /app rematch \
     && chown -R rematch:rematch /app
@@ -47,7 +52,9 @@ ENV BLOCKED_REGIONS_FILE=/app/config/blocked_regions.json
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+# Longer start period: bot+API cold start on small Akash CPU
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
     CMD curl -f http://localhost:8000/api/healthz || exit 1
 
-CMD ["/app/deploy/start_akash.sh"]
+# Python entrypoint (slim images often lack bash — that was crashing Akash)
+CMD ["python", "/app/deploy/start_akash.py"]
