@@ -1,9 +1,9 @@
-# Mobile games catalog — finite-outcome 1v1 only (screenshot settle)
-# Next product focus after iMessage. See docs/MOBILE_GAMES.md
+# Mobile games catalog — finite-outcome 1v1 / agreed modes only
+# See docs/MOBILE_GAMES.md · docs/WEBAPP_AND_MINIPAY.md
 #
 # Rules:
-#   - Private / head-to-head / deathmatch with a clear final screen
-#   - No open battle royale placement-only modes
+#   - Clear final screen (Victory/Defeat or scoreline)
+#   - Private room / 1v1 / deathmatch / TDM — NOT open battle royale placement
 
 category: mobile
 default_proof: screenshot
@@ -11,7 +11,9 @@ default_stake_min_usdc: 1
 default_stake_max_usdc: 25
 
 games:
-  # ── Primary (next focus) ─────────────────────────────────────────────
+  # ═══════════════════════════════════════════════════════════════════════
+  # Sports / sims
+  # ═══════════════════════════════════════════════════════════════════════
   - game_id: mobile.fc_mobile
     display_name: "FC Mobile"
     enabled: true
@@ -25,7 +27,7 @@ games:
       - "Look for FT, Full Time, or match result scoreboard"
       - "Not console EA FC — mobile UI layout"
     duration_hint_min: 20
-    notes: "Primary mobile title — same H-A scoreline settle as console FC"
+    notes: "Flagship mobile sports title"
 
   - game_id: mobile.efootball
     display_name: "eFootball"
@@ -51,35 +53,81 @@ games:
       - "Two team point totals"
     duration_hint_min: 25
 
-  # ── 1v1 / private room (enabled — screenshot + room rules) ───────────
+  # ═══════════════════════════════════════════════════════════════════════
+  # Free Fire
+  # ═══════════════════════════════════════════════════════════════════════
   - game_id: mobile.free_fire_1v1
     display_name: "Free Fire 1v1"
     enabled: true
     outcome_type: binary_winner
     emoji: "🔥"
     platforms: ["ios", "android"]
-    result_screen: "Victory / Defeat or 1v1 win screen (not BR placement)"
+    result_screen: "Victory / Defeat on 1v1 or Clash (not BR rank)"
     ai_hints:
       - "Garena Free Fire 1v1 or clash result"
       - "Victory or Defeat banner"
-      - "Not battle royale rank screen"
+      - "Not battle royale placement / Booyah rank list"
     duration_hint_min: 15
-    notes: "Private 1v1 / clash only — no open BR"
+    notes: "Private 1v1 / duel only"
 
+  - game_id: mobile.free_fire_cs
+    display_name: "Free Fire Clash Squad"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "🔥"
+    platforms: ["ios", "android"]
+    result_screen: "Clash Squad win screen — team Victory/Defeat"
+    ai_hints:
+      - "Free Fire Clash Squad end screen"
+      - "Victory or Defeat"
+      - "Not classic BR"
+    duration_hint_min: 20
+    notes: "Agreed 2v2/4v4 CS — still one economic rep per side if staking as 1v1 wallets"
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # COD Mobile
+  # ═══════════════════════════════════════════════════════════════════════
   - game_id: mobile.cod_mobile_dm
     display_name: "COD Mobile Deathmatch"
     enabled: true
     outcome_type: binary_winner
     emoji: "🔫"
     platforms: ["ios", "android"]
-    result_screen: "Match end scoreboard / MVP win for 1v1 or agreed DM"
+    result_screen: "MP end scoreboard / winner for DM or agreed 1v1"
     ai_hints:
       - "Call of Duty Mobile multiplayer end screen"
-      - "Winner or scoreboard for deathmatch"
+      - "Deathmatch or free-for-all scoreboard"
       - "Not Warzone/BR placement only"
     duration_hint_min: 15
-    notes: "Deathmatch / agreed 1v1 rules — not battle royale"
 
+  - game_id: mobile.cod_mobile_tdm
+    display_name: "COD Mobile TDM"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "🔫"
+    platforms: ["ios", "android"]
+    result_screen: "Team Deathmatch win / final team scores"
+    ai_hints:
+      - "COD Mobile TDM result"
+      - "Team score Victory Defeat"
+    duration_hint_min: 15
+
+  - game_id: mobile.cod_mobile_1v1
+    display_name: "COD Mobile 1v1"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "🔫"
+    platforms: ["ios", "android"]
+    result_screen: "1v1 private match Victory/Defeat"
+    ai_hints:
+      - "COD Mobile 1v1 or private match result"
+      - "Victory Defeat"
+    duration_hint_min: 15
+    notes: "Private lobby preferred"
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # PUBG / BGMI
+  # ═══════════════════════════════════════════════════════════════════════
   - game_id: mobile.pubg_tdm
     display_name: "PUBG Mobile TDM"
     enabled: true
@@ -93,24 +141,225 @@ games:
     duration_hint_min: 15
     notes: "TDM only — not classic BR"
 
+  - game_id: mobile.pubg_1v1
+    display_name: "PUBG Mobile 1v1"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "🎯"
+    platforms: ["ios", "android"]
+    result_screen: "Custom 1v1 / duel Victory screen"
+    ai_hints:
+      - "PUBG Mobile custom room 1v1 result"
+      - "Victory Defeat — not BR placement"
+    duration_hint_min: 15
+
+  - game_id: mobile.bgmi_tdm
+    display_name: "BGMI TDM"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "🎯"
+    platforms: ["android"]
+    result_screen: "TDM final team result"
+    ai_hints:
+      - "BGMI Team Deathmatch end screen"
+      - "Victory Defeat"
+    duration_hint_min: 15
+    notes: "India PUBG variant"
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # Valorant (mobile where available + same proof pattern)
+  # ═══════════════════════════════════════════════════════════════════════
+  - game_id: mobile.valorant_1v1
+    display_name: "Valorant 1v1 / Custom"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "🗡️"
+    platforms: ["ios", "android", "pc"]
+    result_screen: "Custom game Victory screen or final round score"
+    ai_hints:
+      - "Valorant match end Victory Defeat"
+      - "Custom or deathmatch 1v1 final"
+      - "Round score if shown"
+    duration_hint_min: 25
+    notes: "Custom 1v1 / agreed mode — not ranked 5v5 as multi-wallet"
+
+  - game_id: mobile.valorant_dm
+    display_name: "Valorant Deathmatch"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "🗡️"
+    platforms: ["ios", "android", "pc"]
+    result_screen: "Deathmatch end leaderboard / top fragger agreed"
+    ai_hints:
+      - "Valorant Deathmatch end scoreboard"
+      - "First place or agreed duel winner"
+    duration_hint_min: 15
+    notes: "Use only with clear 1v1 agreement; full FFA DM is weaker proof"
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # Other popular mobile (finite 1v1)
+  # ═══════════════════════════════════════════════════════════════════════
+  - game_id: mobile.clash_royale
+    display_name: "Clash Royale"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "👑"
+    platforms: ["ios", "android"]
+    result_screen: "1v1 match end crowns / Victory"
+    ai_hints:
+      - "Clash Royale battle result"
+      - "Three crowns or winner banner"
+    duration_hint_min: 5
+
+  - game_id: mobile.brawl_stars_1v1
+    display_name: "Brawl Stars 1v1"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "⭐"
+    platforms: ["ios", "android"]
+    result_screen: "Showdown 1v1 or Duo agreed — Victory"
+    ai_hints:
+      - "Brawl Stars victory screen"
+      - "1v1 mode result"
+    duration_hint_min: 5
+
   - game_id: mobile.mlbb_1v1
     display_name: "MLBB Custom 1v1"
-    enabled: false
+    enabled: true
     outcome_type: binary_winner
     emoji: "⚔️"
     platforms: ["ios", "android"]
-    result_screen: "Victory screen after custom 1v1"
+    result_screen: "Custom room Victory after 1v1"
     ai_hints:
       - "Mobile Legends victory defeat"
+      - "Custom lobby result"
     duration_hint_min: 20
-    notes: "Enable when custom lobby proof quality is solid"
+    notes: "Custom 1v1 only"
 
+  - game_id: mobile.wild_rift_1v1
+    display_name: "Wild Rift Custom 1v1"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "🛡️"
+    platforms: ["ios", "android"]
+    result_screen: "Custom game Victory"
+    ai_hints:
+      - "League of Legends Wild Rift victory"
+      - "Custom match end"
+    duration_hint_min: 25
+
+  - game_id: mobile.genshin_tcg
+    display_name: "Genshin TCG 1v1"
+    enabled: false
+    outcome_type: binary_winner
+    emoji: "🃏"
+    platforms: ["ios", "android", "pc"]
+    result_screen: "Genius Invokation win"
+    ai_hints:
+      - "Genshin TCG victory"
+    duration_hint_min: 20
+    notes: "Enable when screenshot layout is stable"
+
+  - game_id: mobile.chess_com
+    display_name: "Chess (mobile)"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "♟️"
+    platforms: ["ios", "android"]
+    result_screen: "Checkmate / resign / win screen"
+    ai_hints:
+      - "Chess app game over winner"
+      - "Checkmate or resignation"
+    duration_hint_min: 30
+
+  - game_id: mobile.ludo
+    display_name: "Ludo"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "🎲"
+    platforms: ["ios", "android"]
+    result_screen: "1v1 winner screen (not 4-player free-for-all)"
+    ai_hints:
+      - "Ludo King or Ludo final winner"
+      - "1v1 mode"
+    duration_hint_min: 20
+    notes: "1v1 only"
+
+  - game_id: mobile.carrom
+    display_name: "Carrom"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "⚪"
+    platforms: ["ios", "android"]
+    result_screen: "Match win screen"
+    ai_hints:
+      - "Carrom board game winner"
+    duration_hint_min: 15
+
+  - game_id: mobile.asphalt
+    display_name: "Asphalt race 1v1"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "🏎️"
+    platforms: ["ios", "android"]
+    result_screen: "Race finish P1 vs P2 / winner"
+    ai_hints:
+      - "Asphalt multiplayer race result"
+      - "1st place between two agreed players"
+    duration_hint_min: 10
+
+  - game_id: mobile.rocket_league_sideswipe
+    display_name: "RL Sideswipe"
+    enabled: true
+    outcome_type: scoreline
+    emoji: "🚀"
+    platforms: ["ios", "android"]
+    result_screen: "Final score 1v1"
+    ai_hints:
+      - "Rocket League Sideswipe final score"
+    duration_hint_min: 10
+
+  - game_id: mobile.tekken
+    display_name: "Tekken (mobile)"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "🥊"
+    platforms: ["ios", "android"]
+    result_screen: "You Win / KO result"
+    ai_hints:
+      - "Tekken mobile fight result"
+      - "You Win You Lose"
+    duration_hint_min: 10
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # Deferred — not finite without house rules
+  # ═══════════════════════════════════════════════════════════════════════
   - game_id: mobile.cod_warzone_br
     display_name: "COD Warzone / BR"
     enabled: false
     outcome_type: binary_winner
     emoji: "🪂"
     platforms: ["ios", "android"]
-    result_screen: "n/a — ambiguous multi-survivor"
+    result_screen: "n/a — multi-survivor placement"
     ai_hints: []
-    notes: "Deferred — not finite 1v1 without house rules"
+    notes: "Deferred — not 1v1 without special house rules"
+
+  - game_id: mobile.pubg_classic_br
+    display_name: "PUBG Classic BR"
+    enabled: false
+    outcome_type: binary_winner
+    emoji: "🪂"
+    platforms: ["ios", "android"]
+    result_screen: "n/a — placement not binary"
+    ai_hints: []
+    notes: "Deferred — use TDM / 1v1 custom instead"
+
+  - game_id: mobile.free_fire_br
+    display_name: "Free Fire BR"
+    enabled: false
+    outcome_type: binary_winner
+    emoji: "🪂"
+    platforms: ["ios", "android"]
+    result_screen: "n/a — Booyah placement"
+    ai_hints: []
+    notes: "Deferred — use 1v1 / Clash Squad"

@@ -1,69 +1,51 @@
 # Mobile games on Rematch
 
-**Status:** catalog live · product focus **after iMessage**  
-**Primary title:** **FC Mobile** (`mobile.fc_mobile`)  
-**Related:** `config/games/mobile.yaml`, `docs/IMESSAGE_AND_CHANNELS.md`, `PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md`
+**Status:** catalog expanded · **FC Mobile** + Free Fire / COD / Valorant / PUBG family  
+**Related:** `config/games/mobile.yaml`, `docs/WEBAPP_AND_MINIPAY.md`, `docs/IMESSAGE_AND_CHANNELS.md`
 
 ---
 
-## Rule (same as everything else)
+## Rule
 
-**1v1 · finite winner · final screenshot · dual-lock USDC.**
+**1v1 or agreed finite mode · clear final screen · screenshot settle · dual-lock USDC.**
 
-Mobile is not a new money path. It is a **catalog category** + AI proof pack.
+| Use | Don’t use (enabled: false) |
+|-----|----------------------------|
+| Free Fire **1v1 / Clash Squad** | Free Fire classic BR rank |
+| COD Mobile **DM / TDM / 1v1** | Warzone BR placement |
+| PUBG / BGMI **TDM / custom 1v1** | Classic BR chicken dinner only |
+| Valorant **custom 1v1 / DM (agreed)** | Full 5v5 as multi-wallet team pot |
+| FC Mobile / eFootball **FT score** | — |
 
-| Play | Settle |
-|------|--------|
-| On phone (FC Mobile, Free Fire 1v1, …) | Telegram / Stack API — photo of final screen |
-
----
-
-## FC Mobile (flagship)
-
-| | |
-|--|--|
-| `game_id` | `mobile.fc_mobile` |
-| Outcome | Scoreline `H-A` (same mental model as console EA FC) |
-| Proof | FT / full-time result screenshot |
-| Flow | Challenge → Mobile → FC Mobile → lock → play on phone → Submit result photo |
-
-AI hints stress **mobile UI** (not console EA FC layout).
+Battle royale is deferred until there is a house rule with a single finite winner.
 
 ---
 
-## Enabled now (catalog)
+## Enabled catalog (summary)
 
-| game_id | Name | Type |
-|---------|------|------|
-| `mobile.fc_mobile` | FC Mobile | scoreline |
-| `mobile.efootball` | eFootball | scoreline |
-| `mobile.nba_2k_mobile` | NBA 2K Mobile | scoreline |
-| `mobile.free_fire_1v1` | Free Fire 1v1 | binary (private / clash only) |
-| `mobile.cod_mobile_dm` | COD Mobile Deathmatch | binary (not BR) |
-| `mobile.pubg_tdm` | PUBG Mobile TDM | binary |
+### Sports
+- `mobile.fc_mobile` — **FC Mobile** (flagship)
+- `mobile.efootball` — eFootball  
+- `mobile.nba_2k_mobile` — NBA 2K Mobile  
+- `mobile.rocket_league_sideswipe` — RL Sideswipe  
 
-**Disabled (on purpose):** open battle royale, MLBB until custom 1v1 proof is solid.
+### Shooters / battle
+- `mobile.free_fire_1v1`, `mobile.free_fire_cs`  
+- `mobile.cod_mobile_dm`, `mobile.cod_mobile_tdm`, `mobile.cod_mobile_1v1`  
+- `mobile.pubg_tdm`, `mobile.pubg_1v1`, `mobile.bgmi_tdm`  
+- `mobile.valorant_1v1`, `mobile.valorant_dm`  
 
----
+### Other
+- Clash Royale, Brawl Stars 1v1, MLBB custom 1v1, Wild Rift custom  
+- Chess, Ludo 1v1, Carrom, Asphalt 1v1, Tekken mobile  
 
-## Player flow (Telegram)
-
-1. **Challenge** → stake  
-2. **Where do you play?** → **📲 Mobile**  
-3. Pick **FC Mobile** (or another title)  
-4. Both **Lock**  
-5. Play on the phone app  
-6. **Submit result** → final screen photo (+ caption `2-1` or `W`/`L`)  
-7. Settle + zingers  
+Full list: `config/games/mobile.yaml`
 
 ---
 
-## Product order
+## Telegram flow
 
-1. **iMessage** — catalog + wizard (done)  
-2. **Mobile** — FC Mobile first ← **you are here**  
-3. Console polish / more titles  
-4. WhatsApp / SMS channel  
+**Challenge → 📲 Mobile → pick game → stake → lock → play on phone → final screenshot → settle**
 
 ---
 
@@ -74,13 +56,15 @@ curl -s -H "X-Stack-Key: $STACK_API_KEY" \
   "https://HOST/api/stack/v1/games?category=mobile"
 ```
 
-Create match with `"game_id": "mobile.fc_mobile"`.
+```json
+{ "game_id": "mobile.fc_mobile", "amount_usdc": 2, "creator_id": "...", "opponent_id": "..." }
+```
 
 ---
 
-## Next engineering (when you say go)
+## Next
 
-- [ ] Public challenges filtered by mobile  
-- [ ] Per-game timeout presets from `duration_hint_min`  
-- [ ] Optional “room code / friend invite” field for Free Fire / COD  
-- [ ] Sample FT screenshots in `docs/proof_samples/mobile/` for AI tuning  
+1. Webapp MVP (challenge + proof upload) — `docs/WEBAPP_AND_MINIPAY.md`  
+2. Telegram WebApp button  
+3. MiniPay shell (Africa)  
+4. Room-code field for Free Fire / COD private lobbies  

@@ -736,7 +736,10 @@ async def ui_chal_category(callback: types.CallbackQuery, state: FSMContext) -> 
     }.get(cat, cat)
     hint = ""
     if cat == "mobile":
-        hint = "\n⚽ Start with <b>FC Mobile</b> — final score screenshot settles."
+        hint = (
+            "\n⚽ <b>FC Mobile</b> · 🔥 Free Fire · 🔫 COD · 🗡️ Valorant · 🎯 PUBG\n"
+            "<i>1v1 / TDM / private only — not open BR.</i>"
+        )
     elif cat == "imessage":
         hint = "\n📱 Play in Messages, send the final screen here."
     await callback.message.answer(
