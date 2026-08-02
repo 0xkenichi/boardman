@@ -206,7 +206,15 @@ Reuse existing vision path (`score_verifier`) with **per-game packs**:
 - [x] Wallet address bugfixes (play vs linked)  
 - [x] Stack API **v1** match lifecycle (`STACK_API_KEY`)  
 
-### Phase 1 — iMessage product polish
+### Phase 1 — Mobile focus (next)
+
+- [x] `config/games/mobile.yaml` — **FC Mobile** first + Free Fire 1v1, COD DM, etc.  
+- [x] Wizard: **Mobile** category + mobile proof copy  
+- [ ] Sample FT screenshots for FC Mobile AI tuning  
+- [ ] Optional room-code field for Free Fire / COD  
+- See `docs/MOBILE_GAMES.md`  
+
+### Phase 1b — iMessage polish
 
 - Timeouts per game  
 - Public challenge for “open iMessage 8-ball $2”  

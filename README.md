@@ -71,9 +71,11 @@ Live product · shipping weekly · multi-chain testnets · mainnet path in progr
 |-----|---------|
 | [`docs/PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md`](docs/PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md) | **Canonical** 1v1 / public / mobile / fiat / Arc decisions — do not forget |
 | [`docs/IMESSAGE_AND_CHANNELS.md`](docs/IMESSAGE_AND_CHANNELS.md) | iMessage games catalog · multi-channel · phone/API |
+| [`docs/MOBILE_GAMES.md`](docs/MOBILE_GAMES.md) | **FC Mobile** + mobile catalog (next focus) |
 | [`docs/AKASH_DEPLOY.md`](docs/AKASH_DEPLOY.md) | Always-on bot on Akash (CPU) |
 | `Dockerfile.akash` · `deploy/akash/deploy.yml` | Image + SDL |
-| `config/games/imessage.yaml` | Seed GamePigeon / iMessage game catalog |
+| `config/games/imessage.yaml` | GamePigeon / iMessage catalog |
+| `config/games/mobile.yaml` | FC Mobile, Free Fire 1v1, COD DM, … |
 
 ## License / contact
 

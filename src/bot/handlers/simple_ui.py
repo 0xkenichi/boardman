@@ -54,6 +54,7 @@ from gaming.src.bot.keyboards import (
 from gaming.src.backend.services.game_catalog import (
     display_name as game_display_name,
     is_imessage,
+    is_mobile,
     proof_instructions,
 )
 from gaming.src.bot.utils.db import get_or_create_profile, get_profile_by_tag
@@ -728,11 +729,18 @@ async def ui_chal_category(callback: types.CallbackQuery, state: FSMContext) -> 
     cat = callback.data.split(":")[-1]
     await state.update_data(game_category=cat)
     await state.set_state(ChallengeWizard.waiting_game)
-    label = {"imessage": "iMessage games", "console": "Console", "mobile": "Mobile"}.get(
-        cat, cat
-    )
+    label = {
+        "imessage": "iMessage games",
+        "console": "Console",
+        "mobile": "Mobile (FC Mobile & more)",
+    }.get(cat, cat)
+    hint = ""
+    if cat == "mobile":
+        hint = "\n⚽ Start with <b>FC Mobile</b> — final score screenshot settles."
+    elif cat == "imessage":
+        hint = "\n📱 Play in Messages, send the final screen here."
     await callback.message.answer(
-        f"<b>{h(label)}</b>\nPick one:",
+        f"<b>{h(label)}</b>{hint}\n\nPick one:",
         parse_mode=ParseMode.HTML,
         reply_markup=game_menu(category=cat),
     )
@@ -754,6 +762,12 @@ async def ui_chal_game(callback: types.CallbackQuery, state: FSMContext) -> None
             "\n\n📱 <b>iMessage mode</b>\n"
             "After both lock: play in iMessage, then send the "
             "<b>final screen</b> screenshot to this bot."
+        )
+    elif is_mobile(game):
+        extra = (
+            "\n\n📲 <b>Mobile mode</b>\n"
+            "After both lock: play on your phone, then send the "
+            "<b>final result screen</b> to this bot."
         )
     await state.set_state(ChallengeWizard.confirm)
     await callback.message.answer(
@@ -881,11 +895,11 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
 
     if opponent_id:
         try:
-            imsg = (
-                "\n📱 Play in <b>iMessage</b>, then send final screenshot here."
-                if is_imessage(game)
-                else ""
-            )
+            imsg = ""
+            if is_imessage(game):
+                imsg = "\n📱 Play in <b>iMessage</b>, then send final screenshot here."
+            elif is_mobile(game):
+                imsg = "\n📲 Play on <b>mobile</b>, then send final screenshot here."
             await notify_user(
                 opponent_id,
                 f"⚔️ <b>Challenge from @{h(profile.get('gaming_tag') or 'player')}</b>\n\n"
@@ -1042,6 +1056,12 @@ async def ui_lock(callback: types.CallbackQuery) -> None:
             f"{play_help}\n\n"
             f"Then: <b>Submit result</b> → photo of the final screen.\n"
             f"Caption <code>W</code> / <code>L</code> or the score."
+        )
+    elif is_mobile(str(game_key)):
+        next_steps = (
+            f"{play_help}\n\n"
+            f"Then: <b>Submit result</b> → photo of the final screen.\n"
+            f"Caption score like <code>2-1</code> (or <code>W</code>/<code>L</code>)."
         )
     else:
         next_steps = (

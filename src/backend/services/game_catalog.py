@@ -153,8 +153,8 @@ def list_categories(*, enabled_only: bool = True) -> list[dict[str, str]]:
         cat = g.get("category") or "other"
         if cat not in seen:
             seen.append(cat)
-    # Prefer iMessage first for this product slice
-    order = ["imessage", "console", "mobile"]
+    # Product order: iMessage → Mobile (FC Mobile focus) → Console
+    order = ["imessage", "mobile", "console"]
     seen.sort(key=lambda c: order.index(c) if c in order else 99)
     return [{"id": c, "label": labels.get(c, c.title())} for c in seen]
 
@@ -165,14 +165,22 @@ def display_name(game_id: str) -> str:
         return game_id or "Game"
     emoji = g.get("emoji") or ""
     name = g.get("display_name") or g["game_id"]
-    if g.get("category") == "imessage" and "iMessage" not in name:
+    cat = g.get("category")
+    if cat == "imessage" and "iMessage" not in name:
         return f"{emoji} {name} (iMessage)".strip()
+    if cat == "mobile" and "Mobile" not in name and not name.endswith("Mobile"):
+        return f"{emoji} {name} (Mobile)".strip()
     return f"{emoji} {name}".strip()
 
 
 def is_imessage(game_id: str) -> bool:
     g = get_game(game_id)
     return bool(g and g.get("category") == "imessage") or str(game_id).startswith("imessage.")
+
+
+def is_mobile(game_id: str) -> bool:
+    g = get_game(game_id)
+    return bool(g and g.get("category") == "mobile") or str(game_id).startswith("mobile.")
 
 
 def outcome_type(game_id: str) -> str:
@@ -198,13 +206,22 @@ def proof_instructions(game_id: str) -> str:
     g = get_game(game_id)
     if not g:
         return "Play the match, then send the final score screenshot."
-    if g.get("category") == "imessage":
+    name = g.get("display_name") or game_id
+    result = g.get("result_screen") or "winner / final score"
+    cat = g.get("category")
+    if cat == "imessage":
         return (
-            f"Play <b>{g.get('display_name') or game_id}</b> in <b>iMessage</b>, "
+            f"Play <b>{name}</b> in <b>iMessage</b>, "
             f"then send the <b>final screen</b> here.\n"
-            f"What we need: {g.get('result_screen') or 'winner / final score'}."
+            f"What we need: {result}."
+        )
+    if cat == "mobile":
+        return (
+            f"Play <b>{name}</b> on your <b>phone</b>, "
+            f"then send the <b>final result screen</b> here.\n"
+            f"What we need: {result}."
         )
     return (
-        f"Play <b>{g.get('display_name') or game_id}</b>, then submit the "
+        f"Play <b>{name}</b>, then submit the "
         f"<b>final score screen</b> photo."
     )

@@ -1,0 +1,116 @@
+# Mobile games catalog — finite-outcome 1v1 only (screenshot settle)
+# Next product focus after iMessage. See docs/MOBILE_GAMES.md
+#
+# Rules:
+#   - Private / head-to-head / deathmatch with a clear final screen
+#   - No open battle royale placement-only modes
+
+category: mobile
+default_proof: screenshot
+default_stake_min_usdc: 1
+default_stake_max_usdc: 25
+
+games:
+  # ── Primary (next focus) ─────────────────────────────────────────────
+  - game_id: mobile.fc_mobile
+    display_name: "FC Mobile"
+    enabled: true
+    outcome_type: scoreline
+    emoji: "⚽"
+    platforms: ["ios", "android"]
+    result_screen: "Full-time scoreline, both team scores, FT / match end"
+    ai_hints:
+      - "EA Sports FC Mobile final whistle / full time screen"
+      - "Extract home and away goals as integers"
+      - "Look for FT, Full Time, or match result scoreboard"
+      - "Not console EA FC — mobile UI layout"
+    duration_hint_min: 20
+    notes: "Primary mobile title — same H-A scoreline settle as console FC"
+
+  - game_id: mobile.efootball
+    display_name: "eFootball"
+    enabled: true
+    outcome_type: scoreline
+    emoji: "⚽"
+    platforms: ["ios", "android"]
+    result_screen: "Final score both teams"
+    ai_hints:
+      - "eFootball mobile final score"
+      - "Full time scoreline"
+    duration_hint_min: 20
+
+  - game_id: mobile.nba_2k_mobile
+    display_name: "NBA 2K Mobile"
+    enabled: true
+    outcome_type: scoreline
+    emoji: "🏀"
+    platforms: ["ios", "android"]
+    result_screen: "Final box score / end of game"
+    ai_hints:
+      - "NBA 2K Mobile final score"
+      - "Two team point totals"
+    duration_hint_min: 25
+
+  # ── 1v1 / private room (enabled — screenshot + room rules) ───────────
+  - game_id: mobile.free_fire_1v1
+    display_name: "Free Fire 1v1"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "🔥"
+    platforms: ["ios", "android"]
+    result_screen: "Victory / Defeat or 1v1 win screen (not BR placement)"
+    ai_hints:
+      - "Garena Free Fire 1v1 or clash result"
+      - "Victory or Defeat banner"
+      - "Not battle royale rank screen"
+    duration_hint_min: 15
+    notes: "Private 1v1 / clash only — no open BR"
+
+  - game_id: mobile.cod_mobile_dm
+    display_name: "COD Mobile Deathmatch"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "🔫"
+    platforms: ["ios", "android"]
+    result_screen: "Match end scoreboard / MVP win for 1v1 or agreed DM"
+    ai_hints:
+      - "Call of Duty Mobile multiplayer end screen"
+      - "Winner or scoreboard for deathmatch"
+      - "Not Warzone/BR placement only"
+    duration_hint_min: 15
+    notes: "Deathmatch / agreed 1v1 rules — not battle royale"
+
+  - game_id: mobile.pubg_tdm
+    display_name: "PUBG Mobile TDM"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "🎯"
+    platforms: ["ios", "android"]
+    result_screen: "Team Deathmatch win / final team scores"
+    ai_hints:
+      - "PUBG Mobile TDM result"
+      - "Victory Defeat or team score"
+    duration_hint_min: 15
+    notes: "TDM only — not classic BR"
+
+  - game_id: mobile.mlbb_1v1
+    display_name: "MLBB Custom 1v1"
+    enabled: false
+    outcome_type: binary_winner
+    emoji: "⚔️"
+    platforms: ["ios", "android"]
+    result_screen: "Victory screen after custom 1v1"
+    ai_hints:
+      - "Mobile Legends victory defeat"
+    duration_hint_min: 20
+    notes: "Enable when custom lobby proof quality is solid"
+
+  - game_id: mobile.cod_warzone_br
+    display_name: "COD Warzone / BR"
+    enabled: false
+    outcome_type: binary_winner
+    emoji: "🪂"
+    platforms: ["ios", "android"]
+    result_screen: "n/a — ambiguous multi-survivor"
+    ai_hints: []
+    notes: "Deferred — not finite 1v1 without house rules"

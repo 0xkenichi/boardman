@@ -115,19 +115,23 @@ Same settlement rails whether the game is EA FC or Free Fire 1v1.
 - **Full integration plan + catalog:** `docs/IMESSAGE_AND_CHANNELS.md` · `config/games/imessage.yaml`
 - **Beyond Telegram:** Rematch Stack API + WhatsApp/SMS “phone friend”; iMessage = play venue, not money rail.
 
-### 3.4 Mobile (Free Fire, COD, etc.)
+### 3.4 Mobile (FC Mobile first, then Free Fire / COD)
 
 | Prefer | Avoid (for now) |
 |--------|------------------|
+| **FC Mobile** scoreline FT screenshot | — |
 | Private room / 1v1 face-off | Open battle royale with many survivors |
 | Deathmatch with clear win | Placement-only lobbies without agreed rule |
 | Hide/swap usernames if game supports clean 1v1 | Modes with no final win screen |
 
+**Catalog:** `config/games/mobile.yaml` · **Plan:** `docs/MOBILE_GAMES.md`  
+**Product order:** iMessage (live) → **Mobile / FC Mobile (next)** → more titles.
+
 Flow:
 
-1. Accept challenge (and lock).
-2. **Time window** to create room / exchange IDs.
-3. Play.
+1. Challenge → **Mobile** → **FC Mobile** (or Free Fire 1v1 / COD DM).
+2. Accept + lock.
+3. Play on phone (optional room code later).
 4. Final screen → bot.
 
 **Do not block on per-game free APIs.** APIs are anti-cheat later; screenshot + timers + disputes ship first.

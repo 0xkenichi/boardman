@@ -208,32 +208,46 @@ class ScoreVerifier:
         outcome = (catalog.get("outcome_type") or "scoreline").lower()
         hints = catalog.get("ai_hints") or []
 
-        if cat == "imessage" or str(ctx.get("game") or "").startswith("imessage."):
-            # GamePigeon / iMessage finals — binary or scoreline
+        game_key = str(ctx.get("game") or catalog.get("game_id") or "")
+        if (
+            cat in ("imessage", "mobile")
+            or game_key.startswith("imessage.")
+            or game_key.startswith("mobile.")
+        ):
+            # Phone / iMessage finals — not console living-room layout
+            venue = "iMessage / GamePigeon" if cat == "imessage" or game_key.startswith("imessage.") else "mobile phone game"
             hint_lines = [
-                "This is an iMessage / GamePigeon game final screen (NOT EA FC).",
-                f"- Game: {catalog.get('display_name') or ctx.get('game') or 'iMessage game'}",
+                f"This is a {venue} final result screen (NOT console living-room EA FC unless catalog says FC Mobile).",
+                f"- Game: {catalog.get('display_name') or ctx.get('game') or venue}",
                 f"- Outcome type: {outcome}",
                 f"- Expected result screen: {catalog.get('result_screen') or 'winner or scores'}",
                 "Catalog AI hints:",
             ]
             for h in hints:
                 hint_lines.append(f"  • {h}")
+            if "fc_mobile" in game_key or (catalog.get("display_name") or "").lower().find("fc mobile") >= 0:
+                hint_lines.extend(
+                    [
+                        "FC Mobile: extract full-time home and away goals.",
+                        "Mobile UI — scores often large at top/center after FT.",
+                        "player1_score = home/left, player2_score = away/right when layout is clear.",
+                    ]
+                )
             if outcome == "binary_winner":
                 hint_lines.extend(
                     [
                         "Binary match: set the WINNER as higher score.",
-                        "If you see 'You Win' for the local player on the left, use player1_score=1, player2_score=0.",
-                        "If 'You Lose', use player1_score=0, player2_score=1.",
+                        "If you see 'You Win' / Victory for the local player on the left, use player1_score=1, player2_score=0.",
+                        "If 'You Lose' / Defeat, use player1_score=0, player2_score=1.",
                         "If both names and a clear winner label, map winner to the higher of the two scores.",
-                        "Use confidence < 0.7 if the screen is not a final result.",
+                        "Use confidence < 0.7 if the screen is not a final result (e.g. BR placement only).",
                     ]
                 )
             else:
                 hint_lines.extend(
                     [
-                        "Scoreline match: extract both players' final points as player1_score and player2_score.",
-                        "player1 = left / top name when possible; player2 = right / bottom.",
+                        "Scoreline match: extract both players'/teams final points as player1_score and player2_score.",
+                        "player1 = left / top / home when possible; player2 = right / bottom / away.",
                     ]
                 )
             hint_lines.append(
