@@ -112,6 +112,8 @@ Same settlement rails whether the game is EA FC or Free Fire 1v1.
 - People already play on iMessage.
 - Capture **final image** → send to bot.
 - Optional note of iMessage handle for disputes; settlement identity remains Telegram user + wallet.
+- **Full integration plan + catalog:** `docs/IMESSAGE_AND_CHANNELS.md` · `config/games/imessage.yaml`
+- **Beyond Telegram:** Rematch Stack API + WhatsApp/SMS “phone friend”; iMessage = play venue, not money rail.
 
 ### 3.4 Mobile (Free Fire, COD, etc.)
 

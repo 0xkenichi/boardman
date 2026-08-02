@@ -1,0 +1,127 @@
+# iMessage / GamePigeon catalog — finite-outcome 1v1 only
+# Used by challenge wizard + AI proof hints (see docs/IMESSAGE_AND_CHANNELS.md)
+
+category: imessage
+default_proof: screenshot
+default_stake_min_usdc: 1
+default_stake_max_usdc: 25
+
+games:
+  - game_id: imessage.8_ball
+    display_name: "8 Ball"
+    enabled: true
+    outcome_type: binary_winner
+    result_screen: "You Win / You Lose or cleared table"
+    ai_hints:
+      - "GamePigeon 8 Ball final screen"
+      - "Look for You Win, You Lose, or winner name"
+    duration_hint_min: 15
+
+  - game_id: imessage.basketball
+    display_name: "Basketball"
+    enabled: true
+    outcome_type: scoreline
+    result_screen: "Final score both players"
+    ai_hints:
+      - "Basketball score total"
+      - "Two scores or winner banner"
+    duration_hint_min: 10
+
+  - game_id: imessage.archers
+    display_name: "Archers"
+    enabled: true
+    outcome_type: scoreline
+    result_screen: "Points total"
+    ai_hints:
+      - "Archers final points"
+    duration_hint_min: 10
+
+  - game_id: imessage.darts
+    display_name: "Darts"
+    enabled: true
+    outcome_type: scoreline
+    result_screen: "Final dart scores"
+    ai_hints:
+      - "Darts final scoreboard"
+    duration_hint_min: 15
+
+  - game_id: imessage.sea_battle
+    display_name: "Sea Battle"
+    enabled: true
+    outcome_type: binary_winner
+    result_screen: "Fleet destroyed / You Win"
+    ai_hints:
+      - "Sea Battle winner screen"
+    duration_hint_min: 20
+
+  - game_id: imessage.cup_pong
+    display_name: "Cup Pong"
+    enabled: true
+    outcome_type: binary_winner
+    result_screen: "Cups cleared / winner"
+    ai_hints:
+      - "Cup Pong final"
+    duration_hint_min: 15
+
+  - game_id: imessage.word_hunt
+    display_name: "Word Hunt"
+    enabled: true
+    outcome_type: scoreline
+    result_screen: "Points both players"
+    ai_hints:
+      - "Word Hunt final scores"
+    duration_hint_min: 5
+
+  - game_id: imessage.anagrams
+    display_name: "Anagrams"
+    enabled: true
+    outcome_type: scoreline
+    result_screen: "Final points"
+    ai_hints:
+      - "Anagrams score"
+    duration_hint_min: 5
+
+  - game_id: imessage.four_in_a_row
+    display_name: "4 in a Row"
+    enabled: true
+    outcome_type: binary_winner
+    result_screen: "Four connected / You Win"
+    ai_hints:
+      - "Connect four win screen"
+    duration_hint_min: 10
+
+  - game_id: imessage.checkers
+    display_name: "Checkers"
+    enabled: true
+    outcome_type: binary_winner
+    result_screen: "Winner"
+    ai_hints:
+      - "Checkers You Win"
+    duration_hint_min: 20
+
+  - game_id: imessage.chess
+    display_name: "Chess"
+    enabled: true
+    outcome_type: binary_winner  # draws: policy later
+    result_screen: "Checkmate / resign / win"
+    ai_hints:
+      - "Chess game over winner"
+    duration_hint_min: 30
+
+  - game_id: imessage.mini_golf
+    display_name: "Mini Golf"
+    enabled: true
+    outcome_type: scoreline  # lower strokes wins — encode in verifier later
+    result_screen: "Stroke totals"
+    ai_hints:
+      - "Mini Golf final strokes"
+    duration_hint_min: 20
+
+  # deferred examples (enabled: false until proof quality is solid)
+  - game_id: imessage.knockout
+    display_name: "Knockout"
+    enabled: false
+    outcome_type: binary_winner
+    result_screen: "Last standing"
+    ai_hints: []
+    notes: "Only enable if final screen is unambiguous"
