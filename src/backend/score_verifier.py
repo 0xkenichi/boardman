@@ -203,6 +203,45 @@ class ScoreVerifier:
             return ScoreResult(None, None, 0.0, None, error=f"image_load_failed: {e}")
 
         ctx = context or {}
+        catalog = ctx.get("catalog") if isinstance(ctx.get("catalog"), dict) else {}
+        cat = (catalog.get("category") or "").lower()
+        outcome = (catalog.get("outcome_type") or "scoreline").lower()
+        hints = catalog.get("ai_hints") or []
+
+        if cat == "imessage" or str(ctx.get("game") or "").startswith("imessage."):
+            # GamePigeon / iMessage finals — binary or scoreline
+            hint_lines = [
+                "This is an iMessage / GamePigeon game final screen (NOT EA FC).",
+                f"- Game: {catalog.get('display_name') or ctx.get('game') or 'iMessage game'}",
+                f"- Outcome type: {outcome}",
+                f"- Expected result screen: {catalog.get('result_screen') or 'winner or scores'}",
+                "Catalog AI hints:",
+            ]
+            for h in hints:
+                hint_lines.append(f"  • {h}")
+            if outcome == "binary_winner":
+                hint_lines.extend(
+                    [
+                        "Binary match: set the WINNER as higher score.",
+                        "If you see 'You Win' for the local player on the left, use player1_score=1, player2_score=0.",
+                        "If 'You Lose', use player1_score=0, player2_score=1.",
+                        "If both names and a clear winner label, map winner to the higher of the two scores.",
+                        "Use confidence < 0.7 if the screen is not a final result.",
+                    ]
+                )
+            else:
+                hint_lines.extend(
+                    [
+                        "Scoreline match: extract both players' final points as player1_score and player2_score.",
+                        "player1 = left / top name when possible; player2 = right / bottom.",
+                    ]
+                )
+            hint_lines.append(
+                "Return the same JSON schema (player1_score, player2_score, confidence, game_detected)."
+            )
+            prompt = SYSTEM_PROMPT + "\n\n" + "\n".join(hint_lines)
+            return await self._verify_with_prompt(image_b64, prompt)
+
         hint_lines = [
             "Match context provided by players (use to disambiguate, do not invent):",
             f"- Expected home team: {ctx.get('home_team') or 'unknown'}",
@@ -217,6 +256,8 @@ class ScoreVerifier:
             "If PSN/Xbox gamertags appear, extract them into player1_id / player2_id.",
             "player1 = left side of screenshot; player2 = right side.",
         ]
+        if hints:
+            hint_lines.append("Extra catalog hints: " + "; ".join(str(x) for x in hints))
         prompt = SYSTEM_PROMPT + "\n\n" + "\n".join(hint_lines)
         return await self._verify_with_prompt(image_b64, prompt)
 

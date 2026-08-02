@@ -44,11 +44,17 @@ from gaming.src.bot.keyboards import (
     back_menu,
     chain_menu,
     confirm_challenge_menu,
+    game_category_menu,
     game_menu,
     main_menu,
     match_actions_menu,
     side_menu,
     stake_amount_menu,
+)
+from gaming.src.backend.services.game_catalog import (
+    display_name as game_display_name,
+    is_imessage,
+    proof_instructions,
 )
 from gaming.src.bot.utils.db import get_or_create_profile, get_profile_by_tag
 from gaming.src.bot.utils.flow import how_to_play, report_status
@@ -62,6 +68,7 @@ router = Router()
 class ChallengeWizard(StatesGroup):
     waiting_tag = State()
     waiting_amount = State()
+    waiting_game_category = State()
     waiting_game = State()
     waiting_chain = State()
     confirm = State()
@@ -693,11 +700,41 @@ async def ui_chal_amt(callback: types.CallbackQuery, state: FSMContext) -> None:
         await callback.message.answer(err, reply_markup=stake_amount_menu())
         return
     await state.update_data(amount=amt)
-    await state.set_state(ChallengeWizard.waiting_game)
+    await state.set_state(ChallengeWizard.waiting_game_category)
     await callback.message.answer(
-        f"Stake: <b>${amt}</b>\n\nWhich game?",
+        f"Stake: <b>${amt}</b>\n\n"
+        f"Where do you play?",
         parse_mode=ParseMode.HTML,
-        reply_markup=game_menu(),
+        reply_markup=game_category_menu(),
+    )
+
+
+@router.callback_query(ChallengeWizard.waiting_game_category, F.data == "ui:chal:cats")
+@router.callback_query(ChallengeWizard.waiting_game, F.data == "ui:chal:cats")
+async def ui_chal_cats(callback: types.CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    await state.set_state(ChallengeWizard.waiting_game_category)
+    data = await state.get_data()
+    await callback.message.answer(
+        f"Stake: <b>${data.get('amount')}</b>\n\nWhere do you play?",
+        parse_mode=ParseMode.HTML,
+        reply_markup=game_category_menu(),
+    )
+
+
+@router.callback_query(ChallengeWizard.waiting_game_category, F.data.startswith("ui:chal:cat:"))
+async def ui_chal_category(callback: types.CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    cat = callback.data.split(":")[-1]
+    await state.update_data(game_category=cat)
+    await state.set_state(ChallengeWizard.waiting_game)
+    label = {"imessage": "iMessage games", "console": "Console", "mobile": "Mobile"}.get(
+        cat, cat
+    )
+    await callback.message.answer(
+        f"<b>{h(label)}</b>\nPick one:",
+        parse_mode=ParseMode.HTML,
+        reply_markup=game_menu(category=cat),
     )
 
 
@@ -705,16 +742,26 @@ async def ui_chal_amt(callback: types.CallbackQuery, state: FSMContext) -> None:
 async def ui_chal_game(callback: types.CallbackQuery, state: FSMContext) -> None:
     """Pick game → Arc is fixed (no chain picker)."""
     await callback.answer()
-    game = callback.data.split(":")[-1]
+    # game_id may contain dots: ui:chal:game:imessage.8_ball
+    parts = callback.data.split(":")
+    game = ":".join(parts[3:]) if len(parts) > 3 else parts[-1]
     await state.update_data(game=game, chain="arc")
     data = await state.get_data()
+    gname = game_display_name(game)
+    extra = ""
+    if is_imessage(game):
+        extra = (
+            "\n\n📱 <b>iMessage mode</b>\n"
+            "After both lock: play in iMessage, then send the "
+            "<b>final screen</b> screenshot to this bot."
+        )
     await state.set_state(ChallengeWizard.confirm)
     await callback.message.answer(
         f"📝 <b>Confirm challenge</b>\n\n"
         f"To: @{h(data.get('opponent_tag'))}\n"
-        f"Stake: <b>${data.get('amount')}</b> USDC\n"
-        f"Game: <b>{h(game)}</b>\n"
-        f"Network: <b>Arc</b>\n\n"
+        f"Stake: <b>${data.get('amount')}</b>\n"
+        f"Game: <b>{h(gname)}</b>\n"
+        f"{extra}\n\n"
         f"Send it?",
         parse_mode=ParseMode.HTML,
         reply_markup=confirm_challenge_menu(),
@@ -755,6 +802,7 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
     amount = Decimal(str(data.get("amount", 1)))
     chain = "arc"  # product surface is Arc-only for now
     game = data.get("game") or "EAFC"
+    game_label = game_display_name(game)
     opponent_id = data.get("opponent_id")
     opponent_tag = data.get("opponent_tag") or "player"
     visibility = data.get("visibility") or ("public" if not opponent_id else "private")
@@ -833,22 +881,34 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
 
     if opponent_id:
         try:
+            imsg = (
+                "\n📱 Play in <b>iMessage</b>, then send final screenshot here."
+                if is_imessage(game)
+                else ""
+            )
             await notify_user(
                 opponent_id,
                 f"⚔️ <b>Challenge from @{h(profile.get('gaming_tag') or 'player')}</b>\n\n"
                 f"Match: <code>{h(public_code)}</code>\n"
-                f"Stake: <b>${amount:,.2f} USDC</b>\n"
-                f"Game: <b>{h(game)}</b>\n"
-                f"Network: <b>{h(chain)}</b>\n\n"
+                f"Stake: <b>${amount:,.2f}</b>\n"
+                f"Game: <b>{h(game_label)}</b>"
+                f"{imsg}\n\n"
                 f"Tap Accept or Decline:",
                 buttons=challenge_confirm_menu(challenge_id),
             )
         except Exception:
             logger.exception("[UI] notify opponent failed")
+        imsg_me = (
+            f"\n\n{proof_instructions(game)}"
+            if is_imessage(game)
+            else ""
+        )
         await callback.message.answer(
             f"✅ Challenge sent to <b>@{h(opponent_tag)}</b>\n"
-            f"Match code: <code>{h(public_code)}</code>\n\n"
-            f"When they Accept, both of you tap <b>Lock my stake</b>.\n"
+            f"Match: <code>{h(public_code)}</code>\n"
+            f"Game: <b>{h(game_label)}</b>\n\n"
+            f"When they Accept, both of you tap <b>Lock my stake</b>."
+            f"{imsg_me}\n\n"
             f"Use <b>My match</b> anytime.",
             parse_mode=ParseMode.HTML,
             reply_markup=main_menu(),
@@ -857,7 +917,7 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
         await callback.message.answer(
             f"✅ <b>Public challenge posted</b>\n"
             f"Match: <code>{h(public_code)}</code>\n"
-            f"Stake: <b>${amount:,.2f}</b> · {h(game)} · {h(chain)}\n\n"
+            f"Stake: <b>${amount:,.2f}</b> · {h(game_label)}\n\n"
             f"Anyone can accept from <b>Public board</b> or\n"
             f"{h(REMATCH_BOARD)}\n\n"
             f"You will lock after someone accepts.",
@@ -975,21 +1035,31 @@ async def ui_lock(callback: types.CallbackQuery) -> None:
         return
 
     ch2 = await _load_challenge(cid) or ch
+    game_key = ch2.get("game") or ch.get("game") or ""
+    play_help = proof_instructions(str(game_key))
+    if is_imessage(str(game_key)):
+        next_steps = (
+            f"{play_help}\n\n"
+            f"Then: <b>Submit result</b> → photo of the final screen.\n"
+            f"Caption <code>W</code> / <code>L</code> or the score."
+        )
+    else:
+        next_steps = (
+            f"1. Tap <b>I am HOME</b> or <b>I am AWAY</b>\n"
+            f"2. Play\n"
+            f"3. <b>Submit result</b> → FT photo captioned <code>5-3</code>"
+        )
     await callback.message.answer(
-        f"{msg}\n\n{report_status(ch2)}",
+        f"{msg}\n\n{report_status(ch2)}\n\n{next_steps}",
         parse_mode=ParseMode.HTML,
         reply_markup=match_actions_menu(ch2, profile["id"]),
     )
 
     if is_opp:
-        # Notify creator with buttons
         try:
             await notify_user(
                 ch["creator_id"],
-                f"🎮 Both stakes locked!\n\n"
-                f"1. Tap <b>I am HOME</b> or <b>I am AWAY</b>\n"
-                f"2. Play\n"
-                f"3. Tap <b>Submit result</b> and send FT photo captioned <code>5-3</code>",
+                f"🎮 Both stakes locked!\n\n{next_steps}",
                 buttons=match_actions_menu(ch2, ch["creator_id"]),
             )
         except Exception:

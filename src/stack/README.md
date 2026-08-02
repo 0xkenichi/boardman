@@ -12,7 +12,7 @@ export PYTHONPATH=$PWD
 ./.venv/bin/python -m uvicorn gaming.src.backend.main:app --port 8000
 ```
 
-## HTTP (v0)
+## HTTP (v0 — discovery)
 
 | Endpoint | Description |
 |----------|-------------|
@@ -21,9 +21,24 @@ export PYTHONPATH=$PWD
 | `GET /api/stack/v0/chains` | Settlement chains |
 | `GET /api/stack/v0/public/board` | Leaderboard + open challenges |
 
+## HTTP (v1 — match lifecycle)
+
+Set `STACK_API_KEY` on the server. Pass `X-Stack-Key: …` (or `Authorization: Bearer …`).
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/stack/v1/games` | Catalog (iMessage + console) |
+| `POST /api/stack/v1/matches` | Create challenge |
+| `GET /api/stack/v1/matches/{id\|code}` | Status |
+| `POST /api/stack/v1/matches/{id}/accept` | Accept |
+| `POST /api/stack/v1/matches/{id}/lock` | On-chain lock stake |
+| `POST /api/stack/v1/matches/{id}/report` | Text score / W\|L |
+| `POST /api/stack/v1/matches/{id}/proof` | Screenshot multipart |
+| `POST /api/stack/v1/matches/{id}/settle` | Force settle attempt |
+
 ```bash
 curl -s localhost:8000/api/stack/v0/catalog | jq
-curl -s localhost:8000/api/stack/v0/chains | jq
+curl -s -H "X-Stack-Key: $STACK_API_KEY" localhost:8000/api/stack/v1/games | jq
 ```
 
 ## Python façade

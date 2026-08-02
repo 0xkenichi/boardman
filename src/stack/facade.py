@@ -33,13 +33,23 @@ class RematchStack:
             for c in list_chains(include_disabled=True)
             if not c.get("enabled") and c.get("status") == "next"
         ]
+        from gaming.src.backend.services.game_catalog import list_games
+
+        game_ids = [g["game_id"] for g in list_games(enabled_only=True)]
         return StackCapabilities(
             version=self.version,
             default_chain=os.getenv("CLAW_DEFAULT_CHAIN", "arc"),
             network=os.getenv("NETWORK", "testnet"),
             live_chains=live or ["arc"],
             next_chains=nxt or ["avalanche"],
+            games=game_ids or ["EAFC", "imessage.8_ball"],
+            experiences=["telegram:rematch", "api:stack_v1"],
         )
+
+    def list_games(self, category: Optional[str] = None) -> list[dict[str, Any]]:
+        from gaming.src.backend.services.game_catalog import list_games
+
+        return list_games(category=category, enabled_only=True)
 
     def list_chains(self, *, include_disabled: bool = False) -> list[ChainInfo]:
         """Default: live chains only (Arc). Ops can pass include_disabled."""

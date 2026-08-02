@@ -25,7 +25,16 @@ async def stack_health():
 @router.get("/catalog")
 async def stack_catalog():
     """Capability discovery for builder clients."""
-    return get_stack().capabilities().to_dict()
+    caps = get_stack().capabilities().to_dict()
+    try:
+        from gaming.src.backend.services.game_catalog import list_categories, list_games
+
+        caps["game_categories"] = list_categories(enabled_only=True)
+        caps["games_detail"] = list_games(enabled_only=True)
+        caps["api_v1"] = "/api/stack/v1"
+    except Exception as exc:
+        logger.warning("[Stack] catalog games: %s", exc)
+    return caps
 
 
 @router.get("/chains")

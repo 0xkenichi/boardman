@@ -228,6 +228,7 @@ async def _run_ai_on_screenshot(image_b64: str, challenge: dict) -> dict:
         from gaming.src.backend.score_verifier import get_score_verifier
 
         verifier = get_score_verifier()
+        game_key = challenge.get("game") or challenge.get("game_type") or ""
         context = {
             "home_team": challenge.get("home_team"),
             "away_team": challenge.get("away_team"),
@@ -236,8 +237,14 @@ async def _run_ai_on_screenshot(image_b64: str, challenge: dict) -> dict:
             "creator_console_id": challenge.get("creator_console_id"),
             "opponent_console_id": challenge.get("opponent_console_id"),
             "console_platform": challenge.get("console_platform"),
-            "game": challenge.get("game") or challenge.get("game_type"),
+            "game": game_key,
         }
+        try:
+            from gaming.src.backend.services.game_catalog import ai_context_for_game
+
+            context["catalog"] = ai_context_for_game(str(game_key))
+        except Exception:
+            context["catalog"] = {}
         # Prefer contextual verify if available
         if hasattr(verifier, "verify_screenshot_with_context"):
             result = await verifier.verify_screenshot_with_context(image_b64, context)

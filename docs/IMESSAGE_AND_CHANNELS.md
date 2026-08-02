@@ -195,27 +195,29 @@ Reuse existing vision path (`score_verifier`) with **per-game packs**:
 
 ## 6. Phased ship plan
 
-### Phase 0 — now (no new channel)
+### Phase 0 — shipped in code
 
 - [x] Dual-lock escrow + AI screenshot (console)  
-- [ ] `config/games/imessage.yaml` catalog (seed)  
-- [ ] Challenge wizard: category **iMessage** + game list  
-- [ ] Verifier: pass `game_id` hints  
-- [ ] Copy: “Play in iMessage → send final screen here”  
-- [ ] Wallet address bugfixes (play vs linked) already in flight  
+- [x] `config/games/imessage.yaml` catalog (seed)  
+- [x] `game_catalog.py` loader  
+- [x] Challenge wizard: **Where do you play?** → iMessage / Console → game list  
+- [x] Verifier: catalog AI hints for `imessage.*`  
+- [x] Copy after lock: play in iMessage → final screenshot  
+- [x] Wallet address bugfixes (play vs linked)  
+- [x] Stack API **v1** match lifecycle (`STACK_API_KEY`)  
 
-### Phase 1 — iMessage product slice (2–3 weeks product)
+### Phase 1 — iMessage product polish
 
-- 8–12 GamePigeon titles enabled  
 - Timeouts per game  
 - Public challenge for “open iMessage 8-ball $2”  
 - Leaderboard filter by `imessage.*`  
+- Better binary W/L dual-report mapping  
 
-### Phase 2 — Stack API v1
+### Phase 2 — Stack API polish
 
-- API keys  
-- Create / accept / lock / proof webhooks  
-- Document for builders  
+- Webhooks `match.locked` / `match.settled`  
+- Partner API keys (multi-tenant)  
+- OpenAPI examples for builders  
 
 ### Phase 3 — WhatsApp / SMS “phone friend”
 

@@ -69,8 +69,10 @@ def create_app() -> FastAPI:
 
     # Rematch Stack — builder platform surface
     from gaming.src.stack.api import router as stack_router
+    from gaming.src.stack.api_v1 import router as stack_v1_router
 
     app.include_router(stack_router)
+    app.include_router(stack_v1_router)
 
     return app
 

@@ -268,15 +268,56 @@ def stake_amount_menu() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def game_menu() -> InlineKeyboardMarkup:
+def game_category_menu() -> InlineKeyboardMarkup:
+    """First step: iMessage vs Console (catalog-driven)."""
+    from gaming.src.backend.services.game_catalog import list_categories
+
     builder = InlineKeyboardBuilder()
-    for label, key in (
-        ("⚽ EA FC", "EAFC"),
-        ("🏀 NBA 2K", "NBA2K"),
-        ("🎮 Other", "Other"),
-    ):
-        builder.add(InlineKeyboardButton(text=label, callback_data=f"ui:chal:game:{key}"))
-    builder.adjust(1)
+    cats = list_categories(enabled_only=True)
+    if not cats:
+        cats = [
+            {"id": "imessage", "label": "📱 iMessage"},
+            {"id": "console", "label": "🎮 Console"},
+        ]
+    for c in cats:
+        builder.row(
+            InlineKeyboardButton(
+                text=c["label"][:64],
+                callback_data=f"ui:chal:cat:{c['id']}",
+            )
+        )
+    builder.row(InlineKeyboardButton(text="❌ Cancel", callback_data="menu:main"))
+    return builder.as_markup()
+
+
+def game_menu(category: str | None = None) -> InlineKeyboardMarkup:
+    """Games for a category, or legacy flat console list."""
+    from gaming.src.backend.services.game_catalog import list_games
+
+    builder = InlineKeyboardBuilder()
+    if category:
+        games = list_games(category=category, enabled_only=True)
+    else:
+        games = list_games(category="console", enabled_only=True)
+        if not games:
+            games = [
+                {"game_id": "EAFC", "display_name": "EA FC", "emoji": "⚽"},
+                {"game_id": "NBA2K", "display_name": "NBA 2K", "emoji": "🏀"},
+                {"game_id": "Other", "display_name": "Other", "emoji": "🎮"},
+            ]
+    for g in games[:12]:
+        emoji = g.get("emoji") or ""
+        label = f"{emoji} {g.get('display_name') or g['game_id']}".strip()
+        gid = g["game_id"]
+        # Telegram callback_data max 64 bytes
+        cb = f"ui:chal:game:{gid}"
+        if len(cb.encode("utf-8")) > 64:
+            cb = f"ui:chal:game:{gid[:40]}"
+        builder.row(InlineKeyboardButton(text=label[:64], callback_data=cb))
+    if category:
+        builder.row(
+            InlineKeyboardButton(text="« Categories", callback_data="ui:chal:cats")
+        )
     builder.row(InlineKeyboardButton(text="❌ Cancel", callback_data="menu:main"))
     return builder.as_markup()
 
