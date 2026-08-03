@@ -73,11 +73,12 @@ export async function GET() {
     // Open public challenges (gaming schema)
     let open_challenges: any[] = []
     try {
+      // NOTE: live DB has no public_code column (PGRST204) — use id-derived short ref
       const { data: challenges, error: cErr } = await client
         .schema('gaming')
         .from('challenges')
         .select(
-          'id,public_code,status,stake_amount,game_type,settlement_chain,issuer_id,target_id,theme,created_at'
+          'id,status,stake_amount,game_type,settlement_chain,issuer_id,target_id,theme,created_at'
         )
         .eq('status', 'open')
         .order('created_at', { ascending: false })
@@ -106,7 +107,12 @@ export async function GET() {
         })
         .slice(0, 25)
         .map((c: any) => ({
-          code: c.public_code || String(c.id || '').slice(0, 8),
+          // Short stable ref from UUID (matches match_codes.derived_code when secret aligns)
+          code: String(c.id || '')
+            .replace(/-/g, '')
+            .slice(0, 8)
+            .toUpperCase(),
+          id: c.id,
           stake: Number(c.stake_amount || 0),
           game: c.game_type || 'EAFC',
           chain: c.settlement_chain || 'arc',

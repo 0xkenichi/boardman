@@ -856,15 +856,15 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
         )
         return
 
-    from gaming.src.backend.services.match_codes import new_challenge_public_code, display_code
+    from gaming.src.backend.services.match_codes import display_code
 
     challenge_id = str(uuid.uuid4())
-    public_code = new_challenge_public_code()
+    public_code = display_code(None, challenge_id=challenge_id)
     expires = datetime.now(timezone.utc) + timedelta(hours=24)
+    # Never insert public_code — column not on live schema (PGRST204)
     record = denormalize_challenge(
         {
             "id": challenge_id,
-            "public_code": public_code,
             "creator_id": profile["id"],
             "opponent_id": opponent_id,
             "amount_usdc": float(amount),
@@ -880,18 +880,12 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
         get_supabase().schema("gaming").table("challenges").insert(record).execute()
     except Exception as exc:
         logger.exception("[UI] challenge insert failed")
-        # retry without optional columns
         record.pop("settlement_chain", None)
         try:
             get_supabase().schema("gaming").table("challenges").insert(record).execute()
-        except Exception:
-            record.pop("public_code", None)
-            try:
-                get_supabase().schema("gaming").table("challenges").insert(record).execute()
-                public_code = display_code(None, challenge_id=challenge_id)
-            except Exception as exc2:
-                await callback.message.answer(f"❌ Could not create: {h(exc2)}", parse_mode=ParseMode.HTML)
-                return
+        except Exception as exc2:
+            await callback.message.answer(f"❌ Could not create: {h(exc2)}", parse_mode=ParseMode.HTML)
+            return
 
     await state.clear()
     from gaming.src.bot.keyboards import challenge_confirm_menu, REMATCH_BOARD

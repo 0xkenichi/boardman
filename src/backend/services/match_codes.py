@@ -98,7 +98,11 @@ def _get_supabase():
 
 
 def ensure_public_code(challenge: dict[str, Any]) -> str:
-    """Return public_code, writing one to DB if missing."""
+    """Return a user-facing code for the challenge.
+
+    Live schema often has no ``public_code`` column (PostgREST PGRST204). We use a
+    stable HMAC-derived code from the UUID so look-ups still work without a migration.
+    """
     existing = challenge.get("public_code")
     if existing:
         return normalize_code(str(existing))
@@ -107,27 +111,11 @@ def ensure_public_code(challenge: dict[str, Any]) -> str:
     if not cid:
         return "????????"
 
-    code = generate_public_code()
-    sb = _get_supabase()
-    for _ in range(5):
-        try:
-            sb.schema("gaming").table("challenges").update({"public_code": code}).eq(
-                "id", cid
-            ).execute()
-            challenge["public_code"] = code
-            return code
-        except Exception as exc:
-            err = str(exc).lower()
-            if "public_code" in err and ("column" in err or "schema cache" in err):
-                # Column not migrated yet — use derived display only
-                logger.warning("[MatchCodes] public_code column missing; using derived code")
-                return derived_code(cid)
-            if "unique" in err or "duplicate" in err:
-                code = generate_public_code()
-                continue
-            logger.warning("[MatchCodes] ensure_public_code failed: %s", exc)
-            return derived_code(cid)
-    return derived_code(cid)
+    # Prefer derived code always until a real public_code column is migrated.
+    # Avoid UPDATE … public_code which errors: PGRST204 schema cache.
+    code = derived_code(str(cid))
+    challenge["public_code"] = code
+    return code
 
 
 def resolve_to_uuid(ref: str) -> Optional[str]:
@@ -147,41 +135,14 @@ def resolve_to_uuid(ref: str) -> Optional[str]:
         return None
 
     sb = _get_supabase()
-    # 1) Preferred: stored public_code column (migration 054)
-    try:
-        result = (
-            sb.schema("gaming")
-            .table("challenges")
-            .select("id, public_code")
-            .eq("public_code", code)
-            .limit(1)
-            .execute()
-        )
-        rows = result.data or []
-        if rows:
-            return rows[0]["id"]
-        result = (
-            sb.schema("gaming")
-            .table("challenges")
-            .select("id, public_code")
-            .ilike("public_code", code)
-            .limit(1)
-            .execute()
-        )
-        rows = result.data or []
-        if rows:
-            return rows[0]["id"]
-    except Exception as exc:
-        logger.debug("[MatchCodes] public_code lookup unavailable: %s", exc)
-
-    # 2) Fallback without column: match derived_code(id) over recent rows
+    # Match derived_code(id) over recent rows (no public_code column on live DB)
     try:
         result = (
             sb.schema("gaming")
             .table("challenges")
             .select("id")
             .order("created_at", desc=True)
-            .limit(400)
+            .limit(800)
             .execute()
         )
         for row in result.data or []:

@@ -80,13 +80,28 @@ def normalize_challenge(row: Optional[dict[str, Any]]) -> Optional[dict[str, Any
         or row.get("chain")
         or "base"
     )
+    # Synthetic public_code when DB column is absent
+    if not out.get("public_code") and out.get("id"):
+        try:
+            from gaming.src.backend.services.match_codes import derived_code
+
+            out["public_code"] = derived_code(str(out["id"]))
+        except Exception:
+            out["public_code"] = str(out["id"]).replace("-", "")[:8].upper()
     return out
 
 
 def denormalize_challenge(data: dict[str, Any]) -> dict[str, Any]:
-    """Map a code-facing payload to live DB column names for insert/update."""
+    """Map a code-facing payload to live DB column names for insert/update.
+
+    Never writes ``public_code`` — live DBs often lack that column (PGRST204).
+    User-facing codes use ``match_codes.display_code`` / ``derived_code(id)``.
+    """
     out: dict[str, Any] = {}
     for key, value in data.items():
+        if key == "public_code":
+            # Not a live column unless migration 054 applied — skip always
+            continue
         if key in _TO_DB:
             out[_TO_DB[key]] = value
         elif key in _CODE_ONLY:

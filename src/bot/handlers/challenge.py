@@ -135,15 +135,14 @@ async def _create_challenge(
     visibility: str,
     settlement_chain: str,
 ) -> dict:
-    from gaming.src.backend.services.match_codes import new_challenge_public_code
+    from gaming.src.backend.services.match_codes import display_code
 
     challenge_id = str(uuid.uuid4())
-    public_code = new_challenge_public_code()
     expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+    # Never insert public_code — live gaming.challenges has no such column (PGRST204)
     record = denormalize_challenge(
         {
             "id": challenge_id,
-            "public_code": public_code,
             "creator_id": creator_id,
             "opponent_id": opponent_id,
             "amount_usdc": float(amount),
@@ -159,19 +158,18 @@ async def _create_challenge(
     try:
         result = sb.schema("gaming").table("challenges").insert(record).execute()
     except Exception as exc:
-        # Older DBs without optional columns — retry without them.
         err = str(exc).lower()
-        if "column" in err or "schema cache" in err:
-            if "public_code" in err:
-                record.pop("public_code", None)
-            if "settlement_chain" in err:
-                record.pop("settlement_chain", None)
+        if "settlement_chain" in err and ("column" in err or "schema cache" in err):
+            record.pop("settlement_chain", None)
             result = sb.schema("gaming").table("challenges").insert(record).execute()
         else:
             raise
     if not result.data:
         raise RuntimeError("Challenge insert returned no data")
-    return normalize_challenge(result.data[0])
+    ch = normalize_challenge(result.data[0])
+    if ch is not None:
+        ch["public_code"] = display_code(None, challenge_id=challenge_id)
+    return ch
 
 
 async def _get_open_challenge(challenge_id: str) -> Optional[dict]:

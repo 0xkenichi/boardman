@@ -126,7 +126,6 @@ class CreateMatchByTagBody(BaseModel):
 async def v1_create_match(body: CreateMatchBody, _: str = Depends(_require_stack_key)):
     from gaming.src.backend.services.challenge_compat import denormalize_challenge
     from gaming.src.backend.services.game_catalog import get_game, display_name
-    from gaming.src.backend.services.match_codes import new_challenge_public_code
     from gaming.src.backend.services.play_points import assert_can_start_or_accept
     from gaming.src.backend.services.safety import assert_money_ops_allowed, validate_stake
 
@@ -154,14 +153,15 @@ async def v1_create_match(body: CreateMatchBody, _: str = Depends(_require_stack
         if blocked2:
             raise HTTPException(status_code=409, detail=f"opponent: {blocked2}")
 
+    from gaming.src.backend.services.match_codes import display_code
+
     challenge_id = str(uuid.uuid4())
-    public_code = new_challenge_public_code()
     expires = datetime.now(timezone.utc) + timedelta(hours=24)
     visibility = body.visibility if body.opponent_id else "public"
+    # Do NOT insert public_code — column not on live gaming.challenges (PGRST204)
     record = denormalize_challenge(
         {
             "id": challenge_id,
-            "public_code": public_code,
             "creator_id": body.creator_id,
             "opponent_id": body.opponent_id,
             "amount_usdc": float(amount),
@@ -177,8 +177,18 @@ async def v1_create_match(body: CreateMatchBody, _: str = Depends(_require_stack
         _sb().schema("gaming").table("challenges").insert(record).execute()
     except Exception as exc:
         logger.exception("[StackV1] create match failed")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        # Retry without optional settlement_chain if needed
+        err = str(exc).lower()
+        if "settlement_chain" in err:
+            record.pop("settlement_chain", None)
+            try:
+                _sb().schema("gaming").table("challenges").insert(record).execute()
+            except Exception as exc2:
+                raise HTTPException(status_code=500, detail=str(exc2)) from exc2
+        else:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
+    public_code = display_code(None, challenge_id=challenge_id)
     return {
         "success": True,
         "match_id": challenge_id,
