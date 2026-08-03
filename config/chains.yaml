@@ -72,6 +72,44 @@ chains:
     escrow_address: "0xDb76714390ccE1729558DF3c9EC4f45A1690dE78"
     notes: "Legacy testnet path. Kept for internal/ops; not in product UI."
 
+  # Celo — MiniPay host / Proof-of-Ship (Research Tech Build)
+  # Settlement still defaults to Arc; Celo is enabled for MiniPay UX + future USDC rail.
+  celo:
+    id: celo
+    label: Celo
+    enabled: true
+    recommended: false
+    status: minipay
+    circle_blockchain: ""   # not via Circle W3S yet — MiniPay provider path
+    chain_id: 42220
+    rpc_url: https://forno.celo.org
+    explorer_tx: https://celoscan.io/tx/
+    usdc_address: "0xcebA9300f2b948710d2653dD7B07f33A8B32118C"  # USDC on Celo
+    circle_usdc_token_id: ""
+    gas_token: CELO
+    gas_mode: native_celo
+    gas_tank_required: false
+    escrow_address: ""
+    notes: "MiniPay / Proof-of-Ship. Host shell live; dual-lock escrow on Celo optional later."
+
+  celo_alfajores:
+    id: celo_alfajores
+    label: Celo Alfajores
+    enabled: false
+    recommended: false
+    status: testnet
+    circle_blockchain: ""
+    chain_id: 44787
+    rpc_url: https://alfajores-forno.celo-testnet.org
+    explorer_tx: https://alfajores.celoscan.io/tx/
+    usdc_address: ""
+    circle_usdc_token_id: ""
+    gas_token: CELO
+    gas_mode: native_celo
+    gas_tank_required: false
+    escrow_address: ""
+    notes: "Celo testnet for MiniPay dev."
+
 # Phase C (later): if opponent lacks funds on settlement chain,
 # optional auto-bridge with extra fee_bps on their lock to cover CCTP costs.
 bridge:

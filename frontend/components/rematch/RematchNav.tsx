@@ -9,6 +9,7 @@ const LINKS = [
   { href: '/rematch', label: 'Home', exact: true },
   { href: '/rematch/app', label: 'Play' },
   { href: '/rematch/leaderboard', label: 'Board' },
+  { href: '/rematch/minipay', label: 'MiniPay' },
   { href: '/rematch/get-usdc', label: 'Fund' },
 ]
 

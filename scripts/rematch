@@ -160,8 +160,9 @@ start_bot() {
 
 start_tunnel() {
   # Optional: only if cloudflared exists and REMATCH_TUNNEL=1 (default on)
-  if [[ "${REMATCH_TUNNEL:-1}" != "1" ]]; then
-    echo "  tunnel: skipped (REMATCH_TUNNEL!=1)"
+  # Default OFF for local-first workflow; set REMATCH_TUNNEL=1 to expose publicly
+  if [[ "${REMATCH_TUNNEL:-0}" != "1" ]]; then
+    echo "  tunnel: skipped (local only — REMATCH_TUNNEL=1 to enable)"
     return 0
   fi
   local cf="${CLOUDFLARED_BIN:-$HOME/.local/bin/cloudflared}"

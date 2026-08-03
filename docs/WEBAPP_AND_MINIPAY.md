@@ -15,7 +15,7 @@
 | Same features as Telegram? | **Yes** — challenge, lock, wallet, proof, board. Auth = Telegram so **same account/balance**. |
 | Secure? | **Custodial Circle + server BFF** — no seeds in browser, no `STACK_API_KEY` in JS, caps/pause/geo. Details: `WEBAPP_UX_AND_SECURITY.md`. |
 | Non-crypto UX? | **Balance $**, Get money, Challenge friend, send final photo — no chain education. |
-| MiniPay? | **Yes, later** — same webapp inside MiniPay; Celo optional. |
+| MiniPay? | **Yes — shell live** for Celo Proof-of-Ship. See `PROOF_OF_SHIP_MINIPAY.md`. |
 | API name | Product: Rematch · Platform: **Rematch Stack** |
 
 ---
@@ -122,5 +122,5 @@ Start with **A** so you don’t block on Celo grants/gas.
 | Expand mobile titles | Free Fire, COD, Valorant, PUBG + sports + casual 1v1 |
 | BR modes | Disabled in catalog |
 | Webapp | Yes — extend `frontend/` on Stack v1 |
-| MiniPay | Yes after web MVP; shell-first, Celo optional |
+| MiniPay | Shell-first live (`/rematch/app?host=minipay`); Celo chain entry in `chains.yaml` |
 | Money abstraction | Users still see Balance $, not chain education |

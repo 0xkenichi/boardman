@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { AppShell } from '@/components/AppShell'
 import { TelegramLogin } from '@/components/TelegramLogin'
 import { LiveRoomsCard } from '@/components/rematch/LiveRoomsCard'
+import { MiniPayHost, MiniPayPromo } from '@/components/rematch/MiniPayHost'
 import { api, type Me } from '@/lib/appClient'
 import { REMATCH_BOT_URL, REMATCH_BOT_USERNAME } from '@/lib/rematchLinks'
 
@@ -148,6 +149,7 @@ export default function RematchAppHome() {
             </p>
           </div>
 
+          <MiniPayHost />
           <LiveRoomsCard variant="compact" />
 
           <div className="rm-card">
@@ -234,6 +236,8 @@ export default function RematchAppHome() {
           ) : null}
         </div>
 
+        <MiniPayHost />
+
         <div className="rm-stack">
           <Link href="/rematch/app/challenge" className="rm-action">
             <span className="rm-action-ico">⚔️</span>
@@ -259,6 +263,7 @@ export default function RematchAppHome() {
             </span>
             <span className="rm-action-chev">›</span>
           </Link>
+          <MiniPayPromo />
         </div>
 
         <LiveRoomsCard variant="compact" />
