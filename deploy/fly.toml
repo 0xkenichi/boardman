@@ -1,52 +1,36 @@
-# Fly.io — Rematch bot + API (always-on style)
-#
-# From clawstation-foundation worktree ROOT:
-#   fly auth login
-#   fly launch --config gaming/deploy/fly.toml --no-deploy --copy-config --name rematch-bot
-#   # set secrets (see FREE_24_7_FLY.md)
-#   fly deploy --config gaming/deploy/fly.toml
-#
-# Pricing: free allowance / low cost shared VM — see https://fly.io/docs/about/pricing/
-# Keep one small machine; turn off extras you don't need.
+# Fly.io — Rematch API + Telegram bot
+# From repo root:
+#   fly launch --config deploy/fly.toml --no-deploy --name rematch-api
+#   fly secrets set ... (from .env)
+#   fly deploy --config deploy/fly.toml --dockerfile Dockerfile.akash
 
-app = "rematch-bot"
+app = "rematch-api"
 primary_region = "iad"
 
 [build]
-  dockerfile = "gaming/Dockerfile"
+  dockerfile = "Dockerfile.akash"
 
 [env]
   CLAWSTATION_BOT_MODE = "polling"
   CLAW_DEFAULT_CHAIN = "arc"
-  CLAW_MAX_STAKE_USDC = "25"
-  CLAW_MAX_WITHDRAW_USDC = "50"
-  CLAW_DAILY_WITHDRAW_CAP_USDC = "100"
-  CLAW_PAUSED = "0"
-  WALLET_WATCH_INTERVAL_SEC = "45"
   PORT = "8000"
-  LOG_LEVEL = "INFO"
   PYTHONUNBUFFERED = "1"
+  NETWORK = "testnet"
 
 [http_service]
   internal_port = 8000
   force_https = true
-  # Keep bot alive — do not auto-stop when idle
   auto_stop_machines = "off"
   auto_start_machines = true
   min_machines_running = 1
-  processes = ["app"]
 
   [[http_service.checks]]
     interval = "30s"
     timeout = "5s"
     grace_period = "60s"
     method = "GET"
-    path = "/api/healthz"
-
-[processes]
-  app = "bash gaming/deploy/start_fly.sh"
+    path = "/"
 
 [[vm]]
   size = "shared-cpu-1x"
   memory = "512mb"
-  processes = ["app"]

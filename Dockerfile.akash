@@ -1,42 +1,30 @@
 # syntax=docker/dockerfile:1
-# Standalone Rematch image for Akash (bot + API).
-# Build from repo root:
-#   docker build -f Dockerfile.akash -t rematch:latest .
+# Rematch API + Telegram bot for Akash / Fly / any Docker host.
 FROM python:3.12-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    gcc \
-    libffi-dev \
-    libssl-dev \
-    curl \
-    ca-certificates \
+    build-essential gcc libffi-dev libssl-dev curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install deps first for layer cache
 COPY src/backend/requirements.txt /app/requirements.txt
 RUN python -m venv /app/.venv \
     && /app/.venv/bin/pip install --no-cache-dir --upgrade pip \
-    && /app/.venv/bin/pip install --no-cache-dir -r /app/requirements.txt
+    && /app/.venv/bin/pip install --no-cache-dir -r /app/requirements.txt \
+    && /app/.venv/bin/pip install --no-cache-dir pyyaml
 
-# App code + config
 COPY src /app/src
 COPY config /app/config
 COPY deploy/start_akash.sh /app/deploy/start_akash.sh
 COPY deploy/start_akash.py /app/deploy/start_akash.py
 
-# Code imports as gaming.src.* AND bare backend.* (monorepo-era paths).
-# Mirror start_free_local.sh layout: gaming/src -> src, backend -> src/backend.
 RUN mkdir -p /app/gaming \
     && ln -sfn /app/src /app/gaming/src \
     && touch /app/gaming/__init__.py \
     && ln -sfn /app/config /app/gaming/config \
     && ln -sfn /app/src/backend /app/backend \
     && chmod +x /app/deploy/start_akash.sh /app/deploy/start_akash.py \
-    && test -f /app/gaming/src/bot/main.py \
-    && test -f /app/gaming/src/backend/main.py \
     && test -f /app/backend/supabase_client.py
 
 RUN groupadd -r rematch && useradd -r -g rematch -d /app rematch \
@@ -54,9 +42,7 @@ ENV BLOCKED_REGIONS_FILE=/app/config/blocked_regions.json
 
 EXPOSE 8000
 
-# Longer start period: bot+API cold start on small Akash CPU
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
-    CMD curl -f http://localhost:8000/api/healthz || exit 1
+    CMD curl -f http://localhost:8000/api/healthz || curl -f http://localhost:8000/ || exit 1
 
-# Python entrypoint (slim images often lack bash — that was crashing Akash)
 CMD ["python", "/app/deploy/start_akash.py"]
