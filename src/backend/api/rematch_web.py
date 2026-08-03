@@ -1,16 +1,18 @@
 """
 Rematch web BFF helpers — profile lookup + wallet snapshot for playingsidequest.fun.
 
-Auth: X-Stack-Key == STACK_API_KEY (same as Stack v1). Never call from browser
-with this key; only the Next.js BFF may use it.
+Auth: X-Rematch-Key (or legacy X-Stack-Key) == REMATCH_API_KEY
+(legacy STACK_API_KEY still accepted). Never call from the browser with this key;
+only the Next.js BFF may use it.
 """
 from __future__ import annotations
 
 import logging
-import os
 from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException, Query
+
+from gaming.src.backend.rematch_auth import extract_api_key, rematch_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -18,17 +20,23 @@ router = APIRouter(prefix="/api/rematch/web", tags=["rematch-web"])
 
 
 def _require_key(
+    x_rematch_key: Optional[str] = None,
     x_stack_key: Optional[str] = None,
     authorization: Optional[str] = None,
 ) -> str:
-    expected = (os.getenv("STACK_API_KEY") or "").strip()
+    expected = rematch_api_key()
     if not expected:
-        raise HTTPException(status_code=503, detail="STACK_API_KEY not configured")
-    got = (x_stack_key or "").strip()
-    if not got and authorization and authorization.lower().startswith("bearer "):
-        got = authorization[7:].strip()
+        raise HTTPException(
+            status_code=503,
+            detail="REMATCH_API_KEY not configured (legacy: STACK_API_KEY)",
+        )
+    got = extract_api_key(
+        x_rematch_key=x_rematch_key,
+        x_stack_key=x_stack_key,
+        authorization=authorization,
+    )
     if got != expected:
-        raise HTTPException(status_code=401, detail="invalid stack key")
+        raise HTTPException(status_code=401, detail="invalid rematch api key")
     return got
 
 
@@ -41,11 +49,12 @@ def _sb():
 @router.get("/profile")
 async def web_profile_by_telegram(
     telegram_id: int = Query(..., description="Telegram user id"),
+    x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
     x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
     authorization: Optional[str] = Header(default=None),
 ):
     """Resolve telegram_id → Rematch profile (for web login)."""
-    _require_key(x_stack_key, authorization)
+    _require_key(x_rematch_key, x_stack_key, authorization)
     try:
         from gaming.src.bot.utils.db import _fetch_by_telegram_id
 
@@ -77,10 +86,11 @@ async def web_profile_by_telegram(
 @router.get("/profile/by-tag")
 async def web_profile_by_tag(
     tag: str = Query(...),
+    x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
     x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
     authorization: Optional[str] = Header(default=None),
 ):
-    _require_key(x_stack_key, authorization)
+    _require_key(x_rematch_key, x_stack_key, authorization)
     clean = tag.strip().lstrip("@").lower()
     if not clean:
         raise HTTPException(status_code=400, detail="tag required")
@@ -110,11 +120,12 @@ async def web_profile_by_tag(
 @router.get("/wallet")
 async def web_wallet_snapshot(
     profile_id: str = Query(...),
+    x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
     x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
     authorization: Optional[str] = Header(default=None),
 ):
     """Play-wallet balance summary (spendable + other addresses)."""
-    _require_key(x_stack_key, authorization)
+    _require_key(x_rematch_key, x_stack_key, authorization)
     try:
         from gaming.src.backend.services.clawstation_circle import get_balance_summary
         from gaming.src.backend.services.safety import is_paused
@@ -165,11 +176,12 @@ async def web_wallet_snapshot(
 async def web_match_history(
     profile_id: str = Query(...),
     limit: int = Query(30, ge=1, le=100),
+    x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
     x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
     authorization: Optional[str] = Header(default=None),
 ):
     """Recent matches for a profile — same history as Telegram bot."""
-    _require_key(x_stack_key, authorization)
+    _require_key(x_rematch_key, x_stack_key, authorization)
     try:
         from gaming.src.backend.services.rematch_public import get_match_history
 

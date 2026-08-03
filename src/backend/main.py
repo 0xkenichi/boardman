@@ -39,8 +39,8 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def geo_fence_middleware(request: Request, call_next):
-        # Health / docs always open. Server-to-server Stack/BFF calls use X-Stack-Key
-        # and must not be blocked by edge geo (Vercel US, Cloudflare tunnel, etc.).
+        # Health / docs always open. Server-to-server Rematch BFF calls use
+        # X-Rematch-Key and must not be blocked by edge geo (Vercel, tunnels).
         path = request.url.path or ""
         if path in {"/", "/docs", "/openapi.json", "/redoc"} or path.startswith(
             ("/api/health", "/docs", "/redoc")
@@ -52,18 +52,16 @@ def create_app() -> FastAPI:
         if os.getenv("GEO_FENCE_DISABLED", "").strip() in {"1", "true", "yes"}:
             return await call_next(request)
 
-        expected_key = (os.getenv("STACK_API_KEY") or "").strip()
-        if expected_key:
-            got = (request.headers.get("x-stack-key") or "").strip()
-            auth = request.headers.get("authorization") or ""
-            if not got and auth.lower().startswith("bearer "):
-                got = auth[7:].strip()
-            if got == expected_key:
-                return await call_next(request)
+        try:
+            from gaming.src.backend.rematch_auth import request_has_valid_api_key
 
-        # Stack + rematch web BFF are server-only with key auth on routes themselves
+            if request_has_valid_api_key(request):
+                return await call_next(request)
+        except Exception:
+            pass
+
+        # Rematch API routes enforce their own key auth
         if path.startswith(("/api/stack/", "/api/rematch/web")):
-            # still require key on those routers; allow through geo here
             return await call_next(request)
 
         try:

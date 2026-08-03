@@ -1,6 +1,6 @@
 /**
  * Server-side session helpers for Rematch web app.
- * Cookie is HttpOnly; payload is HMAC-signed. Never put STACK_API_KEY here.
+ * Cookie is HttpOnly; payload is HMAC-signed. Never put REMATCH_API_KEY here.
  */
 import { createHmac, timingSafeEqual } from 'crypto'
 
@@ -18,6 +18,7 @@ const MAX_AGE_SEC = 60 * 60 * 24 * 7 // 7 days
 function secret(): string {
   return (
     process.env.REMATCH_SESSION_SECRET ||
+    process.env.REMATCH_API_KEY ||
     process.env.STACK_API_KEY ||
     'dev-only-change-me-rematch-session'
   )

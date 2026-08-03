@@ -1,25 +1,47 @@
 /**
- * Server-only client for Rematch Stack API.
- * STACK_API_KEY never goes to the browser.
+ * Server-only client for the Rematch API (never ship keys to the browser).
+ *
+ * Preferred env (on-brand):
+ *   REMATCH_API_URL
+ *   REMATCH_API_KEY
+ *
+ * Legacy aliases (still work):
+ *   STACK_API_URL
+ *   STACK_API_KEY
  */
 
-const DEFAULT_STACK = process.env.STACK_API_URL || process.env.REMATCH_API_URL || ''
+const REMATCH_API_URL = (
+  process.env.REMATCH_API_URL ||
+  process.env.STACK_API_URL ||
+  process.env.REMATCH_API_BASE ||
+  ''
+).replace(/\/$/, '')
 
-export function stackConfigured(): boolean {
-  return Boolean(process.env.STACK_API_KEY && DEFAULT_STACK)
+const REMATCH_API_KEY =
+  process.env.REMATCH_API_KEY || process.env.STACK_API_KEY || ''
+
+export function rematchApiConfigured(): boolean {
+  return Boolean(REMATCH_API_URL && REMATCH_API_KEY)
 }
 
-export async function stackFetch(
+/** @deprecated use rematchApiConfigured */
+export function stackConfigured(): boolean {
+  return rematchApiConfigured()
+}
+
+export async function rematchApiFetch(
   path: string,
   init: RequestInit = {}
 ): Promise<{ ok: boolean; status: number; data: any }> {
-  const base = DEFAULT_STACK.replace(/\/$/, '')
-  const key = process.env.STACK_API_KEY || ''
+  const base = REMATCH_API_URL
+  const key = REMATCH_API_KEY
   if (!base || !key) {
-    return { ok: false, status: 503, data: { error: 'stack_not_configured', demo: true } }
+    return { ok: false, status: 503, data: { error: 'rematch_api_not_configured', demo: true } }
   }
   const url = path.startsWith('http') ? path : `${base}${path.startsWith('/') ? '' : '/'}${path}`
   const headers = new Headers(init.headers || {})
+  // On-brand header + legacy alias for older API processes
+  headers.set('X-Rematch-Key', key)
   headers.set('X-Stack-Key', key)
   if (!headers.has('Content-Type') && init.body && !(init.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json')
@@ -39,7 +61,15 @@ export async function stackFetch(
   }
 }
 
-/** Fallback catalog when Stack is offline (keeps UI usable). */
+/** @deprecated use rematchApiFetch */
+export async function stackFetch(
+  path: string,
+  init: RequestInit = {}
+): Promise<{ ok: boolean; status: number; data: any }> {
+  return rematchApiFetch(path, init)
+}
+
+/** Fallback catalog when Rematch API is offline (keeps UI usable). */
 export const DEMO_GAMES = {
   categories: [
     { id: 'imessage', label: '📱 iMessage' },

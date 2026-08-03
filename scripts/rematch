@@ -194,7 +194,7 @@ start_tunnel() {
     echo "  tunnel: started (pid $(cat "$TUNNEL_PID"))"
     if [[ -n "${url:-}" ]]; then
       echo "         public: $url"
-      echo "         (set Vercel STACK_API_URL to this if web needs live Stack)"
+      echo "         (set Vercel REMATCH_API_URL to this for live web → API)"
     else
       echo "         (URL not ready yet — check $TUNNEL_LOG)"
     fi

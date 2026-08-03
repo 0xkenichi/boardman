@@ -17,7 +17,7 @@ const nextConfig = {
   },
   async rewrites() {
     // Proxy Stack/API in production when STACK is same-origin optional —
-    // primary path is STACK_API_URL server-side env on BFF routes.
+    // primary path is REMATCH_API_URL server-side env on BFF routes.
     return []
   },
 }

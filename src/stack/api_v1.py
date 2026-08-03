@@ -1,8 +1,14 @@
 """
-Rematch Stack HTTP API v1 — match lifecycle for any client.
+Rematch HTTP API v1 — match lifecycle for any client.
 
-Auth: header ``X-Stack-Key: $STACK_API_KEY`` (or Authorization: Bearer …).
-If STACK_API_KEY is unset, v1 routes return 503 (safe default).
+Auth (on-brand):
+  Header ``X-Rematch-Key: $REMATCH_API_KEY``
+  or ``Authorization: Bearer $REMATCH_API_KEY``
+
+Legacy aliases still work:
+  ``X-Stack-Key`` / env ``STACK_API_KEY``
+
+If no key is configured, v1 routes return 503 (safe default).
 
 Money rails: create/accept/report/settle use the same Supabase challenges +
 settlement services as the Telegram bot. On-chain lock still goes through
@@ -11,7 +17,6 @@ existing escrow helpers (caller supplies profile UUIDs).
 from __future__ import annotations
 
 import logging
-import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -20,28 +25,31 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
+from gaming.src.backend.rematch_auth import extract_api_key, rematch_api_key
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/stack/v1", tags=["rematch-stack-v1"])
 
 
 def _require_stack_key(
+    x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
     x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
     authorization: Optional[str] = Header(default=None),
 ) -> str:
-    expected = (os.getenv("STACK_API_KEY") or "").strip()
+    expected = rematch_api_key()
     if not expected:
         raise HTTPException(
             status_code=503,
-            detail="STACK_API_KEY not configured on server",
+            detail="REMATCH_API_KEY not configured on server (legacy: STACK_API_KEY)",
         )
-    got = (x_stack_key or "").strip()
-    if not got and authorization:
-        auth = authorization.strip()
-        if auth.lower().startswith("bearer "):
-            got = auth[7:].strip()
+    got = extract_api_key(
+        x_rematch_key=x_rematch_key,
+        x_stack_key=x_stack_key,
+        authorization=authorization,
+    )
     if not got or got != expected:
-        raise HTTPException(status_code=401, detail="invalid or missing stack API key")
+        raise HTTPException(status_code=401, detail="invalid or missing Rematch API key")
     return got
 
 

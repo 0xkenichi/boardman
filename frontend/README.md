@@ -41,15 +41,15 @@ REMATCH_SESSION_SECRET=<32+ random bytes>
 TELEGRAM_BOT_TOKEN_CLAWSTATION=<bot token>
 NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=ClawStationOfficialBot
 NEXT_PUBLIC_TELEGRAM_BOT_URL=https://t.me/ClawStationOfficialBot
-STACK_API_URL=https://<your-gaming-api-host>
-STACK_API_KEY=<same key as API STACK_API_KEY>
+REMATCH_API_URL=https://<your-gaming-api-host>
+REMATCH_API_KEY=<same key as API REMATCH_API_KEY>
 ```
 
 3. Gaming API must expose:
    - `/api/rematch/web/profile`
    - `/api/rematch/web/wallet`
    - `/api/stack/v1/*`
-   - Set `STACK_API_KEY` on the API
+   - Set `REMATCH_API_KEY` on the API
 
 4. Users must **`/start` the bot once** (creates wallet + profile) before web login succeeds in production.
 
@@ -70,7 +70,7 @@ STACK_API_KEY=<same key as API STACK_API_KEY>
 
 ```
 Browser  →  /api/rematch/app/* (BFF, session cookie)
-                →  STACK_API_URL + X-Stack-Key
+                →  REMATCH_API_URL + X-Rematch-Key
                      →  /api/rematch/web/*  (profile, wallet)
                      →  /api/stack/v1/*     (matches)
 ```

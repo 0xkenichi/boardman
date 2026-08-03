@@ -177,7 +177,12 @@ async function resolveProfileId(
       const res = await fetch(
         `${lookup.replace(/\/$/, '')}?telegram_id=${encodeURIComponent(telegramId)}`,
         {
-          headers: { 'X-Stack-Key': process.env.STACK_API_KEY || '' },
+          headers: {
+            'X-Rematch-Key':
+              process.env.REMATCH_API_KEY || process.env.STACK_API_KEY || '',
+            'X-Stack-Key':
+              process.env.REMATCH_API_KEY || process.env.STACK_API_KEY || '',
+          },
           cache: 'no-store',
         }
       )
