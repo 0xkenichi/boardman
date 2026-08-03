@@ -35,21 +35,7 @@ function FundInner() {
   }
 
   return (
-    <div className="min-h-screen bg-[#050508] text-white">
-      <header className="border-b border-gray-900/80 px-4 py-4 flex items-center justify-between max-w-lg mx-auto">
-        <Link href="/rematch" className="text-sm text-gray-400 hover:text-white">
-          ← Rematch
-        </Link>
-        <a
-          href={BOT}
-          target="_blank"
-          rel="noreferrer"
-          className="text-xs font-semibold px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500"
-        >
-          Open bot
-        </a>
-      </header>
-
+    <div className="bg-[#050508] text-white">
       <div className="max-w-lg mx-auto px-4 py-10 space-y-6">
         <div className="flex items-center gap-3">
           <Image

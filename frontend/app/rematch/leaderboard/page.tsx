@@ -60,30 +60,7 @@ export default function RematchLeaderboardPage() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-[#050508] text-white">
-      <header className="border-b border-gray-900/80 px-4 py-4 flex items-center justify-between max-w-3xl mx-auto gap-3">
-        <Link href="/rematch" className="text-sm text-gray-400 hover:text-white transition-colors">
-          ← Rematch
-        </Link>
-        <div className="flex items-center gap-2">
-          <Image
-            src="/rematch-logo.jpg"
-            alt=""
-            width={28}
-            height={28}
-            className="rounded-lg"
-          />
-          <a
-            href={BOT}
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs font-semibold px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500"
-          >
-            Open bot
-          </a>
-        </div>
-      </header>
-
+    <div className="bg-[#050508] text-white">
       <div className="max-w-3xl mx-auto px-4 py-10 space-y-10">
         <div>
           <p className="text-[11px] uppercase tracking-[2px] text-emerald-500/80 font-semibold mb-2">

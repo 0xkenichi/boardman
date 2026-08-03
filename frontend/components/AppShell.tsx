@@ -10,6 +10,11 @@ const NAV = [
   { href: '/rematch/app/match', label: 'Match', ico: '🎮' },
 ]
 
+/**
+ * Mini-app shell under /rematch/app/*
+ * Top product nav lives in rematch/layout (RematchNav) — no second brand bar here.
+ * Bottom tab bar is the app navigation.
+ */
 export function AppShell({
   children,
   title,
@@ -20,42 +25,19 @@ export function AppShell({
   const path = usePathname() || ''
   return (
     <div className="rm-page">
-      <header
-        style={{
-          borderBottom: '1px solid #1f2937',
-          padding: '0.75rem 1rem',
-        }}
-      >
+      {title ? (
         <div
           style={{
             maxWidth: '28rem',
             margin: '0 auto',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
+            padding: '0.75rem 1rem 0',
+            fontSize: '0.85rem',
+            color: '#9ca3af',
           }}
         >
-          <Link href="/rematch" style={{ fontSize: '0.8rem', color: '#6b7280' }}>
-            ← Rematch
-          </Link>
-          <span style={{ fontWeight: 800, letterSpacing: '-0.02em' }}>
-            <span style={{ color: '#34d399' }}>Re</span>match
-          </span>
-          <a
-            href="https://t.me/ClawStationOfficialBot"
-            target="_blank"
-            rel="noreferrer"
-            style={{ fontSize: '0.75rem', color: '#34d399', fontWeight: 600 }}
-          >
-            Bot
-          </a>
+          {title}
         </div>
-        {title ? (
-          <div style={{ maxWidth: '28rem', margin: '0.5rem auto 0', fontSize: '0.85rem', color: '#9ca3af' }}>
-            {title}
-          </div>
-        ) : null}
-      </header>
+      ) : null}
       <div className="rm-wrap">{children}</div>
       <nav className="rm-nav">
         <div className="rm-nav-inner">

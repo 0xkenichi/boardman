@@ -99,21 +99,7 @@ export default function RematchPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#050508] text-white">
-      <header className="border-b border-gray-900/80 px-4 py-4 flex items-center justify-between max-w-3xl mx-auto">
-        <Link href="/" className="text-sm text-gray-400 hover:text-white transition-colors">
-          ← sideQuest
-        </Link>
-        <a
-          href={BOT}
-          target="_blank"
-          rel="noreferrer"
-          className="text-xs font-semibold px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white"
-        >
-          Open bot
-        </a>
-      </header>
-
+    <div className="bg-[#050508] text-white">
       <div className="max-w-3xl mx-auto px-4 py-10">
         <div className="flex items-center gap-4 mb-6">
           <Image
@@ -196,12 +182,6 @@ export default function RematchPage() {
           {tabs[activeTab]}
         </div>
 
-        <p className="mt-10 text-center text-xs text-gray-600">
-          Public page ·{' '}
-          <Link href="/app/feed" className="text-gray-500 underline">
-            sideQuest app
-          </Link>
-        </p>
       </div>
     </div>
   )
