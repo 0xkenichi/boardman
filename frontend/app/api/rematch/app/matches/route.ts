@@ -26,6 +26,30 @@ export async function GET(req: Request) {
       demo: true,
     })
   }
+
+  // Live history from Telegram-backed challenges (same as bot /profile)
+  if (stackConfigured()) {
+    const res = await stackFetch(
+      `/api/rematch/web/matches?profile_id=${encodeURIComponent(s.profileId)}&limit=40`
+    )
+    if (res.ok && Array.isArray(res.data?.matches)) {
+      const matches = res.data.matches.map((m: any) => ({
+        id: m.id,
+        public_code: m.public_code || m.code,
+        status: m.status,
+        amount_usdc: m.amount_usdc ?? m.stake,
+        game_id: m.game_id || m.game,
+        game_label: m.game_label || m.game,
+        result: m.result,
+        settlement_chain: m.settlement_chain || m.chain,
+        created_at: m.created_at,
+        creator_id: m.creator_id,
+        opponent_id: m.opponent_id,
+      }))
+      return NextResponse.json({ ok: true, matches, demo: false })
+    }
+  }
+
   const mine = [...demoMatches.values()].filter(
     (m) =>
       m.creator_id === s.profileId ||

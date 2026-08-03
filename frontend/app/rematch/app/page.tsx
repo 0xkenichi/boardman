@@ -199,14 +199,19 @@ export default function RematchAppHome() {
         </div>
 
         <div className="rm-card rm-card-hero">
-          <span className="rm-label">Stakeable balance</span>
+          <span className="rm-label">Balance (Arc · play wallet)</span>
           <div className="rm-balance">
             <span>$</span>
             {Number(me.balance || 0).toFixed(2)}
           </div>
           <p className="rm-muted" style={{ margin: '0.5rem 0 0', fontSize: '0.8rem' }}>
-            Ready to challenge right now
+            Ready to stake · same wallet as Telegram
           </p>
+          {me.address ? (
+            <code className="rm-code" style={{ marginTop: '0.75rem', marginBottom: 0, fontSize: '0.7rem' }}>
+              {me.address}
+            </code>
+          ) : null}
           {me.playPoints != null ? (
             <p style={{ margin: '0.65rem 0 0', fontSize: '0.85rem', color: '#d1d5db' }}>
               PLAY score{' '}
@@ -216,7 +221,9 @@ export default function RematchAppHome() {
           ) : null}
           {me.otherBalance && me.otherBalance > 0.009 ? (
             <p className="rm-warn-text">
-              ⚠️ ${me.otherBalance.toFixed(2)} on another address — move to play wallet to stake
+              ⚠️ ${me.otherBalance.toFixed(2)} still on an older address
+              {me.otherAddress ? ` (${me.otherAddress.slice(0, 10)}…)` : ''}. Use the play address
+              above for staking.
             </p>
           ) : null}
           {(me as any).paused ? (

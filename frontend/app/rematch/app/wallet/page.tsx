@@ -49,7 +49,7 @@ export default function WalletPage() {
     <AppShell title="Wallet">
       <div className="rm-stack-lg">
         <div className="rm-card rm-card-hero">
-          <span className="rm-label">Stakeable balance</span>
+          <span className="rm-label">Balance (Arc · play wallet)</span>
           {loading && !me ? (
             <div className="rm-skeleton" style={{ height: 40, width: '50%', marginTop: 8 }} />
           ) : (
@@ -59,12 +59,12 @@ export default function WalletPage() {
             </div>
           )}
           <p className="rm-muted" style={{ margin: '0.45rem 0 0', fontSize: '0.8rem' }}>
-            What you can stake
+            Same play wallet as the Telegram bot · Arc USDC
           </p>
         </div>
 
         <div className="rm-card">
-          <span className="rm-label">Your fund address</span>
+          <span className="rm-label">Fund / deposit address</span>
           <code className="rm-code">{me?.address || '—'}</code>
           <button
             type="button"
@@ -75,18 +75,19 @@ export default function WalletPage() {
             {copied ? '✓ Copied' : 'Copy address'}
           </button>
           <p className="rm-muted" style={{ marginTop: '0.75rem', marginBottom: 0, fontSize: '0.8rem' }}>
-            Send USDC here. Fiat bank top-up is coming — same Balance $.
+            Send Arc testnet USDC here only. This is the address Rematch stakes from.
           </p>
         </div>
 
         {me?.otherBalance && me.otherBalance > 0.009 ? (
           <div className="rm-card rm-card-warn">
             <p className="rm-warn-text" style={{ marginTop: 0 }}>
-              ⚠️ ${me.otherBalance.toFixed(2)} on another address
+              ⚠️ ${me.otherBalance.toFixed(2)} still sitting on an older address
             </p>
             {me.otherAddress ? <code className="rm-code">{me.otherAddress}</code> : null}
             <p className="rm-muted" style={{ marginBottom: 0, fontSize: '0.8rem' }}>
-              Move funds to your play address above to stake.
+              Not used for new stakes. Send those funds to the play address above (or ask support
+              to consolidate).
             </p>
           </div>
         ) : null}

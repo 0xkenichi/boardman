@@ -192,8 +192,26 @@ def get_chain_metrics() -> dict[str, Any]:
     return {"resolved_total": total, "by_chain": by}
 
 
-def get_match_history(profile_id: str, limit: int = 15) -> list[dict[str, Any]]:
-    """Recent matches for a player."""
+def get_match_history(
+    profile_id: str,
+    limit: int = 15,
+    *,
+    include_open: bool = True,
+) -> list[dict[str, Any]]:
+    """Recent matches for a player (same source as Telegram /profile)."""
+    statuses = [
+        "resolved",
+        "cancelled",
+        "disputed",
+        "locked",
+        "playing",
+        "submitted",
+        "accepted",
+        "creator_locked",
+        "opponent_locked",
+    ]
+    if include_open:
+        statuses.append("open")
     rows: list = []
     for col in ("issuer_id", "target_id"):
         try:
@@ -203,7 +221,7 @@ def get_match_history(profile_id: str, limit: int = 15) -> list[dict[str, Any]]:
                 .table("challenges")
                 .select("*")
                 .eq(col, profile_id)
-                .in_("status", ["resolved", "cancelled", "disputed", "locked", "playing", "submitted"])
+                .in_("status", statuses)
                 .order("created_at", desc=True)
                 .limit(limit)
                 .execute()
@@ -234,13 +252,21 @@ def get_match_history(profile_id: str, limit: int = 15) -> list[dict[str, Any]]:
                 result = "D"
         out.append(
             {
+                "id": ch.get("id"),
                 "code": display_code(ch),
+                "public_code": display_code(ch),
                 "status": ch.get("status"),
                 "stake": ch.get("amount_usdc") or ch.get("stake_amount"),
+                "amount_usdc": ch.get("amount_usdc") or ch.get("stake_amount"),
                 "chain": ch.get("settlement_chain") or "—",
+                "settlement_chain": ch.get("settlement_chain") or "arc",
                 "game": ch.get("game") or ch.get("game_type") or "—",
+                "game_id": ch.get("game") or ch.get("game_type") or "—",
+                "game_label": ch.get("game") or ch.get("game_type") or "—",
                 "result": result,
                 "created_at": ch.get("created_at"),
+                "creator_id": ch.get("creator_id") or ch.get("issuer_id"),
+                "opponent_id": ch.get("opponent_id") or ch.get("target_id"),
             }
         )
     return out

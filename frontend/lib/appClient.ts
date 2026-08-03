@@ -23,6 +23,8 @@ export type Me = {
   tag: string
   name: string
   balance: number
+  totalBalance?: number
+  chainId?: string
   otherBalance?: number
   otherAddress?: string
   address?: string

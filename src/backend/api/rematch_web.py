@@ -138,15 +138,19 @@ async def web_wallet_snapshot(
         except Exception:
             pass
 
+        spendable = float(summary.get("spendable_usdc") or 0)
+        other = float(summary.get("other_usdc") or 0)
         return {
             "success": True,
             "profile_id": profile_id,
             "gaming_tag": tag,
             "display_name": name,
-            "balance": float(summary.get("spendable_usdc") or 0),
-            "other_balance": float(summary.get("other_usdc") or 0),
+            "balance": spendable,
+            "total_balance": spendable + other,
+            "other_balance": other,
             "other_address": summary.get("other_address") or "",
             "address": summary.get("address") or "",
+            "chain_id": summary.get("chain_id") or "arc",
             "ledger_usdc": float(summary.get("ledger_usdc") or 0),
             "play_points": play_points,
             "paused": bool(is_paused()),
@@ -154,4 +158,28 @@ async def web_wallet_snapshot(
         }
     except Exception as exc:
         logger.exception("[RematchWeb] wallet snapshot failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/matches")
+async def web_match_history(
+    profile_id: str = Query(...),
+    limit: int = Query(30, ge=1, le=100),
+    x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
+    authorization: Optional[str] = Header(default=None),
+):
+    """Recent matches for a profile — same history as Telegram bot."""
+    _require_key(x_stack_key, authorization)
+    try:
+        from gaming.src.backend.services.rematch_public import get_match_history
+
+        matches = get_match_history(profile_id, limit, include_open=True)
+        return {
+            "success": True,
+            "profile_id": profile_id,
+            "matches": matches,
+            "count": len(matches),
+        }
+    except Exception as exc:
+        logger.exception("[RematchWeb] match history failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc

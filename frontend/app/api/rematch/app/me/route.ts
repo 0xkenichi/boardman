@@ -14,16 +14,20 @@ export async function GET(req: Request) {
       `/api/rematch/web/wallet?profile_id=${encodeURIComponent(s.profileId)}`
     )
     if (res.ok && res.data?.success !== false) {
+      const balance = Number(res.data.balance ?? 0)
+      const otherBalance = Number(res.data.other_balance ?? 0)
       return NextResponse.json({
         ok: true,
         profileId: s.profileId,
         tag: res.data.gaming_tag || s.tag,
         name: res.data.display_name || s.name,
         telegramId: s.telegramId,
-        balance: Number(res.data.balance ?? 0),
-        otherBalance: Number(res.data.other_balance ?? 0),
+        balance,
+        totalBalance: Number(res.data.total_balance ?? balance + otherBalance),
+        otherBalance,
         otherAddress: res.data.other_address || '',
         address: res.data.address || '',
+        chainId: res.data.chain_id || 'arc',
         playPoints: Number(res.data.play_points ?? 0),
         paused: Boolean(res.data.paused),
         balanceError: res.data.balance_error || null,
