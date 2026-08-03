@@ -304,10 +304,8 @@ def get_active_challenge(profile_id: str) -> Optional[dict]:
             logger.warning("[PLAY] active match query %s failed: %s", col, exc)
             return []
 
+    # Live schema: issuer_id / target_id only (creator_id does not exist — PGRST/42703)
     rows = _query("issuer_id") + _query("target_id")
-    # Fallback for DBs that still have creator_id/opponent_id
-    if not rows:
-        rows = _query("creator_id") + _query("opponent_id")
     return rows[0] if rows else None
 
 
