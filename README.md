@@ -72,7 +72,8 @@ Live product · shipping weekly · multi-chain testnets · mainnet path in progr
 | [`docs/PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md`](docs/PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md) | **Canonical** 1v1 / public / mobile / fiat / Arc decisions — do not forget |
 | [`docs/IMESSAGE_AND_CHANNELS.md`](docs/IMESSAGE_AND_CHANNELS.md) | iMessage games catalog · multi-channel · phone/API |
 | [`docs/MOBILE_GAMES.md`](docs/MOBILE_GAMES.md) | FC Mobile, Free Fire, COD, Valorant, PUBG, … |
-| [`docs/WEBAPP_AND_MINIPAY.md`](docs/WEBAPP_AND_MINIPAY.md) | Rematch webapp + MiniPay plan |
+| [`docs/WEBAPP_AND_MINIPAY.md`](docs/WEBAPP_AND_MINIPAY.md) | Webapp + MiniPay overview |
+| [`docs/WEBAPP_UX_AND_SECURITY.md`](docs/WEBAPP_UX_AND_SECURITY.md) | Webapp parity · security · simple UX |
 | [`docs/AKASH_DEPLOY.md`](docs/AKASH_DEPLOY.md) | Always-on bot on Akash (CPU) |
 | `Dockerfile.akash` · `deploy/akash/deploy.yml` | Image + SDL |
 | `config/games/imessage.yaml` | GamePigeon / iMessage catalog |

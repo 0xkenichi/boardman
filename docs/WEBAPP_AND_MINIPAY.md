@@ -1,7 +1,9 @@
 # Rematch Web App & MiniPay
 
 **Status:** plan + existing thin web · Stack API ready for a full app  
-**Related:** `frontend/`, `docs/MOBILE_GAMES.md`, `src/stack/README.md`, Stack API v1
+**Related:** `docs/WEBAPP_UX_AND_SECURITY.md` (how it works · parity · security · simple UX), `frontend/`, `docs/MOBILE_GAMES.md`, `src/stack/README.md`
+
+**Base URL:** `https://playingsidequest.fun/rematch/...`
 
 ---
 
@@ -9,9 +11,12 @@
 
 | Question | Answer |
 |----------|--------|
-| Can we create a **Rematch webapp**? | **Yes.** You already have Next.js pages under `frontend/`. Grow them into a full mini-app using **Stack API v1**. |
-| Can we do a **MiniPay app**? | **Yes, later.** MiniPay (Celo) hosts mini apps that open in-wallet. Same UI as the webapp, plus MiniPay wallet inject / USDC on Celo when you add that rail. |
-| Same product? | **One product, many shells:** Telegram · Web · MiniPay · WhatsApp — all call Stack. |
+| Can we create a **Rematch webapp**? | **Yes.** Grow `frontend/` into `/rematch/app` on **Rematch Stack** (same rails as Telegram). |
+| Same features as Telegram? | **Yes** — challenge, lock, wallet, proof, board. Auth = Telegram so **same account/balance**. |
+| Secure? | **Custodial Circle + server BFF** — no seeds in browser, no `STACK_API_KEY` in JS, caps/pause/geo. Details: `WEBAPP_UX_AND_SECURITY.md`. |
+| Non-crypto UX? | **Balance $**, Get money, Challenge friend, send final photo — no chain education. |
+| MiniPay? | **Yes, later** — same webapp inside MiniPay; Celo optional. |
+| API name | Product: Rematch · Platform: **Rematch Stack** |
 
 ---
 
