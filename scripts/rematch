@@ -1,0 +1,303 @@
+#!/usr/bin/env bash
+# Rematch local control — API + Telegram bot (+ optional Cloudflare tunnel)
+#
+# Usage:
+#   rematch start|stop|restart|status
+#   start rematch   # via shell helpers in ~/.zshrc
+#   stop rematch
+
+set -euo pipefail
+
+# Resolve real script path (works when ~/bin/rematch is a symlink)
+_SRC="${BASH_SOURCE[0]:-$0}"
+while [[ -L "$_SRC" ]]; do
+  _DIR="$(cd -P "$(dirname "$_SRC")" && pwd)"
+  _SRC="$(readlink "$_SRC")"
+  [[ "$_SRC" != /* ]] && _SRC="$_DIR/$_SRC"
+done
+ROOT="$(cd -P "$(dirname "$_SRC")/.." && pwd)"
+LOG_DIR="${REMATCH_LOG_DIR:-/tmp/clawstation-logs}"
+API_PID="$LOG_DIR/api.pid"
+BOT_PID="$LOG_DIR/bot.pid"
+TUNNEL_PID="$LOG_DIR/tunnel.pid"
+API_LOG="$LOG_DIR/api.log"
+BOT_LOG="$LOG_DIR/bot.log"
+TUNNEL_LOG="$LOG_DIR/tunnel.log"
+PORT="${PORT:-8000}"
+HOST="${REMATCH_API_HOST:-127.0.0.1}"
+
+# Prefer project venv, then Documents rematch venv, then python3
+resolve_python() {
+  if [[ -x "$ROOT/.venv/bin/python" ]] && "$ROOT/.venv/bin/python" -c "import uvicorn" 2>/dev/null; then
+    echo "$ROOT/.venv/bin/python"
+    return
+  fi
+  local alt="/Users/kenichi/Documents/reMatch/rematch/.venv/bin/python"
+  if [[ -x "$alt" ]] && "$alt" -c "import uvicorn" 2>/dev/null; then
+    echo "$alt"
+    return
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    echo "python3"
+    return
+  fi
+  echo "python"
+}
+
+ensure_layout() {
+  mkdir -p "$LOG_DIR" "$ROOT/gaming"
+  if [[ ! -e "$ROOT/gaming/src" ]]; then
+    ln -sfn ../src "$ROOT/gaming/src"
+  fi
+  if [[ ! -e "$ROOT/gaming/__init__.py" ]]; then
+    touch "$ROOT/gaming/__init__.py"
+  fi
+  if [[ ! -e "$ROOT/backend" ]]; then
+    ln -sfn src/backend "$ROOT/backend"
+  fi
+  if [[ ! -e "$ROOT/gaming/config" ]] && [[ -d "$ROOT/config" ]]; then
+    ln -sfn ../config "$ROOT/gaming/config"
+  fi
+}
+
+is_running() {
+  local pidfile="$1"
+  [[ -f "$pidfile" ]] || return 1
+  local pid
+  pid="$(cat "$pidfile" 2>/dev/null || true)"
+  [[ -n "${pid:-}" ]] || return 1
+  kill -0 "$pid" 2>/dev/null
+}
+
+kill_pidfile() {
+  local name="$1"
+  local pidfile="$2"
+  if ! is_running "$pidfile"; then
+    rm -f "$pidfile"
+    echo "  $name: not running"
+    return 0
+  fi
+  local pid
+  pid="$(cat "$pidfile")"
+  # Kill process group if possible (children of nohup)
+  kill "$pid" 2>/dev/null || true
+  # Also kill descendants matching typical patterns carefully by pid only
+  for _ in 1 2 3 4 5; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      break
+    fi
+    sleep 0.3
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -9 "$pid" 2>/dev/null || true
+  fi
+  rm -f "$pidfile"
+  echo "  $name: stopped (pid $pid)"
+}
+
+start_api() {
+  if is_running "$API_PID"; then
+    echo "  api: already running (pid $(cat "$API_PID"))"
+    return 0
+  fi
+  # free port if orphan holds it
+  if command -v lsof >/dev/null 2>&1; then
+    local opid
+    opid="$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)"
+    if [[ -n "${opid:-}" ]]; then
+      echo "  api: port $PORT in use by pid $opid — leaving it (stop rematch first if stuck)"
+    fi
+  fi
+  local py
+  py="$(resolve_python)"
+  (
+    cd "$ROOT"
+    # shellcheck disable=SC1091
+    set -a && source "$ROOT/.env" && set +a
+    export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
+    export PYTHONUNBUFFERED=1
+    export PORT
+    nohup "$py" -m uvicorn gaming.src.backend.main:app --host "$HOST" --port "$PORT" \
+      >>"$API_LOG" 2>&1 &
+    echo $! >"$API_PID"
+  )
+  sleep 1
+  if is_running "$API_PID"; then
+    echo "  api: started (pid $(cat "$API_PID")) → http://$HOST:$PORT"
+  else
+    echo "  api: FAILED to start — see $API_LOG" >&2
+    tail -20 "$API_LOG" 2>/dev/null || true
+    return 1
+  fi
+}
+
+start_bot() {
+  if is_running "$BOT_PID"; then
+    echo "  bot: already running (pid $(cat "$BOT_PID"))"
+    return 0
+  fi
+  local py
+  py="$(resolve_python)"
+  (
+    cd "$ROOT"
+    # shellcheck disable=SC1091
+    set -a && source "$ROOT/.env" && set +a
+    export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
+    export PYTHONUNBUFFERED=1
+    export CLAWSTATION_BOT_MODE="${CLAWSTATION_BOT_MODE:-polling}"
+    nohup "$py" -m gaming.src.bot.main >>"$BOT_LOG" 2>&1 &
+    echo $! >"$BOT_PID"
+  )
+  sleep 1
+  if is_running "$BOT_PID"; then
+    echo "  bot: started (pid $(cat "$BOT_PID"))"
+  else
+    echo "  bot: FAILED to start — see $BOT_LOG" >&2
+    tail -20 "$BOT_LOG" 2>/dev/null || true
+    return 1
+  fi
+}
+
+start_tunnel() {
+  # Optional: only if cloudflared exists and REMATCH_TUNNEL=1 (default on)
+  if [[ "${REMATCH_TUNNEL:-1}" != "1" ]]; then
+    echo "  tunnel: skipped (REMATCH_TUNNEL!=1)"
+    return 0
+  fi
+  local cf="${CLOUDFLARED_BIN:-$HOME/.local/bin/cloudflared}"
+  if [[ ! -x "$cf" ]]; then
+    if command -v cloudflared >/dev/null 2>&1; then
+      cf="$(command -v cloudflared)"
+    else
+      echo "  tunnel: cloudflared not found — skip (API stays local)"
+      return 0
+    fi
+  fi
+  if is_running "$TUNNEL_PID"; then
+    echo "  tunnel: already running (pid $(cat "$TUNNEL_PID"))"
+    local url
+    url="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | tail -1 || true)"
+    [[ -n "${url:-}" ]] && echo "         $url"
+    return 0
+  fi
+  : >"$TUNNEL_LOG"
+  nohup "$cf" tunnel --url "http://$HOST:$PORT" >>"$TUNNEL_LOG" 2>&1 &
+  echo $! >"$TUNNEL_PID"
+  # wait briefly for URL
+  local url=""
+  for _ in 1 2 3 4 5 6 7 8; do
+    sleep 1
+    url="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | tail -1 || true)"
+    [[ -n "${url:-}" ]] && break
+  done
+  if is_running "$TUNNEL_PID"; then
+    echo "  tunnel: started (pid $(cat "$TUNNEL_PID"))"
+    if [[ -n "${url:-}" ]]; then
+      echo "         public: $url"
+      echo "         (set Vercel STACK_API_URL to this if web needs live Stack)"
+    else
+      echo "         (URL not ready yet — check $TUNNEL_LOG)"
+    fi
+  else
+    echo "  tunnel: failed — see $TUNNEL_LOG" >&2
+  fi
+}
+
+cmd_start() {
+  echo "Starting Rematch…"
+  if [[ ! -f "$ROOT/.env" ]]; then
+    echo "Missing $ROOT/.env — copy .env.example and fill secrets." >&2
+    exit 1
+  fi
+  ensure_layout
+  start_api
+  start_bot
+  start_tunnel
+  echo "Done. Logs: $LOG_DIR"
+  echo "  status: rematch status   |   stop: stop rematch"
+}
+
+cmd_stop() {
+  echo "Stopping Rematch…"
+  kill_pidfile "tunnel" "$TUNNEL_PID"
+  kill_pidfile "bot" "$BOT_PID"
+  kill_pidfile "api" "$API_PID"
+  # orphan listeners on port
+  if command -v lsof >/dev/null 2>&1; then
+    local opids
+    opids="$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)"
+    if [[ -n "${opids:-}" ]]; then
+      echo "  also freeing port $PORT: $opids"
+      # shellcheck disable=SC2086
+      kill $opids 2>/dev/null || true
+    fi
+  fi
+  echo "Done."
+}
+
+cmd_status() {
+  echo "Rematch status (root=$ROOT)"
+  for pair in "api:$API_PID" "bot:$BOT_PID" "tunnel:$TUNNEL_PID"; do
+    local name="${pair%%:*}"
+    local pf="${pair#*:}"
+    if is_running "$pf"; then
+      echo "  $name: running (pid $(cat "$pf"))"
+    else
+      echo "  $name: stopped"
+    fi
+  done
+  if command -v curl >/dev/null 2>&1; then
+    if curl -sf --max-time 2 "http://$HOST:$PORT/api/healthz" >/dev/null 2>&1; then
+      echo "  health: OK http://$HOST:$PORT/api/healthz"
+    else
+      echo "  health: not reachable on :$PORT"
+    fi
+  fi
+  local url
+  url="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | tail -1 || true)"
+  [[ -n "${url:-}" ]] && echo "  tunnel url: $url"
+}
+
+cmd_restart() {
+  cmd_stop
+  sleep 1
+  cmd_start
+}
+
+usage() {
+  cat <<EOF
+Rematch local runtime
+
+  rematch start      Start API + Telegram bot (+ tunnel if available)
+  rematch stop       Stop all
+  rematch restart    Stop then start
+  rematch status     Show PIDs / health
+
+Shell helpers (after install):
+  start rematch
+  stop rematch
+
+Env:
+  PORT=8000
+  REMATCH_TUNNEL=0     # skip cloudflared
+  REMATCH_LOG_DIR=/tmp/clawstation-logs
+EOF
+}
+
+main() {
+  local cmd="${1:-}"
+  case "$cmd" in
+    start) cmd_start ;;
+    stop) cmd_stop ;;
+    restart) cmd_restart ;;
+    status|st) cmd_status ;;
+    -h|--help|help|"") usage ;;
+    *)
+      echo "Unknown command: $cmd" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"
