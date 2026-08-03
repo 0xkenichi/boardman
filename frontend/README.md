@@ -1,60 +1,76 @@
-# Rematch web
+# Rematch web (production)
 
-Public pages + **mini-app** for `playingsidequest.fun/rematch/...`
+**App:** `https://playingsidequest.fun/rematch/app`  
+**Security model:** `docs/WEBAPP_UX_AND_SECURITY.md`
 
-## Routes
+## What is production-ready
 
-| Path | Purpose |
-|------|---------|
-| `/rematch` | Marketing / how to play |
-| `/rematch/leaderboard` | Public board |
-| `/rematch/get-usdc` | Fund helper |
-| **`/rematch/app`** | **Mini-app home** (balance, challenge) |
-| `/rematch/app/challenge` | New challenge wizard |
-| `/rematch/app/match` | Open match by code / list |
-| `/rematch/app/match/[code]` | Accept · lock · status |
-| `/rematch/app/match/[code]/upload` | Final screenshot proof |
-| `/rematch/app/wallet` | Balance $ · fund address |
-
-## BFF (browser never sees Stack key)
-
-| API | Role |
-|-----|------|
-| `POST /api/rematch/app/session` | Telegram / demo login → HttpOnly cookie |
-| `GET /api/rematch/app/me` | Balance snapshot |
-| `GET /api/rematch/app/games` | Catalog |
-| `POST /api/rematch/app/matches` | Create challenge |
-| `GET/POST /api/rematch/app/matches/[code]` | Status / accept / lock |
-| `POST /api/rematch/app/matches/[code]/proof` | Upload proof |
-
-Security model: `docs/WEBAPP_UX_AND_SECURITY.md`
+| Piece | Status |
+|-------|--------|
+| Mini-app UI (home, challenge, match, upload, wallet) | ✅ |
+| BFF — no Stack key in browser | ✅ |
+| HttpOnly HMAC session cookie | ✅ |
+| Telegram Login Widget + WebApp initData verify | ✅ |
+| Profile lookup by telegram_id | ✅ (`/api/rematch/web/profile`) |
+| Live balance snapshot | ✅ (`/api/rematch/web/wallet`) |
+| Create match by @tag | ✅ (`/api/stack/v1/matches/by-tag`) |
+| Rate limits on BFF | ✅ |
+| Security headers (CSP, HSTS) | ✅ |
+| Demo login | Dev only (off in production) |
 
 ## Run locally
 
 ```bash
 cd frontend
 cp .env.example .env.local
-# REMATCH_ALLOW_DEMO_LOGIN=1 is fine for local
+# fill TELEGRAM + STACK if testing live; else demo works without Stack
 npm install
 npm run dev
 ```
 
-Open http://localhost:3000/rematch/app → **Continue (demo login)**.
+http://localhost:3000/rematch/app
 
-### Live Stack
+## Production checklist
+
+1. **BotFather** `/setdomain` → `playingsidequest.fun` (and `www` if used)  
+2. Env on host:
 
 ```bash
-# .env.local
-STACK_API_URL=http://127.0.0.1:8000
-STACK_API_KEY=your-key
-TELEGRAM_BOT_TOKEN_CLAWSTATION=...
-REMATCH_SESSION_SECRET=...
+NODE_ENV=production
+REMATCH_SESSION_SECRET=<32+ random bytes>
+TELEGRAM_BOT_TOKEN_CLAWSTATION=<bot token>
+NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=ClawStationOfficialBot
+NEXT_PUBLIC_TELEGRAM_BOT_URL=https://t.me/ClawStationOfficialBot
+STACK_API_URL=https://<your-gaming-api-host>
+STACK_API_KEY=<same key as API STACK_API_KEY>
 ```
 
-## Production
+3. Gaming API must expose:
+   - `/api/rematch/web/profile`
+   - `/api/rematch/web/wallet`
+   - `/api/stack/v1/*`
+   - Set `STACK_API_KEY` on the API
 
-- Host Next on the same domain as `playingsidequest.fun`
-- Set strong `REMATCH_SESSION_SECRET`
-- Disable demo login (`REMATCH_ALLOW_DEMO_LOGIN` unset, `NODE_ENV=production`)
-- Telegram Login Widget + bot token for real auth
-- HTTPS only
+4. Users must **`/start` the bot once** (creates wallet + profile) before web login succeeds in production.
+
+5. Deploy this Next app on the same domain as marketing pages (or reverse-proxy `/rematch` + `/api/rematch`).
+
+## Routes
+
+| Path | Purpose |
+|------|---------|
+| `/rematch/app` | Home + Telegram sign-in |
+| `/rematch/app/challenge` | Wizard |
+| `/rematch/app/match` | Codes / list |
+| `/rematch/app/match/[code]` | Accept · lock |
+| `/rematch/app/match/[code]/upload` | Proof photo |
+| `/rematch/app/wallet` | Balance $ · fund address |
+
+## Architecture
+
+```
+Browser  →  /api/rematch/app/* (BFF, session cookie)
+                →  STACK_API_URL + X-Stack-Key
+                     →  /api/rematch/web/*  (profile, wallet)
+                     →  /api/stack/v1/*     (matches)
+```

@@ -1,14 +1,12 @@
 import { NextResponse } from 'next/server'
-import { readSessionFromRequest } from '@/lib/session'
+import { requireSession } from '@/lib/bff'
 import { DEMO_GAMES, stackConfigured, stackFetch } from '@/lib/stackServer'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: Request) {
-  const s = readSessionFromRequest(req)
-  if (!s) {
-    return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
-  }
+  const auth = requireSession(req)
+  if ('error' in auth) return auth.error
 
   const url = new URL(req.url)
   const category = url.searchParams.get('category') || ''

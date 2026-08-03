@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server'
-import { readSessionFromRequest } from '@/lib/session'
-import { stackConfigured, stackFetch } from '@/lib/stackServer'
 import { randomBytes } from 'crypto'
+import { requireSession, rateLimitRequest } from '@/lib/bff'
+import { stackConfigured, stackFetch } from '@/lib/stackServer'
 
 export const dynamic = 'force-dynamic'
 
-/** In-memory demo matches (per server process) for scaffold UX */
 function demoStore(): Map<string, any> {
   const g = globalThis as any
   if (!g.__rematchDemoMatches) g.__rematchDemoMatches = new Map()
@@ -13,28 +12,36 @@ function demoStore(): Map<string, any> {
 }
 
 export async function GET(req: Request) {
-  const s = readSessionFromRequest(req)
-  if (!s) {
-    return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
-  }
+  const auth = requireSession(req)
+  if ('error' in auth) return auth.error
+  const { session: s } = auth
+
   const demoMatches = demoStore()
   const url = new URL(req.url)
   const code = url.searchParams.get('code')
   if (code && demoMatches.has(code.toUpperCase())) {
-    return NextResponse.json({ ok: true, match: demoMatches.get(code.toUpperCase()), demo: true })
+    return NextResponse.json({
+      ok: true,
+      match: demoMatches.get(code.toUpperCase()),
+      demo: true,
+    })
   }
-  // list active for user in demo
   const mine = [...demoMatches.values()].filter(
-    (m) => m.creator_id === s.profileId || m.opponent_tag === s.tag || m.opponent_id === s.profileId
+    (m) =>
+      m.creator_id === s.profileId ||
+      m.opponent_tag === s.tag ||
+      m.opponent_id === s.profileId
   )
   return NextResponse.json({ ok: true, matches: mine, demo: !stackConfigured() })
 }
 
 export async function POST(req: Request) {
-  const s = readSessionFromRequest(req)
-  if (!s) {
-    return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
-  }
+  const limited = rateLimitRequest(req, 'match-create', 10)
+  if (limited) return limited
+
+  const auth = requireSession(req)
+  if ('error' in auth) return auth.error
+  const { session: s } = auth
 
   let body: any = {}
   try {
@@ -55,27 +62,34 @@ export async function POST(req: Request) {
   }
 
   if (stackConfigured()) {
-    const res = await stackFetch('/api/stack/v1/matches', {
+    const res = await stackFetch('/api/stack/v1/matches/by-tag', {
       method: 'POST',
       body: JSON.stringify({
         creator_id: s.profileId,
+        opponent_tag,
         amount_usdc: amount,
         game_id,
         chain_id: 'arc',
-        visibility: 'private',
-        message: `vs @${opponent_tag}`,
-        // opponent_id resolved server-side when tag lookup exists
       }),
     })
     if (res.ok) {
       return NextResponse.json({ ok: true, ...res.data, demo: false })
     }
-    // fall through to demo if stack rejects unknown profile in scaffold
+    return NextResponse.json(
+      {
+        ok: false,
+        error: res.data?.detail || res.data?.error || 'create_failed',
+        detail: res.data,
+      },
+      { status: res.status || 400 }
+    )
   }
 
   const code = randomBytes(3).toString('hex').toUpperCase().slice(0, 6)
   const match = {
-    id: cryptoRandomId(),
+    id: randomBytes(16)
+      .toString('hex')
+      .replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5'),
     public_code: code,
     status: 'open',
     game_id,
@@ -100,10 +114,6 @@ export async function POST(req: Request) {
     status: 'open',
     amount_usdc: amount,
     demo: true,
-    message: 'Demo match created (Stack offline or tag lookup pending). Share code with opponent.',
+    message: 'Demo match (Stack offline). Share code with opponent.',
   })
-}
-
-function cryptoRandomId(): string {
-  return randomBytes(16).toString('hex').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5')
 }

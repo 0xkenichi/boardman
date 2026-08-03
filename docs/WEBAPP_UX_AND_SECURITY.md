@@ -219,23 +219,25 @@ Same steps as Telegram wizard — category → game → stake → friend.
 
 ## 7. Parity checklist
 
-### Scaffolded (code in `frontend/`)
+### Production-ready (code in `frontend/` + gaming API)
 
 - [x] Routes under `/rematch/app` (home, challenge, match, upload, wallet)  
 - [x] BFF under `/api/rematch/app/*` (session cookie, no Stack key in browser)  
-- [x] Demo login for local / offline Stack  
-- [x] Telegram Login + WebApp verify helpers (server)  
-- [x] Challenge wizard (tag → stake → category → game)  
-- [x] Match accept / lock actions (demo or Stack)  
-- [x] Screenshot upload endpoint  
+- [x] Demo login for local only (disabled in production)  
+- [x] Telegram Login Widget UI + HMAC verify  
+- [x] Telegram WebApp `initData` auto-login when inside Telegram  
+- [x] Profile lookup `GET /api/rematch/web/profile?telegram_id=`  
+- [x] Live wallet `GET /api/rematch/web/wallet?profile_id=`  
+- [x] Create match by tag `POST /api/stack/v1/matches/by-tag`  
+- [x] Rate limits on BFF  
+- [x] CSP / HSTS / security headers middleware  
 
-### Still to harden for production
+### Optional next
 
-- [ ] Wire Telegram Login Widget UI + live profile lookup  
-- [ ] Live balance from Stack / Circle in `GET /me`  
-- [ ] Caps, pause, geo, rate limits on every BFF route  
-- [ ] Optional: withdraw requires extra confirm  
-- [ ] Telegram WebApp button → `/rematch/app`
+- [ ] Withdraw flow + extra confirm  
+- [ ] Bot button `web_app` → `/rematch/app`  
+- [ ] Redis rate limits for multi-instance  
+- [ ] Fiat top-up UI (`PAYMENT_RAILS.md`)
 
 ---
 

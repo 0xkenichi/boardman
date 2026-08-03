@@ -1,47 +1,50 @@
 import { NextResponse } from 'next/server'
-import { readSessionFromRequest } from '@/lib/session'
+import { requireSession } from '@/lib/bff'
 import { stackConfigured, stackFetch } from '@/lib/stackServer'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: Request) {
-  const s = readSessionFromRequest(req)
-  if (!s) {
-    return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
-  }
-
-  // Prefer Stack balance when wired; otherwise demo numbers
-  let balance = 0
-  let otherBalance = 0
-  let otherAddress = ''
-  let address = ''
-  let playPoints = 0
-  let demo = !stackConfigured()
+  const auth = requireSession(req)
+  if ('error' in auth) return auth.error
+  const { session: s } = auth
 
   if (stackConfigured()) {
-    // Future: GET /api/stack/v1/me when available — for now try balance via custom path or skip
-    const bal = await stackFetch(`/api/stack/v1/matches?noop=1`).catch(() => null)
-    void bal
+    const res = await stackFetch(
+      `/api/rematch/web/wallet?profile_id=${encodeURIComponent(s.profileId)}`
+    )
+    if (res.ok && res.data?.success !== false) {
+      return NextResponse.json({
+        ok: true,
+        profileId: s.profileId,
+        tag: res.data.gaming_tag || s.tag,
+        name: res.data.display_name || s.name,
+        telegramId: s.telegramId,
+        balance: Number(res.data.balance ?? 0),
+        otherBalance: Number(res.data.other_balance ?? 0),
+        otherAddress: res.data.other_address || '',
+        address: res.data.address || '',
+        playPoints: Number(res.data.play_points ?? 0),
+        paused: Boolean(res.data.paused),
+        balanceError: res.data.balance_error || null,
+        demo: false,
+      })
+    }
   }
 
-  // Demo / offline: honest scaffold data
-  if (demo) {
-    balance = Number(process.env.REMATCH_DEMO_BALANCE || 12.5)
-    address = '0x0412256c17cdaaaf01cdcb5cde84c8780fc98a2b'
-    playPoints = 1203
-  }
-
+  // Offline / misconfigured Stack — still return session identity
   return NextResponse.json({
     ok: true,
     profileId: s.profileId,
     tag: s.tag,
     name: s.name,
     telegramId: s.telegramId,
-    balance,
-    otherBalance,
-    otherAddress,
-    address,
-    playPoints,
-    demo,
+    balance: Number(process.env.REMATCH_DEMO_BALANCE || 0),
+    otherBalance: 0,
+    otherAddress: '',
+    address: '',
+    playPoints: 0,
+    demo: true,
+    message: 'Connect STACK_API_URL + STACK_API_KEY for live balance',
   })
 }

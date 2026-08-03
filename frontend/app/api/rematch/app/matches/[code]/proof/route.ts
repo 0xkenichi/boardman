@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { readSessionFromRequest } from '@/lib/session'
+import { requireSession, rateLimitRequest } from '@/lib/bff'
 import { stackConfigured, stackFetch } from '@/lib/stackServer'
 
 export const dynamic = 'force-dynamic'
@@ -8,10 +8,12 @@ export async function POST(
   req: Request,
   { params }: { params: { code: string } }
 ) {
-  const s = readSessionFromRequest(req)
-  if (!s) {
-    return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
-  }
+  const limited = rateLimitRequest(req, 'proof', 10)
+  if (limited) return limited
+
+  const auth = requireSession(req)
+  if ('error' in auth) return auth.error
+  const { session: s } = auth
   const code = decodeURIComponent(params.code)
 
   const form = await req.formData()
@@ -24,6 +26,10 @@ export async function POST(
   if (file.size > 8_000_000) {
     return NextResponse.json({ ok: false, error: 'file_too_large' }, { status: 400 })
   }
+  const type = (file as File).type || ''
+  if (type && !type.startsWith('image/')) {
+    return NextResponse.json({ ok: false, error: 'image_only' }, { status: 400 })
+  }
 
   if (stackConfigured()) {
     const fd = new FormData()
@@ -34,10 +40,12 @@ export async function POST(
       method: 'POST',
       body: fd,
     })
-    return NextResponse.json({ ok: res.ok, ...res.data, demo: false }, { status: res.ok ? 200 : res.status })
+    return NextResponse.json(
+      { ok: res.ok, ...res.data, demo: false },
+      { status: res.ok ? 200 : res.status }
+    )
   }
 
-  // Demo: accept upload and pretend AI ok
   return NextResponse.json({
     ok: true,
     success: true,
@@ -49,6 +57,6 @@ export async function POST(
       score_string: score || null,
       error: score ? null : 'Provide a score caption for demo settle',
     },
-    message: 'Proof received (demo mode). Wire STACK_API_URL for live AI settle.',
+    message: 'Proof received (demo). Wire STACK_API_URL for live AI settle.',
   })
 }

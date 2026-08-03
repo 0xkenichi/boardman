@@ -3,14 +3,20 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AppShell } from '@/components/AppShell'
+import { TelegramLogin } from '@/components/TelegramLogin'
 import { api, type Me } from '@/lib/appClient'
 
-const BOT = 'https://t.me/ClawStationOfficialBot'
+const BOT = process.env.NEXT_PUBLIC_TELEGRAM_BOT_URL || 'https://t.me/ClawStationOfficialBot'
+const BOT_USERNAME =
+  process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ||
+  process.env.NEXT_PUBLIC_TELEGRAM_BOT_NAME ||
+  ''
 
 export default function RematchAppHome() {
   const [me, setMe] = useState<Me | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [tgMissing, setTgMissing] = useState(!BOT_USERNAME)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -29,7 +35,41 @@ export default function RematchAppHome() {
 
   useEffect(() => {
     load()
+    // Telegram WebApp auto-login when opened inside Telegram
+    try {
+      const w = window as any
+      const tg = w.Telegram?.WebApp
+      if (tg?.initData) {
+        tg.ready?.()
+        ;(async () => {
+          const res = await api('/api/rematch/app/session', {
+            method: 'POST',
+            body: JSON.stringify({ mode: 'webapp', initData: tg.initData }),
+          })
+          if (res.ok) await load()
+        })()
+      }
+    } catch {
+      /* not in WebApp */
+    }
   }, [load])
+
+  async function onTelegramAuth(user: Record<string, string | number>) {
+    setErr(null)
+    const res = await api('/api/rematch/app/session', {
+      method: 'POST',
+      body: JSON.stringify({ mode: 'telegram', ...user }),
+    })
+    if (!res.ok) {
+      if (res.data?.error === 'open_bot_first') {
+        setErr(res.data.message || 'Open the Rematch bot once, then sign in again.')
+        return
+      }
+      setErr(res.data?.error || 'Telegram login failed')
+      return
+    }
+    await load()
+  }
 
   async function demoLogin() {
     setErr(null)
@@ -38,7 +78,7 @@ export default function RematchAppHome() {
       body: JSON.stringify({ mode: 'demo' }),
     })
     if (!res.ok) {
-      setErr(res.data?.error || 'Login failed — set REMATCH_ALLOW_DEMO_LOGIN=1 for demo')
+      setErr(res.data?.error || 'Demo login disabled in production')
       return
     }
     await load()
@@ -61,24 +101,45 @@ export default function RematchAppHome() {
   }
 
   if (!me) {
+    const showDemo =
+      process.env.NODE_ENV !== 'production' ||
+      process.env.NEXT_PUBLIC_ALLOW_DEMO_LOGIN === '1'
+
     return (
       <AppShell title="Sign in">
         <div className="rm-card" style={{ marginBottom: '1rem' }}>
           <h1 style={{ fontSize: '1.35rem', margin: '0 0 0.5rem' }}>Play Rematch</h1>
           <p className="rm-muted" style={{ marginBottom: '1rem' }}>
-            Same account as Telegram. Same balance. No seed phrases — just challenge, lock,
-            play, and send the final photo.
+            Same account as Telegram. Same balance. No seed phrases — challenge, lock, play,
+            send the final photo.
           </p>
-          <button type="button" className="rm-btn rm-btn-primary" onClick={demoLogin}>
-            Continue (demo login)
-          </button>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <TelegramLogin
+              botUsername={BOT_USERNAME}
+              onAuth={onTelegramAuth}
+              onMissing={() => setTgMissing(true)}
+            />
+            {tgMissing ? (
+              <p className="rm-muted" style={{ fontSize: '0.75rem', marginTop: '0.5rem' }}>
+                Set <code>NEXT_PUBLIC_TELEGRAM_BOT_USERNAME</code> (without @) and BotFather{' '}
+                <code>/setdomain</code> to your site host.
+              </p>
+            ) : null}
+          </div>
+
+          {showDemo ? (
+            <button type="button" className="rm-btn rm-btn-ghost" onClick={demoLogin}>
+              Continue (demo login)
+            </button>
+          ) : null}
+
           <p className="rm-muted" style={{ marginTop: '0.85rem', fontSize: '0.75rem' }}>
-            Production uses <strong>Telegram Login</strong> (verified on our server). Demo mode
-            needs <code>REMATCH_ALLOW_DEMO_LOGIN=1</code> locally.
+            First time? Open the bot once so we can create your wallet, then sign in here.
           </p>
         </div>
-        <a href={BOT} target="_blank" rel="noreferrer" className="rm-btn rm-btn-ghost">
-          Open Telegram bot instead
+        <a href={BOT} target="_blank" rel="noreferrer" className="rm-btn rm-btn-primary">
+          Open Telegram bot
         </a>
         {err ? (
           <p style={{ color: '#f87171', marginTop: '1rem', fontSize: '0.85rem' }}>{err}</p>
@@ -95,7 +156,11 @@ export default function RematchAppHome() {
         </p>
         <div
           className="rm-card"
-          style={{ marginTop: '0.75rem', background: 'rgba(5,150,105,0.08)', borderColor: '#065f46' }}
+          style={{
+            marginTop: '0.75rem',
+            background: 'rgba(5,150,105,0.08)',
+            borderColor: '#065f46',
+          }}
         >
           <span className="rm-label">Balance</span>
           <div style={{ fontSize: '2rem', fontWeight: 900, letterSpacing: '-0.03em' }}>
@@ -109,9 +174,14 @@ export default function RematchAppHome() {
               ⚠️ ${me.otherBalance.toFixed(2)} on another address — move to play wallet to stake
             </p>
           ) : null}
+          {(me as any).paused ? (
+            <p style={{ color: '#f87171', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+              Matching is paused. Check Telegram for updates.
+            </p>
+          ) : null}
           {me.demo ? (
             <p className="rm-muted" style={{ marginTop: '0.5rem', fontSize: '0.7rem' }}>
-              Demo mode — wire STACK_API_URL for live balances
+              Demo / offline Stack — live balance needs STACK_API_URL
             </p>
           ) : null}
         </div>
@@ -133,8 +203,8 @@ export default function RematchAppHome() {
         <p className="rm-muted" style={{ margin: 0 }}>
           <strong style={{ color: '#e5e7eb' }}>How it works</strong>
           <br />
-          1. Get money → 2. Challenge → 3. Both lock → 4. Play (phone / iMessage / console) →
-          5. Upload final photo → winner gets paid.
+          1. Get money → 2. Challenge → 3. Both lock → 4. Play → 5. Upload final photo → winner
+          paid.
         </p>
         {me.playPoints != null ? (
           <p className="rm-muted" style={{ marginTop: '0.75rem', marginBottom: 0 }}>

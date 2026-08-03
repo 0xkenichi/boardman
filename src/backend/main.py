@@ -22,6 +22,7 @@ from gaming.src.backend.api import (
     webhooks_router,
     rematch_router,
 )
+from gaming.src.backend.api.rematch_web import router as rematch_web_router
 from gaming.src.backend.middleware import BlockedRegionError, check_region
 from gaming.src.backend.services.clawstation_circle import start_deposit_expiry_task
 
@@ -66,6 +67,7 @@ def create_app() -> FastAPI:
     app.include_router(settlement_router, prefix="/api")
     app.include_router(webhooks_router)
     app.include_router(rematch_router)
+    app.include_router(rematch_web_router)
 
     # Rematch Stack — builder platform surface
     from gaming.src.stack.api import router as stack_router

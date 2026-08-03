@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server'
-import { readSessionFromRequest } from '@/lib/session'
+import { requireSession, rateLimitRequest } from '@/lib/bff'
 import { stackConfigured, stackFetch } from '@/lib/stackServer'
 
 export const dynamic = 'force-dynamic'
 
-// shared with list route via globalThis for demo scaffold
 function demoStore(): Map<string, any> {
   const g = globalThis as any
   if (!g.__rematchDemoMatches) g.__rematchDemoMatches = new Map()
@@ -15,23 +14,24 @@ export async function GET(
   req: Request,
   { params }: { params: { code: string } }
 ) {
-  const s = readSessionFromRequest(req)
-  if (!s) {
-    return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
-  }
+  const auth = requireSession(req)
+  if ('error' in auth) return auth.error
   const code = decodeURIComponent(params.code)
 
   if (stackConfigured()) {
     const res = await stackFetch(`/api/stack/v1/matches/${encodeURIComponent(code)}`)
     if (res.ok) {
-      return NextResponse.json({ ok: true, match: res.data?.match || res.data, demo: false })
+      return NextResponse.json({
+        ok: true,
+        match: res.data?.match || res.data,
+        demo: false,
+      })
     }
   }
 
   const store = demoStore()
   const m = store.get(code.toUpperCase()) || store.get(code)
   if (!m) {
-    // friendly empty shell so UI works when opened by deep link
     return NextResponse.json({
       ok: true,
       match: {
@@ -52,11 +52,14 @@ export async function POST(
   req: Request,
   { params }: { params: { code: string } }
 ) {
-  const s = readSessionFromRequest(req)
-  if (!s) {
-    return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
-  }
+  const limited = rateLimitRequest(req, 'match-act', 20)
+  if (limited) return limited
+
+  const auth = requireSession(req)
+  if ('error' in auth) return auth.error
+  const { session: s } = auth
   const code = decodeURIComponent(params.code)
+
   let body: any = {}
   try {
     body = await req.json()
@@ -71,14 +74,20 @@ export async function POST(
         method: 'POST',
         body: JSON.stringify({ opponent_id: s.profileId }),
       })
-      return NextResponse.json({ ok: res.ok, ...res.data, demo: false }, { status: res.status })
+      return NextResponse.json(
+        { ok: res.ok, ...res.data, demo: false },
+        { status: res.ok ? 200 : res.status }
+      )
     }
     if (action === 'lock') {
       const res = await stackFetch(`/api/stack/v1/matches/${encodeURIComponent(code)}/lock`, {
         method: 'POST',
         body: JSON.stringify({ profile_id: s.profileId }),
       })
-      return NextResponse.json({ ok: res.ok, ...res.data, demo: false }, { status: res.status })
+      return NextResponse.json(
+        { ok: res.ok, ...res.data, demo: false },
+        { status: res.ok ? 200 : res.status }
+      )
     }
   }
 
@@ -90,17 +99,10 @@ export async function POST(
   if (action === 'accept') {
     m = { ...m, status: 'accepted', opponent_id: s.profileId, opponent_tag: s.tag }
   } else if (action === 'lock') {
-    const next =
-      m.status === 'open' || m.status === 'accepted'
-        ? 'creator_locked'
-        : m.status === 'creator_locked'
-          ? 'locked'
-          : m.status
-    m = { ...m, status: next === 'creator_locked' && m.creator_id !== s.profileId ? 'locked' : next }
-    if (m.status === 'creator_locked' && m.creator_id === s.profileId) {
-      /* creator locked */
-    } else if (m.creator_id !== s.profileId) {
-      m.status = 'locked'
+    if (m.creator_id === s.profileId) {
+      m = { ...m, status: 'creator_locked' }
+    } else {
+      m = { ...m, status: 'locked', opponent_id: s.profileId }
     }
   }
   store.set((m.public_code || code).toUpperCase(), m)

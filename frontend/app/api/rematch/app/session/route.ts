@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { createHash } from 'crypto'
 import {
   encodeSession,
   sessionCookieHeader,
@@ -6,12 +7,15 @@ import {
   readSessionFromRequest,
 } from '@/lib/session'
 import { verifyTelegramLogin, verifyTelegramWebAppInitData } from '@/lib/telegramAuth'
-import { createHash } from 'crypto'
+import { rateLimitRequest } from '@/lib/bff'
+import { stackConfigured, stackFetch } from '@/lib/stackServer'
 
 export const dynamic = 'force-dynamic'
 
 /** GET — current session */
 export async function GET(req: Request) {
+  const limited = rateLimitRequest(req, 'session-get', 60)
+  if (limited) return limited
   const s = readSessionFromRequest(req)
   if (!s) {
     return NextResponse.json({ ok: false, authenticated: false }, { status: 401 })
@@ -31,6 +35,9 @@ export async function GET(req: Request) {
  * body: { mode: 'demo' } | { mode: 'telegram', ...loginWidgetFields } | { mode: 'webapp', initData }
  */
 export async function POST(req: Request) {
+  const limited = rateLimitRequest(req, 'session-post', 15)
+  if (limited) return limited
+
   let body: any = {}
   try {
     body = await req.json()
@@ -50,24 +57,20 @@ export async function POST(req: Request) {
   let name = 'Player'
   let tag = 'player'
   let profileId = ''
+  let needsBotStart = false
 
   if (mode === 'demo') {
     const allowDemo =
       process.env.REMATCH_ALLOW_DEMO_LOGIN === '1' || process.env.NODE_ENV !== 'production'
     if (!allowDemo) {
-      return NextResponse.json(
-        { ok: false, error: 'demo_login_disabled' },
-        { status: 403 }
-      )
+      return NextResponse.json({ ok: false, error: 'demo_login_disabled' }, { status: 403 })
     }
     telegramId = String(body.telegramId || '6277067771')
     name = String(body.name || 'Demo Player')
     tag = String(body.tag || 'stillkenichi').replace(/^@/, '')
-    // Stable demo profile id from telegram id (not a real UUID lookup in demo)
     profileId =
       body.profileId ||
       process.env.REMATCH_DEMO_PROFILE_ID ||
-      // placeholder UUID shape for stack APIs that expect UUID
       '62440a47-f4fc-4249-a627-46aaa2d039ef'
   } else if (mode === 'telegram') {
     const fields: Record<string, string> = {}
@@ -82,7 +85,11 @@ export async function POST(req: Request) {
     telegramId = String(user.id)
     name = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Player'
     tag = (user.username || `tg${user.id}`).replace(/^@/, '')
-    profileId = await resolveProfileId(telegramId, tag, name)
+    const resolved = await resolveProfileId(telegramId, tag, name)
+    profileId = resolved.profileId
+    needsBotStart = resolved.needsBotStart
+    if (resolved.tag) tag = resolved.tag
+    if (resolved.name) name = resolved.name
   } else if (mode === 'webapp') {
     const verified = verifyTelegramWebAppInitData(String(body.initData || ''))
     if (!verified) {
@@ -97,13 +104,29 @@ export async function POST(req: Request) {
     telegramId = String(userObj.id || '')
     name = [userObj.first_name, userObj.last_name].filter(Boolean).join(' ') || 'Player'
     tag = (userObj.username || `tg${telegramId}`).replace(/^@/, '')
-    profileId = await resolveProfileId(telegramId, tag, name)
+    const resolved = await resolveProfileId(telegramId, tag, name)
+    profileId = resolved.profileId
+    needsBotStart = resolved.needsBotStart
+    if (resolved.tag) tag = resolved.tag
+    if (resolved.name) name = resolved.name
   } else {
     return NextResponse.json({ ok: false, error: 'unknown_mode' }, { status: 400 })
   }
 
   if (!telegramId || !profileId) {
     return NextResponse.json({ ok: false, error: 'login_failed' }, { status: 400 })
+  }
+
+  if (needsBotStart && process.env.NODE_ENV === 'production') {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'open_bot_first',
+        message: 'Open the Rematch Telegram bot once (/start), then sign in here.',
+        bot: process.env.NEXT_PUBLIC_TELEGRAM_BOT_URL || 'https://t.me/ClawStationOfficialBot',
+      },
+      { status: 403 }
+    )
   }
 
   const token = encodeSession({
@@ -119,41 +142,73 @@ export async function POST(req: Request) {
     tag,
     name,
     demo: mode === 'demo',
+    needsBotStart,
   })
   res.headers.set('Set-Cookie', sessionCookieHeader(token))
   return res
 }
 
-/** Map telegram id → profile UUID via Stack/backend if available; else deterministic placeholder. */
-async function resolveProfileId(telegramId: string, tag: string, name: string): Promise<string> {
-  // Optional: call backend profile lookup when REMATCH_PROFILE_LOOKUP_URL is set
+async function resolveProfileId(
+  telegramId: string,
+  tag: string,
+  name: string
+): Promise<{ profileId: string; needsBotStart: boolean; tag?: string; name?: string }> {
+  if (stackConfigured()) {
+    const res = await stackFetch(
+      `/api/rematch/web/profile?telegram_id=${encodeURIComponent(telegramId)}`
+    )
+    if (res.ok && res.data?.found && (res.data.profile_id || res.data.id)) {
+      return {
+        profileId: String(res.data.profile_id || res.data.id),
+        needsBotStart: false,
+        tag: res.data.gaming_tag || tag,
+        name: res.data.display_name || name,
+      }
+    }
+    if (res.ok && res.data && res.data.found === false) {
+      return { profileId: '', needsBotStart: true }
+    }
+  }
+
+  // Optional dedicated lookup URL
   const lookup = process.env.REMATCH_PROFILE_LOOKUP_URL
   if (lookup) {
     try {
       const res = await fetch(
         `${lookup.replace(/\/$/, '')}?telegram_id=${encodeURIComponent(telegramId)}`,
         {
-          headers: {
-            'X-Stack-Key': process.env.STACK_API_KEY || '',
-          },
+          headers: { 'X-Stack-Key': process.env.STACK_API_KEY || '' },
           cache: 'no-store',
         }
       )
       if (res.ok) {
         const data = await res.json()
-        if (data.profile_id || data.id) return String(data.profile_id || data.id)
+        if (data.profile_id || data.id) {
+          return {
+            profileId: String(data.profile_id || data.id),
+            needsBotStart: false,
+            tag: data.gaming_tag || tag,
+            name: data.display_name || name,
+          }
+        }
       }
     } catch {
       /* fall through */
     }
   }
-  // Deterministic pseudo-UUID for session binding until lookup exists
-  const h = createHash('sha256').update(`rematch:tg:${telegramId}`).digest('hex')
-  return [
-    h.slice(0, 8),
-    h.slice(8, 12),
-    '4' + h.slice(13, 16),
-    ((parseInt(h.slice(16, 18), 16) & 0x3f) | 0x80).toString(16) + h.slice(18, 20),
-    h.slice(20, 32),
-  ].join('')
+
+  // Dev fallback only
+  if (process.env.NODE_ENV !== 'production') {
+    const h = createHash('sha256').update(`rematch:tg:${telegramId}`).digest('hex')
+    const profileId = [
+      h.slice(0, 8),
+      h.slice(8, 12),
+      '4' + h.slice(13, 16),
+      ((parseInt(h.slice(16, 18), 16) & 0x3f) | 0x80).toString(16) + h.slice(18, 20),
+      h.slice(20, 32),
+    ].join('')
+    return { profileId, needsBotStart: false }
+  }
+
+  return { profileId: '', needsBotStart: true }
 }

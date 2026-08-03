@@ -113,6 +113,15 @@ async def v1_game(game_id: str, _: str = Depends(_require_stack_key)):
     return {"success": True, "game": g}
 
 
+class CreateMatchByTagBody(BaseModel):
+    creator_id: str
+    opponent_tag: str
+    amount_usdc: float = Field(..., gt=0, le=10_000)
+    game_id: str = "mobile.fc_mobile"
+    chain_id: str = "arc"
+    message: Optional[str] = None
+
+
 @router.post("/matches")
 async def v1_create_match(body: CreateMatchBody, _: str = Depends(_require_stack_key)):
     from gaming.src.backend.services.challenge_compat import denormalize_challenge
@@ -121,8 +130,7 @@ async def v1_create_match(body: CreateMatchBody, _: str = Depends(_require_stack
     from gaming.src.backend.services.play_points import assert_can_start_or_accept
     from gaming.src.backend.services.safety import assert_money_ops_allowed, validate_stake
 
-    if not get_game(body.game_id) and not body.game_id.startswith("imessage."):
-        # allow known console ids without catalog row
+    if not get_game(body.game_id) and not body.game_id.startswith("imessage.") and not body.game_id.startswith("mobile."):
         if body.game_id not in ("EAFC", "NBA2K", "Other"):
             raise HTTPException(status_code=400, detail=f"unknown game_id: {body.game_id}")
 
@@ -181,6 +189,48 @@ async def v1_create_match(body: CreateMatchBody, _: str = Depends(_require_stack
         "amount_usdc": float(amount),
         "chain_id": body.chain_id or "arc",
     }
+
+
+@router.post("/matches/by-tag")
+async def v1_create_match_by_tag(
+    body: CreateMatchByTagBody, _: str = Depends(_require_stack_key)
+):
+    """Create private challenge using opponent gaming_tag (web-friendly)."""
+    clean = body.opponent_tag.strip().lstrip("@").lower()
+    if not clean:
+        raise HTTPException(status_code=400, detail="opponent_tag required")
+    try:
+        r = (
+            _sb()
+            .table("profiles")
+            .select("id, gaming_tag")
+            .ilike("gaming_tag", clean)
+            .limit(1)
+            .execute()
+        )
+        row = (r.data or [None])[0]
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail=f"@{clean} not found — they must open Rematch bot once",
+        )
+    if row["id"] == body.creator_id:
+        raise HTTPException(status_code=400, detail="cannot challenge yourself")
+
+    return await v1_create_match(
+        CreateMatchBody(
+            creator_id=body.creator_id,
+            opponent_id=row["id"],
+            amount_usdc=body.amount_usdc,
+            game_id=body.game_id,
+            chain_id=body.chain_id,
+            visibility="private",
+            message=body.message or f"vs @{row.get('gaming_tag') or clean}",
+        ),
+        _,
+    )
 
 
 @router.get("/matches/{match_ref}")
