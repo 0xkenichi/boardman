@@ -329,6 +329,8 @@ Never sound like a bank receipt first — money line + **zinger**, then balance 
 | Copy | Path |
 |------|------|
 | **Canonical** | `docs/PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md` |
+| **V1 → V2 release / content** | `docs/V1_TO_V2_RELEASE.md` |
+| **Fiat payment rails** | `docs/PAYMENT_RAILS.md` |
 | Deploy | `docs/AKASH_DEPLOY.md` |
 | Linked from | `README.md` → Strategy & 24/7 deploy |
 

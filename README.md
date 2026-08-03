@@ -74,6 +74,8 @@ Live product · shipping weekly · multi-chain testnets · mainnet path in progr
 | [`docs/MOBILE_GAMES.md`](docs/MOBILE_GAMES.md) | FC Mobile, Free Fire, COD, Valorant, PUBG, … |
 | [`docs/WEBAPP_AND_MINIPAY.md`](docs/WEBAPP_AND_MINIPAY.md) | Webapp + MiniPay overview |
 | [`docs/WEBAPP_UX_AND_SECURITY.md`](docs/WEBAPP_UX_AND_SECURITY.md) | Webapp parity · security · simple UX |
+| [`docs/V1_TO_V2_RELEASE.md`](docs/V1_TO_V2_RELEASE.md) | **V1 summary · upgrades · V2 offer · content kit** |
+| [`docs/PAYMENT_RAILS.md`](docs/PAYMENT_RAILS.md) | Fiat top-up → USDC play balance (mainnet prep) |
 | [`docs/AKASH_DEPLOY.md`](docs/AKASH_DEPLOY.md) | Always-on bot on Akash (CPU) |
 | `Dockerfile.akash` · `deploy/akash/deploy.yml` | Image + SDL |
 | `config/games/imessage.yaml` | GamePigeon / iMessage catalog |
