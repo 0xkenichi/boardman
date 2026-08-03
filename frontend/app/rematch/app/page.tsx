@@ -4,13 +4,12 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AppShell } from '@/components/AppShell'
 import { TelegramLogin } from '@/components/TelegramLogin'
+import { LiveRoomsCard } from '@/components/rematch/LiveRoomsCard'
 import { api, type Me } from '@/lib/appClient'
+import { REMATCH_BOT_URL, REMATCH_BOT_USERNAME } from '@/lib/rematchLinks'
 
-const BOT = process.env.NEXT_PUBLIC_TELEGRAM_BOT_URL || 'https://t.me/ClawStationOfficialBot'
-const BOT_USERNAME =
-  process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ||
-  process.env.NEXT_PUBLIC_TELEGRAM_BOT_NAME ||
-  ''
+const BOT = REMATCH_BOT_URL
+const BOT_USERNAME = REMATCH_BOT_USERNAME
 
 export default function RematchAppHome() {
   const [me, setMe] = useState<Me | null>(null)
@@ -149,6 +148,8 @@ export default function RematchAppHome() {
             </p>
           </div>
 
+          <LiveRoomsCard variant="compact" />
+
           <div className="rm-card">
             <p className="rm-label">Continue with Telegram</p>
             <TelegramLogin
@@ -260,11 +261,13 @@ export default function RematchAppHome() {
           </Link>
         </div>
 
+        <LiveRoomsCard variant="compact" />
+
         <div className="rm-card">
           <p className="rm-label">How it works</p>
           <ol className="rm-muted" style={{ margin: 0, paddingLeft: '1.1rem', lineHeight: 1.65 }}>
             <li>Get money into your play wallet</li>
-            <li>Challenge a friend</li>
+            <li>Challenge a friend — or find randoms in Telegram live rooms</li>
             <li>Both lock</li>
             <li>Play → upload final photo → winner paid</li>
           </ol>

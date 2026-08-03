@@ -5,8 +5,10 @@
  */
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { LiveRoomsCard } from '@/components/rematch/LiveRoomsCard'
+import { REMATCH_BOT_URL, REMATCH_GROUP_URL } from '@/lib/rematchLinks'
 
-const BOT = 'https://t.me/ClawStationOfficialBot'
+const BOT = REMATCH_BOT_URL
 const FAUCET = 'https://faucet.circle.com/'
 
 type LeaderRow = {
@@ -87,6 +89,15 @@ export default function RematchLeaderboardPage() {
             Open app
           </Link>
           <a
+            href={REMATCH_GROUP_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="rm-btn rm-btn-ghost"
+            style={{ width: 'auto', padding: '0.55rem 1rem', fontSize: '0.8rem' }}
+          >
+            Live rooms
+          </a>
+          <a
             href={BOT}
             target="_blank"
             rel="noreferrer"
@@ -105,6 +116,10 @@ export default function RematchLeaderboardPage() {
             Get USDC
           </a>
         </div>
+      </div>
+
+      <div style={{ marginBottom: '1.5rem' }}>
+        <LiveRoomsCard variant="compact" />
       </div>
 
       {loading && (

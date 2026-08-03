@@ -6,8 +6,10 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
+import { LiveRoomsCard } from '@/components/rematch/LiveRoomsCard'
+import { REMATCH_BOT_URL, REMATCH_GROUP_URL } from '@/lib/rematchLinks'
 
-const BOT = 'https://t.me/ClawStationOfficialBot'
+const BOT = REMATCH_BOT_URL
 const FAUCET = 'https://faucet.circle.com/'
 
 const STEPS = [
@@ -191,6 +193,15 @@ export default function RematchPage() {
             Open web app
           </Link>
           <a
+            href={REMATCH_GROUP_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="rm-btn rm-btn-ghost"
+            style={{ width: 'auto', minWidth: 140, padding: '0.9rem 1.35rem' }}
+          >
+            Live rooms (Telegram)
+          </a>
+          <a
             href={BOT}
             target="_blank"
             rel="noreferrer"
@@ -211,6 +222,10 @@ export default function RematchPage() {
         </div>
       </div>
 
+      <div style={{ marginBottom: '1.5rem' }}>
+        <LiveRoomsCard variant="full" />
+      </div>
+
       {/* Feature pills */}
       <div
         style={{
@@ -220,11 +235,13 @@ export default function RematchPage() {
           marginBottom: '1.5rem',
         }}
       >
-        {['Dual-lock escrow', 'Screenshot settle', 'Arc USDC', 'Telegram + web'].map((t) => (
-          <span key={t} className="rm-chip">
-            {t}
-          </span>
-        ))}
+        {['Dual-lock escrow', 'Screenshot settle', 'Arc USDC', 'Public rooms', 'Telegram + web'].map(
+          (t) => (
+            <span key={t} className="rm-chip">
+              {t}
+            </span>
+          )
+        )}
       </div>
 
       {/* Tabs */}

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AppShell } from '@/components/AppShell'
+import { LiveRoomsCard } from '@/components/rematch/LiveRoomsCard'
 import { api, type Game } from '@/lib/appClient'
 
 const STAKES = [1, 5, 10, 25]
@@ -113,30 +114,33 @@ export default function ChallengePage() {
       </p>
 
       {step === 0 && (
-        <div className="rm-card">
-          <label className="rm-label" htmlFor="rm-tag">
-            Friend&apos;s tag
-          </label>
-          <input
-            id="rm-tag"
-            className="rm-input"
-            placeholder="@stillkenichi"
-            value={tag}
-            onChange={(e) => setTag(e.target.value)}
-            autoCapitalize="none"
-            autoCorrect="off"
-          />
-          <p className="rm-muted" style={{ marginTop: '0.65rem', marginBottom: 0 }}>
-            They must have opened Rematch (bot or app) once.
-          </p>
-          <button
-            type="button"
-            className="rm-btn rm-btn-primary rm-mt-2"
-            disabled={!tag.trim()}
-            onClick={() => setStep(1)}
-          >
-            Next
-          </button>
+        <div className="rm-stack-lg">
+          <div className="rm-card">
+            <label className="rm-label" htmlFor="rm-tag">
+              Friend&apos;s tag
+            </label>
+            <input
+              id="rm-tag"
+              className="rm-input"
+              placeholder="@stillkenichi"
+              value={tag}
+              onChange={(e) => setTag(e.target.value)}
+              autoCapitalize="none"
+              autoCorrect="off"
+            />
+            <p className="rm-muted" style={{ marginTop: '0.65rem', marginBottom: 0 }}>
+              They must have opened Rematch (bot or app) once.
+            </p>
+            <button
+              type="button"
+              className="rm-btn rm-btn-primary rm-mt-2"
+              disabled={!tag.trim()}
+              onClick={() => setStep(1)}
+            >
+              Next
+            </button>
+          </div>
+          <LiveRoomsCard variant="compact" />
         </div>
       )}
 
