@@ -217,17 +217,25 @@ Same steps as Telegram wizard — category → game → stake → friend.
 
 ---
 
-## 7. Parity checklist (ship when these match)
+## 7. Parity checklist
 
-- [ ] Telegram Login / WebApp auth verified server-side  
-- [ ] Balance + fund address (abstracted)  
-- [ ] Challenge catalog: iMessage + Mobile + Console  
-- [ ] Accept / lock  
-- [ ] Screenshot proof upload  
-- [ ] Match status + rematch  
-- [ ] Board / leaderboard (exists)  
-- [ ] Caps, pause, geo, rate limits applied on BFF  
+### Scaffolded (code in `frontend/`)
+
+- [x] Routes under `/rematch/app` (home, challenge, match, upload, wallet)  
+- [x] BFF under `/api/rematch/app/*` (session cookie, no Stack key in browser)  
+- [x] Demo login for local / offline Stack  
+- [x] Telegram Login + WebApp verify helpers (server)  
+- [x] Challenge wizard (tag → stake → category → game)  
+- [x] Match accept / lock actions (demo or Stack)  
+- [x] Screenshot upload endpoint  
+
+### Still to harden for production
+
+- [ ] Wire Telegram Login Widget UI + live profile lookup  
+- [ ] Live balance from Stack / Circle in `GET /me`  
+- [ ] Caps, pause, geo, rate limits on every BFF route  
 - [ ] Optional: withdraw requires extra confirm  
+- [ ] Telegram WebApp button → `/rematch/app`
 
 ---
 

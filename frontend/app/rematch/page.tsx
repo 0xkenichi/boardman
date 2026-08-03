@@ -143,13 +143,19 @@ export default function RematchPage() {
         </p>
 
         <div className="flex flex-wrap gap-3 mb-10">
+          <Link
+            href="/rematch/app"
+            className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow-lg shadow-emerald-900/30"
+          >
+            Open web app
+          </Link>
           <a
             href={BOT}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow-lg shadow-emerald-900/30"
+            className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-gray-900 hover:bg-gray-800 border border-gray-700 text-white font-semibold text-sm"
           >
-            Launch Rematch bot
+            Telegram bot
           </a>
           <a
             href={FAUCET}
@@ -157,7 +163,7 @@ export default function RematchPage() {
             rel="noreferrer"
             className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-gray-900 hover:bg-gray-800 border border-gray-700 text-white font-semibold text-sm"
           >
-            Get USDC (Arc)
+            Get money (faucet)
           </a>
         </div>
 
