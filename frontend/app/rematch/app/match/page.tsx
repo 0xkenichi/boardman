@@ -10,7 +10,7 @@ export default function MatchListPage() {
   const router = useRouter()
   const [matches, setMatches] = useState<any[]>([])
   const [code, setCode] = useState('')
-  const [err, setErr] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     ;(async () => {
@@ -21,63 +21,73 @@ export default function MatchListPage() {
       }
       const m = await api('/api/rematch/app/matches')
       if (m.ok) setMatches(m.data.matches || [])
+      setLoading(false)
     })()
   }, [router])
 
   return (
-    <AppShell title="My match">
-      <div className="rm-card" style={{ marginBottom: '1rem' }}>
-        <label className="rm-label">Open match by code</label>
-        <input
-          className="rm-input"
-          placeholder="AB12CD"
-          value={code}
-          onChange={(e) => setCode(e.target.value.toUpperCase())}
-        />
-        <button
-          type="button"
-          className="rm-btn rm-btn-primary"
-          style={{ marginTop: '0.75rem' }}
-          disabled={!code.trim()}
-          onClick={() => router.push(`/rematch/app/match/${encodeURIComponent(code.trim())}`)}
-        >
-          Open
-        </button>
-      </div>
-
-      {matches.length === 0 ? (
+    <AppShell title="My matches">
+      <div className="rm-stack-lg">
         <div className="rm-card">
-          <p className="rm-muted" style={{ margin: 0 }}>
-            No active matches in this session. Create a challenge or open a code from Telegram.
-          </p>
-          <Link
-            href="/rematch/app/challenge"
-            className="rm-btn rm-btn-ghost"
-            style={{ marginTop: '0.75rem' }}
+          <label className="rm-label" htmlFor="rm-code">
+            Open match by code
+          </label>
+          <input
+            id="rm-code"
+            className="rm-input"
+            placeholder="AB12CD"
+            value={code}
+            onChange={(e) => setCode(e.target.value.toUpperCase())}
+            autoCapitalize="characters"
+          />
+          <button
+            type="button"
+            className="rm-btn rm-btn-primary rm-mt-1"
+            disabled={!code.trim()}
+            onClick={() => router.push(`/rematch/app/match/${encodeURIComponent(code.trim())}`)}
           >
-            New challenge
-          </Link>
+            Open match
+          </button>
         </div>
-      ) : (
-        <div style={{ display: 'grid', gap: '0.55rem' }}>
-          {matches.map((m) => (
-            <Link
-              key={m.public_code || m.id}
-              href={`/rematch/app/match/${encodeURIComponent(m.public_code || m.id)}`}
-              className="rm-card"
-              style={{ display: 'block' }}
-            >
-              <strong style={{ color: '#34d399' }}>{m.public_code || m.id}</strong>
-              <div className="rm-muted" style={{ marginTop: '0.25rem' }}>
-                ${m.amount_usdc} · {m.game_label || m.game_id} · {m.status}
-              </div>
+
+        {loading ? (
+          <div className="rm-stack">
+            <div className="rm-skeleton" style={{ height: 72, borderRadius: 16 }} />
+            <div className="rm-skeleton" style={{ height: 72, borderRadius: 16 }} />
+          </div>
+        ) : matches.length === 0 ? (
+          <div className="rm-card">
+            <p className="rm-h2" style={{ marginBottom: '0.35rem' }}>
+              No matches yet
+            </p>
+            <p className="rm-muted" style={{ margin: '0 0 0.85rem' }}>
+              Create a challenge or open a code from Telegram.
+            </p>
+            <Link href="/rematch/app/challenge" className="rm-btn rm-btn-primary">
+              ⚔️ New challenge
             </Link>
-          ))}
-        </div>
-      )}
-      {err ? (
-        <p style={{ color: '#f87171', marginTop: '0.75rem', fontSize: '0.85rem' }}>{err}</p>
-      ) : null}
+          </div>
+        ) : (
+          <div className="rm-stack">
+            <p className="rm-label">Active</p>
+            {matches.map((m) => (
+              <Link
+                key={m.public_code || m.id}
+                href={`/rematch/app/match/${encodeURIComponent(m.public_code || m.id)}`}
+                className="rm-match-row"
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <span className="rm-match-code">{m.public_code || m.id}</span>
+                  <span className="rm-status">{m.status || '—'}</span>
+                </div>
+                <div className="rm-muted" style={{ marginTop: '0.4rem', fontSize: '0.8rem' }}>
+                  ${m.amount_usdc} · {m.game_label || m.game_id}
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
     </AppShell>
   )
 }

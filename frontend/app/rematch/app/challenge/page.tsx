@@ -6,6 +6,7 @@ import { AppShell } from '@/components/AppShell'
 import { api, type Game } from '@/lib/appClient'
 
 const STAKES = [1, 5, 10, 25]
+const STEP_LABELS = ['Friend', 'Stake', 'Platform', 'Game', 'Confirm']
 
 export default function ChallengePage() {
   const router = useRouter()
@@ -20,7 +21,6 @@ export default function ChallengePage() {
   const [busy, setBusy] = useState(false)
   const [auth, setAuth] = useState<'checking' | 'yes' | 'no'>('checking')
 
-  // All hooks unconditionally first
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -56,6 +56,8 @@ export default function ChallengePage() {
     [games, category]
   )
 
+  const selectedGame = games.find((g) => g.game_id === gameId)
+
   async function submit() {
     setBusy(true)
     setErr(null)
@@ -69,7 +71,11 @@ export default function ChallengePage() {
         }),
       })
       if (!res.ok) {
-        setErr(res.data?.error || res.data?.detail || 'Could not create challenge')
+        setErr(
+          typeof res.data?.error === 'string'
+            ? res.data.error
+            : res.data?.detail || 'Could not create challenge'
+        )
         setBusy(false)
         return
       }
@@ -81,41 +87,51 @@ export default function ChallengePage() {
     }
   }
 
-  if (auth === 'checking') {
+  if (auth === 'checking' || auth === 'no') {
     return (
-      <AppShell>
-        <p className="rm-muted">Checking session…</p>
-      </AppShell>
-    )
-  }
-
-  if (auth === 'no') {
-    return (
-      <AppShell>
-        <p className="rm-muted">Redirecting to sign in…</p>
+      <AppShell title="New challenge">
+        <div className="rm-stack">
+          <div className="rm-skeleton" style={{ height: 8, borderRadius: 4 }} />
+          <div className="rm-skeleton" style={{ height: 160, borderRadius: 16 }} />
+          <p className="rm-muted" style={{ textAlign: 'center' }}>
+            {auth === 'no' ? 'Redirecting to sign in…' : 'Loading…'}
+          </p>
+        </div>
       </AppShell>
     )
   }
 
   return (
     <AppShell title="New challenge">
+      <div className="rm-steps" aria-hidden>
+        {STEP_LABELS.map((_, i) => (
+          <div key={i} className={`rm-step-dot ${i <= step ? 'rm-step-dot-on' : ''}`} />
+        ))}
+      </div>
+      <p className="rm-step-label">
+        Step {step + 1} of {STEP_LABELS.length} · {STEP_LABELS[step]}
+      </p>
+
       {step === 0 && (
         <div className="rm-card">
-          <label className="rm-label">Friend&apos;s tag</label>
+          <label className="rm-label" htmlFor="rm-tag">
+            Friend&apos;s tag
+          </label>
           <input
+            id="rm-tag"
             className="rm-input"
             placeholder="@stillkenichi"
             value={tag}
             onChange={(e) => setTag(e.target.value)}
             autoCapitalize="none"
+            autoCorrect="off"
           />
-          <p className="rm-muted" style={{ marginTop: '0.5rem' }}>
+          <p className="rm-muted" style={{ marginTop: '0.65rem', marginBottom: 0 }}>
             They must have opened Rematch (bot or app) once.
           </p>
           <button
             type="button"
-            className="rm-btn rm-btn-primary"
-            style={{ marginTop: '1rem' }}
+            className="rm-btn rm-btn-primary rm-mt-2"
             disabled={!tag.trim()}
             onClick={() => setStep(1)}
           >
@@ -126,25 +142,20 @@ export default function ChallengePage() {
 
       {step === 1 && (
         <div className="rm-card">
-          <label className="rm-label">Stake</label>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+          <label className="rm-label">Stake (USDC)</label>
+          <div className="rm-grid-2">
             {STAKES.map((a) => (
               <button
                 key={a}
                 type="button"
-                className="rm-btn"
-                style={{
-                  background: amount === a ? '#059669' : '#111827',
-                  border: '1px solid #1f2937',
-                  color: '#fff',
-                }}
+                className={`rm-tile ${amount === a ? 'rm-tile-active' : ''}`}
                 onClick={() => setAmount(a)}
               >
                 ${a}
               </button>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+          <div className="rm-btn-row rm-mt-2">
             <button type="button" className="rm-btn rm-btn-ghost" onClick={() => setStep(0)}>
               Back
             </button>
@@ -158,7 +169,7 @@ export default function ChallengePage() {
       {step === 2 && (
         <div className="rm-card">
           <label className="rm-label">Where do you play?</label>
-          <div style={{ display: 'grid', gap: '0.5rem' }}>
+          <div className="rm-stack">
             {(categories.length
               ? categories
               : [
@@ -170,11 +181,7 @@ export default function ChallengePage() {
               <button
                 key={c.id}
                 type="button"
-                className="rm-btn rm-btn-ghost"
-                style={{
-                  borderColor: category === c.id ? '#059669' : '#1f2937',
-                  color: category === c.id ? '#34d399' : '#e5e7eb',
-                }}
+                className={`rm-tile rm-tile-left ${category === c.id ? 'rm-tile-active' : ''}`}
                 onClick={() => {
                   setCategory(c.id)
                   setGameId('')
@@ -184,7 +191,7 @@ export default function ChallengePage() {
               </button>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+          <div className="rm-btn-row rm-mt-2">
             <button type="button" className="rm-btn rm-btn-ghost" onClick={() => setStep(1)}>
               Back
             </button>
@@ -203,24 +210,27 @@ export default function ChallengePage() {
       {step === 3 && (
         <div className="rm-card">
           <label className="rm-label">Game</label>
-          <div style={{ display: 'grid', gap: '0.45rem', maxHeight: '50vh', overflowY: 'auto' }}>
-            {filtered.map((g) => (
-              <button
-                key={g.game_id}
-                type="button"
-                className="rm-btn rm-btn-ghost"
-                style={{
-                  justifyContent: 'flex-start',
-                  borderColor: gameId === g.game_id ? '#059669' : '#1f2937',
-                  color: gameId === g.game_id ? '#34d399' : '#e5e7eb',
-                }}
-                onClick={() => setGameId(g.game_id)}
-              >
-                {g.emoji || ''} {g.display_name}
-              </button>
-            ))}
+          <div
+            className="rm-stack"
+            style={{ maxHeight: '46vh', overflowY: 'auto', paddingRight: 2 }}
+          >
+            {filtered.length === 0 ? (
+              <p className="rm-muted">No games in this category yet.</p>
+            ) : (
+              filtered.map((g) => (
+                <button
+                  key={g.game_id}
+                  type="button"
+                  className={`rm-tile rm-tile-left ${gameId === g.game_id ? 'rm-tile-active' : ''}`}
+                  onClick={() => setGameId(g.game_id)}
+                >
+                  <span style={{ marginRight: 6 }}>{g.emoji || '🎮'}</span>
+                  {g.display_name}
+                </button>
+              ))
+            )}
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+          <div className="rm-btn-row rm-mt-2">
             <button type="button" className="rm-btn rm-btn-ghost" onClick={() => setStep(2)}>
               Back
             </button>
@@ -237,19 +247,31 @@ export default function ChallengePage() {
       )}
 
       {step === 4 && (
-        <div className="rm-card">
-          <h2 style={{ margin: '0 0 0.75rem', fontSize: '1.1rem' }}>Confirm</h2>
-          <p className="rm-muted">
-            To: <strong style={{ color: '#fff' }}>@{tag.replace(/^@/, '')}</strong>
-            <br />
-            Stake: <strong style={{ color: '#34d399' }}>${amount}</strong>
-            <br />
-            Game: <strong style={{ color: '#fff' }}>{gameId}</strong>
-          </p>
-          <p className="rm-muted" style={{ fontSize: '0.8rem' }}>
+        <div className="rm-card rm-card-hero">
+          <p className="rm-section-title">Confirm</p>
+          <h2 className="rm-h2" style={{ marginBottom: '0.85rem' }}>
+            Ready to send?
+          </h2>
+          <div className="rm-stack" style={{ gap: '0.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+              <span className="rm-muted">To</span>
+              <strong>@{tag.replace(/^@/, '')}</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+              <span className="rm-muted">Stake</span>
+              <strong style={{ color: '#34d399' }}>${amount}</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+              <span className="rm-muted">Game</span>
+              <strong>
+                {selectedGame?.emoji || ''} {selectedGame?.display_name || gameId}
+              </strong>
+            </div>
+          </div>
+          <p className="rm-muted" style={{ fontSize: '0.8rem', marginTop: '0.9rem', marginBottom: 0 }}>
             After both lock: play, then upload the final screen photo here or in the bot.
           </p>
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+          <div className="rm-btn-row rm-mt-2">
             <button type="button" className="rm-btn rm-btn-ghost" onClick={() => setStep(3)}>
               Back
             </button>
@@ -265,9 +287,7 @@ export default function ChallengePage() {
         </div>
       )}
 
-      {err ? (
-        <p style={{ color: '#f87171', marginTop: '1rem', fontSize: '0.85rem' }}>{err}</p>
-      ) : null}
+      {err ? <p className="rm-err">{err}</p> : null}
     </AppShell>
   )
 }

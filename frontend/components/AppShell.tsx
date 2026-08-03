@@ -6,14 +6,13 @@ import { usePathname } from 'next/navigation'
 const NAV = [
   { href: '/rematch/app', label: 'Home', ico: '🏠' },
   { href: '/rematch/app/challenge', label: 'Challenge', ico: '⚔️' },
-  { href: '/rematch/app/wallet', label: 'Wallet', ico: '💰' },
   { href: '/rematch/app/match', label: 'Match', ico: '🎮' },
+  { href: '/rematch/app/wallet', label: 'Wallet', ico: '💰' },
 ]
 
 /**
  * Mini-app shell under /rematch/app/*
- * Top product nav lives in rematch/layout (RematchNav) — no second brand bar here.
- * Bottom tab bar is the app navigation.
+ * Product top nav is in rematch/layout; this is content + bottom tabs.
  */
 export function AppShell({
   children,
@@ -25,21 +24,25 @@ export function AppShell({
   const path = usePathname() || ''
   return (
     <div className="rm-page">
-      {title ? (
-        <div
-          style={{
-            maxWidth: '28rem',
-            margin: '0 auto',
-            padding: '0.75rem 1rem 0',
-            fontSize: '0.85rem',
-            color: '#9ca3af',
-          }}
-        >
-          {title}
-        </div>
-      ) : null}
-      <div className="rm-wrap">{children}</div>
-      <nav className="rm-nav">
+      <div className="rm-wrap">
+        {title ? (
+          <div style={{ marginBottom: '0.85rem' }}>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: '1.15rem',
+                fontWeight: 800,
+                letterSpacing: '-0.02em',
+                color: '#f3f4f6',
+              }}
+            >
+              {title}
+            </h1>
+          </div>
+        ) : null}
+        {children}
+      </div>
+      <nav className="rm-nav" aria-label="Rematch app">
         <div className="rm-nav-inner">
           {NAV.map((n) => {
             const active =
@@ -48,7 +51,9 @@ export function AppShell({
                 : path.startsWith(n.href)
             return (
               <Link key={n.href} href={n.href} className={active ? 'active' : ''}>
-                <span className="ico">{n.ico}</span>
+                <span className="ico" aria-hidden>
+                  {n.ico}
+                </span>
                 {n.label}
               </Link>
             )

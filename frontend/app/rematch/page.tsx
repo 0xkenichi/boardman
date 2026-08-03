@@ -1,8 +1,7 @@
 'use client'
 
 /**
- * Public Rematch page — playingsidequest.fun/rematch
- * Player-facing only: what they need to play. No internal roadmap/grant talk.
+ * Public Rematch marketing — playingsidequest.fun/rematch
  */
 import { useState } from 'react'
 import Image from 'next/image'
@@ -11,42 +10,67 @@ import Link from 'next/link'
 const BOT = 'https://t.me/ClawStationOfficialBot'
 const FAUCET = 'https://faucet.circle.com/'
 
+const STEPS = [
+  { n: '01', t: 'Fund', d: 'Get USDC into your Arc play wallet' },
+  { n: '02', t: 'Challenge', d: 'Tag a friend, pick stake & game' },
+  { n: '03', t: 'Lock', d: 'Both players lock — stake is held' },
+  { n: '04', t: 'Play & settle', d: 'Upload the final screen. Winner paid.' },
+]
+
 export default function RematchPage() {
   const [activeTab, setActiveTab] = useState<'flow' | 'play' | 'wallet' | 'legal'>('flow')
 
   const tabs: Record<string, React.ReactNode> = {
     flow: (
-      <div className="space-y-6">
-        <h2 className="text-xl font-bold text-emerald-400">How it works</h2>
-        <ol className="list-decimal list-inside space-y-3 text-gray-300 text-sm leading-relaxed">
-          <li>
-            Open the bot → <strong className="text-white">Get USDC</strong> → fund your Arc
-            address
-          </li>
-          <li>
-            <strong className="text-white">New challenge</strong> → friend Accepts → both{' '}
-            <strong className="text-white">Lock</strong>
-          </li>
-          <li>HOME / AWAY → play on console → submit FT photo (e.g. 5-3)</li>
-          <li>Winner is paid in USDC · both earn PLAY score</li>
-        </ol>
-
-        <div className="bg-gray-900/80 p-4 rounded-xl border border-gray-800">
-          <pre className="text-sm text-gray-300 whitespace-pre-wrap">{`🎮 My match      → Lock · Side · Submit
-⚔️ New challenge  → @tag · stake · game
-💰 Wallet         → balance · withdraw
-💧 Get USDC       → Circle faucet → Arc`}</pre>
+      <div className="rm-stack" style={{ gap: '1rem' }}>
+        <h2 className="rm-h2" style={{ color: '#34d399' }}>
+          How it works
+        </h2>
+        <div className="rm-stack">
+          {STEPS.map((s) => (
+            <div
+              key={s.n}
+              style={{
+                display: 'flex',
+                gap: '0.85rem',
+                alignItems: 'flex-start',
+                padding: '0.75rem 0',
+                borderBottom: '1px solid rgba(255,255,255,0.05)',
+              }}
+            >
+              <span
+                style={{
+                  fontSize: '0.7rem',
+                  fontWeight: 800,
+                  color: '#34d399',
+                  letterSpacing: '0.06em',
+                  minWidth: '1.6rem',
+                  paddingTop: 2,
+                }}
+              >
+                {s.n}
+              </span>
+              <div>
+                <div style={{ fontWeight: 800, marginBottom: 2 }}>{s.t}</div>
+                <div className="rm-muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+                  {s.d}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     ),
     play: (
-      <div className="space-y-4 text-sm text-gray-300">
-        <h2 className="text-xl font-bold text-emerald-400">PLAY score</h2>
-        <p>
-          Points for competing on Rematch. <strong className="text-white">Not cash.</strong>
+      <div className="rm-stack" style={{ gap: '0.85rem' }}>
+        <h2 className="rm-h2" style={{ color: '#34d399' }}>
+          PLAY score
+        </h2>
+        <p className="rm-muted" style={{ margin: 0 }}>
+          Points for competing. <strong style={{ color: '#fff' }}>Not cash.</strong>
         </p>
-        <table className="w-full text-sm">
-          <tbody className="text-gray-300">
+        <table style={{ width: '100%', fontSize: '0.9rem', borderCollapse: 'collapse' }}>
+          <tbody>
             {[
               ['Win', '+100'],
               ['Loss', '+40'],
@@ -54,9 +78,11 @@ export default function RematchPage() {
               ['No-show', '−50'],
               ['Tiers', 'Bronze → Diamond'],
             ].map(([k, v]) => (
-              <tr key={k} className="border-b border-gray-800/80">
-                <td className="py-2 pr-4 text-gray-400">{k}</td>
-                <td className="py-2 text-emerald-400/90">{v}</td>
+              <tr key={k} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <td style={{ padding: '0.65rem 0', color: '#9ca3af' }}>{k}</td>
+                <td style={{ padding: '0.65rem 0', color: '#34d399', textAlign: 'right', fontWeight: 700 }}>
+                  {v}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -64,75 +90,103 @@ export default function RematchPage() {
       </div>
     ),
     wallet: (
-      <div className="space-y-5 text-gray-300 text-sm">
-        <h2 className="text-xl font-bold text-emerald-400">Wallet</h2>
-        <p>
-          Rematch runs on <strong className="text-white">Arc</strong>. Gas is paid in USDC — you
-          only need USDC.
+      <div className="rm-stack" style={{ gap: '0.85rem' }}>
+        <h2 className="rm-h2" style={{ color: '#34d399' }}>
+          Wallet
+        </h2>
+        <p className="rm-muted" style={{ margin: 0 }}>
+          Rematch runs on <strong style={{ color: '#fff' }}>Arc</strong>. Gas is USDC — you only
+          need USDC.
         </p>
-        <ul className="list-disc list-inside space-y-2">
+        <ul className="rm-muted" style={{ margin: 0, paddingLeft: '1.1rem', lineHeight: 1.7 }}>
           <li>
-            <strong className="text-white">Get USDC</strong> — bot button →{' '}
+            <strong style={{ color: '#fff' }}>Get USDC</strong> —{' '}
             <a href={FAUCET} className="text-emerald-400 underline" target="_blank" rel="noreferrer">
               Circle faucet
             </a>{' '}
-            → Arc → paste your address
+            → Arc → your address
           </li>
           <li>
-            <strong className="text-white">Withdraw</strong> — Wallet → Withdraw
+            <strong style={{ color: '#fff' }}>Withdraw</strong> — Wallet in bot or app
           </li>
         </ul>
       </div>
     ),
     legal: (
-      <div className="space-y-4 text-sm text-gray-300 leading-relaxed">
-        <h2 className="text-xl font-bold text-amber-400">Before you play</h2>
-        <ul className="list-disc list-inside space-y-2 text-gray-400">
+      <div className="rm-stack" style={{ gap: '0.75rem' }}>
+        <h2 className="rm-h2" style={{ color: '#fbbf24' }}>
+          Before you play
+        </h2>
+        <ul className="rm-muted" style={{ margin: 0, paddingLeft: '1.1rem', lineHeight: 1.7 }}>
           <li>Skill matches with proof — play fair.</li>
           <li>Only stake what you can afford to lose.</li>
           <li>PLAY is a score, not money.</li>
           <li>You must be allowed to use this product where you live.</li>
         </ul>
-        <p className="text-xs text-gray-600 pt-2">Rematch by sideQuest</p>
       </div>
     ),
   }
 
   return (
-    <div className="bg-[#050508] text-white">
-      <div className="max-w-3xl mx-auto px-4 py-10">
-        <div className="flex items-center gap-4 mb-6">
+    <div style={{ maxWidth: '42rem', margin: '0 auto', padding: '2rem 1rem 3rem' }}>
+      {/* Hero */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '1.5rem',
+          marginBottom: '2rem',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <Image
             src="/rematch-logo.jpg"
             alt="Rematch"
-            width={72}
-            height={72}
-            className="rounded-2xl border border-emerald-500/20 shadow-lg shadow-emerald-900/20"
+            width={80}
+            height={80}
+            className="rm-hero-logo"
             priority
           />
           <div>
-            <p className="text-[11px] uppercase tracking-[2px] text-emerald-500/80 font-semibold mb-1">
-              by sideQuest
-            </p>
-            <h1 className="text-4xl sm:text-5xl font-black tracking-tight">
-              <span className="text-emerald-400">Re</span>
-              <span className="text-white">match</span>
+            <p className="rm-section-title">by sideQuest</p>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: 'clamp(2.4rem, 8vw, 3.25rem)',
+                fontWeight: 900,
+                letterSpacing: '-0.04em',
+                lineHeight: 1,
+              }}
+            >
+              <span style={{ color: '#34d399' }}>Re</span>
+              <span style={{ color: '#fff' }}>match</span>
             </h1>
           </div>
         </div>
 
-        <p className="text-gray-400 text-lg mb-2 max-w-xl leading-relaxed">
-          Lock in. Play. Settle. Run it back.
-        </p>
-        <p className="text-gray-500 text-sm mb-8 max-w-xl">
-          1v1 skill matches — console, iMessage, or mobile. Stake, lock, send the final photo.
-          Telegram or web.
-        </p>
+        <div>
+          <p
+            style={{
+              margin: '0 0 0.5rem',
+              fontSize: '1.25rem',
+              color: '#d1d5db',
+              lineHeight: 1.4,
+              maxWidth: '28rem',
+            }}
+          >
+            Lock in. Play. Settle. Run it back.
+          </p>
+          <p className="rm-muted" style={{ margin: 0, maxWidth: '28rem' }}>
+            1v1 skill matches — console, iMessage, or mobile. Stake, lock, send the final photo.
+            Telegram or web.
+          </p>
+        </div>
 
-        <div className="flex flex-wrap gap-3 mb-10">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.65rem' }}>
           <Link
             href="/rematch/app"
-            className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow-lg shadow-emerald-900/30"
+            className="rm-btn rm-btn-primary"
+            style={{ width: 'auto', minWidth: 140, padding: '0.9rem 1.35rem' }}
           >
             Open web app
           </Link>
@@ -140,7 +194,8 @@ export default function RematchPage() {
             href={BOT}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-gray-900 hover:bg-gray-800 border border-gray-700 text-white font-semibold text-sm"
+            className="rm-btn rm-btn-ghost"
+            style={{ width: 'auto', minWidth: 140, padding: '0.9rem 1.35rem' }}
           >
             Telegram bot
           </a>
@@ -148,40 +203,54 @@ export default function RematchPage() {
             href={FAUCET}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-gray-900 hover:bg-gray-800 border border-gray-700 text-white font-semibold text-sm"
+            className="rm-btn rm-btn-ghost"
+            style={{ width: 'auto', minWidth: 140, padding: '0.9rem 1.35rem' }}
           >
-            Get money (faucet)
+            Get USDC
           </a>
         </div>
+      </div>
 
-        <div className="flex flex-wrap gap-2 mb-8">
-          {(
-            [
-              ['flow', 'How it works'],
-              ['play', 'PLAY score'],
-              ['wallet', 'Wallet'],
-              ['legal', 'Before you play'],
-            ] as const
-          ).map(([tab, label]) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
-                activeTab === tab
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-gray-900 text-gray-400 hover:bg-gray-800 border border-gray-800'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+      {/* Feature pills */}
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '0.45rem',
+          marginBottom: '1.5rem',
+        }}
+      >
+        {['Dual-lock escrow', 'Screenshot settle', 'Arc USDC', 'Telegram + web'].map((t) => (
+          <span key={t} className="rm-chip">
+            {t}
+          </span>
+        ))}
+      </div>
 
-        <div className="rounded-2xl border border-gray-800 bg-gray-950/50 p-6 sm:p-8">
-          {tabs[activeTab]}
-        </div>
+      {/* Tabs */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '1rem' }}>
+        {(
+          [
+            ['flow', 'How it works'],
+            ['play', 'PLAY score'],
+            ['wallet', 'Wallet'],
+            ['legal', 'Rules'],
+          ] as const
+        ).map(([tab, label]) => (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => setActiveTab(tab)}
+            className={`rm-tile ${activeTab === tab ? 'rm-tile-active' : ''}`}
+            style={{ width: 'auto', padding: '0.55rem 0.9rem', fontSize: '0.8rem' }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
+      <div className="rm-card" style={{ padding: '1.35rem 1.4rem' }}>
+        {tabs[activeTab]}
       </div>
     </div>
   )

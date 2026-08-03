@@ -53,52 +53,62 @@ export default function UploadProofPage() {
 
   return (
     <AppShell title="Submit result">
-      <form className="rm-card" onSubmit={submit}>
-        <p className="rm-muted" style={{ marginTop: 0 }}>
-          Match <strong style={{ color: '#34d399' }}>{code}</strong>
-          <br />
-          Send the <strong style={{ color: '#fff' }}>final screen</strong> only — not lobby or mid-game.
-        </p>
+      <form className="rm-card rm-stack-lg" onSubmit={submit}>
+        <div>
+          <p className="rm-section-title">Match {code}</p>
+          <p className="rm-muted" style={{ margin: 0 }}>
+            Send the <strong style={{ color: '#fff' }}>final screen</strong> only — not lobby or
+            mid-game.
+          </p>
+        </div>
 
-        <label className="rm-label">Photo</label>
-        <input
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="rm-input"
-          style={{ padding: '0.5rem' }}
-          onChange={(e) => setFile(e.target.files?.[0] || null)}
-        />
+        <div>
+          <label className="rm-label" htmlFor="rm-photo">
+            Photo
+          </label>
+          <input
+            id="rm-photo"
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="rm-input"
+            style={{ padding: '0.65rem' }}
+            onChange={(e) => setFile(e.target.files?.[0] || null)}
+          />
+          {file ? (
+            <p className="rm-muted" style={{ fontSize: '0.75rem', margin: '0.4rem 0 0' }}>
+              Selected: {file.name}
+            </p>
+          ) : null}
+        </div>
 
-        <label className="rm-label" style={{ marginTop: '0.85rem' }}>
-          Score caption
-        </label>
-        <input
-          className="rm-input"
-          placeholder="2-1 or W / L"
-          value={score}
-          onChange={(e) => setScore(e.target.value)}
-        />
-        <p className="rm-muted" style={{ fontSize: '0.75rem' }}>
-          FC Mobile / sports: <code>2-1</code>. Binary games: <code>W</code> or <code>L</code>.
-        </p>
+        <div>
+          <label className="rm-label" htmlFor="rm-score">
+            Score caption
+          </label>
+          <input
+            id="rm-score"
+            className="rm-input"
+            placeholder="2-1 or W / L"
+            value={score}
+            onChange={(e) => setScore(e.target.value)}
+          />
+          <p className="rm-muted" style={{ fontSize: '0.75rem', margin: '0.4rem 0 0' }}>
+            Sports: <code>2-1</code>. Binary games: <code>W</code> or <code>L</code>.
+          </p>
+        </div>
 
-        <button type="submit" className="rm-btn rm-btn-primary" disabled={busy} style={{ marginTop: '1rem' }}>
+        <button type="submit" className="rm-btn rm-btn-primary" disabled={busy}>
           {busy ? 'Uploading…' : 'Submit result'}
         </button>
       </form>
 
-      {err ? (
-        <p style={{ color: '#f87171', marginTop: '0.85rem', fontSize: '0.85rem' }}>{err}</p>
-      ) : null}
-      {msg ? (
-        <p style={{ color: '#34d399', marginTop: '0.85rem', fontSize: '0.85rem' }}>{msg}</p>
-      ) : null}
+      {err ? <p className="rm-err">{err}</p> : null}
+      {msg ? <p className="rm-ok">{msg}</p> : null}
 
       <button
         type="button"
-        className="rm-btn rm-btn-ghost"
-        style={{ marginTop: '1rem' }}
+        className="rm-btn rm-btn-ghost rm-mt-2"
         onClick={() => router.push(`/rematch/app/match/${encodeURIComponent(code)}`)}
       >
         Back to match

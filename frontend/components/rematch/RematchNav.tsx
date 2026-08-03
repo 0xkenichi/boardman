@@ -9,7 +9,7 @@ const LINKS = [
   { href: '/rematch', label: 'Home', exact: true },
   { href: '/rematch/app', label: 'Play' },
   { href: '/rematch/leaderboard', label: 'Board' },
-  { href: '/rematch/get-usdc', label: 'Get USDC' },
+  { href: '/rematch/get-usdc', label: 'Fund' },
 ]
 
 export function RematchNav() {
@@ -17,18 +17,47 @@ export function RematchNav() {
   const isApp = path.startsWith('/rematch/app')
 
   return (
-    <header className="sticky top-0 z-50 border-b border-gray-900/90 bg-[#050508]/95 backdrop-blur-md">
-      <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
+    <header
+      style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 50,
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        background: 'rgba(7,8,12,0.88)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+      }}
+    >
+      <div
+        style={{
+          maxWidth: isApp ? '28rem' : '42rem',
+          margin: '0 auto',
+          padding: '0.7rem 1rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '0.75rem',
+        }}
+      >
         <Link
           href="/rematch"
-          className="flex shrink-0 items-center gap-2 font-black tracking-tight"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.15rem',
+            fontWeight: 900,
+            letterSpacing: '-0.03em',
+            fontSize: '1.05rem',
+            textDecoration: 'none',
+            color: '#fff',
+          }}
         >
-          <span className="text-emerald-400">Re</span>
-          <span className="text-white">match</span>
+          <span style={{ color: '#34d399' }}>Re</span>
+          <span>match</span>
         </Link>
 
-        {!isApp ? (
-          <nav className="hidden items-center gap-1 sm:flex">
+        {!isApp && (
+          <nav className="rm-desktop-nav">
             {LINKS.map((l) => {
               const active = l.exact
                 ? path === l.href
@@ -37,33 +66,42 @@ export function RematchNav() {
                 <Link
                   key={l.href}
                   href={l.href}
-                  className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
-                    active
-                      ? 'bg-emerald-600/20 text-emerald-400'
-                      : 'text-gray-400 hover:bg-gray-900 hover:text-white'
-                  }`}
+                  style={{
+                    borderRadius: '0.55rem',
+                    padding: '0.4rem 0.65rem',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    textDecoration: 'none',
+                    color: active ? '#34d399' : '#9ca3af',
+                    background: active ? 'rgba(16,185,129,0.12)' : 'transparent',
+                  }}
                 >
                   {l.label}
                 </Link>
               )
             })}
           </nav>
-        ) : (
-          <span className="text-xs font-medium text-gray-500">Play</span>
         )}
 
-        <div className="flex shrink-0 items-center gap-2">
-          <a
-            href={BOT}
-            target="_blank"
-            rel="noreferrer"
-            className="hidden rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 sm:inline-flex"
-          >
-            Bot
-          </a>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+          {!isApp && (
+            <a href={BOT} target="_blank" rel="noreferrer" className="rm-nav-bot">
+              Bot
+            </a>
+          )}
           <Link
             href="/"
-            className="rounded-full border border-gray-800 bg-gray-950 px-3 py-1.5 text-xs font-semibold text-gray-300 transition hover:border-gray-600 hover:text-white"
+            style={{
+              borderRadius: 999,
+              border: '1px solid rgba(255,255,255,0.1)',
+              background: 'rgba(255,255,255,0.03)',
+              color: '#d1d5db',
+              padding: '0.4rem 0.7rem',
+              fontSize: '0.7rem',
+              fontWeight: 700,
+              textDecoration: 'none',
+              whiteSpace: 'nowrap',
+            }}
           >
             ← sideQuest
           </Link>

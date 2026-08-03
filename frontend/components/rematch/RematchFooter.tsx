@@ -3,37 +3,57 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-/**
- * Minimal Rematch footer — replaces the global sideQuest footer under /rematch/*
- */
 export function RematchFooter() {
   const path = usePathname() || ''
-  // Mini-app has a fixed bottom tab bar — keep footer compact and out of the way
   const isApp = path.startsWith('/rematch/app')
 
   return (
     <footer
-      className={`border-t border-gray-900/80 bg-[#050508] ${
-        isApp ? 'pb-24' : ''
-      }`}
+      style={{
+        borderTop: '1px solid rgba(255,255,255,0.06)',
+        background: 'rgba(7,8,12,0.95)',
+        paddingBottom: isApp ? '5.5rem' : 0,
+      }}
     >
-      <div className="mx-auto flex max-w-3xl flex-col items-center justify-between gap-2 px-4 py-5 sm:flex-row">
-        <p className="text-xs text-gray-500">
-          <span className="font-semibold text-gray-400">
-            <span className="text-emerald-500">Re</span>match
+      <div
+        style={{
+          maxWidth: isApp ? '28rem' : '42rem',
+          margin: '0 auto',
+          padding: '1.1rem 1rem',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '0.65rem',
+        }}
+      >
+        <p style={{ margin: 0, fontSize: '0.8rem', color: '#6b7280' }}>
+          <span style={{ fontWeight: 800, color: '#9ca3af' }}>
+            <span style={{ color: '#34d399' }}>Re</span>match
           </span>{' '}
           by sideQuest
         </p>
-        <div className="flex items-center gap-3 text-xs">
-          <Link href="/rematch" className="text-gray-500 hover:text-emerald-400">
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: '0.65rem' }}>
+          <Link href="/rematch" style={{ fontSize: '0.75rem', color: '#6b7280', textDecoration: 'none' }}>
             Home
           </Link>
-          <Link href="/rematch/leaderboard" className="text-gray-500 hover:text-emerald-400">
+          <Link
+            href="/rematch/leaderboard"
+            style={{ fontSize: '0.75rem', color: '#6b7280', textDecoration: 'none' }}
+          >
             Board
           </Link>
           <Link
             href="/"
-            className="rounded-full border border-gray-800 px-2.5 py-1 font-medium text-gray-400 hover:border-gray-600 hover:text-white"
+            style={{
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              color: '#d1d5db',
+              textDecoration: 'none',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 999,
+              padding: '0.35rem 0.7rem',
+            }}
           >
             Go back to sideQuest
           </Link>

@@ -2,10 +2,8 @@
 
 /**
  * Public Rematch leaderboard + open challenges.
- * Player-facing only — no grants / funding / mult tables.
  */
 import { useEffect, useState } from 'react'
-import Image from 'next/image'
 import Link from 'next/link'
 
 const BOT = 'https://t.me/ClawStationOfficialBot'
@@ -43,10 +41,13 @@ export default function RematchLeaderboardPage() {
     ;(async () => {
       try {
         const res = await fetch('/api/rematch/public', { cache: 'no-store' })
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
         if (cancelled) return
-        setLeaders(data.leaderboard || [])
+        if (!res.ok) {
+          setErr(data.error || 'Failed to load')
+          return
+        }
+        setLeaders(data.leaders || [])
         setOpens(data.open_challenges || [])
       } catch (e: any) {
         if (!cancelled) setErr(e?.message || 'Failed to load')
@@ -60,111 +61,146 @@ export default function RematchLeaderboardPage() {
   }, [])
 
   return (
-    <div className="bg-[#050508] text-white">
-      <div className="max-w-3xl mx-auto px-4 py-10 space-y-10">
-        <div>
-          <p className="text-[11px] uppercase tracking-[2px] text-emerald-500/80 font-semibold mb-2">
-            Public board
-          </p>
-          <h1 className="text-3xl sm:text-4xl font-black tracking-tight mb-2">
-            <span className="text-emerald-400">Leaderboard</span> & open matches
-          </h1>
-          <p className="text-gray-400 text-sm max-w-xl">
-            PLAY standings and open challenges. Play in Telegram on Arc.
-          </p>
-          <div className="flex flex-wrap gap-2 mt-4">
-            <a
-              href={BOT}
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs font-semibold px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500"
-            >
-              Open bot
-            </a>
-            <a
-              href={FAUCET}
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs font-semibold px-3 py-1.5 rounded-full bg-gray-900 border border-gray-700 hover:bg-gray-800"
-            >
-              Get USDC (Arc)
-            </a>
-          </div>
+    <div style={{ maxWidth: '42rem', margin: '0 auto', padding: '2rem 1rem 3rem' }}>
+      <div style={{ marginBottom: '1.75rem' }}>
+        <p className="rm-section-title">Public board</p>
+        <h1
+          style={{
+            margin: '0 0 0.5rem',
+            fontSize: 'clamp(1.75rem, 5vw, 2.25rem)',
+            fontWeight: 900,
+            letterSpacing: '-0.03em',
+          }}
+        >
+          <span style={{ color: '#34d399' }}>Leaderboard</span>
+          <span style={{ color: '#fff' }}> & open matches</span>
+        </h1>
+        <p className="rm-muted" style={{ margin: '0 0 1rem', maxWidth: '28rem' }}>
+          PLAY standings and open challenges. Play on Arc via web or Telegram.
+        </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <Link
+            href="/rematch/app"
+            className="rm-btn rm-btn-primary"
+            style={{ width: 'auto', padding: '0.55rem 1rem', fontSize: '0.8rem' }}
+          >
+            Open app
+          </Link>
+          <a
+            href={BOT}
+            target="_blank"
+            rel="noreferrer"
+            className="rm-btn rm-btn-ghost"
+            style={{ width: 'auto', padding: '0.55rem 1rem', fontSize: '0.8rem' }}
+          >
+            Open bot
+          </a>
+          <a
+            href={FAUCET}
+            target="_blank"
+            rel="noreferrer"
+            className="rm-btn rm-btn-ghost"
+            style={{ width: 'auto', padding: '0.55rem 1rem', fontSize: '0.8rem' }}
+          >
+            Get USDC
+          </a>
         </div>
+      </div>
 
-        {loading && <p className="text-gray-500 text-sm">Loading…</p>}
-        {err && (
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+      {loading && (
+        <div className="rm-stack" style={{ marginBottom: '1.5rem' }}>
+          <div className="rm-skeleton" style={{ height: 120, borderRadius: 16 }} />
+          <div className="rm-skeleton" style={{ height: 200, borderRadius: 16 }} />
+        </div>
+      )}
+
+      {err && (
+        <div className="rm-card rm-card-warn" style={{ marginBottom: '1.25rem' }}>
+          <p className="rm-warn-text" style={{ margin: 0 }}>
             Could not load live data. Open the bot, or try again later.
-          </div>
-        )}
+          </p>
+        </div>
+      )}
 
-        {/* Open challenges */}
-        <section className="rounded-2xl border border-gray-800 bg-gray-950/50 p-5">
-          <h2 className="text-lg font-bold text-emerald-400 mb-3">Open challenges</h2>
+      <div className="rm-stack-lg">
+        <section className="rm-card">
+          <h2 className="rm-h2" style={{ color: '#34d399', marginBottom: '0.85rem' }}>
+            Open challenges
+          </h2>
           {!loading && opens.length === 0 && (
-            <p className="text-sm text-gray-500">
-              No open public challenges right now. Create one in the bot.
+            <p className="rm-muted" style={{ margin: 0 }}>
+              No open public challenges right now. Create one in the app.
             </p>
           )}
-          <ul className="space-y-2">
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }} className="rm-stack">
             {opens.map((o) => (
               <li
                 key={o.code}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-gray-900/60 border border-gray-800 px-3 py-2.5 text-sm"
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                  padding: '0.75rem 0.9rem',
+                  borderRadius: 12,
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  background: 'rgba(0,0,0,0.25)',
+                  fontSize: '0.875rem',
+                }}
               >
                 <span>
-                  <code className="text-emerald-400">{o.code}</code>
-                  <span className="text-gray-500"> · </span>
-                  <span className="text-white">${o.stake}</span>
-                  <span className="text-gray-500"> · {o.game}</span>
+                  <code style={{ color: '#34d399', fontWeight: 800 }}>{o.code}</code>
+                  <span style={{ color: '#6b7280' }}> · </span>
+                  <span style={{ color: '#fff', fontWeight: 700 }}>${o.stake}</span>
+                  <span style={{ color: '#6b7280' }}> · {o.game}</span>
                 </span>
-                <span className="text-gray-400">@{o.creator_tag}</span>
+                <span style={{ color: '#9ca3af' }}>@{o.creator_tag}</span>
               </li>
             ))}
           </ul>
-          <a
-            href={BOT}
-            className="inline-block mt-4 text-sm text-emerald-400 underline"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Play in Telegram →
-          </a>
         </section>
 
-        {/* Leaderboard */}
-        <section className="rounded-2xl border border-gray-800 bg-gray-950/50 p-5">
-          <h2 className="text-lg font-bold text-emerald-400 mb-3">PLAY leaderboard</h2>
+        <section className="rm-card">
+          <h2 className="rm-h2" style={{ color: '#34d399', marginBottom: '0.85rem' }}>
+            PLAY leaderboard
+          </h2>
           {!loading && leaders.length === 0 && (
-            <p className="text-sm text-gray-500">No ranked players yet — win a match.</p>
+            <p className="rm-muted" style={{ margin: 0 }}>
+              No ranked players yet — win a match.
+            </p>
           )}
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', fontSize: '0.875rem', borderCollapse: 'collapse' }}>
               <thead>
-                <tr className="text-left text-gray-500 border-b border-gray-800">
-                  <th className="py-2 pr-2">#</th>
-                  <th className="py-2 pr-2">Player</th>
-                  <th className="py-2 pr-2">PLAY</th>
-                  <th className="py-2 pr-2">Rep</th>
-                  <th className="py-2">W/L</th>
+                <tr style={{ textAlign: 'left', color: '#6b7280', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                  <th style={{ padding: '0.5rem 0.4rem' }}>#</th>
+                  <th style={{ padding: '0.5rem 0.4rem' }}>Player</th>
+                  <th style={{ padding: '0.5rem 0.4rem' }}>PLAY</th>
+                  <th style={{ padding: '0.5rem 0.4rem' }}>Rep</th>
+                  <th style={{ padding: '0.5rem 0.4rem' }}>W/L</th>
                 </tr>
               </thead>
               <tbody>
                 {leaders.map((r) => (
-                  <tr key={r.rank + r.tag} className="border-b border-gray-900 text-gray-300">
-                    <td className="py-2.5 pr-2 text-gray-500">{r.rank}</td>
-                    <td className="py-2.5 pr-2">
-                      <span className="text-white font-medium">@{r.tag}</span>
+                  <tr
+                    key={r.rank + r.tag}
+                    style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', color: '#d1d5db' }}
+                  >
+                    <td style={{ padding: '0.7rem 0.4rem', color: '#6b7280' }}>{r.rank}</td>
+                    <td style={{ padding: '0.7rem 0.4rem' }}>
+                      <span style={{ color: '#fff', fontWeight: 600 }}>@{r.tag}</span>
                       {r.streak > 0 && (
-                        <span className="text-orange-400 text-xs ml-1">🔥{r.streak}</span>
+                        <span style={{ color: '#fb923c', fontSize: '0.75rem', marginLeft: 6 }}>
+                          🔥{r.streak}
+                        </span>
                       )}
                     </td>
-                    <td className="py-2.5 pr-2 text-emerald-400 font-semibold">
+                    <td style={{ padding: '0.7rem 0.4rem', color: '#34d399', fontWeight: 700 }}>
                       {r.play_points.toLocaleString()}
                     </td>
-                    <td className="py-2.5 pr-2">{r.reputation}</td>
-                    <td className="py-2.5">
+                    <td style={{ padding: '0.7rem 0.4rem' }}>{r.reputation}</td>
+                    <td style={{ padding: '0.7rem 0.4rem' }}>
                       {r.wins}/{r.losses}
                     </td>
                   </tr>
@@ -174,8 +210,8 @@ export default function RematchLeaderboardPage() {
           </div>
         </section>
 
-        <p className="text-center text-xs text-gray-600">
-          <Link href="/rematch" className="underline text-gray-500">
+        <p style={{ textAlign: 'center', margin: 0 }}>
+          <Link href="/rematch" className="rm-muted" style={{ fontSize: '0.8rem' }}>
             About Rematch
           </Link>
         </p>

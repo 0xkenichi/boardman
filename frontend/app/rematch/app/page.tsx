@@ -43,7 +43,6 @@ export default function RematchAppHome() {
     ;(async () => {
       await load()
       if (cancelled) return
-      // Telegram WebApp auto-login when opened inside Telegram
       try {
         const w = window as any
         const tg = w.Telegram?.WebApp
@@ -119,11 +118,14 @@ export default function RematchAppHome() {
     setMe(null)
   }
 
-  // Hooks above always run — conditional UI only below
   if (loading) {
     return (
       <AppShell>
-        <p className="rm-muted">Loading…</p>
+        <div className="rm-stack">
+          <div className="rm-skeleton" style={{ height: 120, borderRadius: 16 }} />
+          <div className="rm-skeleton" style={{ height: 56, borderRadius: 14 }} />
+          <div className="rm-skeleton" style={{ height: 56, borderRadius: 14 }} />
+        </div>
       </AppShell>
     )
   }
@@ -134,124 +136,143 @@ export default function RematchAppHome() {
       process.env.NEXT_PUBLIC_ALLOW_DEMO_LOGIN === '1'
 
     return (
-      <AppShell title="Sign in">
-        <div className="rm-card" style={{ marginBottom: '1rem' }}>
-          <h1 style={{ fontSize: '1.35rem', margin: '0 0 0.5rem' }}>Play Rematch</h1>
-          <p className="rm-muted" style={{ marginBottom: '1rem' }}>
-            Same account as Telegram. Same balance. No seed phrases — challenge, lock, play,
-            send the final photo.
-          </p>
+      <AppShell>
+        <div className="rm-stack-lg">
+          <div className="rm-card rm-card-hero">
+            <p className="rm-section-title">Sign in</p>
+            <h1 className="rm-h1" style={{ marginBottom: '0.5rem' }}>
+              Play Rematch
+            </h1>
+            <p className="rm-muted rm-mb-0">
+              Same account as Telegram. Same balance. Challenge, lock, play, send the final photo —
+              no seed phrases.
+            </p>
+          </div>
 
-          <div style={{ marginBottom: '1rem' }}>
+          <div className="rm-card">
+            <p className="rm-label">Continue with Telegram</p>
             <TelegramLogin
               botUsername={BOT_USERNAME}
               onAuth={onTelegramAuth}
               onMissing={onTgMissing}
             />
             {tgMissing ? (
-              <p className="rm-muted" style={{ fontSize: '0.75rem', marginTop: '0.5rem' }}>
-                Set <code>NEXT_PUBLIC_TELEGRAM_BOT_USERNAME</code> (without @) and BotFather{' '}
-                <code>/setdomain</code> to <strong>playingsidequest.fun</strong>.
+              <p className="rm-muted" style={{ fontSize: '0.75rem', marginTop: '0.75rem', marginBottom: 0 }}>
+                BotFather <code>/setdomain</code> must include <strong>playingsidequest.fun</strong>.
               </p>
             ) : null}
           </div>
 
           {showDemo ? (
             <button type="button" className="rm-btn rm-btn-ghost" onClick={demoLogin}>
-              Continue (demo login)
+              Continue with demo login
             </button>
           ) : null}
 
-          <p className="rm-muted" style={{ marginTop: '0.85rem', fontSize: '0.75rem' }}>
+          <a href={BOT} target="_blank" rel="noreferrer" className="rm-btn rm-btn-primary">
+            Open Telegram bot
+          </a>
+
+          <p className="rm-muted" style={{ fontSize: '0.75rem', textAlign: 'center', margin: 0 }}>
             First time? Open the bot once so we can create your wallet, then sign in here.
           </p>
+
+          {err ? <p className="rm-err">{err}</p> : null}
         </div>
-        <a href={BOT} target="_blank" rel="noreferrer" className="rm-btn rm-btn-primary">
-          Open Telegram bot
-        </a>
-        {err ? (
-          <p style={{ color: '#f87171', marginTop: '1rem', fontSize: '0.85rem' }}>{err}</p>
-        ) : null}
       </AppShell>
     )
   }
 
   return (
     <AppShell>
-      <div style={{ marginBottom: '1.25rem' }}>
-        <p className="rm-muted" style={{ margin: 0 }}>
-          Hi @{me.tag}
-        </p>
-        <div
-          className="rm-card"
-          style={{
-            marginTop: '0.75rem',
-            background: 'rgba(5,150,105,0.08)',
-            borderColor: '#065f46',
-          }}
-        >
-          <span className="rm-label">Balance</span>
-          <div style={{ fontSize: '2rem', fontWeight: 900, letterSpacing: '-0.03em' }}>
-            ${Number(me.balance || 0).toFixed(2)}
-          </div>
-          <p className="rm-muted" style={{ margin: '0.35rem 0 0', fontSize: '0.8rem' }}>
-            What you can stake right now
+      <div className="rm-stack-lg">
+        <div>
+          <p className="rm-muted" style={{ margin: '0 0 0.15rem', fontSize: '0.8rem' }}>
+            Welcome back
           </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <h1 className="rm-h1">@{me.tag}</h1>
+            {me.demo ? <span className="rm-chip-dim rm-chip">Demo</span> : (
+              <span className="rm-chip">Live</span>
+            )}
+          </div>
+        </div>
+
+        <div className="rm-card rm-card-hero">
+          <span className="rm-label">Stakeable balance</span>
+          <div className="rm-balance">
+            <span>$</span>
+            {Number(me.balance || 0).toFixed(2)}
+          </div>
+          <p className="rm-muted" style={{ margin: '0.5rem 0 0', fontSize: '0.8rem' }}>
+            Ready to challenge right now
+          </p>
+          {me.playPoints != null ? (
+            <p style={{ margin: '0.65rem 0 0', fontSize: '0.85rem', color: '#d1d5db' }}>
+              PLAY score{' '}
+              <strong style={{ color: '#34d399' }}>{me.playPoints}</strong>
+              <span className="rm-muted"> · not cash</span>
+            </p>
+          ) : null}
           {me.otherBalance && me.otherBalance > 0.009 ? (
-            <p style={{ color: '#fbbf24', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+            <p className="rm-warn-text">
               ⚠️ ${me.otherBalance.toFixed(2)} on another address — move to play wallet to stake
             </p>
           ) : null}
           {(me as any).paused ? (
-            <p style={{ color: '#f87171', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+            <p className="rm-err" style={{ marginTop: '0.65rem' }}>
               Matching is paused. Check Telegram for updates.
             </p>
           ) : null}
-          {me.demo ? (
-            <p className="rm-muted" style={{ marginTop: '0.5rem', fontSize: '0.7rem' }}>
-              Demo / offline Stack — live balance needs STACK_API_URL
-            </p>
-          ) : null}
         </div>
-      </div>
 
-      <div style={{ display: 'grid', gap: '0.65rem', marginBottom: '1.25rem' }}>
-        <Link href="/rematch/app/challenge" className="rm-btn rm-btn-primary">
-          ⚔️ Challenge a friend
-        </Link>
-        <Link href="/rematch/app/match" className="rm-btn rm-btn-ghost">
-          🎮 My match
-        </Link>
-        <Link href="/rematch/app/wallet" className="rm-btn rm-btn-ghost">
-          💧 Get money
-        </Link>
-      </div>
+        <div className="rm-stack">
+          <Link href="/rematch/app/challenge" className="rm-action">
+            <span className="rm-action-ico">⚔️</span>
+            <span className="rm-action-body">
+              <span className="rm-action-title">Challenge a friend</span>
+              <span className="rm-action-sub">Pick stake, game, send challenge</span>
+            </span>
+            <span className="rm-action-chev">›</span>
+          </Link>
+          <Link href="/rematch/app/match" className="rm-action">
+            <span className="rm-action-ico">🎮</span>
+            <span className="rm-action-body">
+              <span className="rm-action-title">My matches</span>
+              <span className="rm-action-sub">Open codes, lock, submit results</span>
+            </span>
+            <span className="rm-action-chev">›</span>
+          </Link>
+          <Link href="/rematch/app/wallet" className="rm-action">
+            <span className="rm-action-ico">💰</span>
+            <span className="rm-action-body">
+              <span className="rm-action-title">Wallet & fund</span>
+              <span className="rm-action-sub">Copy address, faucet, refresh</span>
+            </span>
+            <span className="rm-action-chev">›</span>
+          </Link>
+        </div>
 
-      <div className="rm-card">
-        <p className="rm-muted" style={{ margin: 0 }}>
-          <strong style={{ color: '#e5e7eb' }}>How it works</strong>
-          <br />
-          1. Get money → 2. Challenge → 3. Both lock → 4. Play → 5. Upload final photo → winner
-          paid.
-        </p>
-        {me.playPoints != null ? (
-          <p className="rm-muted" style={{ marginTop: '0.75rem', marginBottom: 0 }}>
-            PLAY score: <strong style={{ color: '#34d399' }}>{me.playPoints}</strong> (not cash)
-          </p>
-        ) : null}
-      </div>
+        <div className="rm-card">
+          <p className="rm-label">How it works</p>
+          <ol className="rm-muted" style={{ margin: 0, paddingLeft: '1.1rem', lineHeight: 1.65 }}>
+            <li>Get money into your play wallet</li>
+            <li>Challenge a friend</li>
+            <li>Both lock</li>
+            <li>Play → upload final photo → winner paid</li>
+          </ol>
+        </div>
 
-      <button
-        type="button"
-        onClick={logout}
-        className="rm-btn rm-btn-ghost"
-        style={{ marginTop: '1rem', fontSize: '0.8rem', fontWeight: 500 }}
-      >
-        Log out
-      </button>
-      {err ? (
-        <p style={{ color: '#f87171', marginTop: '0.75rem', fontSize: '0.85rem' }}>{err}</p>
-      ) : null}
+        <button
+          type="button"
+          onClick={logout}
+          className="rm-btn rm-btn-ghost"
+          style={{ fontSize: '0.8rem', fontWeight: 600 }}
+        >
+          Log out
+        </button>
+        {err ? <p className="rm-err">{err}</p> : null}
+      </div>
     </AppShell>
   )
 }

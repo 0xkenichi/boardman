@@ -12,19 +12,26 @@ export default function WalletPage() {
   const router = useRouter()
   const [me, setMe] = useState<Me | null>(null)
   const [copied, setCopied] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   async function load() {
-    const s = await api('/api/rematch/app/session')
-    if (!s.ok) {
-      router.replace('/rematch/app')
-      return
+    setLoading(true)
+    try {
+      const s = await api('/api/rematch/app/session')
+      if (!s.ok) {
+        router.replace('/rematch/app')
+        return
+      }
+      const m = await api<Me>('/api/rematch/app/me')
+      if (m.ok) setMe(m.data)
+    } finally {
+      setLoading(false)
     }
-    const m = await api<Me>('/api/rematch/app/me')
-    if (m.ok) setMe(m.data)
   }
 
   useEffect(() => {
     load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router])
 
   async function copy() {
@@ -40,66 +47,61 @@ export default function WalletPage() {
 
   return (
     <AppShell title="Wallet">
-      <div
-        className="rm-card"
-        style={{ marginBottom: '1rem', background: 'rgba(5,150,105,0.08)', borderColor: '#065f46' }}
-      >
-        <span className="rm-label">Balance</span>
-        <div style={{ fontSize: '2rem', fontWeight: 900 }}>
-          ${Number(me?.balance ?? 0).toFixed(2)}
-        </div>
-        <p className="rm-muted" style={{ margin: '0.25rem 0 0', fontSize: '0.8rem' }}>
-          What you can stake
-        </p>
-      </div>
-
-      <div className="rm-card" style={{ marginBottom: '1rem' }}>
-        <span className="rm-label">Your fund address</span>
-        <code
-          style={{
-            display: 'block',
-            wordBreak: 'break-all',
-            fontSize: '0.8rem',
-            color: '#d1d5db',
-            marginBottom: '0.75rem',
-          }}
-        >
-          {me?.address || '—'}
-        </code>
-        <button type="button" className="rm-btn rm-btn-primary" onClick={copy} disabled={!me?.address}>
-          {copied ? 'Copied' : 'Copy address'}
-        </button>
-        <p className="rm-muted" style={{ marginTop: '0.75rem', marginBottom: 0, fontSize: '0.8rem' }}>
-          Send USDC here (crypto users). Fiat bank top-up is coming — same Balance $.
-        </p>
-      </div>
-
-      {me?.otherBalance && me.otherBalance > 0.009 ? (
-        <div className="rm-card" style={{ marginBottom: '1rem', borderColor: '#92400e' }}>
-          <p style={{ color: '#fbbf24', margin: 0, fontSize: '0.9rem' }}>
-            ⚠️ ${me.otherBalance.toFixed(2)} on another address
-          </p>
-          {me.otherAddress ? (
-            <code style={{ fontSize: '0.75rem', color: '#9ca3af', wordBreak: 'break-all' }}>
-              {me.otherAddress}
-            </code>
-          ) : null}
-          <p className="rm-muted" style={{ marginBottom: 0, fontSize: '0.8rem' }}>
-            Move funds to your play address above to stake.
+      <div className="rm-stack-lg">
+        <div className="rm-card rm-card-hero">
+          <span className="rm-label">Stakeable balance</span>
+          {loading && !me ? (
+            <div className="rm-skeleton" style={{ height: 40, width: '50%', marginTop: 8 }} />
+          ) : (
+            <div className="rm-balance">
+              <span>$</span>
+              {Number(me?.balance ?? 0).toFixed(2)}
+            </div>
+          )}
+          <p className="rm-muted" style={{ margin: '0.45rem 0 0', fontSize: '0.8rem' }}>
+            What you can stake
           </p>
         </div>
-      ) : null}
 
-      <div style={{ display: 'grid', gap: '0.55rem' }}>
-        <a href={FAUCET} target="_blank" rel="noreferrer" className="rm-btn rm-btn-ghost">
-          Open Circle faucet (testnet)
-        </a>
-        <a href={GET_USDC} className="rm-btn rm-btn-ghost">
-          Fund helper page
-        </a>
-        <button type="button" className="rm-btn rm-btn-ghost" onClick={load}>
-          Refresh
-        </button>
+        <div className="rm-card">
+          <span className="rm-label">Your fund address</span>
+          <code className="rm-code">{me?.address || '—'}</code>
+          <button
+            type="button"
+            className="rm-btn rm-btn-primary"
+            onClick={copy}
+            disabled={!me?.address}
+          >
+            {copied ? '✓ Copied' : 'Copy address'}
+          </button>
+          <p className="rm-muted" style={{ marginTop: '0.75rem', marginBottom: 0, fontSize: '0.8rem' }}>
+            Send USDC here. Fiat bank top-up is coming — same Balance $.
+          </p>
+        </div>
+
+        {me?.otherBalance && me.otherBalance > 0.009 ? (
+          <div className="rm-card rm-card-warn">
+            <p className="rm-warn-text" style={{ marginTop: 0 }}>
+              ⚠️ ${me.otherBalance.toFixed(2)} on another address
+            </p>
+            {me.otherAddress ? <code className="rm-code">{me.otherAddress}</code> : null}
+            <p className="rm-muted" style={{ marginBottom: 0, fontSize: '0.8rem' }}>
+              Move funds to your play address above to stake.
+            </p>
+          </div>
+        ) : null}
+
+        <div className="rm-stack">
+          <a href={FAUCET} target="_blank" rel="noreferrer" className="rm-btn rm-btn-ghost">
+            Open Circle faucet (testnet)
+          </a>
+          <a href={GET_USDC} className="rm-btn rm-btn-ghost">
+            Fund helper page
+          </a>
+          <button type="button" className="rm-btn rm-btn-ghost" onClick={load}>
+            Refresh balance
+          </button>
+        </div>
       </div>
     </AppShell>
   )
