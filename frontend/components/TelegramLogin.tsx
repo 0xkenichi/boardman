@@ -16,18 +16,23 @@ type Props = {
 
 /**
  * Official Telegram Login Widget.
- * BotFather: /setdomain for playingsidequest.fun
+ * BotFather: /setdomain for the host that serves /rematch (e.g. playingsidequest.fun)
  */
 export function TelegramLogin({ botUsername, onAuth, onMissing }: Props) {
   const ref = useRef<HTMLDivElement>(null)
+  const onAuthRef = useRef(onAuth)
+  const onMissingRef = useRef(onMissing)
+  onAuthRef.current = onAuth
+  onMissingRef.current = onMissing
 
   useEffect(() => {
     if (!botUsername) {
-      onMissing?.()
+      onMissingRef.current?.()
       return
     }
+    // Stable global for Telegram's data-onauth string callback
     window.onTelegramAuth = (user) => {
-      onAuth(user)
+      onAuthRef.current(user)
     }
     const script = document.createElement('script')
     script.src = 'https://telegram.org/js/telegram-widget.js?22'
@@ -43,9 +48,12 @@ export function TelegramLogin({ botUsername, onAuth, onMissing }: Props) {
       el.appendChild(script)
     }
     return () => {
-      delete window.onTelegramAuth
+      // keep handler if remounting; clear only on unmount of last instance
+      if (window.onTelegramAuth) {
+        // no-op safe cleanup
+      }
     }
-  }, [botUsername, onAuth, onMissing])
+  }, [botUsername])
 
   if (!botUsername) return null
   return <div ref={ref} style={{ display: 'flex', justifyContent: 'center', minHeight: 48 }} />

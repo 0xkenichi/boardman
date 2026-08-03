@@ -139,7 +139,8 @@ export default function RematchPage() {
           Lock in. Play. Settle. Run it back.
         </p>
         <p className="text-gray-500 text-sm mb-8 max-w-xl">
-          Console 1v1 with USDC on Telegram. Challenge friends, lock stakes, settle with proof.
+          1v1 skill matches — console, iMessage, or mobile. Stake, lock, send the final photo.
+          Telegram or web.
         </p>
 
         <div className="flex flex-wrap gap-3 mb-10">

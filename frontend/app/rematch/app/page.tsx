@@ -16,82 +16,110 @@ export default function RematchAppHome() {
   const [me, setMe] = useState<Me | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [tgMissing, setTgMissing] = useState(!BOT_USERNAME)
+  const [tgMissing, setTgMissing] = useState(() => !BOT_USERNAME)
 
   const load = useCallback(async () => {
     setLoading(true)
     setErr(null)
-    const sess = await api('/api/rematch/app/session')
-    if (!sess.ok) {
+    try {
+      const sess = await api('/api/rematch/app/session')
+      if (!sess.ok) {
+        setMe(null)
+        return
+      }
+      const m = await api<Me>('/api/rematch/app/me')
+      if (m.ok) setMe(m.data)
+      else setErr((m.data as { error?: string } | null)?.error || 'Could not load profile')
+    } catch (e: any) {
+      setErr(e?.message || 'Network error')
       setMe(null)
+    } finally {
       setLoading(false)
-      return
     }
-    const m = await api<Me>('/api/rematch/app/me')
-    if (m.ok) setMe(m.data)
-    else setErr((m.data as { error?: string } | null)?.error || 'Could not load profile')
-    setLoading(false)
   }, [])
 
   useEffect(() => {
-    load()
-    // Telegram WebApp auto-login when opened inside Telegram
-    try {
-      const w = window as any
-      const tg = w.Telegram?.WebApp
-      if (tg?.initData) {
-        tg.ready?.()
-        ;(async () => {
+    let cancelled = false
+    ;(async () => {
+      await load()
+      if (cancelled) return
+      // Telegram WebApp auto-login when opened inside Telegram
+      try {
+        const w = window as any
+        const tg = w.Telegram?.WebApp
+        if (tg?.initData) {
+          tg.ready?.()
           const res = await api('/api/rematch/app/session', {
             method: 'POST',
             body: JSON.stringify({ mode: 'webapp', initData: tg.initData }),
           })
-          if (res.ok) await load()
-        })()
+          if (!cancelled && res.ok) await load()
+        }
+      } catch {
+        /* not in WebApp */
       }
-    } catch {
-      /* not in WebApp */
+    })()
+    return () => {
+      cancelled = true
     }
   }, [load])
 
-  async function onTelegramAuth(user: Record<string, string | number>) {
-    setErr(null)
-    const res = await api('/api/rematch/app/session', {
-      method: 'POST',
-      body: JSON.stringify({ mode: 'telegram', ...user }),
-    })
-    if (!res.ok) {
-      if (res.data?.error === 'open_bot_first') {
-        setErr(res.data.message || 'Open the Rematch bot once, then sign in again.')
-        return
+  const onTelegramAuth = useCallback(
+    async (user: Record<string, string | number>) => {
+      setErr(null)
+      try {
+        const res = await api('/api/rematch/app/session', {
+          method: 'POST',
+          body: JSON.stringify({ mode: 'telegram', ...user }),
+        })
+        if (!res.ok) {
+          if (res.data?.error === 'open_bot_first') {
+            setErr(res.data.message || 'Open the Rematch bot once, then sign in again.')
+            return
+          }
+          setErr(res.data?.error || 'Telegram login failed')
+          return
+        }
+        await load()
+      } catch (e: any) {
+        setErr(e?.message || 'Login failed')
       }
-      setErr(res.data?.error || 'Telegram login failed')
-      return
-    }
-    await load()
-  }
+    },
+    [load]
+  )
+
+  const onTgMissing = useCallback(() => setTgMissing(true), [])
 
   async function demoLogin() {
     setErr(null)
-    const res = await api('/api/rematch/app/session', {
-      method: 'POST',
-      body: JSON.stringify({ mode: 'demo' }),
-    })
-    if (!res.ok) {
-      setErr(res.data?.error || 'Demo login disabled in production')
-      return
+    try {
+      const res = await api('/api/rematch/app/session', {
+        method: 'POST',
+        body: JSON.stringify({ mode: 'demo' }),
+      })
+      if (!res.ok) {
+        setErr(res.data?.error || 'Demo login disabled in production')
+        return
+      }
+      await load()
+    } catch (e: any) {
+      setErr(e?.message || 'Demo login failed')
     }
-    await load()
   }
 
   async function logout() {
-    await api('/api/rematch/app/session', {
-      method: 'POST',
-      body: JSON.stringify({ mode: 'logout' }),
-    })
+    try {
+      await api('/api/rematch/app/session', {
+        method: 'POST',
+        body: JSON.stringify({ mode: 'logout' }),
+      })
+    } catch {
+      /* ignore */
+    }
     setMe(null)
   }
 
+  // Hooks above always run — conditional UI only below
   if (loading) {
     return (
       <AppShell>
@@ -118,12 +146,12 @@ export default function RematchAppHome() {
             <TelegramLogin
               botUsername={BOT_USERNAME}
               onAuth={onTelegramAuth}
-              onMissing={() => setTgMissing(true)}
+              onMissing={onTgMissing}
             />
             {tgMissing ? (
               <p className="rm-muted" style={{ fontSize: '0.75rem', marginTop: '0.5rem' }}>
                 Set <code>NEXT_PUBLIC_TELEGRAM_BOT_USERNAME</code> (without @) and BotFather{' '}
-                <code>/setdomain</code> to your site host.
+                <code>/setdomain</code> to <strong>playingsidequest.fun</strong>.
               </p>
             ) : null}
           </div>

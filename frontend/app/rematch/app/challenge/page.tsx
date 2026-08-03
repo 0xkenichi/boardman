@@ -18,22 +18,37 @@ export default function ChallengePage() {
   const [games, setGames] = useState<Game[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [auth, setAuth] = useState(false)
+  const [auth, setAuth] = useState<'checking' | 'yes' | 'no'>('checking')
 
+  // All hooks unconditionally first
   useEffect(() => {
+    let cancelled = false
     ;(async () => {
-      const s = await api('/api/rematch/app/session')
-      if (!s.ok) {
-        router.replace('/rematch/app')
-        return
-      }
-      setAuth(true)
-      const g = await api('/api/rematch/app/games')
-      if (g.ok) {
-        setCategories(g.data.categories || [])
-        setGames(g.data.games || [])
+      try {
+        const s = await api('/api/rematch/app/session')
+        if (cancelled) return
+        if (!s.ok) {
+          setAuth('no')
+          router.replace('/rematch/app')
+          return
+        }
+        setAuth('yes')
+        const g = await api('/api/rematch/app/games')
+        if (cancelled) return
+        if (g.ok) {
+          setCategories(g.data.categories || [])
+          setGames(g.data.games || [])
+        }
+      } catch {
+        if (!cancelled) {
+          setAuth('no')
+          setErr('Could not load session')
+        }
       }
     })()
+    return () => {
+      cancelled = true
+    }
   }, [router])
 
   const filtered = useMemo(
@@ -44,27 +59,40 @@ export default function ChallengePage() {
   async function submit() {
     setBusy(true)
     setErr(null)
-    const res = await api('/api/rematch/app/matches', {
-      method: 'POST',
-      body: JSON.stringify({
-        opponent_tag: tag.replace(/^@/, ''),
-        amount_usdc: amount,
-        game_id: gameId,
-      }),
-    })
-    setBusy(false)
-    if (!res.ok) {
-      setErr(res.data?.error || res.data?.detail || 'Could not create challenge')
-      return
+    try {
+      const res = await api('/api/rematch/app/matches', {
+        method: 'POST',
+        body: JSON.stringify({
+          opponent_tag: tag.replace(/^@/, ''),
+          amount_usdc: amount,
+          game_id: gameId,
+        }),
+      })
+      if (!res.ok) {
+        setErr(res.data?.error || res.data?.detail || 'Could not create challenge')
+        setBusy(false)
+        return
+      }
+      const code = res.data.public_code || res.data.match_id
+      router.push(`/rematch/app/match/${encodeURIComponent(code)}`)
+    } catch (e: any) {
+      setErr(e?.message || 'Network error')
+      setBusy(false)
     }
-    const code = res.data.public_code || res.data.match_id
-    router.push(`/rematch/app/match/${encodeURIComponent(code)}`)
   }
 
-  if (!auth) {
+  if (auth === 'checking') {
     return (
       <AppShell>
         <p className="rm-muted">Checking session…</p>
+      </AppShell>
+    )
+  }
+
+  if (auth === 'no') {
+    return (
+      <AppShell>
+        <p className="rm-muted">Redirecting to sign in…</p>
       </AppShell>
     )
   }
