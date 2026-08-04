@@ -147,6 +147,41 @@ async def ui_more(callback: types.CallbackQuery) -> None:
     )
 
 
+@router.callback_query(F.data == "ui:community")
+async def ui_community(callback: types.CallbackQuery) -> None:
+    """Join community / live rooms — public matchmaking vs randoms."""
+    await callback.answer()
+    from gaming.src.bot.keyboards import community_menu, rematch_group_url
+
+    group = rematch_group_url()
+    lines = [
+        "💬 <b>Community · live rooms</b>",
+        "",
+        "Want random opponents or a live lobby?",
+        "Jump into the group — rooms per platform:",
+        "",
+        "📲 <b>Mobile</b> — FC Mobile, Free Fire, COD, PUBG…",
+        "🎮 <b>Console</b> — EA FC, NBA 2K, console 1v1s",
+        "💻 <b>PC</b> — ranked duels",
+        "📱 <b>iMessage</b> — 8 Ball, Chess, GamePigeon",
+        "",
+        "• See who's live and post a public stake",
+        "• Or browse open games on the <b>Public board</b>",
+        "• Friends only? Use <b>Challenge</b> here instead",
+    ]
+    if not group:
+        lines += [
+            "",
+            "<i>Group invite not configured yet — use Public board, "
+            "or set REMATCH_TELEGRAM_GROUP_URL on the bot host.</i>",
+        ]
+    await callback.message.answer(
+        "\n".join(lines),
+        reply_markup=community_menu(),
+        parse_mode=ParseMode.HTML,
+    )
+
+
 @router.callback_query(F.data == "ui:get_usdc")
 async def ui_get_usdc(callback: types.CallbackQuery) -> None:
     """Load Arc address → try Circle API drip → else fund helper + web faucet."""
@@ -925,12 +960,37 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
             reply_markup=main_menu(),
         )
     else:
+        # Announce in the community Telegram group (live rooms)
+        group_ok = False
+        try:
+            from gaming.src.bot.utils.community import post_public_challenge
+
+            group_ok = await post_public_challenge(
+                challenge_id=challenge_id,
+                public_code=public_code,
+                creator_tag=str(profile.get("gaming_tag") or "player"),
+                amount=amount,
+                game_label=game_label,
+                game=game,
+            )
+        except Exception:
+            logger.exception("[UI] community group post failed for %s", public_code)
+
+        where = (
+            "Posted in the <b>community group</b> + Public board."
+            if group_ok
+            else (
+                "On <b>Public board</b> only — community group not linked yet.\n"
+                "Admin: add the bot to your group, then send "
+                "<code>/link_community</code> there."
+            )
+        )
         await callback.message.answer(
             f"✅ <b>Public challenge posted</b>\n"
             f"Match: <code>{h(public_code)}</code>\n"
             f"Stake: <b>${amount:,.2f}</b> · {h(game_label)}\n\n"
-            f"Anyone can accept from <b>Public board</b> or\n"
-            f"{h(REMATCH_BOARD)}\n\n"
+            f"{where}\n"
+            f"Board: {h(REMATCH_BOARD)}\n\n"
             f"You will lock after someone accepts.",
             parse_mode=ParseMode.HTML,
             reply_markup=main_menu(),
@@ -1260,3 +1320,11 @@ async def ui_settle(callback: types.CallbackQuery) -> None:
 # (challenge.py already accepts; we patch notify to include ui after accept via
 #  wrapping is heavy — instead after accept in challenge.py we could import menu.
 #  For simplicity, message on My match is enough.)
+
+
+# ── Catch-alls so users never get silence ────────────────────────────────────
+
+
+
+# NOTE: Do NOT register a broad F.text catch-all on this router — simple_ui is
+# included FIRST and would steal /start and other Command handlers on later routers.

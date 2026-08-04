@@ -333,8 +333,27 @@ async def cmd_challenge(message: types.Message) -> None:
             parse_mode=ParseMode.HTML,
         )
     else:
+        group_ok = False
+        try:
+            from gaming.src.bot.utils.community import post_public_challenge
+
+            group_ok = await post_public_challenge(
+                challenge_id=str(challenge.get("id") or ""),
+                public_code=str(match_code),
+                creator_tag=str(my_tag),
+                amount=amount,
+                game_label=str(game),
+                game=str(game),
+            )
+        except Exception:
+            logger.exception("[Challenge] community group post failed")
+        extra = (
+            "\n\n📣 Also posted in the community group."
+            if group_ok
+            else "\n\n(Public board only — group not linked: /link_community in the group.)"
+        )
         await message.answer(
-            challenge_text + "\n\nWaiting for an opponent to accept.",
+            challenge_text + "\n\nWaiting for an opponent to accept." + extra,
             parse_mode=ParseMode.HTML,
         )
 

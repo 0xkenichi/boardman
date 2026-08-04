@@ -51,8 +51,62 @@ class CircleWalletService:
         self.usdc_address = usdc_address or os.getenv(
             "USDC_ADDRESS", "0x036CbD53842c5426634E7929541eC2318f3dCF7e"
         )
+        # Circle W3S token UUID (NOT the on-chain contract address).
+        # /transactions/approve and /transfer require tokenId = UUID.
         self.usdc_token_id = usdc_token_id or os.getenv("CIRCLE_USDC_TOKEN_ID")
         self.rpc_url = rpc_url or os.getenv("RPC_URL")
+
+    def _resolve_usdc_token_id(self, wallet_id: Optional[str] = None) -> Optional[str]:
+        """Return Circle token UUID for USDC on this blockchain.
+
+        Prefer configured ``usdc_token_id``. On Arc, fall back to the known
+        ERC-20 facade UUID (0x3600…), then look up from wallet balances.
+        """
+        tid = (self.usdc_token_id or "").strip()
+        if tid and not tid.startswith("0x"):
+            return tid
+
+        chain = (self.blockchain or "").upper()
+        # Known Circle W3S token UUIDs (stable across entities)
+        known = {
+            # ARC-TESTNET ERC-20 USDC facade @ 0x3600…0000 (6 decimals)
+            "ARC-TESTNET": "ef87c8c3-85de-598a-af50-c5135eecfa74",
+            # Base Sepolia USDC
+            "BASE-SEPOLIA": "bdf128b4-827b-5267-8f9e-243694989b5f",
+        }
+        if chain in known:
+            return known[chain]
+
+        if not wallet_id:
+            return None
+        try:
+            response = requests.get(
+                f"{self.api_url}/w3s/wallets/{wallet_id}/balances",
+                headers=self.headers,
+                timeout=15,
+            )
+            if response.status_code != 200:
+                return None
+            balances = (response.json().get("data") or {}).get("tokenBalances") or []
+            usdc_addr = (self.usdc_address or "").lower()
+            # Prefer non-native ERC-20 USDC matching our contract address
+            for row in balances:
+                tok = row.get("token") or {}
+                if (tok.get("blockchain") or "").upper() != chain:
+                    continue
+                addr = (tok.get("tokenAddress") or "").lower()
+                sym = (tok.get("symbol") or "").upper()
+                if usdc_addr and addr == usdc_addr:
+                    return tok.get("id")
+                if sym == "USDC" and not tok.get("isNative"):
+                    return tok.get("id")
+            for row in balances:
+                tok = row.get("token") or {}
+                if (tok.get("symbol") or "").upper() == "USDC":
+                    return tok.get("id")
+        except Exception as e:
+            logger.warning("[Circle] token id lookup failed: %s", e)
+        return None
 
     def _generate_entity_secret_ciphertext(self) -> str:
         """
@@ -310,64 +364,103 @@ class CircleWalletService:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
+    def _is_arc(self) -> bool:
+        return "ARC" in (self.blockchain or "").upper()
+
     def approve_usdc_transfer(self, wallet_id: str, amount_usdc: float, spender_address: str) -> Dict:
         """
         Approve a spender to transfer USDC from user's wallet.
-        Required before transferring to escrow.
 
-        Args:
-            wallet_id: Circle wallet ID
-            amount_usdc: Amount to approve
-            spender_address: Address that gets approval (escrow wallet)
-
-        Returns:
-            {
-                "success": bool,
-                "transaction_id": str,
-                "status": str,
-                "tx_hash": str (optional)
-            }
+        Arc Testnet: Circle's ``/transactions/approve`` returns Resource not found.
+        Use contractExecution ``approve(address,uint256)`` on the USDC contract
+        (Circle's recommended Arc path). Other chains try the approve endpoint first.
         """
         try:
-            idempotency_key = str(uuid.uuid4())
-            amount_wei = int(amount_usdc * 1_000_000)  # USDC has 6 decimals
+            amount_wei = int(amount_usdc * 1_000_000)  # USDC ERC-20 facade: 6 decimals
+
+            # Arc: always contract-exec (approve endpoint is 404 on ARC-TESTNET)
+            if self._is_arc() and self.usdc_address:
+                logger.info(
+                    "[Circle] Arc approve via contractExecution wallet=%s spender=%s amount=%s",
+                    wallet_id,
+                    spender_address,
+                    amount_usdc,
+                )
+                return self.execute_contract_function(
+                    wallet_id=wallet_id,
+                    contract_address=self.usdc_address,
+                    function_signature="approve(address,uint256)",
+                    args=[spender_address, str(amount_wei)],
+                )
+
+            token_id = self._resolve_usdc_token_id(wallet_id)
+            if not token_id:
+                return {
+                    "success": False,
+                    "error": (
+                        f"No Circle USDC tokenId for {self.blockchain}. "
+                        "Set CIRCLE_USDC_TOKEN_ID_* in .env"
+                    ),
+                }
+
             ciphertext = self._generate_entity_secret_ciphertext()
+            if not ciphertext:
+                return {"success": False, "error": "entity secret ciphertext missing"}
 
             payload = {
-                "idempotencyKey": idempotency_key,
+                "idempotencyKey": str(uuid.uuid4()),
                 "entitySecretCiphertext": ciphertext,
                 "walletId": wallet_id,
-                "tokenId": self.usdc_address,
+                "tokenId": token_id,
                 "spender": spender_address,
                 "amounts": [str(amount_wei)],
-                "fee": {
-                    "type": "level",
-                    "config": {"feeLevel": "MEDIUM"}
-                }
+                "feeLevel": "MEDIUM",
             }
 
+            logger.info(
+                "[Circle] approve tokenId=%s wallet=%s spender=%s amount=%s chain=%s",
+                token_id,
+                wallet_id,
+                spender_address,
+                amount_usdc,
+                self.blockchain,
+            )
             response = requests.post(
                 f"{self.api_url}/w3s/developer/transactions/approve",
                 json=payload,
                 headers=self.headers,
-                timeout=10
+                timeout=30,
             )
 
             if response.status_code not in [200, 201]:
+                err_body = response.json() if response.text else {"message": "Approval failed"}
+                # Fallback: contract-exec approve
+                if self.usdc_address:
+                    logger.warning(
+                        "[Circle] approve endpoint failed (%s) — contractExecution approve",
+                        err_body,
+                    )
+                    return self.execute_contract_function(
+                        wallet_id=wallet_id,
+                        contract_address=self.usdc_address,
+                        function_signature="approve(address,uint256)",
+                        args=[spender_address, str(amount_wei)],
+                    )
                 return {
                     "success": False,
-                    "error": str(response.json() if response.text else "Approval failed"),
-                    "status_code": response.status_code
+                    "error": str(err_body),
+                    "status_code": response.status_code,
                 }
 
             data = response.json()["data"]
-
+            tx = data.get("transaction") if isinstance(data.get("transaction"), dict) else data
             return {
                 "success": True,
-                "transaction_id": data["id"],
-                "status": data.get("status", "PENDING"),
-                "tx_hash": data.get("txHash"),
-                "blockchain": data.get("blockchain")
+                "transaction_id": tx.get("id") or data.get("id"),
+                "status": tx.get("status") or data.get("status") or data.get("state", "PENDING"),
+                "tx_hash": tx.get("txHash") or data.get("txHash"),
+                "blockchain": tx.get("blockchain") or data.get("blockchain"),
+                "token_id": token_id,
             }
 
         except Exception as e:
@@ -377,64 +470,134 @@ class CircleWalletService:
         """
         Transfer USDC from user's wallet to recipient (usually escrow).
 
-        Args:
-            from_wallet_id: Circle wallet ID (source)
-            to_address: Recipient address (escrow or winner)
-            amount_usdc: Amount to transfer
-
-        Returns:
-            {
-                "success": bool,
-                "transaction_id": str,
-                "status": str,
-                "tx_hash": str (optional),
-                "amount_usdc": float
-            }
+        ``tokenId`` must be the Circle UUID, not the contract address.
         """
         try:
+            token_id = self._resolve_usdc_token_id(from_wallet_id)
+            if not token_id:
+                return {
+                    "success": False,
+                    "error": f"No Circle USDC tokenId for {self.blockchain}",
+                }
+
             idempotency_key = str(uuid.uuid4())
             amount_wei = int(amount_usdc * 1_000_000)
             ciphertext = self._generate_entity_secret_ciphertext()
+            if not ciphertext:
+                return {"success": False, "error": "entity secret ciphertext missing"}
 
             payload = {
                 "idempotencyKey": idempotency_key,
                 "entitySecretCiphertext": ciphertext,
                 "walletId": from_wallet_id,
-                "tokenId": self.usdc_address,
+                "tokenId": token_id,
                 "destinationAddress": to_address,
                 "amounts": [str(amount_wei)],
-                "fee": {
-                    "type": "level",
-                    "config": {"feeLevel": "MEDIUM"}
-                }
+                # Top-level feeLevel works on Arc; nested fee object is rejected
+                "feeLevel": "MEDIUM",
             }
 
             response = requests.post(
                 f"{self.api_url}/w3s/developer/transactions/transfer",
                 json=payload,
                 headers=self.headers,
-                timeout=10
+                timeout=30,
             )
 
             if response.status_code not in [200, 201]:
                 return {
                     "success": False,
                     "error": str(response.json() if response.text else "Transfer failed"),
-                    "status_code": response.status_code
+                    "status_code": response.status_code,
                 }
 
             data = response.json()["data"]
+            tx = data.get("transaction") if isinstance(data.get("transaction"), dict) else data
 
             return {
                 "success": True,
-                "transaction_id": data["id"],
-                "status": data.get("status", "PENDING"),
-                "tx_hash": data.get("txHash"),
+                "transaction_id": tx.get("id") or data.get("id"),
+                "status": tx.get("status") or data.get("status", "PENDING"),
+                "tx_hash": tx.get("txHash") or data.get("txHash"),
                 "to_address": to_address,
                 "amount_usdc": amount_usdc,
-                "blockchain": data.get("blockchain")
+                "blockchain": tx.get("blockchain") or data.get("blockchain"),
             }
 
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def execute_contract_function(
+        self,
+        wallet_id: str,
+        contract_address: str,
+        function_signature: str,
+        args: list,
+    ) -> Dict:
+        """Call a contract via Circle contractExecution (createMatch / joinMatch / approve).
+
+        Args:
+            wallet_id: Circle developer wallet id
+            contract_address: Target contract (escrow or USDC)
+            function_signature: e.g. ``createMatch(bytes32,uint256)``
+            args: ABI-encoded parameter values as strings / hex
+        """
+        try:
+            ciphertext = self._generate_entity_secret_ciphertext()
+            if not ciphertext:
+                return {"success": False, "error": "entity secret ciphertext missing"}
+
+            # Circle expects abiParameters as strings
+            abi_params = [str(a) for a in (args or [])]
+            # Arc (and current W3S API) wants top-level feeLevel, not nested fee config
+            payload = {
+                "idempotencyKey": str(uuid.uuid4()),
+                "entitySecretCiphertext": ciphertext,
+                "walletId": wallet_id,
+                "contractAddress": contract_address,
+                "abiFunctionSignature": function_signature,
+                "abiParameters": abi_params,
+                "feeLevel": "MEDIUM",
+            }
+            logger.info(
+                "[Circle] contractExecution %s wallet=%s contract=%s args=%s",
+                function_signature,
+                wallet_id,
+                contract_address,
+                abi_params,
+            )
+            response = requests.post(
+                f"{self.api_url}/w3s/developer/transactions/contractExecution",
+                json=payload,
+                headers=self.headers,
+                timeout=45,
+            )
+            if response.status_code not in (200, 201):
+                # Retry once with LOW if MEDIUM rejected
+                if response.status_code == 400:
+                    payload["idempotencyKey"] = str(uuid.uuid4())
+                    payload["feeLevel"] = "LOW"
+                    response = requests.post(
+                        f"{self.api_url}/w3s/developer/transactions/contractExecution",
+                        json=payload,
+                        headers=self.headers,
+                        timeout=45,
+                    )
+            if response.status_code not in (200, 201):
+                return {
+                    "success": False,
+                    "error": str(response.json() if response.text else "contractExecution failed"),
+                    "status_code": response.status_code,
+                }
+            data = response.json().get("data") or {}
+            tx = data.get("transaction") if isinstance(data.get("transaction"), dict) else data
+            return {
+                "success": True,
+                "transaction_id": tx.get("id") or data.get("id"),
+                "status": tx.get("status") or data.get("status") or data.get("state", "PENDING"),
+                "tx_hash": tx.get("txHash") or data.get("txHash"),
+                "blockchain": tx.get("blockchain") or data.get("blockchain"),
+            }
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -451,27 +614,41 @@ class CircleWalletService:
             }
         """
         try:
+            # Prefer developer path; fall back to shared transactions path
             response = requests.get(
                 f"{self.api_url}/w3s/developer/transactions/{transaction_id}",
                 headers=self.headers,
-                timeout=10
+                timeout=15,
             )
+            if response.status_code == 404:
+                response = requests.get(
+                    f"{self.api_url}/w3s/transactions/{transaction_id}",
+                    headers=self.headers,
+                    timeout=15,
+                )
 
             if response.status_code != 200:
                 return {
                     "success": False,
-                    "error": "Transaction not found",
-                    "status_code": response.status_code
+                    "error": f"Transaction not found ({response.status_code})",
+                    "status_code": response.status_code,
                 }
 
-            data = response.json()["data"]
-
+            data = response.json().get("data") or {}
+            tx = data.get("transaction") if isinstance(data.get("transaction"), dict) else data
+            status = (
+                tx.get("status")
+                or tx.get("state")
+                or data.get("status")
+                or data.get("state")
+                or "UNKNOWN"
+            )
             return {
                 "success": True,
-                "status": data.get("status", "UNKNOWN"),
-                "tx_hash": data.get("txHash"),
-                "created_at": data.get("createDate"),
-                "blockchain": data.get("blockchain")
+                "status": str(status).upper(),
+                "tx_hash": tx.get("txHash") or data.get("txHash"),
+                "created_at": tx.get("createDate") or data.get("createDate"),
+                "blockchain": tx.get("blockchain") or data.get("blockchain"),
             }
 
         except Exception as e:
@@ -504,20 +681,21 @@ class CircleWalletService:
 
             status = result["status"]
 
-            if status in ["CONFIRMED", "COMPLETE"]:
+            # Circle uses state/status: INITIATED, PENDING, QUEUED, SENT, CONFIRMED, COMPLETE, FAILED
+            if status in ("CONFIRMED", "COMPLETE", "COMPLETE_CONFIRMED"):
                 return {
                     "success": True,
                     "status": "CONFIRMED",
                     "tx_hash": result.get("tx_hash"),
-                    "time_waited": int(time.time() - start_time)
+                    "time_waited": int(time.time() - start_time),
                 }
 
-            if status == "FAILED":
+            if status in ("FAILED", "DENIED", "CANCELLED"):
                 return {
                     "success": False,
-                    "error": "Transaction failed on-chain",
+                    "error": f"Transaction failed on-chain ({status})",
                     "status": "FAILED",
-                    "time_waited": int(time.time() - start_time)
+                    "time_waited": int(time.time() - start_time),
                 }
 
             time.sleep(poll_interval)

@@ -23,8 +23,8 @@ chains:
     rpc_url: https://rpc.testnet.arc.network
     explorer_tx: https://testnet.arcscan.app/tx/
     usdc_address: "0x3600000000000000000000000000000000000000"
-    # Circle W3S token UUID — override with CIRCLE_USDC_TOKEN_ID_ARC
-    circle_usdc_token_id: ""
+    # Circle W3S token UUID for ERC-20 USDC facade (approve/transfer). Override: CIRCLE_USDC_TOKEN_ID_ARC
+    circle_usdc_token_id: "ef87c8c3-85de-598a-af50-c5135eecfa74"
     gas_token: USDC
     gas_mode: usdc_native
     gas_tank_required: false

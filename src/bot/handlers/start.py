@@ -28,6 +28,15 @@ class _FakeRequest:
         self.client = None
 
 
+def _start_payload(message: types.Message) -> str:
+    """Extract deep-link payload from /start <payload>."""
+    text = (message.text or message.caption or "").strip()
+    parts = text.split(maxsplit=1)
+    if len(parts) < 2:
+        return ""
+    return parts[1].strip()
+
+
 @router.message(Command("start"))
 async def cmd_start(message: types.Message) -> None:
     """Onboard a Telegram user: geo-check, profile, wallet, welcome message."""
@@ -63,6 +72,38 @@ async def cmd_start(message: types.Message) -> None:
         await update_telegram_chat_id(profile["id"], message.chat.id)
     except Exception as exc:
         logger.warning("[Start] chat id update failed: %s", exc)
+
+    # Deep link from community group: /start m_ZF8G5QKT or join_CODE
+    payload = _start_payload(message)
+    if payload.lower().startswith(("m_", "join_", "match_")):
+        code_ref = payload.split("_", 1)[1].strip()
+        if code_ref:
+            try:
+                from gaming.src.backend.services.game_catalog import display_name as game_display_name
+                from gaming.src.backend.services.match_codes import display_code, load_challenge_by_ref
+                from gaming.src.bot.keyboards import challenge_confirm_menu, main_menu as mm
+
+                ch = load_challenge_by_ref(code_ref)
+                if ch and (ch.get("status") or "").lower() == "open":
+                    mcode = display_code(ch)
+                    gname = game_display_name(ch.get("game") or "EAFC")
+                    stake = float(ch.get("amount_usdc") or 0)
+                    await message.answer(
+                        f"⚔️ <b>Open challenge</b>\n\n"
+                        f"Match: <code>{escape(mcode)}</code>\n"
+                        f"Stake: <b>${stake:,.2f}</b> · {escape(str(gname))}\n\n"
+                        f"Tap Accept to take it:",
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=challenge_confirm_menu(str(ch["id"])),
+                    )
+                    return
+                await message.answer(
+                    "That match is no longer open. Tap Public board or create a new challenge.",
+                    reply_markup=mm(),
+                )
+                return
+            except Exception:
+                logger.exception("[Start] deep-link match open failed payload=%s", payload)
 
     # Arc-only product surface for now
     try:

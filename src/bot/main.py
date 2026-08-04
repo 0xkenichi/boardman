@@ -29,6 +29,7 @@ from gaming.src.bot.handlers import submit_score  # noqa: E402
 from gaming.src.bot.handlers import dispute  # noqa: E402
 from gaming.src.bot.handlers import simple_ui  # noqa: E402
 from gaming.src.bot.handlers import admin_safety  # noqa: E402
+from gaming.src.bot.handlers import fallback  # noqa: E402
 from gaming.src.bot.jobs.expiry import start_expiry_scheduler  # noqa: E402
 from gaming.src.bot.utils.notify import set_bot  # noqa: E402
 
@@ -52,6 +53,8 @@ def _build_dispatcher() -> Dispatcher:
     dp.include_router(proof.router)
     dp.include_router(dispute.router)
     dp.include_router(admin_safety.router)
+    # Last: catch anything unmatched so Telegram never gets silence
+    dp.include_router(fallback.router)
     return dp
 
 
@@ -84,12 +87,14 @@ async def run_polling() -> None:
     scheduler = start_expiry_scheduler()
 
     try:
-        # Avoid TelegramConflictError when a webhook is still registered.
-        await bot.delete_webhook(drop_pending_updates=False)
+        # Drop webhook + stale queue so laptop polling gets a clean stream.
+        await bot.delete_webhook(drop_pending_updates=True)
         await _set_bot_commands(bot)
         me = await bot.get_me()
         logger.info("[Bot] Starting polling as @%s (id=%s)", me.username, me.id)
-        await dp.start_polling(bot, allowed_updates=settings.ALLOWED_UPDATES)
+        # Only message + callbacks — avoids silent "not handled" for other update types
+        allowed = settings.ALLOWED_UPDATES or ["message", "callback_query"]
+        await dp.start_polling(bot, allowed_updates=allowed)
     finally:
         scheduler.shutdown(wait=False)
         await bot.session.close()

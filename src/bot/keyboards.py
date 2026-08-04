@@ -10,6 +10,37 @@ REMATCH_WEB = os.getenv("REMATCH_WEB_URL", "https://playingsidequest.fun/rematch
 REMATCH_BOARD = os.getenv(
     "REMATCH_LEADERBOARD_URL", "https://playingsidequest.fun/rematch/leaderboard"
 )
+REMATCH_BOT_URL = os.getenv(
+    "NEXT_PUBLIC_TELEGRAM_BOT_URL",
+    os.getenv("TELEGRAM_BOT_URL", "https://t.me/ClawStationOfficialBot"),
+)
+
+
+def rematch_group_url() -> str | None:
+    """Public Telegram group invite for live rooms / community.
+
+    Set any of: REMATCH_TELEGRAM_GROUP_URL, TELEGRAM_GROUP_URL,
+    NEXT_PUBLIC_TELEGRAM_GROUP_URL (same as web).
+    Returns None when unset or when it only points at the bot itself.
+    """
+    raw = (
+        os.getenv("REMATCH_TELEGRAM_GROUP_URL")
+        or os.getenv("TELEGRAM_GROUP_URL")
+        or os.getenv("NEXT_PUBLIC_TELEGRAM_GROUP_URL")
+        or os.getenv("NEXT_PUBLIC_REMATCH_TG_GROUP")
+        or ""
+    ).strip()
+    if not raw:
+        return None
+    if not raw.startswith("http"):
+        raw = f"https://{raw.lstrip('/')}"
+    # Don't show a "join group" link that just re-opens the bot DM
+    bot = (REMATCH_BOT_URL or "").rstrip("/").lower()
+    if raw.rstrip("/").lower() in (bot, f"{bot}/"):
+        return None
+    if "clawstationofficialbot" in raw.lower() and "/+" not in raw:
+        return None
+    return raw
 
 
 def main_menu(miniapp_url: str | None = None) -> InlineKeyboardMarkup:
@@ -27,6 +58,18 @@ def main_menu(miniapp_url: str | None = None) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🔄 Rematch", callback_data="ui:rematch"),
         InlineKeyboardButton(text="👤 Profile", callback_data="menu:profile"),
     )
+    # Community + public board — always visible (not buried only under More)
+    group = rematch_group_url()
+    if group:
+        builder.row(
+            InlineKeyboardButton(text="💬 Join community", url=group),
+            InlineKeyboardButton(text="📋 Public board", callback_data="ui:board"),
+        )
+    else:
+        builder.row(
+            InlineKeyboardButton(text="💬 Join community", callback_data="ui:community"),
+            InlineKeyboardButton(text="📋 Public board", callback_data="ui:board"),
+        )
     builder.row(
         InlineKeyboardButton(text="⋯ More", callback_data="ui:more"),
     )
@@ -34,13 +77,20 @@ def main_menu(miniapp_url: str | None = None) -> InlineKeyboardMarkup:
 
 
 def more_menu(miniapp_url: str | None = None) -> InlineKeyboardMarkup:
-    """Secondary links — board, site, rules (keeps main menu clean)."""
+    """Secondary links — board, community, site, rules."""
     builder = InlineKeyboardBuilder()
     web = miniapp_url or REMATCH_WEB
+    group = rematch_group_url()
     builder.row(
-        InlineKeyboardButton(text="📋 Board", callback_data="ui:board"),
+        InlineKeyboardButton(text="📋 Public board", callback_data="ui:board"),
         InlineKeyboardButton(text="🏆 Leaderboard", url=REMATCH_BOARD),
     )
+    if group:
+        builder.row(InlineKeyboardButton(text="💬 Join community · live rooms", url=group))
+    else:
+        builder.row(
+            InlineKeyboardButton(text="💬 Join community · live rooms", callback_data="ui:community")
+        )
     builder.row(
         InlineKeyboardButton(text="🌐 Site", url=web),
         InlineKeyboardButton(text="📜 Rules", callback_data="ui:rules"),
@@ -48,6 +98,21 @@ def more_menu(miniapp_url: str | None = None) -> InlineKeyboardMarkup:
     builder.row(
         InlineKeyboardButton(text="📖 How to play", callback_data="menu:learn"),
     )
+    builder.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
+    return builder.as_markup()
+
+
+def community_menu() -> InlineKeyboardMarkup:
+    """Live rooms / public matchmaking entry points."""
+    builder = InlineKeyboardBuilder()
+    group = rematch_group_url()
+    if group:
+        builder.row(InlineKeyboardButton(text="💬 Open community group", url=group))
+    builder.row(
+        InlineKeyboardButton(text="📋 Public board", callback_data="ui:board"),
+        InlineKeyboardButton(text="⚔️ Post challenge", callback_data="ui:challenge"),
+    )
+    builder.row(InlineKeyboardButton(text="🌐 Rematch site", url=REMATCH_WEB))
     builder.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
     return builder.as_markup()
 

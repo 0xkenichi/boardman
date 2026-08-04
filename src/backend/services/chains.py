@@ -38,7 +38,8 @@ _FALLBACK_CHAINS: dict[str, Any] = {
             "rpc_url": "https://rpc.testnet.arc.network",
             "explorer_tx": "https://testnet.arcscan.app/tx/",
             "usdc_address": "0x3600000000000000000000000000000000000000",
-            "circle_usdc_token_id": "",
+            # Circle W3S token UUID for ARC-TESTNET ERC-20 USDC (not native gas token)
+            "circle_usdc_token_id": "ef87c8c3-85de-598a-af50-c5135eecfa74",
             "gas_token": "USDC",
             "gas_mode": "usdc_native",
             "gas_tank_required": False,
@@ -283,12 +284,25 @@ def get_circle_blockchain(chain_id: str) -> str:
 
 
 def get_circle_usdc_token_id(chain_id: str) -> str:
+    """Circle W3S token UUID for USDC on this chain (never the 0x contract address)."""
     c = get_chain(chain_id)
     tid = (c.get("circle_usdc_token_id") or "").strip()
-    if not tid:
-        # Fall back to global env / Base default used historically.
-        tid = os.getenv("CIRCLE_USDC_TOKEN_ID", "bdf128b4-827b-5267-8f9e-243694989b5f")
-    return tid
+    if tid:
+        return tid
+    # Chain-specific env, then Base-only historical default (do not use Base id on Arc).
+    env_key = {
+        "arc": "CIRCLE_USDC_TOKEN_ID_ARC",
+        "base": "CIRCLE_USDC_TOKEN_ID",
+        "avalanche": "CIRCLE_USDC_TOKEN_ID_AVALANCHE",
+    }.get(normalize_chain_id(chain_id))
+    if env_key and os.getenv(env_key):
+        return os.getenv(env_key, "").strip()
+    if normalize_chain_id(chain_id) == "base":
+        return os.getenv("CIRCLE_USDC_TOKEN_ID", "bdf128b4-827b-5267-8f9e-243694989b5f")
+    if normalize_chain_id(chain_id) == "arc":
+        # ERC-20 facade @ 0x3600…0000 (6 decimals) — not native USDC token id
+        return "ef87c8c3-85de-598a-af50-c5135eecfa74"
+    return ""
 
 
 def get_explorer_tx(chain_id: str, tx_hash: str = "") -> str:
