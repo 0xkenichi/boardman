@@ -121,16 +121,7 @@ async def execute_cancel(profile_id: str, challenge_id: str) -> dict[str, Any]:
         }
 
     if mode == "refund":
-        try:
-            if _has_onchain_lock(ch):
-                result = await cancel_match(challenge_id)
-                return {
-                    "success": True,
-                    "mode": "refund",
-                    "code": code,
-                    "tx_hash": result.get("tx_hash"),
-                    "message": f"Match {code} cancelled. Locked USDC refunded on-chain.",
-                }
+        if not _has_onchain_lock(ch):
             _update(challenge_id, {"status": "cancelled"})
             return {
                 "success": True,
@@ -138,16 +129,23 @@ async def execute_cancel(profile_id: str, challenge_id: str) -> dict[str, Any]:
                 "code": code,
                 "message": f"Match {code} cancelled.",
             }
-        except EscrowError as exc:
-            # If never created on-chain, just DB cancel
-            logger.warning("[Cancel] on-chain cancel failed, trying DB: %s", exc)
-            _update(challenge_id, {"status": "cancelled"})
+        try:
+            result = await cancel_match(challenge_id)
             return {
                 "success": True,
-                "mode": "free",
+                "mode": "refund",
                 "code": code,
-                "message": f"Match {code} cancelled (DB). On-chain: {exc}",
+                "tx_hash": result.get("tx_hash"),
+                "message": f"Match {code} cancelled. Locked USDC refunded on-chain.",
             }
+        except EscrowError as exc:
+            # Never mark cancelled in DB if funds may still be locked on-chain
+            logger.exception("[Cancel] on-chain refund failed for %s", challenge_id)
+            raise ValueError(
+                f"Refund failed: {exc}\n"
+                "Funds stay locked until the resolver wallet cancels on-chain. "
+                "Ops: set a real ADMIN_PRIVATE_KEY (escrow resolver) with Arc gas/USDC."
+            ) from exc
 
     if mode == "propose":
         note = f"cancel_proposed:{profile_id}:{datetime.now(timezone.utc).isoformat()}"
@@ -181,6 +179,15 @@ async def execute_cancel(profile_id: str, challenge_id: str) -> dict[str, Any]:
                 "message": f"Mutual cancel confirmed. Match {code} refunded.",
             }
         except EscrowError as exc:
+            # Import/config failures should not leave users stuck if refund is impossible
+            err = str(exc)
+            logger.exception("[Cancel] mutual refund failed: %s", exc)
+            if "ADMIN_PRIVATE_KEY" in err or "import" in err.lower() or "not configured" in err.lower():
+                raise ValueError(
+                    f"Refund failed: {exc}. "
+                    "Ops: set ADMIN_PRIVATE_KEY (resolver) funded on Arc, "
+                    "then retry Confirm cancel."
+                ) from exc
             raise ValueError(f"Refund failed: {exc}") from exc
 
     raise ValueError(info.get("reason") or "Cannot cancel")

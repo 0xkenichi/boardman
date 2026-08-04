@@ -49,6 +49,21 @@ _SEED: list[dict[str, Any]] = [
         "duration_hint_min": 15,
         "emoji": "🎱",
     },
+    {
+        "game_id": "mobile.8_ball_pool",
+        "display_name": "8 Ball Pool",
+        "category": "mobile",
+        "enabled": True,
+        "outcome_type": "binary_winner",
+        "result_screen": "You Win / You Lose after 8-ball (1v1)",
+        "ai_hints": [
+            "Miniclip 8 Ball Pool final result",
+            "You Win / You Lose / Winner banner",
+            "Not GamePigeon iMessage",
+        ],
+        "duration_hint_min": 10,
+        "emoji": "🎱",
+    },
 ]
 
 
@@ -188,6 +203,16 @@ def outcome_type(game_id: str) -> str:
     return str(g.get("outcome_type") or "scoreline")
 
 
+def is_binary_outcome(game_id: str) -> bool:
+    """Win/lose games (8 Ball, Free Fire 1v1) — not football-style scorelines."""
+    return outcome_type(game_id).lower() in (
+        "binary_winner",
+        "binary",
+        "winner",
+        "win_lose",
+    )
+
+
 def ai_context_for_game(game_id: str) -> dict[str, Any]:
     """Hints injected into vision prompts."""
     g = get_game(game_id) or {}
@@ -201,27 +226,187 @@ def ai_context_for_game(game_id: str) -> dict[str, Any]:
     }
 
 
-def proof_instructions(game_id: str) -> str:
-    """Short HTML-safe copy for after lock / submit."""
-    g = get_game(game_id)
-    if not g:
-        return "Play the match, then send the final score screenshot."
-    name = g.get("display_name") or game_id
-    result = g.get("result_screen") or "winner / final score"
-    cat = g.get("category")
-    if cat == "imessage":
+def binary_claim_to_home_away(
+    won: bool, *, side: Optional[str], is_creator: bool
+) -> tuple[int, int]:
+    """Map reporter W/L to home-away scoreline (1-0 / 0-1)."""
+    if side == "home":
+        return (1, 0) if won else (0, 1)
+    if side == "away":
+        return (0, 1) if won else (1, 0)
+    # No side declared: creator = home by convention
+    if is_creator:
+        return (1, 0) if won else (0, 1)
+    return (0, 1) if won else (1, 0)
+
+
+def parse_result_caption(
+    game_id: str,
+    caption: str,
+    *,
+    side: Optional[str] = None,
+    is_creator: bool = True,
+) -> tuple[Optional[int], Optional[int], Optional[str]]:
+    """Parse user caption for a game.
+
+    Returns (home, away, err). err is human message if unusable.
+    For binary games: W/L/win/lose (also win/lose phrases).
+    For scoreline: 5-3 or 5:3.
+    """
+    import re
+
+    text = (caption or "").strip()
+    binary = is_binary_outcome(game_id)
+
+    # Always accept explicit scoreline if present
+    m = re.search(r"(?i)(?:h\s*[-–]\s*a\s+)?(\d+)\s*[-:–]\s*(\d+)", text)
+    if m:
+        return int(m.group(1)), int(m.group(2)), None
+
+    # Binary claims
+    low = text.lower()
+    won: Optional[bool] = None
+    if re.fullmatch(r"[wW]|win|won|victory|i\s*won|you\s*win", text.strip()):
+        won = True
+    elif re.fullmatch(r"[lL]|lose|loss|lost|defeat|i\s*lost|you\s*lose", text.strip()):
+        won = False
+    elif re.search(r"\b(i\s+won|we\s+won|victory|winner)\b", low):
+        won = True
+    elif re.search(r"\b(i\s+lost|we\s+lost|defeat|loser)\b", low):
+        won = False
+    elif low in ("1", "1-0", "1:0") and binary:
+        won = True
+    elif low in ("0", "0-1", "0:1") and binary:
+        won = False
+
+    if won is not None:
+        h, a = binary_claim_to_home_away(won, side=side, is_creator=is_creator)
+        return h, a, None
+
+    if binary:
+        if not text:
+            return None, None, None  # allow AI-only path
         return (
-            f"Play <b>{name}</b> in <b>iMessage</b>, "
-            f"then send the <b>final screen</b> here.\n"
-            f"What we need: {result}."
+            None,
+            None,
+            "Caption this photo <code>W</code> (you won) or <code>L</code> (you lost). "
+            "Or send the photo alone and we will try AI.",
         )
-    if cat == "mobile":
+    if not text:
+        return None, None, None
+    return (
+        None,
+        None,
+        "Caption the photo with the score like <code>5-3</code> (home-away).",
+    )
+
+
+def _short_result_screen(game_id: str, max_len: int = 120) -> str:
+    g = get_game(game_id) or {}
+    raw = " ".join(str(g.get("result_screen") or "final result screen").split())
+    if len(raw) > max_len:
+        return raw[: max_len - 1].rstrip() + "…"
+    return raw
+
+
+def how_to_report_short(game_id: str) -> str:
+    """Friendly one-block instructions for match status / after lock / side pick."""
+    g = get_game(game_id)
+    name = (g or {}).get("display_name") or "your game"
+    emoji = (g or {}).get("emoji") or "🎮"
+    binary = is_binary_outcome(game_id)
+    cat = (g or {}).get("category") or ""
+    where = (
+        "on your phone"
+        if cat == "mobile"
+        else ("in iMessage" if cat == "imessage" else "on your console")
+    )
+    need = _short_result_screen(game_id, 90)
+
+    if binary:
         return (
-            f"Play <b>{name}</b> on your <b>phone</b>, "
-            f"then send the <b>final result screen</b> here.\n"
-            f"What we need: {result}."
+            f"{emoji} <b>How to report — {name}</b>\n\n"
+            f"This game is <b>win or lose</b> (no football-style score).\n\n"
+            f"1. Finish the match <b>{where}</b>\n"
+            f"2. Open the <b>end screen</b>: <i>{need}</i>\n"
+            f"3. Tap <b>Report result</b> and send that photo\n"
+            f"4. The bot will ask you to type your <b>exact in-game name</b> "
+            f"(e.g. <code>Finch</code>) so we know who is who\n"
+            f"5. Then tap <b>I won</b> or <b>I lost</b>\n\n"
+            f"Opponent does the same with <b>their</b> name. "
+            f"Auto-pay only if reports agree."
         )
     return (
-        f"Play <b>{name}</b>, then submit the "
-        f"<b>final score screen</b> photo."
+        f"{emoji} <b>How to report — {name}</b>\n\n"
+        f"This game uses a <b>scoreline</b> (home–away).\n\n"
+        f"1. Finish the match <b>{where}</b>\n"
+        f"2. Open the <b>full-time / final score</b> screen: <i>{need}</i>\n"
+        f"3. Tap <b>Submit result</b> and send it as a photo\n"
+        f"4. Caption the score like <code>5-3</code> or <code>2-1</code>\n"
+        f"   (home first, then away — same as the sides you picked)\n\n"
+        f"Both players report the same scoreline when they can."
     )
+
+
+def report_caption_help_html(game_id: str) -> str:
+    """Full HTML guide when user taps Submit result — kind and game-specific."""
+    g = get_game(game_id)
+    name = (g or {}).get("display_name") or game_id or "this game"
+    emoji = (g or {}).get("emoji") or "📸"
+    result = _short_result_screen(game_id, 140)
+    binary = is_binary_outcome(game_id)
+    cat = (g or {}).get("category") or ""
+
+    where = (
+        "your phone"
+        if cat == "mobile"
+        else ("iMessage" if cat == "imessage" else "your console / TV")
+    )
+
+    lines = [
+        f"{emoji} <b>Submit result — {name}</b>",
+        "",
+        "We've got you — just send the right final screen for <b>this</b> game.",
+        "",
+        f"<b>What to photograph</b>",
+        f"• {result}",
+        f"• Take it on <b>{where}</b> right after the match ends",
+        "• Avoid mid-game, lobby, or coin/XP popups only",
+        "",
+        "<b>How to send it</b>",
+        "1. Tap 📎 → Photo (or File)",
+        "2. Pick the screenshot",
+    ]
+    if binary:
+        lines += [
+            "3. Send the photo (caption optional for now)",
+            "4. We'll ask for your <b>exact in-game name</b> on that screen "
+            "(e.g. Finch) — this is how we know who is who",
+            "5. Then confirm <b>I won</b> or <b>I lost</b>",
+            "",
+            f"<i>{name}</i> does not use football scores — only winner + your name.",
+        ]
+    else:
+        lines += [
+            "3. In the caption, type the <b>home–away</b> score:",
+            "   • e.g. <code>5-3</code> or <code>2-1</code>",
+            "",
+            "Home / Away = the sides you chose on this match (HOME / AWAY buttons).",
+            "",
+            f"<i>{name}</i> settles from the full-time scoreline.",
+        ]
+    lines += [
+        "",
+        "4. Send — we'll save it and notify your opponent.",
+        "",
+        "Tip: if captioning is awkward, send the photo alone and we can try AI — "
+        "but a short caption is the most reliable.",
+        "",
+        "Ready when you are — send the image now 👇",
+    ]
+    return "\n".join(lines)
+
+
+def proof_instructions(game_id: str) -> str:
+    """Short HTML-safe copy for after lock / submit (uses how_to_report_short)."""
+    return how_to_report_short(game_id)

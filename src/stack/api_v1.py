@@ -97,6 +97,29 @@ async def v1_health(_: str = Depends(_require_stack_key)):
     return {"success": True, "api": "v1", **get_stack().health().to_dict()}
 
 
+@router.get("/metrics")
+async def v1_metrics(_: str = Depends(_require_stack_key)):
+    """Testnet ops metrics: users, volume, pipeline, fees, gas samples.
+
+    Auth: ``X-Rematch-Key`` / ``REMATCH_API_KEY``.
+    Also partially shown on Telegram Public board.
+    """
+    from gaming.src.backend.services.rematch_public import get_chain_metrics, get_ops_metrics
+
+    try:
+        ops = get_ops_metrics()
+        chain = get_chain_metrics()
+    except Exception as exc:
+        logger.exception("[v1/metrics] failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {
+        "success": True,
+        "network": "testnet",
+        "ops": ops,
+        "chain": chain,
+    }
+
+
 @router.get("/games")
 async def v1_games(
     category: Optional[str] = None,
@@ -401,16 +424,16 @@ async def v1_report_score(
     home = away = None
     single = None
     if otype == "binary_winner" or raw in ("W", "L", "WIN", "LOSE", "LOSS"):
-        # Reporter claim: W => they won => map via claim_win or W/L
+        from gaming.src.backend.services.game_catalog import binary_claim_to_home_away
+
+        # Reporter claim: W => they won
         won = body.claim_win
         if won is None:
             won = raw in ("W", "WIN", "1")
-        # Store as reporter's perspective scoreline 1-0 or 0-1
-        if is_creator:
-            home, away = (1, 0) if won else (0, 1)
-        else:
-            # opponent report: invert so home=creator side convention when possible
-            home, away = (0, 1) if won else (1, 0)
+        side = ch.get("creator_side") if is_creator else ch.get("opponent_side")
+        home, away = binary_claim_to_home_away(
+            bool(won), side=side, is_creator=is_creator
+        )
     else:
         import re
 

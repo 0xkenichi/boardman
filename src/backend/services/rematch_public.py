@@ -149,47 +149,231 @@ def _tag_for_profile(profile_id: str) -> str:
         return "player"
 
 
+# Live gaming.challenges only — amount_usdc / visibility columns do NOT exist (42703).
+_CHALLENGE_METRIC_COLS = "id,status,stake_amount,settlement_chain,theme,created_at"
+
+
 def get_chain_metrics() -> dict[str, Any]:
-    """Settled volume / counts by chain (best-effort)."""
-    chains = {"arc": {}, "base": {}, "avalanche": {}}
+    """Settled volume / counts by chain (stake_amount + settlement_chain)."""
+    empty_by = {
+        "arc": {"matches": 0, "volume_usdc": 0.0},
+        "base": {"matches": 0, "volume_usdc": 0.0},
+        "avalanche": {"matches": 0, "volume_usdc": 0.0},
+    }
     try:
         r = (
             _sb()
             .schema("gaming")
             .table("challenges")
-            .select("id,status,stake_amount,settlement_chain")
+            .select(_CHALLENGE_METRIC_COLS)
             .eq("status", "resolved")
-            .limit(500)
+            .limit(1000)
             .execute()
         )
     except Exception as exc:
         logger.warning("[RematchPublic] metrics failed: %s", exc)
         return {
             "resolved_total": 0,
-            "by_chain": {
-                "arc": {"matches": 0, "volume_usdc": 0},
-                "base": {"matches": 0, "volume_usdc": 0},
-                "avalanche": {"matches": 0, "volume_usdc": 0},
-            },
+            "volume_usdc_resolved": 0.0,
+            "by_chain": empty_by,
         }
 
-    by = {
-        "arc": {"matches": 0, "volume_usdc": 0.0},
-        "base": {"matches": 0, "volume_usdc": 0.0},
-        "avalanche": {"matches": 0, "volume_usdc": 0.0},
-    }
+    by = {k: dict(v) for k, v in empty_by.items()}
     total = 0
+    volume_all = 0.0
     for row in r.data or []:
         total += 1
-        chain = (row.get("settlement_chain") or "base").lower()
+        chain = (row.get("settlement_chain") or "arc").lower()
         if chain not in by:
             by[chain] = {"matches": 0, "volume_usdc": 0.0}
         stake = float(row.get("stake_amount") or 0)
-        # dual lock → volume ≈ 2 * stake
+        dual = stake * 2
         by[chain]["matches"] += 1
-        by[chain]["volume_usdc"] += stake * 2
+        by[chain]["volume_usdc"] += dual
+        volume_all += dual
 
-    return {"resolved_total": total, "by_chain": by}
+    return {
+        "resolved_total": total,
+        "volume_usdc_resolved": round(volume_all, 2),
+        "by_chain": by,
+    }
+
+
+def get_ops_metrics() -> dict[str, Any]:
+    """Testnet ops dashboard: users, pipeline, volume, fees, gas samples.
+
+    Live schema: challenges.stake_amount + theme (not amount_usdc / visibility).
+    """
+    chain = get_chain_metrics()
+    out: dict[str, Any] = {
+        "users_total": 0,
+        "users_with_play_points": 0,
+        "total_wins_profile": 0,
+        "total_losses_profile": 0,
+        "challenges_by_status": {},
+        "challenges_sampled": 0,
+        "open_public": 0,
+        "locked_or_playing": 0,
+        "resolved_total": int(chain.get("resolved_total") or 0),
+        "cancelled_total": 0,
+        "disputed_total": 0,
+        "expired_total": 0,
+        "volume_usdc_resolved": float(chain.get("volume_usdc_resolved") or 0),
+        "volume_usdc_in_escrow_est": 0.0,
+        "platform_fees_usdc": 0.0,
+        "lock_in_count": 0,
+        "payout_count": 0,
+        "refund_count": 0,
+        "gas_used_total": 0,
+        "gas_samples": 0,
+        "escrow_movements": {},
+        "by_chain": chain.get("by_chain") or {},
+        "notes": [
+            "volume_usdc_resolved ≈ 2 × stake per resolved match (dual lock)",
+        ],
+    }
+
+    try:
+        pr = _sb().table("profiles").select("id", count="exact").limit(1).execute()
+        out["users_total"] = int(pr.count or 0)
+    except Exception as exc:
+        logger.warning("[OpsMetrics] users_total: %s", exc)
+
+    try:
+        pp = (
+            _sb()
+            .table("profiles")
+            .select("id", count="exact")
+            .gt("play_points", 0)
+            .limit(1)
+            .execute()
+        )
+        out["users_with_play_points"] = int(pp.count or 0)
+    except Exception:
+        pass
+
+    try:
+        wr = (
+            _sb()
+            .table("profiles")
+            .select("gaming_wins,gaming_losses")
+            .gt("play_points", 0)
+            .limit(200)
+            .execute()
+        )
+        tw = tl = 0
+        for row in wr.data or []:
+            tw += int(row.get("gaming_wins") or 0)
+            tl += int(row.get("gaming_losses") or 0)
+        out["total_wins_profile"] = tw
+        out["total_losses_profile"] = tl
+    except Exception:
+        pass
+
+    try:
+        cr = (
+            _sb()
+            .schema("gaming")
+            .table("challenges")
+            .select(_CHALLENGE_METRIC_COLS)
+            .order("created_at", desc=True)
+            .limit(1000)
+            .execute()
+        )
+        by_status: dict[str, int] = {}
+        resolved_vol = 0.0
+        resolved_n = 0
+        by_chain: dict[str, dict] = {
+            "arc": {"matches": 0, "volume_usdc": 0.0},
+            "base": {"matches": 0, "volume_usdc": 0.0},
+            "avalanche": {"matches": 0, "volume_usdc": 0.0},
+        }
+        for row in cr.data or []:
+            st = str(row.get("status") or "unknown")
+            by_status[st] = by_status.get(st, 0) + 1
+            stake = float(row.get("stake_amount") or 0)
+            theme = (row.get("theme") or "").lower()
+            if st == "resolved":
+                resolved_n += 1
+                resolved_vol += stake * 2
+                cid = (row.get("settlement_chain") or "arc").lower()
+                if cid not in by_chain:
+                    by_chain[cid] = {"matches": 0, "volume_usdc": 0.0}
+                by_chain[cid]["matches"] += 1
+                by_chain[cid]["volume_usdc"] += stake * 2
+            elif st == "cancelled":
+                out["cancelled_total"] += 1
+            elif st == "disputed":
+                out["disputed_total"] += 1
+            elif st == "expired":
+                out["expired_total"] += 1
+            elif st in (
+                "locked",
+                "playing",
+                "submitted",
+                "creator_locked",
+                "opponent_locked",
+                "accepted",
+            ):
+                out["locked_or_playing"] += 1
+                if st in ("locked", "playing", "submitted"):
+                    out["volume_usdc_in_escrow_est"] += stake * 2
+                else:
+                    out["volume_usdc_in_escrow_est"] += stake
+            elif st == "open" and theme == "public":
+                out["open_public"] += 1
+        out["challenges_by_status"] = dict(sorted(by_status.items()))
+        out["challenges_sampled"] = sum(by_status.values())
+        if resolved_n:
+            out["resolved_total"] = resolved_n
+            out["volume_usdc_resolved"] = round(resolved_vol, 2)
+            out["by_chain"] = by_chain
+        out["volume_usdc_in_escrow_est"] = round(out["volume_usdc_in_escrow_est"], 2)
+    except Exception as exc:
+        logger.warning("[OpsMetrics] challenges: %s", exc)
+
+    try:
+        ar = (
+            _sb()
+            .schema("gaming")
+            .table("escrow_audit")
+            .select("movement,amount_usdc,metadata,status")
+            .order("created_at", desc=True)
+            .limit(1000)
+            .execute()
+        )
+        moves: dict[str, int] = {}
+        fees = 0.0
+        gas_total = 0
+        gas_n = 0
+        for row in ar.data or []:
+            m = str(row.get("movement") or "unknown")
+            moves[m] = moves.get(m, 0) + 1
+            st = (row.get("status") or "").lower()
+            # Some rows use confirmed; treat missing status as countable for fees
+            if m == "fee" and st in ("confirmed", "complete", ""):
+                fees += float(row.get("amount_usdc") or 0)
+            meta = row.get("metadata") or {}
+            if isinstance(meta, dict) and meta.get("gas_used") is not None:
+                try:
+                    gas_total += int(meta["gas_used"])
+                    gas_n += 1
+                except (TypeError, ValueError):
+                    pass
+        out["escrow_movements"] = moves
+        out["lock_in_count"] = int(moves.get("lock_in") or 0)
+        out["payout_count"] = int(moves.get("payout") or 0)
+        out["refund_count"] = int(moves.get("refund") or 0)
+        out["platform_fees_usdc"] = round(fees, 4)
+        out["gas_used_total"] = gas_total
+        out["gas_samples"] = gas_n
+        if not out["resolved_total"] and out["payout_count"]:
+            out["resolved_total"] = out["payout_count"]
+            out["notes"].append("resolved_total inferred from escrow payout rows")
+    except Exception as exc:
+        logger.warning("[OpsMetrics] escrow_audit: %s", exc)
+
+    return out
 
 
 def get_match_history(
@@ -336,14 +520,76 @@ def format_leaderboard_text(rows: list[dict], limit: int = 10) -> str:
 
 
 def format_metrics_text(m: dict) -> str:
-    lines = [
-        "📊 <b>Rematch testnet metrics</b>\n",
-        f"Resolved matches (sample): <b>{m.get('resolved_total', 0)}</b>\n",
-    ]
-    for chain, data in (m.get("by_chain") or {}).items():
+    """Human-readable metrics for Telegram board / profile.
+
+    Accepts either get_chain_metrics() or full get_ops_metrics().
+    """
+    lines = ["📊 <b>Rematch testnet metrics</b>\n"]
+
+    if m.get("users_total") is not None:
         lines.append(
-            f"• {chain}: {data.get('matches', 0)} matches · "
-            f"~${float(data.get('volume_usdc') or 0):,.0f} dual-lock volume"
+            f"Users: <b>{m.get('users_total', 0)}</b>"
+            + (
+                f" · PLAY active: <b>{m.get('users_with_play_points', 0)}</b>"
+                if m.get("users_with_play_points") is not None
+                else ""
+            )
+            + "\n"
         )
-    lines.append("\nArc earns 1.5× PLAY · Avalanche 1.25× · Base 1.0×")
+
+    if m.get("total_wins_profile") is not None or m.get("total_losses_profile") is not None:
+        lines.append(
+            f"Profile W/L (PLAY users): "
+            f"<b>{m.get('total_wins_profile', 0)}W</b>/"
+            f"<b>{m.get('total_losses_profile', 0)}L</b>\n"
+        )
+
+    lines.append(
+        f"Resolved matches: <b>{m.get('resolved_total', 0)}</b> · "
+        f"volume ~${float(m.get('volume_usdc_resolved') or 0):,.0f} USDC\n"
+    )
+
+    if m.get("locked_or_playing") is not None or m.get("open_public") is not None:
+        lines.append(
+            f"In play: <b>{m.get('locked_or_playing', 0)}</b> · "
+            f"public open: <b>{m.get('open_public', 0)}</b> · "
+            f"cancelled: <b>{m.get('cancelled_total', 0)}</b> · "
+            f"disputed: <b>{m.get('disputed_total', 0)}</b>\n"
+        )
+        if m.get("volume_usdc_in_escrow_est"):
+            lines.append(
+                f"Est. in escrow: ~${float(m.get('volume_usdc_in_escrow_est') or 0):,.0f} USDC\n"
+            )
+
+    if m.get("platform_fees_usdc") is not None:
+        lines.append(
+            f"Platform fees: <b>${float(m.get('platform_fees_usdc') or 0):,.2f}</b>"
+            + (
+                f" · locks {m.get('lock_in_count', 0)} · "
+                f"payouts {m.get('payout_count', 0)} · "
+                f"refunds {m.get('refund_count', 0)}"
+                if m.get("lock_in_count") is not None
+                else ""
+            )
+            + "\n"
+        )
+    if m.get("gas_samples"):
+        lines.append(
+            f"Gas samples: <b>{m.get('gas_samples')}</b> txs · "
+            f"gas_used total <b>{m.get('gas_used_total', 0):,}</b>\n"
+        )
+
+    hist = m.get("challenges_by_status") or {}
+    if hist:
+        bits = [f"{k}={v}" for k, v in sorted(hist.items())]
+        lines.append(f"Status mix: <i>{', '.join(bits)}</i>\n")
+
+    for chain, data in (m.get("by_chain") or {}).items():
+        if not data.get("matches") and not data.get("volume_usdc"):
+            continue
+        lines.append(
+            f"• {chain}: {data.get('matches', 0)} resolved · "
+            f"~${float(data.get('volume_usdc') or 0):,.0f} dual-lock"
+        )
+    lines.append("\nArc 1.5× PLAY · Avalanche 1.25× · Base 1.0×")
     return "\n".join(lines)

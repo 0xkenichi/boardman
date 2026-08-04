@@ -362,8 +362,17 @@ async def process_balance_change(
     return "outflow"
 
 
+def _watch_chain_ids() -> list[str]:
+    """Only poll chains with Circle + USDC (skip MiniPay/Celo host shells)."""
+    out: list[str] = []
+    for c in list_chains():
+        if c.get("circle_blockchain") and c.get("usdc_address"):
+            out.append(c["id"])
+    return out or ["arc"]
+
+
 async def watch_user_balances(user_id: str) -> dict[str, str]:
-    """Poll all chains for one user. Returns chain → action.
+    """Poll settlement chains for one user. Returns chain → action.
 
     Uses strict balance (RPC error ≠ $0) so we never fake a deposit/outflow
     when the node is flaky or the play address just rotated.
@@ -373,12 +382,12 @@ async def watch_user_balances(user_id: str) -> dict[str, str]:
     from gaming.src.backend.services.clawstation_circle import get_usdc_balance_strict
 
     actions: dict[str, str] = {}
-    chains = [c["id"] for c in list_chains()]
+    chains = _watch_chain_ids()
 
     async def _one(cid: str) -> tuple[str, Optional[Decimal], Optional[str]]:
         try:
             bal, err = await asyncio.wait_for(
-                get_usdc_balance_strict(user_id, chain_id=cid), timeout=12
+                get_usdc_balance_strict(user_id, chain_id=cid), timeout=10
             )
             if err:
                 logger.warning(
@@ -395,36 +404,42 @@ async def watch_user_balances(user_id: str) -> dict[str, str]:
         if bal is None:
             actions[cid] = "error"
             continue
-        # Snapshot key includes nothing about address rotation recovery —
-        # first observation after a large unexplained jump to zero is still
-        # notified as outflow (real spend). RPC errors no longer produce jumps.
         old = get_snapshot(user_id, cid)
         actions[cid] = await process_balance_change(user_id, cid, old, bal) or "none"
     return actions
 
 
 async def watch_all_wallets() -> dict[str, Any]:
-    """One scheduler tick: poll every Telegram-linked wallet."""
+    """One scheduler tick: poll Telegram-linked wallets (bounded concurrency)."""
+    import asyncio
+    import os
+
     profiles = list_watch_profiles()
     summary = {"users": 0, "deposits": 0, "outflows": 0, "baselines": 0, "errors": 0}
-    for p in profiles:
+    conc = max(1, min(4, int(os.getenv("WALLET_WATCH_CONCURRENCY", "2"))))
+    sem = asyncio.Semaphore(conc)
+
+    async def _user(p: dict) -> None:
         uid = p["id"]
         summary["users"] += 1
-        try:
-            actions = await watch_user_balances(uid)
-            for a in actions.values():
-                if a == "deposit":
-                    summary["deposits"] += 1
-                elif a == "outflow":
-                    summary["outflows"] += 1
-                elif a == "baseline":
-                    summary["baselines"] += 1
-                elif a == "error":
-                    summary["errors"] += 1
-        except Exception:
-            logger.exception("[WalletWatch] user %s failed", uid[:8])
-            summary["errors"] += 1
+        async with sem:
+            try:
+                actions = await watch_user_balances(uid)
+                for a in actions.values():
+                    if a == "deposit":
+                        summary["deposits"] += 1
+                    elif a == "outflow":
+                        summary["outflows"] += 1
+                    elif a == "baseline":
+                        summary["baselines"] += 1
+                    elif a == "error":
+                        summary["errors"] += 1
+            except Exception:
+                logger.exception("[WalletWatch] user %s failed", uid[:8])
+                summary["errors"] += 1
 
-    if summary["deposits"] or summary["outflows"]:
+    await asyncio.gather(*[_user(p) for p in profiles])
+
+    if summary["deposits"] or summary["outflows"] or summary["errors"]:
         logger.info("[WalletWatch] tick %s", summary)
     return summary

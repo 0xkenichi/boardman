@@ -131,21 +131,63 @@ async def cmd_playbook(message: types.Message) -> None:
     )
 
 
+def _can_view_ops_metrics(user: types.User | None) -> bool:
+    """Full ops metrics are owner-only (@stillkenichi / admin Telegram IDs)."""
+    if not user:
+        return False
+    from gaming.src.backend.services.safety import is_admin
+
+    if is_admin(user.id):
+        return True
+    # Hard-allow owner handle even if CLAW_ADMIN_TELEGRAM_IDS is unset
+    uname = (user.username or "").strip().lower()
+    if uname == "stillkenichi":
+        return True
+    return False
+
+
 @router.message(Command("leaderboard"))
 @router.message(Command("board"))
 @router.message(Command("stats"))
 async def cmd_board(message: types.Message) -> None:
-    """Leaderboard + metrics shortcut."""
+    """Public leaderboard only (no internal ops metrics)."""
     from gaming.src.backend.services.rematch_public import (
         format_leaderboard_text,
-        format_metrics_text,
-        get_chain_metrics,
         get_leaderboard,
     )
 
     try:
-        text = format_leaderboard_text(get_leaderboard(15), 15)
-        text += "\n\n" + format_metrics_text(get_chain_metrics())
+        import asyncio
+
+        lb = await asyncio.to_thread(get_leaderboard, 15)
+        text = format_leaderboard_text(lb, 15)
     except Exception as exc:
         text = f"❌ Could not load board: {escape(str(exc))}"
+    await message.answer(text, parse_mode=ParseMode.HTML, reply_markup=main_menu())
+
+
+@router.message(Command("metrics"))
+async def cmd_metrics(message: types.Message) -> None:
+    """Owner-only testnet ops metrics (users, volume, fees, gas)."""
+    user = message.from_user
+    if not _can_view_ops_metrics(user):
+        await message.answer(
+            "That command is for the operator only.\n"
+            "Use /board or /leaderboard for the public standings.",
+            reply_markup=main_menu(),
+        )
+        return
+
+    from gaming.src.backend.services.rematch_public import (
+        format_metrics_text,
+        get_ops_metrics,
+    )
+
+    try:
+        import asyncio
+
+        metrics = await asyncio.to_thread(get_ops_metrics)
+        text = format_metrics_text(metrics)
+    except Exception as exc:
+        text = f"❌ Could not load metrics: {escape(str(exc))}"
     await message.answer(text, parse_mode=ParseMode.HTML, reply_markup=main_menu())

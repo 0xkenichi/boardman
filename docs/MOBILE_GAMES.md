@@ -27,6 +27,7 @@ Battle royale is deferred until there is a house rule with a single finite winne
 - `mobile.fc_mobile` — **FC Mobile** (flagship)
 - `mobile.efootball` — eFootball  
 - `mobile.nba_2k_mobile` — NBA 2K Mobile  
+- `mobile.8_ball_pool` — **8 Ball Pool** (Miniclip 1v1; not GamePigeon)  
 - `mobile.rocket_league_sideswipe` — RL Sideswipe  
 
 ### Shooters / battle

@@ -45,27 +45,30 @@ async def cmd_balance(message: types.Message) -> None:
             }
 
     async def _play():
-        try:
-            from backend.supabase_client import get_supabase
+        def _sync():
+            try:
+                from backend.supabase_client import get_supabase
 
-            r = (
-                get_supabase()
-                .table("profiles")
-                .select("play_points,play_win_streak,play_best_streak")
-                .eq("id", profile["id"])
-                .limit(1)
-                .execute()
-            )
-            row = (r.data or [None])[0] if r.data else None
-            if not row:
+                r = (
+                    get_supabase()
+                    .table("profiles")
+                    .select("play_points,play_win_streak,play_best_streak")
+                    .eq("id", profile["id"])
+                    .limit(1)
+                    .execute()
+                )
+                row = (r.data or [None])[0] if r.data else None
+                if not row:
+                    return 0, 0, 0
+                return (
+                    int(row.get("play_points") or 0),
+                    int(row.get("play_win_streak") or 0),
+                    int(row.get("play_best_streak") or 0),
+                )
+            except Exception:
                 return 0, 0, 0
-            return (
-                int(row.get("play_points") or 0),
-                int(row.get("play_win_streak") or 0),
-                int(row.get("play_best_streak") or 0),
-            )
-        except Exception:
-            return 0, 0, 0
+
+        return await asyncio.to_thread(_sync)
 
     summary, play_tuple = await asyncio.gather(_summary(), _play())
     play, streak, best = play_tuple

@@ -236,11 +236,16 @@ class ScoreVerifier:
             if outcome == "binary_winner":
                 hint_lines.extend(
                     [
-                        "Binary match: set the WINNER as higher score.",
-                        "If you see 'You Win' / Victory for the local player on the left, use player1_score=1, player2_score=0.",
-                        "If 'You Lose' / Defeat, use player1_score=0, player2_score=1.",
-                        "If both names and a clear winner label, map winner to the higher of the two scores.",
-                        "Use confidence < 0.7 if the screen is not a final result (e.g. BR placement only).",
+                        "BINARY WIN/LOSE match (8 Ball Pool, Free Fire 1v1, GamePigeon, etc.) — NOT football scores.",
+                        "player1_score / player2_score are NOT goals; they encode winner as 1 vs 0:",
+                        "  • Gold 'Winner' above LEFT avatar → player1_score=1, player2_score=0",
+                        "  • Gold 'Winner' above RIGHT avatar → player1_score=0, player2_score=1",
+                        "  • 'You Win' / Victory for local player → 1-0; 'You Lose' / Defeat → 0-1",
+                        "Also extract usernames into player1_id (left) and player2_id (right).",
+                        "8 Ball Pool (Miniclip): VS layout, pool table BG, coin prize between players is normal.",
+                        "Do not invent a football scoreline like 5-3 for these games.",
+                        "Ignore top cash balance, Share/Rematch/Change Bet buttons, and mid-game tables.",
+                        "Use confidence < 0.7 if this is not a final result (lobby, BR rank list, mid-game).",
                     ]
                 )
             else:

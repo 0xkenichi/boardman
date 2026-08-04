@@ -11,74 +11,84 @@ games:
     display_name: "8 Ball"
     enabled: true
     outcome_type: binary_winner
-    result_screen: "You Win / You Lose or cleared table"
+    result_screen: "GamePigeon iMessage bubble — flat cartoon table; You Win / You Lose after 8-ball"
     ai_hints:
-      - "GamePigeon 8 Ball final screen"
-      - "Look for You Win, You Lose, or winner name"
+      - "GamePigeon 8 Ball inside iMessage (flat 2D cartoon table, Messages chrome)"
+      - "Accept only final state: You Win, You Lose, or winner after 8-ball sunk"
+      - "NOT Miniclip 8 Ball Pool (no 3D avatars, no gold Winner VS screen, no piggy prize)"
+      - "Reject mid-shot aiming, power bar only, or table without end banner"
     duration_hint_min: 15
 
   - game_id: imessage.basketball
     display_name: "Basketball"
     enabled: true
     outcome_type: scoreline
-    result_screen: "Final score both players"
+    result_screen: "Final points both players in GamePigeon bubble"
     ai_hints:
-      - "Basketball score total"
-      - "Two scores or winner banner"
+      - "GamePigeon Basketball end — two numeric scores for both players"
+      - "Extract home/left and away/right point totals as integers"
+      - "Reject mid-shot hoop UI without final totals"
     duration_hint_min: 10
 
   - game_id: imessage.archers
     display_name: "Archers"
     enabled: true
     outcome_type: scoreline
-    result_screen: "Points total"
+    result_screen: "Final archery points both players"
     ai_hints:
-      - "Archers final points"
+      - "GamePigeon Archers / Archery final points both sides"
+      - "Reject mid-round aiming without final scoreboard"
     duration_hint_min: 10
 
   - game_id: imessage.darts
     display_name: "Darts"
     enabled: true
     outcome_type: scoreline
-    result_screen: "Final dart scores"
+    result_screen: "Final dart scores both players"
     ai_hints:
-      - "Darts final scoreboard"
+      - "GamePigeon Darts final scoreboard — both player totals"
+      - "Reject in-progress dartboard only"
     duration_hint_min: 15
 
   - game_id: imessage.sea_battle
     display_name: "Sea Battle"
     enabled: true
     outcome_type: binary_winner
-    result_screen: "Fleet destroyed / You Win"
+    result_screen: "Fleet destroyed / You Win in chat bubble"
     ai_hints:
-      - "Sea Battle winner screen"
+      - "GamePigeon Sea Battle end — You Win or fleet destroyed"
+      - "Reject mid-grid without winner banner"
     duration_hint_min: 20
 
   - game_id: imessage.cup_pong
     display_name: "Cup Pong"
     enabled: true
     outcome_type: binary_winner
-    result_screen: "Cups cleared / winner"
+    result_screen: "Cups cleared / You Win"
     ai_hints:
-      - "Cup Pong final"
+      - "GamePigeon Cup Pong final — cups gone or You Win"
+      - "Reject mid-throw without winner"
     duration_hint_min: 15
 
   - game_id: imessage.word_hunt
     display_name: "Word Hunt"
     enabled: true
     outcome_type: scoreline
-    result_screen: "Points both players"
+    result_screen: "Points both players after timer"
     ai_hints:
-      - "Word Hunt final scores"
+      - "GamePigeon Word Hunt end — both SCORE totals (often thousands)"
+      - "Extract two integer scores; higher score wins for verification"
+      - "Reject letter grid mid-timer without final scores"
     duration_hint_min: 5
 
   - game_id: imessage.anagrams
     display_name: "Anagrams"
     enabled: true
     outcome_type: scoreline
-    result_screen: "Final points"
+    result_screen: "Final points both players"
     ai_hints:
-      - "Anagrams score"
+      - "GamePigeon Anagrams final points both players"
+      - "Reject mid-game letter tiles only"
     duration_hint_min: 5
 
   - game_id: imessage.four_in_a_row
@@ -87,34 +97,40 @@ games:
     outcome_type: binary_winner
     result_screen: "Four connected / You Win"
     ai_hints:
-      - "Connect four win screen"
+      - "GamePigeon 4 in a Row / Connect Four — You Win or four-in-a-row highlight"
+      - "Reject mid-board without win state"
     duration_hint_min: 10
 
   - game_id: imessage.checkers
     display_name: "Checkers"
     enabled: true
     outcome_type: binary_winner
-    result_screen: "Winner"
+    result_screen: "You Win / winner banner"
     ai_hints:
-      - "Checkers You Win"
+      - "GamePigeon Checkers end — You Win or no pieces left for loser"
+      - "Reject mid-game only"
     duration_hint_min: 20
 
   - game_id: imessage.chess
     display_name: "Chess"
     enabled: true
     outcome_type: binary_winner  # draws: policy later
-    result_screen: "Checkmate / resign / win"
+    result_screen: "Checkmate / resign / You Win (known quirky stalemate copy)"
     ai_hints:
-      - "Chess game over winner"
+      - "GamePigeon Chess game over — checkmate, resign, You Win / I lost messaging"
+      - "Binary win only; draws need human review"
+      - "Reject mid-game board without game-over"
     duration_hint_min: 30
 
   - game_id: imessage.mini_golf
     display_name: "Mini Golf"
     enabled: true
     outcome_type: scoreline  # lower strokes wins — encode in verifier later
-    result_screen: "Stroke totals"
+    result_screen: "Stroke totals both players"
     ai_hints:
-      - "Mini Golf final strokes"
+      - "GamePigeon Mini Golf final stroke totals both players"
+      - "Lower strokes is better — still report both numbers as scoreline"
+      - "Reject mid-hole only"
     duration_hint_min: 20
 
   # deferred examples (enabled: false until proof quality is solid)

@@ -29,6 +29,7 @@ from gaming.src.bot.handlers import submit_score  # noqa: E402
 from gaming.src.bot.handlers import dispute  # noqa: E402
 from gaming.src.bot.handlers import simple_ui  # noqa: E402
 from gaming.src.bot.handlers import admin_safety  # noqa: E402
+from gaming.src.bot.handlers import tournament  # noqa: E402
 from gaming.src.bot.handlers import fallback  # noqa: E402
 from gaming.src.bot.jobs.expiry import start_expiry_scheduler  # noqa: E402
 from gaming.src.bot.utils.notify import set_bot  # noqa: E402
@@ -38,6 +39,10 @@ logger = logging.getLogger(__name__)
 
 def _build_dispatcher() -> Dispatcher:
     dp = Dispatcher(storage=MemoryStorage())
+    # Instant callback.answer + debounce double-taps (stops spinner / dual replies)
+    from gaming.src.bot.middleware.ux_speed import UxCallbackMiddleware
+
+    dp.callback_query.middleware(UxCallbackMiddleware())
     # Button-first UX (FSM) — register early for menu callbacks
     dp.include_router(simple_ui.router)
     dp.include_router(start.router)
@@ -53,6 +58,7 @@ def _build_dispatcher() -> Dispatcher:
     dp.include_router(proof.router)
     dp.include_router(dispute.router)
     dp.include_router(admin_safety.router)
+    dp.include_router(tournament.router)
     # Last: catch anything unmatched so Telegram never gets silence
     dp.include_router(fallback.router)
     return dp
@@ -72,6 +78,8 @@ async def _set_bot_commands(bot: Bot) -> None:
         BotCommand(command="support_id", description="Support ID"),
         BotCommand(command="leaderboard", description="Leaderboard"),
         BotCommand(command="board", description="Public board"),
+        BotCommand(command="tlist", description="Tournament cups"),
+        # /metrics and ops /tcreate are operator-only — not listed
     ]
     await bot.set_my_commands(commands)
 

@@ -219,16 +219,49 @@ def match_actions_menu(challenge: dict, profile_id: str) -> InlineKeyboardMarkup
             )
 
     if status in ("locked", "playing", "submitted"):
+        game_id = str(challenge.get("game") or challenge.get("game_type") or "")
+        binary = False
+        report_btn = "📸 Submit result — how to"
+        try:
+            from gaming.src.backend.services.game_catalog import is_binary_outcome
+
+            binary = is_binary_outcome(game_id)
+            # Button label reflects how *this* game is reported
+            report_btn = (
+                "📸 Report result (W or L)"
+                if binary
+                else "📸 Report score (e.g. 5-3)"
+            )
+        except Exception:
+            pass
+
         my_side = (
             challenge.get("creator_side")
             if is_creator
             else challenge.get("opponent_side")
         )
+        # Scoreline games need HOME/AWAY; binary win/lose still can use side for mapping
         if not my_side:
-            builder.row(
-                InlineKeyboardButton(text="🏠 I am HOME", callback_data=f"ui:side:{cid}:home"),
-                InlineKeyboardButton(text="✈️ I am AWAY", callback_data=f"ui:side:{cid}:away"),
-            )
+            if binary:
+                builder.row(
+                    InlineKeyboardButton(
+                        text="🏠 I am HOME (optional)",
+                        callback_data=f"ui:side:{cid}:home",
+                    ),
+                    InlineKeyboardButton(
+                        text="✈️ I am AWAY (optional)",
+                        callback_data=f"ui:side:{cid}:away",
+                    ),
+                )
+            else:
+                builder.row(
+                    InlineKeyboardButton(
+                        text="🏠 I am HOME", callback_data=f"ui:side:{cid}:home"
+                    ),
+                    InlineKeyboardButton(
+                        text="✈️ I am AWAY", callback_data=f"ui:side:{cid}:away"
+                    ),
+                )
         else:
             builder.row(
                 InlineKeyboardButton(
@@ -238,7 +271,7 @@ def match_actions_menu(challenge: dict, profile_id: str) -> InlineKeyboardMarkup
             )
         builder.row(
             InlineKeyboardButton(
-                text="📸 Submit result (photo)",
+                text=report_btn,
                 callback_data=f"ui:report:{cid}",
             ),
         )

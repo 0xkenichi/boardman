@@ -579,7 +579,7 @@ async def settle_challenge(challenge_id: str, admin_winner_id: Optional[str] = N
                 "challenge_id": challenge_id,
             }
 
-        if action == "sides_conflict":
+        if action in ("sides_conflict", "identity_conflict"):
             try:
                 await flag_dispute(challenge_id)
             except EscrowError as exc:

@@ -24,6 +24,26 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 
+def _circle_fee_level() -> str:
+    """Circle W3S feeLevel: LOW | MEDIUM | HIGH.
+
+    Testnet default LOW (cheaper/faster inclusion on Arc). Override with
+    CIRCLE_FEE_LEVEL=MEDIUM if a chain rejects LOW.
+    """
+    lvl = (os.getenv("CIRCLE_FEE_LEVEL") or "LOW").strip().upper()
+    if lvl not in ("LOW", "MEDIUM", "HIGH"):
+        lvl = "LOW"
+    return lvl
+
+
+def _circle_tx_poll_sec() -> float:
+    """Seconds between Circle status polls (default 1.0; was 2.0)."""
+    try:
+        return max(0.5, float(os.getenv("CIRCLE_TX_POLL_SEC") or "1.0"))
+    except ValueError:
+        return 1.0
+
+
 class CircleWalletService:
     def __init__(
         self,
@@ -414,16 +434,17 @@ class CircleWalletService:
                 "tokenId": token_id,
                 "spender": spender_address,
                 "amounts": [str(amount_wei)],
-                "feeLevel": "MEDIUM",
+                "feeLevel": _circle_fee_level(),
             }
 
             logger.info(
-                "[Circle] approve tokenId=%s wallet=%s spender=%s amount=%s chain=%s",
+                "[Circle] approve tokenId=%s wallet=%s spender=%s amount=%s chain=%s fee=%s",
                 token_id,
                 wallet_id,
                 spender_address,
                 amount_usdc,
                 self.blockchain,
+                payload["feeLevel"],
             )
             response = requests.post(
                 f"{self.api_url}/w3s/developer/transactions/approve",
@@ -494,7 +515,7 @@ class CircleWalletService:
                 "destinationAddress": to_address,
                 "amounts": [str(amount_wei)],
                 # Top-level feeLevel works on Arc; nested fee object is rejected
-                "feeLevel": "MEDIUM",
+                "feeLevel": _circle_fee_level(),
             }
 
             response = requests.post(
@@ -550,6 +571,7 @@ class CircleWalletService:
             # Circle expects abiParameters as strings
             abi_params = [str(a) for a in (args or [])]
             # Arc (and current W3S API) wants top-level feeLevel, not nested fee config
+            fee = _circle_fee_level()
             payload = {
                 "idempotencyKey": str(uuid.uuid4()),
                 "entitySecretCiphertext": ciphertext,
@@ -557,14 +579,15 @@ class CircleWalletService:
                 "contractAddress": contract_address,
                 "abiFunctionSignature": function_signature,
                 "abiParameters": abi_params,
-                "feeLevel": "MEDIUM",
+                "feeLevel": fee,
             }
             logger.info(
-                "[Circle] contractExecution %s wallet=%s contract=%s args=%s",
+                "[Circle] contractExecution %s wallet=%s contract=%s args=%s fee=%s",
                 function_signature,
                 wallet_id,
                 contract_address,
                 abi_params,
+                fee,
             )
             response = requests.post(
                 f"{self.api_url}/w3s/developer/transactions/contractExecution",
@@ -573,10 +596,11 @@ class CircleWalletService:
                 timeout=45,
             )
             if response.status_code not in (200, 201):
-                # Retry once with LOW if MEDIUM rejected
+                # Retry once with alternate fee if primary rejected
                 if response.status_code == 400:
+                    alt = "MEDIUM" if fee == "LOW" else "LOW"
                     payload["idempotencyKey"] = str(uuid.uuid4())
-                    payload["feeLevel"] = "LOW"
+                    payload["feeLevel"] = alt
                     response = requests.post(
                         f"{self.api_url}/w3s/developer/transactions/contractExecution",
                         json=payload,
@@ -656,22 +680,13 @@ class CircleWalletService:
 
     def wait_for_transaction(self, transaction_id: str, max_wait_seconds: int = 120) -> Dict:
         """
-        Poll transaction until it's confirmed or fails.
+        Poll transaction until confirmed or failed (sync — blocks the thread).
 
-        Args:
-            transaction_id: Circle transaction ID
-            max_wait_seconds: Max time to wait
-
-        Returns:
-            {
-                "success": bool,
-                "status": str,  # CONFIRMED or FAILED
-                "tx_hash": str,
-                "time_waited": int (seconds)
-            }
+        Prefer :meth:`wait_for_transaction_async` from async bot/API code so
+        Telegram polling is not frozen for the whole wait.
         """
         start_time = time.time()
-        poll_interval = 3  # seconds
+        poll_interval = _circle_tx_poll_sec()
 
         while time.time() - start_time < max_wait_seconds:
             result = self.get_transaction_status(transaction_id)
@@ -681,7 +696,7 @@ class CircleWalletService:
 
             status = result["status"]
 
-            # Circle uses state/status: INITIATED, PENDING, QUEUED, SENT, CONFIRMED, COMPLETE, FAILED
+            # Circle: INITIATED, PENDING, QUEUED, SENT, CONFIRMED, COMPLETE, FAILED
             if status in ("CONFIRMED", "COMPLETE", "COMPLETE_CONFIRMED"):
                 return {
                     "success": True,
@@ -703,7 +718,51 @@ class CircleWalletService:
         return {
             "success": False,
             "error": f"Transaction not confirmed within {max_wait_seconds} seconds",
-            "status": "TIMEOUT"
+            "status": "TIMEOUT",
+        }
+
+    async def wait_for_transaction_async(
+        self, transaction_id: str, max_wait_seconds: int = 120
+    ) -> Dict:
+        """Async poll — does not block the event loop (uses asyncio.sleep + to_thread)."""
+        import asyncio
+
+        start_time = time.time()
+        poll_interval = _circle_tx_poll_sec()
+
+        while time.time() - start_time < max_wait_seconds:
+            result = await asyncio.to_thread(self.get_transaction_status, transaction_id)
+
+            if not result.get("success"):
+                return {"success": False, "error": result.get("error") or "status poll failed"}
+
+            status = result.get("status") or ""
+            if status in ("CONFIRMED", "COMPLETE", "COMPLETE_CONFIRMED"):
+                waited = int(time.time() - start_time)
+                logger.info(
+                    "[Circle] tx %s CONFIRMED in %ss",
+                    transaction_id[:12],
+                    waited,
+                )
+                return {
+                    "success": True,
+                    "status": "CONFIRMED",
+                    "tx_hash": result.get("tx_hash"),
+                    "time_waited": waited,
+                }
+            if status in ("FAILED", "DENIED", "CANCELLED"):
+                return {
+                    "success": False,
+                    "error": f"Transaction failed on-chain ({status})",
+                    "status": "FAILED",
+                    "time_waited": int(time.time() - start_time),
+                }
+            await asyncio.sleep(poll_interval)
+
+        return {
+            "success": False,
+            "error": f"Transaction not confirmed within {max_wait_seconds} seconds",
+            "status": "TIMEOUT",
         }
 
     def lock_stake_in_escrow(self, profile_id: str, wallet_id: str,

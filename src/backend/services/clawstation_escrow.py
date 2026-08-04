@@ -7,6 +7,7 @@ sideQuest taking custody of funds.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import os
@@ -245,6 +246,9 @@ async def approve_and_create_match(
     stake_usd: Decimal,
 ) -> dict:
     """Challenger: approve USDC + createMatch on the challenge settlement chain."""
+    import time as _time
+
+    t0 = _time.monotonic()
     challenge = _load_challenge(challenge_id)
     chain_id = _challenge_chain(challenge)
     escrow_address = _require_escrow(chain_id)
@@ -275,38 +279,59 @@ async def approve_and_create_match(
 
     circle = _circle(chain_id)
 
+    # All Circle HTTP + wait polling runs off the event loop so Telegram stays responsive
     logger.info("[Escrow] Approving USDC user=%s chain=%s match=%s", user_id, chain_id, challenge_id)
-    approve_result = circle.approve_usdc_transfer(
-        wallet_id=wallet_id,
-        amount_usdc=float(stake_usd),
-        spender_address=escrow_address,
+    approve_result = await asyncio.to_thread(
+        circle.approve_usdc_transfer,
+        wallet_id,
+        float(stake_usd),
+        escrow_address,
     )
     if not approve_result.get("success"):
         raise EscrowError(f"USDC approve failed: {approve_result.get('error')}")
 
     approve_tx_id = approve_result.get("transaction_id")
+    approve_waited = 0
     if approve_tx_id:
-        approve_wait = circle.wait_for_transaction(approve_tx_id, max_wait_seconds=120)
+        approve_wait = await circle.wait_for_transaction_async(
+            approve_tx_id, max_wait_seconds=90
+        )
         if not approve_wait.get("success"):
             raise EscrowError(f"USDC approve not confirmed: {approve_wait.get('error')}")
+        approve_waited = int(approve_wait.get("time_waited") or 0)
 
     logger.info("[Escrow] createMatch user=%s chain=%s match=%s", user_id, chain_id, challenge_id)
-    create_result = circle.execute_contract_function(
-        wallet_id=wallet_id,
-        contract_address=escrow_address,
-        function_signature="createMatch(bytes32,uint256)",
-        args=[match_id, str(stake_wei)],
+    create_result = await asyncio.to_thread(
+        circle.execute_contract_function,
+        wallet_id,
+        escrow_address,
+        "createMatch(bytes32,uint256)",
+        [match_id, str(stake_wei)],
     )
     if not create_result.get("success"):
         raise EscrowError(f"createMatch failed: {create_result.get('error')}")
 
     create_tx_id = create_result.get("transaction_id")
     tx_hash = create_result.get("tx_hash") or ""
+    create_waited = 0
     if create_tx_id:
-        create_wait = circle.wait_for_transaction(create_tx_id, max_wait_seconds=180)
+        create_wait = await circle.wait_for_transaction_async(
+            create_tx_id, max_wait_seconds=120
+        )
         if not create_wait.get("success"):
             raise EscrowError(f"createMatch not confirmed: {create_wait.get('error')}")
         tx_hash = create_wait.get("tx_hash") or tx_hash
+        create_waited = int(create_wait.get("time_waited") or 0)
+
+    elapsed = round(_time.monotonic() - t0, 1)
+    logger.info(
+        "[Escrow] createMatch done user=%s chain=%s elapsed=%ss approve_wait=%ss create_wait=%ss",
+        user_id,
+        chain_id,
+        elapsed,
+        approve_waited,
+        create_waited,
+    )
 
     _record_audit(
         challenge_id=challenge_id,
@@ -317,7 +342,14 @@ async def approve_and_create_match(
         circle_tx_id=create_tx_id,
         tx_hash=tx_hash,
         status="confirmed" if tx_hash else "pending",
-        metadata={"side": "creator", "match_id": match_id, "chain": chain_id},
+        metadata={
+            "side": "creator",
+            "match_id": match_id,
+            "chain": chain_id,
+            "elapsed_sec": elapsed,
+            "approve_wait_sec": approve_waited,
+            "create_wait_sec": create_waited,
+        },
     )
     _update_challenge(
         challenge_id,
@@ -345,6 +377,9 @@ async def approve_and_join_match(
     stake_usd: Decimal,
 ) -> dict:
     """Opponent: approve USDC + joinMatch on the challenge settlement chain."""
+    import time as _time
+
+    t0 = _time.monotonic()
     challenge = _load_challenge(challenge_id)
     chain_id = _challenge_chain(challenge)
     escrow_address = _require_escrow(chain_id)
@@ -384,37 +419,57 @@ async def approve_and_join_match(
     circle = _circle(chain_id)
 
     logger.info("[Escrow] Approving USDC opponent=%s chain=%s", user_id, chain_id)
-    approve_result = circle.approve_usdc_transfer(
-        wallet_id=wallet_id,
-        amount_usdc=float(stake_usd),
-        spender_address=escrow_address,
+    approve_result = await asyncio.to_thread(
+        circle.approve_usdc_transfer,
+        wallet_id,
+        float(stake_usd),
+        escrow_address,
     )
     if not approve_result.get("success"):
         raise EscrowError(f"USDC approve failed: {approve_result.get('error')}")
 
     approve_tx_id = approve_result.get("transaction_id")
+    approve_waited = 0
     if approve_tx_id:
-        approve_wait = circle.wait_for_transaction(approve_tx_id, max_wait_seconds=120)
+        approve_wait = await circle.wait_for_transaction_async(
+            approve_tx_id, max_wait_seconds=90
+        )
         if not approve_wait.get("success"):
             raise EscrowError(f"USDC approve not confirmed: {approve_wait.get('error')}")
+        approve_waited = int(approve_wait.get("time_waited") or 0)
 
     logger.info("[Escrow] joinMatch user=%s chain=%s", user_id, chain_id)
-    join_result = circle.execute_contract_function(
-        wallet_id=wallet_id,
-        contract_address=escrow_address,
-        function_signature="joinMatch(bytes32)",
-        args=[match_id],
+    join_result = await asyncio.to_thread(
+        circle.execute_contract_function,
+        wallet_id,
+        escrow_address,
+        "joinMatch(bytes32)",
+        [match_id],
     )
     if not join_result.get("success"):
         raise EscrowError(f"joinMatch failed: {join_result.get('error')}")
 
     join_tx_id = join_result.get("transaction_id")
     tx_hash = join_result.get("tx_hash") or ""
+    join_waited = 0
     if join_tx_id:
-        join_wait = circle.wait_for_transaction(join_tx_id, max_wait_seconds=180)
+        join_wait = await circle.wait_for_transaction_async(
+            join_tx_id, max_wait_seconds=120
+        )
         if not join_wait.get("success"):
             raise EscrowError(f"joinMatch not confirmed: {join_wait.get('error')}")
         tx_hash = join_wait.get("tx_hash") or tx_hash
+        join_waited = int(join_wait.get("time_waited") or 0)
+
+    elapsed = round(_time.monotonic() - t0, 1)
+    logger.info(
+        "[Escrow] joinMatch done user=%s chain=%s elapsed=%ss approve_wait=%ss join_wait=%ss",
+        user_id,
+        chain_id,
+        elapsed,
+        approve_waited,
+        join_waited,
+    )
 
     _record_audit(
         challenge_id=challenge_id,
@@ -425,7 +480,14 @@ async def approve_and_join_match(
         circle_tx_id=join_tx_id,
         tx_hash=tx_hash,
         status="confirmed" if tx_hash else "pending",
-        metadata={"side": "opponent", "match_id": match_id, "chain": chain_id},
+        metadata={
+            "side": "opponent",
+            "match_id": match_id,
+            "chain": chain_id,
+            "elapsed_sec": elapsed,
+            "approve_wait_sec": approve_waited,
+            "join_wait_sec": join_waited,
+        },
     )
     _update_challenge(
         challenge_id,
@@ -479,6 +541,7 @@ async def resolve_match(challenge_id: str, winner_address: str) -> dict:
         payout = amount * Decimal("2") * Decimal("0.93")
         fee = amount * Decimal("2") * Decimal("0.07")
 
+        gas_used = result.get("gas_used")
         _record_audit(
             challenge_id=challenge_id,
             profile_id=winner_id,
@@ -492,6 +555,8 @@ async def resolve_match(challenge_id: str, winner_address: str) -> dict:
                 "fee_usdc": float(fee),
                 "total_pot_usdc": float(amount * 2),
                 "chain": chain_id,
+                "gas_used": gas_used,
+                "block": result.get("block"),
             },
         )
         _record_audit(
@@ -501,7 +566,11 @@ async def resolve_match(challenge_id: str, winner_address: str) -> dict:
             amount=fee,
             idempotency_key=f"fee-{challenge_id}",
             status="confirmed",
-            metadata={"winner_id": winner_id, "chain": chain_id},
+            metadata={
+                "winner_id": winner_id,
+                "chain": chain_id,
+                "gas_used": gas_used,
+            },
         )
         _update_challenge(
             challenge_id,
@@ -556,7 +625,12 @@ async def cancel_match(challenge_id: str) -> dict:
                 circle_tx_id=result.get("tx_hash"),
                 tx_hash=result.get("tx_hash"),
                 status="confirmed",
-                metadata={"side": side, "chain": chain_id},
+                metadata={
+                    "side": side,
+                    "chain": chain_id,
+                    "gas_used": result.get("gas_used"),
+                    "block": result.get("block"),
+                },
             )
         _update_challenge(challenge_id, {"status": "cancelled"})
 

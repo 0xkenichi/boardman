@@ -152,7 +152,8 @@ async def cmd_lock_stake(message: types.Message) -> None:
         return
 
     await message.answer(
-        f"⏳ Locking ${amount:,.2f} USDC on {chain_id} (can take ~30–90s)…",
+        f"⏳ Locking ${amount:,.2f} USDC on {chain_id} "
+        f"(approve + on-chain lock; often ~15–60s on Arc)…",
         parse_mode=None,
     )
 
@@ -211,6 +212,7 @@ async def cmd_lock_stake(message: types.Message) -> None:
     if is_opponent:
         from gaming.src.bot.utils.flow import next_steps_after_lock
 
-        play_msg = next_steps_after_lock(challenge_id)
+        game_id = str(challenge.get("game") or challenge.get("game_type") or "")
+        play_msg = next_steps_after_lock(challenge_id, game_id=game_id)
         await notify_user(challenge["creator_id"], play_msg)
         await notify_user(profile["id"], play_msg)

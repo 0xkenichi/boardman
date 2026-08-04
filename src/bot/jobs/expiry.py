@@ -141,14 +141,27 @@ async def nudge_and_timeout_reports() -> dict:
         if should_nudge(ch):
             try:
                 action = analysis["action"]
+                game_id = str(ch.get("game") or ch.get("game_type") or "")
+                try:
+                    from gaming.src.backend.services.game_catalog import (
+                        how_to_report_short,
+                        is_binary_outcome,
+                    )
+
+                    howto = how_to_report_short(game_id)
+                    cap = "W" if is_binary_outcome(game_id) else "5-3"
+                except Exception:
+                    howto = "Tap <b>Submit result</b> and follow the on-screen instructions."
+                    cap = "5-3 or W/L"
+
                 if action == "wait_opponent" and ch.get("opponent_id"):
                     await notify_user(
                         ch["opponent_id"],
-                        f"⏰ Reminder: your opponent already reported on {code(cid)}.\n"
-                        f"Send your FT <b>photo</b> with caption:\n"
-                        f"<code>/submit_score {cid} 5-3</code>\n\n"
-                        f"⚠️ If you don't report in time, they can win by "
-                        f"<b>no-show</b> (their screenshot + AI).",
+                        f"⏰ Friendly reminder on {code(cid)}:\n"
+                        f"Your opponent already reported.\n\n"
+                        f"{howto}\n\n"
+                        f"Or: <code>/submit_score {cid} {cap}</code>\n\n"
+                        f"⚠️ If you stay silent, they can win by <b>no-show</b>.",
                     )
                     await notify_user(
                         ch["creator_id"],
@@ -160,9 +173,10 @@ async def nudge_and_timeout_reports() -> dict:
                 elif action == "wait_creator":
                     await notify_user(
                         ch["creator_id"],
-                        f"⏰ Reminder: your opponent already reported on {code(cid)}.\n"
-                        f"Send FT photo caption:\n"
-                        f"<code>/submit_score {cid} 5-3</code>\n\n"
+                        f"⏰ Friendly reminder on {code(cid)}:\n"
+                        f"Your opponent already reported.\n\n"
+                        f"{howto}\n\n"
+                        f"Or: <code>/submit_score {cid} {cap}</code>\n\n"
                         f"⚠️ Silence can mean a no-show loss.",
                     )
                     if ch.get("opponent_id"):
@@ -173,18 +187,15 @@ async def nudge_and_timeout_reports() -> dict:
                     await mark_nudge_sent(cid)
                     nudged += 1
                 elif action == "wait_screenshots":
+                    photo_nudge = (
+                        f"📸 Please send your final-screen photo for {code(cid)}.\n\n"
+                        f"{howto}\n\n"
+                        f"Or: <code>/submit_score {cid} {cap}</code>"
+                    )
                     if analysis.get("missing_creator_shot"):
-                        await notify_user(
-                            ch["creator_id"],
-                            f"📸 Please attach a FT photo for {code(cid)}:\n"
-                            f"<code>/submit_score {cid} 5-3</code>",
-                        )
+                        await notify_user(ch["creator_id"], photo_nudge)
                     if analysis.get("missing_opponent_shot") and ch.get("opponent_id"):
-                        await notify_user(
-                            ch["opponent_id"],
-                            f"📸 Please attach a FT photo for {code(cid)}:\n"
-                            f"<code>/submit_score {cid} 5-3</code>",
-                        )
+                        await notify_user(ch["opponent_id"], photo_nudge)
                     await mark_nudge_sent(cid)
                     nudged += 1
             except Exception:
@@ -237,22 +248,24 @@ def start_expiry_scheduler(interval_minutes: int = 2) -> AsyncIOScheduler:
         id="clawstation_report_nudge",
         replace_existing=True,
     )
-    # Deposit / withdrawal detection (balance poll). Default 45s.
-    wallet_sec = int(os.getenv("WALLET_WATCH_INTERVAL_SEC", "45"))
-    scheduler.add_job(
-        watch_wallet_activity,
-        "interval",
-        seconds=max(20, wallet_sec),
-        id="clawstation_wallet_watch",
-        replace_existing=True,
-        # Don't stack ticks if RPC is slow
-        max_instances=1,
-        coalesce=True,
-    )
+    # Deposit / withdrawal detection. Default 120s (was 45s — starved Telegram handlers).
+    # Set WALLET_WATCH_INTERVAL_SEC=0 to disable.
+    wallet_sec = int(os.getenv("WALLET_WATCH_INTERVAL_SEC", "120"))
+    if wallet_sec > 0:
+        scheduler.add_job(
+            watch_wallet_activity,
+            "interval",
+            seconds=max(60, wallet_sec),
+            id="clawstation_wallet_watch",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=30,
+        )
     scheduler.start()
     logger.info(
         "[Jobs] Scheduler started (expiry+settlement+nudge every %sm, wallet watch every %ss)",
         interval_minutes,
-        max(20, wallet_sec),
+        max(60, wallet_sec) if wallet_sec > 0 else 0,
     )
     return scheduler

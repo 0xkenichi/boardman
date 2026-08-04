@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from typing import Any, Optional
 
 from aiogram.types import User
@@ -18,6 +19,19 @@ _PROFILE_SELECT = (
     "gaming_telegram_chat_id, play_points, play_win_streak, play_best_streak, "
     "gaming_wins, gaming_losses, gaming_draws"
 )
+
+# Short-lived profile cache so every button tap doesn't round-trip Supabase.
+# telegram_id -> (monotonic_ts, profile_dict)
+_PROFILE_CACHE: dict[int, tuple[float, dict]] = {}
+_PROFILE_CACHE_TTL = 45.0  # seconds
+
+
+def invalidate_profile_cache(telegram_id: Optional[int] = None) -> None:
+    """Drop cached profile(s). Call after wallet/tag changes if needed."""
+    if telegram_id is None:
+        _PROFILE_CACHE.clear()
+    else:
+        _PROFILE_CACHE.pop(int(telegram_id), None)
 
 
 def _get_supabase():
@@ -105,7 +119,35 @@ def _tag_taken(tag: str, exclude_id: Optional[str] = None) -> bool:
 
 
 async def get_or_create_profile(user: User) -> dict:
-    """Get or create a profile for a Telegram user (by ``telegram_id``)."""
+    """Get or create a profile for a Telegram user (by ``telegram_id``).
+
+    Supabase client is sync — run off the event loop so other bot handlers stay snappy.
+    Cached ~45s per telegram_id so menu taps stay fast.
+    """
+    import asyncio
+    import copy
+
+    tid = int(user.id)
+    hit = _PROFILE_CACHE.get(tid)
+    if hit is not None:
+        ts, prof = hit
+        if time.monotonic() - ts < _PROFILE_CACHE_TTL and prof.get("id"):
+            return copy.deepcopy(prof)
+
+    profile = await asyncio.to_thread(_get_or_create_profile_sync, user)
+    if profile and profile.get("id"):
+        _PROFILE_CACHE[tid] = (time.monotonic(), copy.deepcopy(profile))
+        # Bound cache size (casual bot: few hundred users max in memory)
+        if len(_PROFILE_CACHE) > 500:
+            cutoff = time.monotonic() - _PROFILE_CACHE_TTL
+            stale = [k for k, (t, _) in _PROFILE_CACHE.items() if t < cutoff]
+            for k in stale:
+                _PROFILE_CACHE.pop(k, None)
+    return profile
+
+
+def _get_or_create_profile_sync(user: User) -> dict:
+    """Sync body for :func:`get_or_create_profile`."""
     sb = _get_supabase()
     table = sb.table("profiles")
 
@@ -175,8 +217,7 @@ async def get_or_create_profile(user: User) -> dict:
     raise RuntimeError("Profile creation returned no data")
 
 
-async def get_profile_by_tag(tag: str) -> Optional[dict]:
-    """Look up a profile by ``gaming_tag`` (with or without @ / sq_ prefix)."""
+def _get_profile_by_tag_sync(tag: str) -> Optional[dict]:
     sb = _get_supabase()
     raw = tag.lstrip("@").strip()
     candidates = [raw, raw.lower()]
@@ -203,6 +244,13 @@ async def get_profile_by_tag(tag: str) -> Optional[dict]:
             logger.warning("[DB] get_profile_by_tag failed for %s", candidate, exc_info=True)
             continue
     return None
+
+
+async def get_profile_by_tag(tag: str) -> Optional[dict]:
+    """Look up a profile by ``gaming_tag`` (with or without @ / sq_ prefix)."""
+    import asyncio
+
+    return await asyncio.to_thread(_get_profile_by_tag_sync, tag)
 
 
 async def update_telegram_chat_id(user_id: str, chat_id: int) -> None:

@@ -146,7 +146,7 @@ async def set_preferred_chain(user_id: str, chain_id: str) -> str:
 
 
 def _on_chain_usdc(address: str, chain_id: str) -> tuple[Optional[Decimal], Optional[str]]:
-    """Read USDC for an address. Returns (balance, error). error set ⇒ do not treat as $0."""
+    """Read USDC for an address (sync). Returns (balance, error). error set ⇒ do not treat as $0."""
     if not address or not str(address).startswith("0x"):
         return None, "invalid address"
     cid = normalize_chain_id(chain_id)
@@ -159,6 +159,13 @@ def _on_chain_usdc(address: str, chain_id: str) -> tuple[Optional[Decimal], Opti
     if not result.get("success"):
         return None, str(result.get("error") or "rpc failed")
     return Decimal(str(result.get("balance_usdc", 0))), None
+
+
+async def _on_chain_usdc_async(
+    address: str, chain_id: str
+) -> tuple[Optional[Decimal], Optional[str]]:
+    """Non-blocking balance read for bot handlers / wallet watch."""
+    return await asyncio.to_thread(_on_chain_usdc, address, chain_id)
 
 
 async def ensure_user_wallet(user_id: str, chain_id: Optional[str] = None) -> dict:
@@ -189,9 +196,26 @@ async def ensure_user_wallet(user_id: str, chain_id: Optional[str] = None) -> di
     circle = _circle_for_chain(cid)
     prev_deposit = (profile.get("gaming_deposit_address") or "").lower()
 
+    # Fast path: reuse stored play address without a Circle round-trip on every /start.
+    # Set REMATCH_VALIDATE_WALLET_EVERY=1 to force Circle GET validation.
+    import os
+
+    validate_every = os.getenv("REMATCH_VALIDATE_WALLET_EVERY", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    if wallet_id and prev_deposit.startswith("0x") and not validate_every:
+        return {
+            "wallet_id": wallet_id,
+            "address": prev_deposit,
+            "blockchain": blockchain,
+            "chain_id": cid,
+        }
+
     # Validate cached wallet is actually on this blockchain
     if wallet_id:
-        fetched = circle.get_wallet(wallet_id)
+        fetched = await asyncio.to_thread(circle.get_wallet, wallet_id)
         if fetched.get("success") and fetched.get("wallet_address"):
             wb = (fetched.get("blockchain") or "").upper().replace("_", "-")
             want = blockchain.upper().replace("_", "-")
@@ -257,9 +281,10 @@ async def ensure_user_wallet(user_id: str, chain_id: Optional[str] = None) -> di
                 f"We will not create a second play address. /support"
             )
 
-    result = circle.create_custodial_wallet_for_user(
-        profile_id=user_id,
-        phone_number=None,
+    result = await asyncio.to_thread(
+        circle.create_custodial_wallet_for_user,
+        user_id,
+        None,
     )
     if not result.get("success"):
         raise CircleWalletError(
@@ -312,7 +337,7 @@ async def get_usdc_balance_strict(
         address = await get_deposit_address(user_id, chain_id=cid)
     except Exception as exc:
         return None, str(exc)
-    return _on_chain_usdc(address, cid)
+    return await _on_chain_usdc_async(address, cid)
 
 
 async def get_ledger_balance_usdc(user_id: str) -> Decimal:

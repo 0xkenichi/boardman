@@ -208,53 +208,125 @@ class BlockchainLayer:
     Usage:
         bl = BlockchainLayer()
         tx = await bl.resolve_match("match-uuid-abc", winner_wallet_address)
+
+        # Multi-chain (Arc / Base / Avalanche):
+        bl = get_blockchain_layer_for_chain("arc")
     """
 
-    def __init__(self):
-        network_key = os.getenv("NETWORK", "testnet").lower()
-        if network_key not in NETWORKS:
-            raise ValueError(f"Invalid NETWORK '{network_key}'. Must be 'testnet' or 'mainnet'.")
+    def __init__(
+        self,
+        *,
+        chain_id: Optional[str] = None,
+        rpc_url: Optional[str] = None,
+        usdc_address: Optional[str] = None,
+        escrow_address: Optional[str] = None,
+        explorer_tx: Optional[str] = None,
+        evm_chain_id: Optional[int] = None,
+        label: Optional[str] = None,
+    ):
+        # Legacy NETWORK=testnet|mainnet path when no chain_id override
+        if chain_id is None and rpc_url is None:
+            network_key = os.getenv("NETWORK", "testnet").lower()
+            if network_key not in NETWORKS:
+                raise ValueError(
+                    f"Invalid NETWORK '{network_key}'. Must be 'testnet' or 'mainnet'."
+                )
+            self.network = dict(NETWORKS[network_key])
+            self.network_key = network_key
+            escrow = os.getenv("CSC_ADDRESS", "") or os.getenv(
+                "CLAW_ESCROW_ADDRESS_BASE_SEPOLIA", ""
+            )
+        else:
+            # Multi-chain Rematch path (Arc-first)
+            self.network_key = (chain_id or "arc").lower()
+            self.network = {
+                "name": label or self.network_key,
+                "chain_id": int(evm_chain_id or 0),
+                "rpc_url": rpc_url or "",
+                "usdc_address": usdc_address or "",
+                "explorer": (explorer_tx or "").rstrip("/"),
+                "block_explorer_tx": explorer_tx or "",
+            }
+            escrow = escrow_address or ""
 
-        self.network = NETWORKS[network_key]
-        self.network_key = network_key
-        logger.info(f"[Blockchain] Connecting to {self.network['name']} ({self.network['rpc_url']})")
+        if rpc_url:
+            self.network["rpc_url"] = rpc_url
+        if usdc_address:
+            self.network["usdc_address"] = usdc_address
+        if explorer_tx:
+            self.network["block_explorer_tx"] = explorer_tx
+        if evm_chain_id:
+            self.network["chain_id"] = int(evm_chain_id)
 
-        self.w3 = Web3(Web3.HTTPProvider(self.network["rpc_url"], request_kwargs={"timeout": 10}))
-        # Base (OP Stack) does not require PoA middleware — blocks have normal extraData
+        logger.info(
+            "[Blockchain] Connecting to %s (%s)",
+            self.network.get("name"),
+            self.network.get("rpc_url"),
+        )
 
-        # Check connectivity but DON'T crash on startup — allow service to start
+        self.w3 = Web3(
+            Web3.HTTPProvider(self.network["rpc_url"], request_kwargs={"timeout": 20})
+        )
+
         try:
             is_connected = self.w3.is_connected()
             if not is_connected:
-                logger.error(f"[Blockchain] Cannot connect to {self.network['name']} RPC at {self.network['rpc_url']}. Blockchain features will be unavailable until the RPC becomes reachable.")
+                logger.error(
+                    "[Blockchain] Cannot connect to %s RPC at %s. "
+                    "Blockchain features will be unavailable until the RPC becomes reachable.",
+                    self.network.get("name"),
+                    self.network.get("rpc_url"),
+                )
         except Exception as e:
-            logger.error(f"[Blockchain] RPC connectivity check failed: {e}. Blockchain features will be unavailable.")
+            logger.error(
+                "[Blockchain] RPC connectivity check failed: %s. "
+                "Blockchain features will be unavailable.",
+                e,
+            )
 
-        # Admin wallet (resolver)
-        private_key = os.getenv("ADMIN_PRIVATE_KEY", "")
+        # Admin wallet (resolver) — cancel/resolve/dispute
+        private_key = (
+            os.getenv("ADMIN_PRIVATE_KEY")
+            or os.getenv("RESOLVER_PRIVATE_KEY")
+            or os.getenv("GAS_TANK_PRIVATE_KEY")
+            or ""
+        )
         if not private_key:
-            raise ValueError("[Blockchain] ADMIN_PRIVATE_KEY not set")
+            raise ValueError(
+                "[Blockchain] ADMIN_PRIVATE_KEY not set "
+                "(needed for cancel/refund/resolve on-chain)"
+            )
+        if private_key.startswith("0x"):
+            pass
         self.account = Account.from_key(private_key)
-        logger.info(f"[Blockchain] Admin wallet: {self.account.address}")
+        logger.info("[Blockchain] Admin wallet: %s", self.account.address)
 
         # Contracts
-        escrow_address = os.getenv("CSC_ADDRESS", "")
-        if not escrow_address or escrow_address in ("0x...", "0x0000", ""):
-            logger.warning("[Blockchain] CSC_ADDRESS not set — onchain features disabled")
+        if not escrow or escrow in ("0x...", "0x0000", ""):
+            logger.warning(
+                "[Blockchain] Escrow address not set for %s — onchain features disabled",
+                self.network_key,
+            )
             self.escrow = None
+            self.escrow_address = ""
         else:
+            self.escrow_address = escrow
             self.escrow = self.w3.eth.contract(
-                address=Web3.to_checksum_address(escrow_address),
+                address=Web3.to_checksum_address(escrow),
                 abi=CLAW_ESCROW_ABI,
             )
-        self.usdc = self.w3.eth.contract(
-            address=Web3.to_checksum_address(self.network["usdc_address"]),
-            abi=ERC20_ABI,
-        )
+        usdc = self.network.get("usdc_address") or ""
+        if usdc:
+            self.usdc = self.w3.eth.contract(
+                address=Web3.to_checksum_address(usdc),
+                abi=ERC20_ABI,
+            )
+        else:
+            self.usdc = None
 
-        if escrow_address and escrow_address not in ("0x...", "0x0000", ""):
-            logger.info(f"[Blockchain] ClawEscrow: {escrow_address}")
-        logger.info(f"[Blockchain] USDC:       {self.network['usdc_address']}")
+        if self.escrow_address:
+            logger.info("[Blockchain] ClawEscrow: %s", self.escrow_address)
+        logger.info("[Blockchain] USDC:       %s", usdc)
 
     # ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -274,33 +346,53 @@ class BlockchainLayer:
         """Convert USDC units to dollar amount."""
         return float(Decimal(str(amount_wei)) / Decimal(10 ** USDC_DECIMALS))
 
-    def _build_and_send(self, fn, gas_limit: int = 200_000) -> dict:
+    def _build_and_send(self, fn, gas_limit: int = 300_000) -> dict:
         """Build, sign, and send a transaction. Returns receipt."""
+        if self.escrow is None:
+            raise RuntimeError(
+                f"[Blockchain] Escrow contract not configured for {self.network_key}"
+            )
         nonce = self.w3.eth.get_transaction_count(self.account.address, "pending")
-        gas_price = self.w3.eth.gas_price
+        chain_id = int(self.network.get("chain_id") or self.w3.eth.chain_id)
 
-        txn = fn.build_transaction({
-            "from":     self.account.address,
-            "nonce":    nonce,
-            "gas":      gas_limit,
-            "gasPrice": gas_price,
-            "chainId":  self.network["chain_id"],
-        })
+        # EIP-1559 when available (Arc / modern nets); else legacy gasPrice
+        base: dict = {
+            "from": self.account.address,
+            "nonce": nonce,
+            "gas": gas_limit,
+            "chainId": chain_id,
+        }
+        try:
+            latest = self.w3.eth.get_block("latest")
+            base_fee = latest.get("baseFeePerGas")
+            if base_fee is not None:
+                tip = self.w3.to_wei(1, "gwei")
+                base["maxPriorityFeePerGas"] = tip
+                base["maxFeePerGas"] = int(base_fee) * 2 + tip
+            else:
+                base["gasPrice"] = self.w3.eth.gas_price
+        except Exception:
+            base["gasPrice"] = self.w3.eth.gas_price
+
+        txn = fn.build_transaction(base)
 
         signed = self.w3.eth.account.sign_transaction(txn, self.account.key)
-        tx_hash = self.w3.eth.send_raw_transaction(signed.raw_transaction)
-        logger.info(f"[Blockchain] Tx sent: {tx_hash.hex()}")
+        raw = getattr(signed, "raw_transaction", None) or getattr(signed, "rawTransaction")
+        tx_hash = self.w3.eth.send_raw_transaction(raw)
+        hx = tx_hash.hex() if hasattr(tx_hash, "hex") else str(tx_hash)
+        logger.info("[Blockchain] Tx sent: %s", hx)
 
         receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
         if receipt.status != 1:
-            raise RuntimeError(f"[Blockchain] Transaction reverted: {tx_hash.hex()}")
+            raise RuntimeError(f"[Blockchain] Transaction reverted: {hx}")
 
-        logger.info(f"[Blockchain] Tx confirmed in block {receipt.blockNumber}")
+        logger.info("[Blockchain] Tx confirmed in block %s", receipt.blockNumber)
+        explorer = self.network.get("block_explorer_tx") or ""
         return {
-            "tx_hash": tx_hash.hex(),
+            "tx_hash": hx,
             "block": receipt.blockNumber,
             "gas_used": receipt.gasUsed,
-            "explorer_url": self.network["block_explorer_tx"] + tx_hash.hex(),
+            "explorer_url": f"{explorer}{hx}" if explorer else hx,
         }
 
     # ─── Match Lifecycle ──────────────────────────────────────────────────────
@@ -338,10 +430,14 @@ class BlockchainLayer:
 
     async def cancel_match_onchain(self, match_id: str) -> dict:
         """Refunds both players. Called on timeout or admin cancel."""
+        if self.escrow is None:
+            raise RuntimeError(
+                f"Escrow not configured for {self.network_key} — set CLAW_ESCROW_ADDRESS_*"
+            )
         mid = self.match_id_to_bytes32(match_id)
         fn = self.escrow.functions.cancelMatch(mid)
         result = await asyncio.to_thread(self._build_and_send, fn)
-        logger.info(f"[Blockchain] Match {match_id} cancelled — players refunded")
+        logger.info("[Blockchain] Match %s cancelled — players refunded", match_id)
         return result
 
     # ─── Read-Only Queries ────────────────────────────────────────────────────
@@ -452,9 +548,44 @@ class BlockchainLayer:
 # ─── Module-level singleton ───────────────────────────────────────────────────
 
 _instance: Optional[BlockchainLayer] = None
+_chain_instances: dict[str, BlockchainLayer] = {}
+
 
 def get_blockchain_layer() -> BlockchainLayer:
+    """Legacy singleton (NETWORK=testnet Base path). Prefer get_blockchain_layer_for_chain."""
     global _instance
     if _instance is None:
         _instance = BlockchainLayer()
     return _instance
+
+
+def get_blockchain_layer_for_chain(chain_id: str) -> BlockchainLayer:
+    """Return a BlockchainLayer bound to Rematch settlement chain (arc/base/…).
+
+    Used by clawstation_escrow cancel / resolve / dispute / status.
+    """
+    cid = (chain_id or "arc").lower().strip()
+    if cid in _chain_instances:
+        return _chain_instances[cid]
+
+    from gaming.src.backend.services.chains import (
+        get_chain,
+        get_escrow_address,
+        get_rpc_url,
+        get_usdc_address,
+        normalize_chain_id,
+    )
+
+    cid = normalize_chain_id(cid)
+    meta = get_chain(cid)
+    layer = BlockchainLayer(
+        chain_id=cid,
+        rpc_url=get_rpc_url(cid),
+        usdc_address=get_usdc_address(cid),
+        escrow_address=get_escrow_address(cid),
+        explorer_tx=meta.get("explorer_tx") or "",
+        evm_chain_id=int(meta.get("chain_id") or 0),
+        label=meta.get("label") or cid,
+    )
+    _chain_instances[cid] = layer
+    return layer

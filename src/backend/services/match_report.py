@@ -116,6 +116,57 @@ def sides_conflict(ch: dict) -> bool:
     return bool(cs and os_ and cs == os_)
 
 
+def ingame_names_conflict(ch: dict) -> bool:
+    """Both players claimed the same on-screen username (e.g. both 'Finch')."""
+    c = (ch.get("creator_console_id") or "").strip().lower()
+    o = (ch.get("opponent_console_id") or "").strip().lower()
+    return bool(c and o and c == o)
+
+
+def _binary_won_from_report(
+    home: Any, away: Any, side: Optional[str], *, as_creator: bool
+) -> Optional[bool]:
+    if home is None or away is None:
+        return None
+    try:
+        h, a = int(home), int(away)
+    except (TypeError, ValueError):
+        return None
+    if h == a:
+        return None
+    home_wins = h > a
+    if side == "home":
+        return home_wins
+    if side == "away":
+        return not home_wins
+    return home_wins if as_creator else not home_wins
+
+
+def binary_both_claim_win(ch: dict) -> bool:
+    """True if both players' mapped scorelines imply each of them won."""
+    try:
+        from gaming.src.backend.services.game_catalog import is_binary_outcome
+
+        gid = str(ch.get("game") or ch.get("game_type") or "")
+        if not is_binary_outcome(gid):
+            return False
+        c_won = _binary_won_from_report(
+            ch.get("creator_reported_home"),
+            ch.get("creator_reported_away"),
+            ch.get("creator_side"),
+            as_creator=True,
+        )
+        o_won = _binary_won_from_report(
+            ch.get("opponent_reported_home"),
+            ch.get("opponent_reported_away"),
+            ch.get("opponent_side"),
+            as_creator=False,
+        )
+        return c_won is True and o_won is True
+    except Exception:
+        return False
+
+
 def analyze_reports(ch: dict) -> dict[str, Any]:
     c_rep = creator_has_report(ch)
     o_rep = opponent_has_report(ch)
@@ -127,6 +178,23 @@ def analyze_reports(ch: dict) -> dict[str, Any]:
             "reason": "Both players claimed the same side (home/away).",
             "creator_reported": c_rep,
             "opponent_reported": o_rep,
+        }
+
+    if ingame_names_conflict(ch):
+        return {
+            "action": "identity_conflict",
+            "reason": "Both players claimed the same in-game name on the screenshot. "
+            "Each must use their own name (e.g. Finch vs Emmanuella).",
+            "creator_reported": c_rep,
+            "opponent_reported": o_rep,
+        }
+
+    if binary_both_claim_win(ch) and c_rep and o_rep:
+        return {
+            "action": "conflict",
+            "reason": "Both players claim they won. Need matching reports or support review.",
+            "creator_reported": True,
+            "opponent_reported": True,
         }
 
     if not c_rep and not o_rep:

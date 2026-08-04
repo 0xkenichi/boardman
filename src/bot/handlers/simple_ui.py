@@ -3,7 +3,7 @@ Button-first UX for non-web3 users.
 
 No need to copy challenge IDs. Flows:
   New challenge → tag → amount buttons → game → chain → confirm
-  My match → Lock / Side / Submit result (photo + 5-3 caption)
+  My match → Lock / Side / Submit result (caption depends on game: 5-3 or W/L)
 """
 from __future__ import annotations
 
@@ -76,7 +76,14 @@ class ChallengeWizard(StatesGroup):
 
 
 class ReportWizard(StatesGroup):
-    waiting_photo = State()  # data: challenge_id
+    """Guided report: photo → name → side → outcome → confirm → submit."""
+
+    waiting_photo = State()
+    waiting_name = State()  # exact in-game name on the screenshot (binary)
+    waiting_side = State()
+    waiting_outcome = State()  # score text for scoreline games
+    waiting_who = State()  # which on-screen name (AI-assisted)
+    waiting_confirm = State()
 
 
 def _safe_row(result) -> Optional[dict]:
@@ -91,27 +98,36 @@ def _safe_row(result) -> Optional[dict]:
 
 
 async def _load_challenge(cid: str) -> Optional[dict]:
-    """Load by UUID (callbacks) or public short code (user input)."""
+    """Load by UUID (callbacks) or public short code (user input).
+
+    Sync Supabase — always off the event loop so button handlers stay snappy.
+    """
+    import asyncio
+
     from gaming.src.backend.services.match_codes import load_challenge_by_ref, is_uuid
 
     if not cid:
         return None
-    # Prefer resolver (handles short codes + UUID + ensures public_code)
-    ch = load_challenge_by_ref(cid)
-    if ch:
-        return ch
-    if not is_uuid(cid):
-        return None
-    r = (
-        get_supabase()
-        .schema("gaming")
-        .table("challenges")
-        .select("*")
-        .eq("id", cid)
-        .limit(1)
-        .execute()
-    )
-    return normalize_challenge(_safe_row(r))
+
+    def _sync() -> Optional[dict]:
+        ch = load_challenge_by_ref(cid)
+        if ch:
+            return ch
+        if not is_uuid(cid):
+            return None
+        r = (
+            get_supabase()
+            .schema("gaming")
+            .table("challenges")
+            .select("*")
+            .eq("id", cid)
+            .limit(1)
+            .execute()
+        )
+        row = _safe_row(r)
+        return normalize_challenge(row) if row else None
+
+    return await asyncio.to_thread(_sync)
 
 
 def _short(cid: str) -> str:
@@ -355,22 +371,39 @@ async def ui_rules(callback: types.CallbackQuery) -> None:
 
 @router.callback_query(F.data == "ui:board")
 async def ui_public_board(callback: types.CallbackQuery) -> None:
-    await callback.answer()
+    import asyncio
+
     from gaming.src.backend.services.rematch_public import (
         format_leaderboard_text,
         format_metrics_text,
-        get_chain_metrics,
         get_leaderboard,
         get_open_public_challenges,
+        get_ops_metrics,
     )
+    from gaming.src.backend.services.safety import is_admin
     from gaming.src.bot.keyboards import REMATCH_BOARD, REMATCH_WEB
     from aiogram.types import InlineKeyboardButton, WebAppInfo
     from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+    # Full ops metrics only for operator (@stillkenichi / CLAW_ADMIN_TELEGRAM_IDS)
+    show_ops = False
+    u = callback.from_user
+    if u and (is_admin(u.id) or (u.username or "").strip().lower() == "stillkenichi"):
+        show_ops = True
+
     try:
-        board = get_open_public_challenges(12)
-        lb = get_leaderboard(8)
-        metrics = get_chain_metrics()
+        if show_ops:
+            board, lb, metrics = await asyncio.gather(
+                asyncio.to_thread(get_open_public_challenges, 12),
+                asyncio.to_thread(get_leaderboard, 8),
+                asyncio.to_thread(get_ops_metrics),
+            )
+        else:
+            board, lb = await asyncio.gather(
+                asyncio.to_thread(get_open_public_challenges, 12),
+                asyncio.to_thread(get_leaderboard, 8),
+            )
+            metrics = None
     except Exception as exc:
         logger.exception("[UI] board load failed")
         await callback.message.answer(
@@ -391,8 +424,9 @@ async def ui_public_board(callback: types.CallbackQuery) -> None:
             )
     lines.append("")
     lines.append(format_leaderboard_text(lb, 8))
-    lines.append("")
-    lines.append(format_metrics_text(metrics))
+    if show_ops and metrics is not None:
+        lines.append("")
+        lines.append(format_metrics_text(metrics))
 
     kb = InlineKeyboardBuilder()
     kb.row(InlineKeyboardButton(text="🏆 Open leaderboard", url=REMATCH_BOARD))
@@ -555,16 +589,14 @@ async def ui_rematch_go(callback: types.CallbackQuery, state: FSMContext) -> Non
 @router.callback_query(F.data == "ui:match")
 async def ui_my_match(callback: types.CallbackQuery, state: FSMContext) -> None:
     try:
-        await callback.answer()
-    except Exception:
-        pass
-    try:
         await state.clear()
         user = callback.from_user
         if not user:
             return
+        import asyncio
+
         profile = await get_or_create_profile(user)
-        active = get_active_challenge(profile["id"])
+        active = await asyncio.to_thread(get_active_challenge, profile["id"])
         if not active:
             await callback.message.answer(
                 "No active match.\n\nTap <b>New challenge</b> to start one.",
@@ -616,10 +648,6 @@ async def ui_info(callback: types.CallbackQuery) -> None:
 @router.callback_query(F.data == "menu:challenge")
 async def ui_challenge_start(callback: types.CallbackQuery, state: FSMContext) -> None:
     try:
-        await callback.answer()
-    except Exception:
-        pass
-    try:
         user = callback.from_user
         if not user:
             return
@@ -628,8 +656,10 @@ async def ui_challenge_start(callback: types.CallbackQuery, state: FSMContext) -
                 pause_message(), parse_mode=ParseMode.HTML, reply_markup=main_menu()
             )
             return
+        import asyncio
+
         profile = await get_or_create_profile(user)
-        blocked = assert_can_start_or_accept(profile["id"])
+        blocked = await asyncio.to_thread(assert_can_start_or_accept, profile["id"])
         if blocked:
             await callback.message.answer(
                 f"❌ {blocked}", reply_markup=main_menu(), parse_mode=None
@@ -927,34 +957,36 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
 
     if opponent_id:
         try:
-            imsg = ""
-            if is_imessage(game):
-                imsg = "\n📱 Play in <b>iMessage</b>, then send final screenshot here."
-            elif is_mobile(game):
-                imsg = "\n📲 Play on <b>mobile</b>, then send final screenshot here."
+            try:
+                from gaming.src.backend.services.game_catalog import how_to_report_short
+
+                report_hint = "\n\n" + how_to_report_short(str(game))
+            except Exception:
+                report_hint = "\n\nAfter lock: My match → Submit result (instructions match this game)."
             await notify_user(
                 opponent_id,
                 f"⚔️ <b>Challenge from @{h(profile.get('gaming_tag') or 'player')}</b>\n\n"
                 f"Match: <code>{h(public_code)}</code>\n"
                 f"Stake: <b>${amount:,.2f}</b>\n"
                 f"Game: <b>{h(game_label)}</b>"
-                f"{imsg}\n\n"
+                f"{report_hint}\n\n"
                 f"Tap Accept or Decline:",
                 buttons=challenge_confirm_menu(challenge_id),
             )
         except Exception:
             logger.exception("[UI] notify opponent failed")
-        imsg_me = (
-            f"\n\n{proof_instructions(game)}"
-            if is_imessage(game)
-            else ""
-        )
+        try:
+            from gaming.src.backend.services.game_catalog import how_to_report_short
+
+            report_me = "\n\n" + how_to_report_short(str(game))
+        except Exception:
+            report_me = f"\n\n{proof_instructions(game)}" if game else ""
         await callback.message.answer(
             f"✅ Challenge sent to <b>@{h(opponent_tag)}</b>\n"
             f"Match: <code>{h(public_code)}</code>\n"
             f"Game: <b>{h(game_label)}</b>\n\n"
             f"When they Accept, both of you tap <b>Lock my stake</b>."
-            f"{imsg_me}\n\n"
+            f"{report_me}\n\n"
             f"Use <b>My match</b> anytime.",
             parse_mode=ParseMode.HTML,
             reply_markup=main_menu(),
@@ -985,13 +1017,20 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
                 "<code>/link_community</code> there."
             )
         )
+        try:
+            from gaming.src.backend.services.game_catalog import how_to_report_short
+
+            report_me = "\n\n" + how_to_report_short(str(game))
+        except Exception:
+            report_me = ""
         await callback.message.answer(
             f"✅ <b>Public challenge posted</b>\n"
             f"Match: <code>{h(public_code)}</code>\n"
             f"Stake: <b>${amount:,.2f}</b> · {h(game_label)}\n\n"
             f"{where}\n"
             f"Board: {h(REMATCH_BOARD)}\n\n"
-            f"You will lock after someone accepts.",
+            f"You will lock after someone accepts."
+            f"{report_me}",
             parse_mode=ParseMode.HTML,
             reply_markup=main_menu(),
         )
@@ -1107,25 +1146,9 @@ async def ui_lock(callback: types.CallbackQuery) -> None:
 
     ch2 = await _load_challenge(cid) or ch
     game_key = ch2.get("game") or ch.get("game") or ""
-    play_help = proof_instructions(str(game_key))
-    if is_imessage(str(game_key)):
-        next_steps = (
-            f"{play_help}\n\n"
-            f"Then: <b>Submit result</b> → photo of the final screen.\n"
-            f"Caption <code>W</code> / <code>L</code> or the score."
-        )
-    elif is_mobile(str(game_key)):
-        next_steps = (
-            f"{play_help}\n\n"
-            f"Then: <b>Submit result</b> → photo of the final screen.\n"
-            f"Caption score like <code>2-1</code> (or <code>W</code>/<code>L</code>)."
-        )
-    else:
-        next_steps = (
-            f"1. Tap <b>I am HOME</b> or <b>I am AWAY</b>\n"
-            f"2. Play\n"
-            f"3. <b>Submit result</b> → FT photo captioned <code>5-3</code>"
-        )
+    from gaming.src.bot.utils.flow import next_steps_after_lock
+
+    next_steps = next_steps_after_lock(cid, game_id=str(game_key))
     await callback.message.answer(
         f"{msg}\n\n{report_status(ch2)}\n\n{next_steps}",
         parse_mode=ParseMode.HTML,
@@ -1204,31 +1227,187 @@ async def ui_side(callback: types.CallbackQuery) -> None:
         denormalize_challenge(update)
     ).eq("id", cid).execute()
     ch2 = await _load_challenge(cid) or ch
+    game_key = str((ch2 or {}).get("game") or (ch2 or {}).get("game_type") or "")
+    try:
+        from gaming.src.backend.services.game_catalog import how_to_report_short
+
+        howto = how_to_report_short(game_key)
+    except Exception:
+        howto = "Play, then tap <b>Submit result</b> — we'll tell you what caption to use."
     await callback.message.answer(
         f"✅ You are <b>{side.upper()}</b>.\n\n"
-        f"Play your match, then tap <b>Submit result</b>.",
+        f"Play the match when ready.\n\n"
+        f"{howto}\n\n"
+        f"When finished → <b>Submit result</b>.",
         parse_mode=ParseMode.HTML,
         reply_markup=match_actions_menu(ch2, profile["id"]),
     )
 
 
-# ── Submit result (photo only, no ID typing) ─────────────────────────────────
+# ── Submit result (guided interview: photo → side → outcome → confirm) ──────
 
 
-@router.callback_query(F.data.startswith("ui:report:"))
+async def _report_advance(
+    *,
+    message_or_cb_message: types.Message,
+    state: FSMContext,
+    bot,
+    profile: dict,
+) -> None:
+    """Ask next missing piece or show confirm. State must hold challenge_id + file_id."""
+    from gaming.src.bot.utils import report_interview as ri
+
+    data = await state.get_data()
+    cid = data.get("challenge_id")
+    file_id = data.get("file_id")
+    if not cid or not file_id:
+        await state.clear()
+        await message_or_cb_message.answer(
+            "Session expired. Tap <b>My match</b> → report again.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=main_menu(),
+        )
+        return
+
+    ch = await _load_challenge(cid)
+    if not ch:
+        await state.clear()
+        await message_or_cb_message.answer("Match not found.", reply_markup=main_menu())
+        return
+
+    pid = profile["id"]
+    binary_won = data.get("binary_won")
+    home, away = data.get("home"), data.get("away")
+    if binary_won is not None and (home is None or away is None):
+        try:
+            home, away = ri.resolve_home_away(
+                ch, pid, binary_won=binary_won, home=home, away=away
+            )
+            await state.update_data(home=home, away=away)
+        except Exception:
+            pass
+
+    screen_name = str(data.get("screen_name") or "")
+    miss = ri.missing_for_ruling(
+        ch,
+        pid,
+        has_photo=True,
+        home=home,
+        away=away,
+        binary_won=binary_won,
+        screen_name=screen_name,
+    )
+    # Re-check after possible updates
+    if "side" in miss and ri.my_side(ch, pid):
+        miss = [m for m in miss if m != "side"]
+    if "name" in miss and (screen_name or ri.my_ingame_name(ch, pid)):
+        miss = [m for m in miss if m != "name"]
+    if "outcome" in miss and home is not None and away is not None:
+        miss = [m for m in miss if m != "outcome"]
+
+    if "name" in miss:
+        await state.set_state(ReportWizard.waiting_name)
+        await message_or_cb_message.answer(
+            ri.ask_name_html(ch),
+            parse_mode=ParseMode.HTML,
+            reply_markup=back_menu(),
+        )
+        return
+
+    if "side" in miss:
+        await state.set_state(ReportWizard.waiting_side)
+        await message_or_cb_message.answer(
+            ri.ask_side_html(ch),
+            parse_mode=ParseMode.HTML,
+            reply_markup=ri.side_keyboard(cid),
+        )
+        return
+
+    if "outcome" in miss:
+        from gaming.src.backend.services.game_catalog import is_binary_outcome
+
+        if is_binary_outcome(ri.game_id_of(ch)):
+            await state.set_state(ReportWizard.waiting_confirm)  # outcome via buttons
+            await message_or_cb_message.answer(
+                ri.ask_outcome_html(ch, pid),
+                parse_mode=ParseMode.HTML,
+                reply_markup=ri.outcome_keyboard(cid),
+            )
+            return
+        await state.set_state(ReportWizard.waiting_outcome)
+        await message_or_cb_message.answer(
+            ri.ask_outcome_html(ch, pid),
+            parse_mode=ParseMode.HTML,
+            reply_markup=back_menu(),
+        )
+        return
+
+    # Optional identity for binary VS screens
+    names = data.get("screen_names") or []
+    if (
+        names
+        and len(names) >= 2
+        and not data.get("screen_name")
+        and not data.get("who_skipped")
+    ):
+        await state.set_state(ReportWizard.waiting_who)
+        await message_or_cb_message.answer(
+            ri.ask_who_html(names),
+            parse_mode=ParseMode.HTML,
+            reply_markup=ri.who_keyboard(cid, names),
+        )
+        return
+
+    # Confirm
+    try:
+        home, away = ri.resolve_home_away(
+            ch, pid, binary_won=binary_won, home=home, away=away
+        )
+    except ValueError as exc:
+        await message_or_cb_message.answer(f"❌ {h(exc)}", parse_mode=ParseMode.HTML)
+        return
+    await state.update_data(home=home, away=away)
+    await state.set_state(ReportWizard.waiting_confirm)
+    await message_or_cb_message.answer(
+        ri.confirm_html(
+            ch,
+            pid,
+            home=home,
+            away=away,
+            binary_won=binary_won,
+            screen_name=str(data.get("screen_name") or ""),
+        ),
+        parse_mode=ParseMode.HTML,
+        reply_markup=ri.confirm_keyboard(cid),
+    )
+
+
+@router.callback_query(
+    F.data.regexp(r"^ui:report:[0-9a-fA-F-]{36}$")
+    | F.data.regexp(r"^ui:report:[A-Za-z0-9_-]{6,32}$")
+)
 async def ui_report_start(callback: types.CallbackQuery, state: FSMContext) -> None:
+    """Start guided report — always begins with what we need for a fair ruling.
+
+    Filter is strict so ``ui:reportask:*`` callbacks are not stolen.
+    """
     await callback.answer()
-    cid = callback.data.split(":", 2)[2]
+    parts = (callback.data or "").split(":")
+    # ui:report:{uuid or short code}
+    if len(parts) < 3:
+        return
+    cid = parts[2]
+    ch = await _load_challenge(cid)
+    if not ch:
+        await callback.message.answer("Match not found.", reply_markup=main_menu())
+        return
+    await state.clear()
     await state.set_state(ReportWizard.waiting_photo)
     await state.update_data(challenge_id=cid)
+    from gaming.src.bot.utils.report_interview import intro_html
+
     await callback.message.answer(
-        "📸 <b>Submit result</b>\n\n"
-        "1. Send the <b>full-time screenshot</b> as a photo or file\n"
-        "2. Caption it with the score <b>home-away</b>, for example:\n"
-        "   <code>5-3</code>\n"
-        "   or <code>H-A 5-3</code>\n\n"
-        "That's it — no match ID needed.\n"
-        "Send the image now.",
+        intro_html(ch),
         parse_mode=ParseMode.HTML,
         reply_markup=back_menu(),
     )
@@ -1236,7 +1415,7 @@ async def ui_report_start(callback: types.CallbackQuery, state: FSMContext) -> N
 
 @router.message(ReportWizard.waiting_photo, F.photo | F.document)
 async def ui_report_photo(message: types.Message, state: FSMContext, bot) -> None:
-    """Receive photo while in report wizard — caption is just 5-3."""
+    """Save photo, parse caption if any, then interview for missing facts."""
     data = await state.get_data()
     cid = data.get("challenge_id")
     if not cid:
@@ -1244,49 +1423,442 @@ async def ui_report_photo(message: types.Message, state: FSMContext, bot) -> Non
         await message.answer("Session expired. Tap My match again.", reply_markup=main_menu())
         return
 
+    from gaming.src.backend.services.game_catalog import parse_result_caption
+    from gaming.src.bot.handlers.submit_score import _extract_image_file_id
+    from gaming.src.bot.utils import report_interview as ri
+
+    file_id = _extract_image_file_id(message)
+    if not file_id:
+        await message.answer("Please send a <b>photo</b> of the final screen.", parse_mode=ParseMode.HTML)
+        return
+
+    ch = await _load_challenge(cid)
+    if not ch:
+        await state.clear()
+        await message.answer("Match not found.", reply_markup=main_menu())
+        return
+
+    user = message.from_user
+    if not user:
+        return
+    profile = await get_or_create_profile(user)
     caption = (message.caption or "").strip()
-    # Parse 5-3 or H-A 5-3 or home-away 5-3
-    score_token = None
-    m = re.search(r"(\d+)\s*[-:]\s*(\d+)", caption)
-    if m:
-        score_token = f"{m.group(1)}-{m.group(2)}"
-    if not score_token:
+    side = ri.my_side(ch, profile["id"])
+    home, away, err = parse_result_caption(
+        ri.game_id_of(ch),
+        caption,
+        side=side,
+        is_creator=ri.is_creator(ch, profile["id"]),
+    )
+    binary_won = None
+    if caption:
+        from gaming.src.bot.handlers.submit_score import _parse_binary_token
+
+        binary_won = _parse_binary_token(caption.split()[0] if caption else "")
+
+    await state.update_data(
+        file_id=file_id,
+        home=home,
+        away=away,
+        binary_won=binary_won,
+        screen_names=[],
+        screen_name="",
+    )
+    await message.answer(
+        "✅ Photo received. Checking what else we need for a fair ruling…",
+        parse_mode=ParseMode.HTML,
+    )
+    await _report_advance(
+        message_or_cb_message=message, state=state, bot=bot, profile=profile
+    )
+
+
+@router.message(ReportWizard.waiting_name, F.text)
+async def ui_report_ingame_name(message: types.Message, state: FSMContext, bot) -> None:
+    """Binary games: exact on-screen name (e.g. Finch) — required for identity."""
+    from gaming.src.bot.utils import report_interview as ri
+
+    data = await state.get_data()
+    cid = data.get("challenge_id")
+    user = message.from_user
+    name = (message.text or "").strip()
+    if not user or not cid:
+        await state.clear()
+        return
+    if len(name) < 2 or len(name) > 48:
         await message.answer(
-            "Add a caption like <code>5-3</code> (home goals - away goals) on the photo.\n"
-            "Or resend the photo with that caption.",
+            "Type your in-game name exactly as on the screenshot (2–48 characters).",
+        )
+        return
+    # reject pure score tokens
+    if re.fullmatch(r"\d+\s*[-:]\s*\d+", name) or name.upper() in ("W", "L"):
+        await message.answer(
+            "That's a score/result, not a name. Example: <code>Finch</code>",
             parse_mode=ParseMode.HTML,
         )
         return
 
-    # Reuse submit_score pipeline with synthetic caption
-    from gaming.src.bot.handlers.submit_score import (
-        _extract_image_file_id,
-        _process_screenshot_message,
-    )
-
-    file_id = _extract_image_file_id(message)
-    if not file_id:
-        await message.answer("Send a photo or image file, please.")
+    profile = await get_or_create_profile(user)
+    ch = await _load_challenge(cid)
+    if not ch:
+        await state.clear()
         return
 
-    synthetic = f"/submit_score {cid} {score_token}"
-    await state.clear()
-    await _process_screenshot_message(
-        message, bot, synthetic, file_id_override=file_id
-    )
-    # After processing, show match buttons
-    user = message.from_user
-    if user:
-        profile = await get_or_create_profile(user)
-        ch = await _load_challenge(cid)
-        if ch:
-            bal = await get_balance_snapshot(profile["id"])
-            await message.answer(
-                f"<b>Your balances</b>\n{bal}",
-                parse_mode=ParseMode.HTML,
-                reply_markup=match_actions_menu(ch, profile["id"]),
-            )
+    # Persist on match so we never mix Finch / Emmanuella
+    is_cr = profile["id"] == ch.get("creator_id")
+    key = "creator_console_id" if is_cr else "opponent_console_id"
+    other_key = "opponent_console_id" if is_cr else "creator_console_id"
+    other_name = str(ch.get(other_key) or "").strip().lower()
+    if other_name and other_name == name.lower():
+        await message.answer(
+            f"❌ Your opponent already claimed <b>{h(ch.get(other_key))}</b>. "
+            f"Use <b>your</b> name from the screenshot.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
 
+    try:
+        get_supabase().schema("gaming").table("challenges").update(
+            denormalize_challenge({key: name[:64], "console_platform": "ingame"})
+        ).eq("id", cid).execute()
+    except Exception:
+        # platform column optional
+        try:
+            get_supabase().schema("gaming").table("challenges").update(
+                denormalize_challenge({key: name[:64]})
+            ).eq("id", cid).execute()
+        except Exception as exc:
+            logger.exception("[UI] save ingame name failed")
+            await message.answer(f"❌ Could not save name: {h(exc)}", parse_mode=ParseMode.HTML)
+            return
+
+    await state.update_data(screen_name=name, challenge_id=cid)
+    await message.answer(
+        f"✅ You're <b>{h(name)}</b> on this match.\n"
+        f"We'll use that to match the screenshot winner.",
+        parse_mode=ParseMode.HTML,
+    )
+    await _report_advance(
+        message_or_cb_message=message, state=state, bot=bot, profile=profile
+    )
+
+
+@router.callback_query(F.data.startswith("ui:reportask:side:"))
+async def ui_report_ask_side(callback: types.CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    # ui:reportask:side:{cid}:home|away
+    parts = (callback.data or "").split(":")
+    if len(parts) < 5:
+        return
+    cid, side = parts[3], parts[4]
+    if side not in ("home", "away"):
+        return
+    user = callback.from_user
+    if not user:
+        return
+    profile = await get_or_create_profile(user)
+    ch = await _load_challenge(cid)
+    if not ch:
+        await callback.message.answer("Match not found.", reply_markup=main_menu())
+        return
+
+    # Persist side (same rules as ui_side)
+    is_cr = profile["id"] == ch.get("creator_id")
+    other = "away" if side == "home" else "home"
+    update: dict = {}
+    if is_cr:
+        if ch.get("opponent_side") == side:
+            await callback.message.answer(
+                f"❌ Opponent already took {side}. Pick {other}.",
+                reply_markup=None,
+            )
+            return
+        update["creator_side"] = side
+        if not ch.get("opponent_side"):
+            update["opponent_side"] = other
+    else:
+        if ch.get("creator_side") == side:
+            await callback.message.answer(
+                f"❌ Creator already took {side}. Pick {other}.",
+            )
+            return
+        update["opponent_side"] = side
+        if not ch.get("creator_side"):
+            update["creator_side"] = other
+    get_supabase().schema("gaming").table("challenges").update(
+        denormalize_challenge(update)
+    ).eq("id", cid).execute()
+
+    data = await state.get_data()
+    if not data.get("file_id"):
+        await state.update_data(challenge_id=cid)
+    await callback.message.answer(
+        f"✅ Recorded: you are <b>{side.upper()}</b>.",
+        parse_mode=ParseMode.HTML,
+    )
+    await _report_advance(
+        message_or_cb_message=callback.message,
+        state=state,
+        bot=callback.bot,
+        profile=profile,
+    )
+
+
+@router.callback_query(F.data.startswith("ui:reportask:out:"))
+async def ui_report_ask_outcome(callback: types.CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    # ui:reportask:out:{cid}:W|L
+    parts = (callback.data or "").split(":")
+    if len(parts) < 5:
+        return
+    cid, claim = parts[3], parts[4].upper()
+    if claim not in ("W", "L"):
+        return
+    user = callback.from_user
+    if not user:
+        return
+    profile = await get_or_create_profile(user)
+    ch = await _load_challenge(cid)
+    if not ch:
+        return
+    from gaming.src.bot.utils import report_interview as ri
+
+    won = claim == "W"
+    home, away = ri.resolve_home_away(
+        ch, profile["id"], binary_won=won, home=None, away=None
+    )
+    await state.update_data(binary_won=won, home=home, away=away, challenge_id=cid)
+    await callback.message.answer(
+        f"✅ You claimed: <b>{'WON' if won else 'LOST'}</b>.",
+        parse_mode=ParseMode.HTML,
+    )
+    await _report_advance(
+        message_or_cb_message=callback.message,
+        state=state,
+        bot=callback.bot,
+        profile=profile,
+    )
+
+
+@router.message(ReportWizard.waiting_outcome, F.text)
+async def ui_report_score_text(message: types.Message, state: FSMContext, bot) -> None:
+    """Scoreline games: user types 5-3."""
+    from gaming.src.bot.utils import report_interview as ri
+
+    data = await state.get_data()
+    cid = data.get("challenge_id")
+    user = message.from_user
+    if not user or not cid:
+        await state.clear()
+        return
+    profile = await get_or_create_profile(user)
+    home, away = ri.parse_score_message(message.text or "")
+    if home is None:
+        await message.answer(
+            "Please type the score like <code>5-3</code> (home-away).",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+    await state.update_data(home=home, away=away, binary_won=None)
+    await message.answer(
+        f"✅ Scoreline recorded: <code>{home}-{away}</code>",
+        parse_mode=ParseMode.HTML,
+    )
+    await _report_advance(
+        message_or_cb_message=message, state=state, bot=bot, profile=profile
+    )
+
+
+@router.callback_query(F.data.startswith("ui:reportask:who:"))
+async def ui_report_ask_who(callback: types.CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    parts = (callback.data or "").split(":")
+    if len(parts) < 5:
+        return
+    cid, choice = parts[3], parts[4]
+    user = callback.from_user
+    if not user:
+        return
+    profile = await get_or_create_profile(user)
+    data = await state.get_data()
+    names = data.get("screen_names") or []
+    if choice == "skip":
+        await state.update_data(who_skipped=True)
+    else:
+        try:
+            idx = int(choice)
+            name = names[idx] if idx < len(names) else ""
+        except Exception:
+            name = ""
+        await state.update_data(screen_name=name, who_skipped=False)
+        if name:
+            await callback.message.answer(
+                f"✅ You're <b>{h(name)}</b> on the screenshot.",
+                parse_mode=ParseMode.HTML,
+            )
+    await state.update_data(challenge_id=cid)
+    await _report_advance(
+        message_or_cb_message=callback.message,
+        state=state,
+        bot=callback.bot,
+        profile=profile,
+    )
+
+
+@router.callback_query(F.data.startswith("ui:reportask:go:"))
+async def ui_report_finalize(callback: types.CallbackQuery, state: FSMContext) -> None:
+    """Commit photo + score for the *clicking* user (not the bot message author)."""
+    await callback.answer("Submitting…")
+    parts = (callback.data or "").split(":")
+    cid = parts[3] if len(parts) > 3 else ""
+    user = callback.from_user
+    if not user or not cid:
+        return
+    profile = await get_or_create_profile(user)
+    data = await state.get_data()
+    file_id = data.get("file_id")
+    home, away = data.get("home"), data.get("away")
+    if not file_id or home is None or away is None:
+        await callback.message.answer(
+            "Missing photo or result. Start again: <b>My match</b> → report.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=main_menu(),
+        )
+        await state.clear()
+        return
+
+    from gaming.src.bot.handlers.submit_score import _store_report, _maybe_settle
+
+    ch = await _load_challenge(cid)
+    if not ch:
+        await callback.message.answer("Match not found.", reply_markup=main_menu())
+        await state.clear()
+        return
+
+    # Save screenshot ref under this profile
+    is_creator = profile["id"] == ch.get("creator_id")
+    column = "screenshot_creator_url" if is_creator else "screenshot_opponent_url"
+    status = ch.get("status")
+    update: dict = {column: file_id}
+    if status == "locked":
+        update["status"] = "playing"
+    try:
+        get_supabase().schema("gaming").table("challenges").update(
+            denormalize_challenge(update)
+        ).eq("id", ch["id"]).execute()
+    except Exception:
+        logger.exception("[UI] save screenshot failed")
+
+    sn = str(data.get("screen_name") or "").strip()
+    if sn:
+        try:
+            key = "creator_console_id" if is_creator else "opponent_console_id"
+            get_supabase().schema("gaming").table("challenges").update(
+                denormalize_challenge({key: sn[:64]})
+            ).eq("id", ch["id"]).execute()
+        except Exception:
+            pass
+
+    # Reload after name write
+    ch = await _load_challenge(cid) or ch
+    try:
+        from gaming.src.backend.services.match_report import (
+            binary_both_claim_win,
+            ingame_names_conflict,
+        )
+
+        # Pre-check against opponent if they already reported
+        if ingame_names_conflict(ch):
+            await callback.message.answer(
+                "❌ Identity conflict: both players used the same in-game name. "
+                "Start again with your own name from the screenshot.",
+                reply_markup=main_menu(),
+            )
+            await state.clear()
+            return
+    except Exception:
+        pass
+
+    try:
+        challenge = await _store_report(
+            ch["id"], profile["id"], home=int(home), away=int(away)
+        )
+    except ValueError as exc:
+        await callback.message.answer(
+            f"❌ {h(exc)}",
+            parse_mode=ParseMode.HTML,
+            reply_markup=main_menu(),
+        )
+        await state.clear()
+        return
+
+    await state.clear()
+    # Flag identity / double-win conflicts for the user
+    try:
+        from gaming.src.backend.services.match_report import (
+            analyze_reports,
+            binary_both_claim_win,
+            ingame_names_conflict,
+        )
+
+        if challenge and (ingame_names_conflict(challenge) or binary_both_claim_win(challenge)):
+            analysis = analyze_reports(challenge)
+            if analysis.get("action") in ("conflict", "identity_conflict"):
+                await callback.message.answer(
+                    f"⚠️ <b>Fairness hold</b>\n{h(analysis.get('reason') or 'Reports disagree.')}\n"
+                    f"Support can review both photos. No auto-payout until this is clear.",
+                    parse_mode=ParseMode.HTML,
+                )
+    except Exception:
+        pass
+
+    bal = await get_balance_snapshot(profile["id"])
+    claim = data.get("binary_won")
+    claim_txt = (
+        f"You claimed <b>{'WIN' if claim else 'LOSS'}</b> · "
+        if claim is not None
+        else ""
+    )
+    sn_txt = f"In-game name: <b>{h(sn)}</b>\n" if sn else ""
+    await callback.message.answer(
+        f"✅ <b>Report submitted for fair ruling</b>\n"
+        f"{sn_txt}"
+        f"{claim_txt}Map <code>{int(home)}-{int(away)}</code>\n"
+        f"Photo saved. We only auto-pay if opponent’s report agrees "
+        f"(different names + matching win/loss).\n\n"
+        f"<b>Your balances</b>\n{bal}",
+        parse_mode=ParseMode.HTML,
+        reply_markup=match_actions_menu(challenge, profile["id"])
+        if challenge
+        else main_menu(),
+    )
+
+    other = (
+        challenge.get("opponent_id")
+        if profile["id"] == challenge.get("creator_id")
+        else challenge.get("creator_id")
+    )
+    if other:
+        try:
+            from gaming.src.backend.services.game_catalog import how_to_report_short
+            from gaming.src.backend.services.match_codes import display_code
+
+            code_s = display_code(challenge)
+            howto = how_to_report_short(
+                str(challenge.get("game") or challenge.get("game_type") or "")
+            )
+            await notify_user(
+                other,
+                f"📊 Opponent reported on <code>{code_s}</code>.\n"
+                f"Your turn for a fair ruling:\n\n{howto}\n\n"
+                f"My match → report button.",
+            )
+        except Exception:
+            logger.exception("[UI] opponent nudge after report failed")
+    try:
+        await _maybe_settle(challenge["id"])
+    except Exception:
+        logger.exception("[UI] settle after report failed")
 
 @router.callback_query(F.data.startswith("ui:settle:"))
 async def ui_settle(callback: types.CallbackQuery) -> None:

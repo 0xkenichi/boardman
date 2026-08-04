@@ -33,17 +33,16 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 _USAGE = (
-    "Usage (use short match code, e.g. K7M2P9QX):\n"
-    "• /submit_score CODE 5-3          full scoreline (home-away)\n"
-    "• /submit_score CODE 3            your goals only\n"
-    "• Send a PHOTO with caption:      /submit_score CODE [5-3]\n\n"
-    "Also set sides before playing:\n"
-    "• /set_side CODE home|away\n"
-    "• /set_team CODE home \"Real Madrid\"\n"
-    "• /set_team CODE away \"Barcelona\"\n"
-    "• /link_psn or /link_xbox for console IDs\n\n"
-    "⚠️ AI vision only works on Telegram photos (attach image in chat).\n"
-    "Do NOT paste a Mac/PC file path as text."
+    "Usage (short match code, e.g. K7M2P9QX):\n"
+    "• Football / scoreline games:\n"
+    "  /submit_score CODE 5-3          home-away score\n"
+    "• Win/lose games (8 Ball, Free Fire 1v1, etc.):\n"
+    "  /submit_score CODE W            you won\n"
+    "  /submit_score CODE L            you lost\n"
+    "• PHOTO with caption: /submit_score CODE 5-3   or   CODE W\n"
+    "• Or use the buttons: My match → Submit result\n\n"
+    "Also: /set_side CODE home|away before playing when needed.\n"
+    "⚠️ AI vision needs a real Telegram photo (not a file path)."
 )
 
 
@@ -74,6 +73,16 @@ def _parse_score_token(token: str) -> tuple[Optional[int], Optional[int], Option
     return None, None, None
 
 
+def _parse_binary_token(token: str) -> Optional[bool]:
+    """Return True=won, False=lost, None=not binary token."""
+    t = (token or "").strip().lower()
+    if t in ("w", "win", "won", "victory", "1"):
+        return True
+    if t in ("l", "lose", "loss", "lost", "defeat", "0"):
+        return False
+    return None
+
+
 def _normalize_caption(text: str) -> str:
     """Strip bot mention: /submit_score@BotName → /submit_score"""
     t = (text or "").strip()
@@ -86,15 +95,19 @@ def _is_submit_caption(text: str) -> bool:
     return t.startswith("/submit_score")
 
 
-def _parse_args(text: str) -> tuple[Optional[str], Optional[int], Optional[int], Optional[int]]:
-    """Returns (challenge_id, single_score, home, away)."""
+def _parse_args(text: str) -> tuple[Optional[str], Optional[int], Optional[int], Optional[int], Optional[bool]]:
+    """Returns (challenge_id, single_score, home, away, binary_won)."""
     raw = _normalize_caption(text)
     parts = raw.split(maxsplit=2)
     challenge_id = parts[1] if len(parts) > 1 else None
     if len(parts) < 3:
-        return challenge_id, None, None, None
-    single, home, away = _parse_score_token(parts[2].split()[0] if parts[2] else "")
-    return challenge_id, single, home, away
+        return challenge_id, None, None, None, None
+    token = parts[2].split()[0] if parts[2] else ""
+    bw = _parse_binary_token(token)
+    if bw is not None:
+        return challenge_id, None, None, None, bw
+    single, home, away = _parse_score_token(token)
+    return challenge_id, single, home, away, None
 
 
 def _extract_image_file_id(message: types.Message) -> Optional[str]:
@@ -270,11 +283,37 @@ async def _run_ai_on_screenshot(image_b64: str, challenge: dict) -> dict:
         return {"ok": False, "error": str(exc), "confidence": 0.0}
 
 
-def _map_ai_to_home_away(ai: dict, challenge: dict) -> tuple[Optional[int], Optional[int]]:
-    """Map AI left/right (player1/player2) to home/away goals using team names or labels."""
+def _map_ai_to_home_away(
+    ai: dict,
+    challenge: dict,
+    *,
+    reporter_id: Optional[str] = None,
+) -> tuple[Optional[int], Optional[int]]:
+    """Map AI left/right (player1/player2) to home/away goals.
+
+    For binary_winner games, player1 higher score means the *screenshot owner*
+    (device player) won — convert via reporter side, not football layout.
+    """
     p1, p2 = ai.get("player1_score"), ai.get("player2_score")
     if p1 is None or p2 is None:
         return None, None
+
+    game_key = str(challenge.get("game") or challenge.get("game_type") or "")
+    try:
+        from gaming.src.backend.services.game_catalog import (
+            binary_claim_to_home_away,
+            is_binary_outcome,
+        )
+
+        if is_binary_outcome(game_key):
+            won = int(p1) > int(p2)
+            is_creator = reporter_id == challenge.get("creator_id")
+            side = _side_for(reporter_id or "", challenge) if reporter_id else None
+            return binary_claim_to_home_away(
+                won, side=side, is_creator=bool(is_creator)
+            )
+    except Exception:
+        logger.warning("[SubmitScore] binary AI map failed", exc_info=True)
 
     t1_ha = (ai.get("team1_home_away") or "").lower()
     t2_ha = (ai.get("team2_home_away") or "").lower()
@@ -366,12 +405,24 @@ async def cmd_submit_score(message: types.Message, bot: Bot) -> None:
         )
         return
 
-    challenge_id, single, home, away = _parse_args(message.text)
-    if not challenge_id or (single is None and home is None):
+    challenge_id, single, home, away, binary_won = _parse_args(message.text)
+    if not challenge_id or (
+        single is None and home is None and binary_won is None
+    ):
         await message.answer(_USAGE, reply_markup=back_menu(), parse_mode=None)
         return
 
     profile = await get_or_create_profile(user)
+    challenge_pre = await _load_challenge(challenge_id)
+    if binary_won is not None and challenge_pre:
+        from gaming.src.backend.services.game_catalog import binary_claim_to_home_away
+
+        is_creator = profile["id"] == challenge_pre.get("creator_id")
+        side = _side_for(profile["id"], challenge_pre)
+        home, away = binary_claim_to_home_away(
+            binary_won, side=side, is_creator=is_creator
+        )
+        single = None
     try:
         challenge = await _store_report(
             challenge_id, profile["id"], single_score=single, home=home, away=away
@@ -380,25 +431,33 @@ async def cmd_submit_score(message: types.Message, bot: Bot) -> None:
         await message.answer(f"❌ {h(exc)}", reply_markup=back_menu(), parse_mode=ParseMode.HTML)
         return
 
-    if home is not None and away is not None:
+    if binary_won is not None:
+        score_txt = "W" if binary_won else "L"
+        result_label = "Your claim"
+    elif home is not None and away is not None:
         score_txt = f"{home}-{away}"
+        result_label = "Scoreline"
     else:
         score_txt = str(single)
+        result_label = "Your goals"
 
     from gaming.src.backend.services.match_report import analyze_reports
     from gaming.src.bot.utils.flow import report_status, waiting_on_opponent
     from gaming.src.bot.utils.notify import get_balance_snapshot
+    from gaming.src.backend.services.game_catalog import (
+        how_to_report_short,
+        is_binary_outcome,
+    )
 
     analysis = analyze_reports(challenge)
     bal = await get_balance_snapshot(profile["id"])
+    game_key = str(challenge.get("game") or challenge.get("game_type") or "")
     await message.answer(
         f"✅ <b>Report confirmed</b>\n"
-        f"Scoreline: {bold(score_txt)}\n"
+        f"{result_label}: {bold(score_txt)}\n"
         f"Match: {code(_match_code(None, challenge_id))}\n\n"
         f"{report_status(challenge)}\n\n"
-        f"<b>Your balances</b>\n{bal}\n\n"
-        f"💡 Optional proof: attach FT photo with caption\n"
-        f"{code(f'/submit_score {_match_code(None, challenge_id)} {score_txt}')}",
+        f"<b>Your balances</b>\n{bal}",
         reply_markup=back_menu(),
         parse_mode=ParseMode.HTML,
     )
@@ -409,18 +468,23 @@ async def cmd_submit_score(message: types.Message, bot: Bot) -> None:
             waiting_on_opponent(challenge_id, who),
             parse_mode=ParseMode.HTML,
         )
-        # Nudge the other side immediately
+        # Nudge the other side with *this match's* game instructions
         other_id = (
             challenge.get("opponent_id")
             if analysis["action"] == "wait_opponent"
             else challenge.get("creator_id")
         )
         if other_id and other_id != profile["id"]:
+            cap = "W" if is_binary_outcome(game_key) else "5-3"
+            try:
+                howto = how_to_report_short(game_key)
+            except Exception:
+                howto = "My match → Submit result"
             await notify_user(
                 other_id,
                 f"📊 Your opponent reported on {code(_match_code(None, challenge_id))}.\n"
-                f"Your turn — FT photo + caption:\n"
-                f"{code(f'/submit_score {_match_code(None, challenge_id)} 5-3')}",
+                f"Your turn:\n\n{howto}\n\n"
+                f"Or: {code(f'/submit_score {_match_code(None, challenge_id)} {cap}')}",
             )
     elif analysis["action"] in ("settle_ready", "wait_screenshots", "conflict"):
         other_id = (
@@ -451,9 +515,11 @@ async def media_submit_score(message: types.Message, bot: Bot) -> None:
             # Only hint if looks like a lone screenshot (no other text command)
             if not (message.caption or "").strip():
                 await message.answer(
-                    "📸 Got an image. To use it as match proof, <b>edit/resend</b> with caption:\n"
-                    "<code>/submit_score MATCH_CODE 5-3</code>\n\n"
-                    "Or: reply to this image with that command.",
+                    "📸 Got an image. For match proof, easiest path:\n"
+                    "<b>My match</b> → <b>Submit result</b> (caption depends on the game).\n\n"
+                    "Or resend with:\n"
+                    "• Scoreline: <code>/submit_score CODE 5-3</code>\n"
+                    "• Win/lose (8 Ball etc.): <code>/submit_score CODE W</code> or <code>L</code>",
                     parse_mode=ParseMode.HTML,
                 )
         return
@@ -488,11 +554,14 @@ async def _process_screenshot_message(
     if user is None:
         return
 
-    challenge_ref, single, home, away = _parse_args(caption)
+    challenge_ref, single, home, away, binary_won = _parse_args(caption)
     if not challenge_ref:
         await message.answer(
-            "❌ Caption must be: /submit_score MATCH_CODE [5-3]\n"
-            "Example: /submit_score K7M2P9QX 5-3",
+            "❌ Caption must be: /submit_score MATCH_CODE [5-3 or W/L]\n"
+            "Examples:\n"
+            "  /submit_score K7M2P9QX 5-3   (football / scoreline)\n"
+            "  /submit_score K7M2P9QX W    (you won — 8 Ball, etc.)\n"
+            "Or use My match → Submit result (game-aware).",
             reply_markup=back_menu(),
             parse_mode=None,
         )
@@ -507,12 +576,23 @@ async def _process_screenshot_message(
         return
     challenge_id = challenge["id"]  # internal UUID only
     match_code = _match_code(challenge)
+    game_key = str(challenge.get("game") or challenge.get("game_type") or "")
 
     is_creator = profile["id"] == challenge["creator_id"]
     is_opponent = profile["id"] == challenge.get("opponent_id")
     if not is_creator and not is_opponent:
         await message.answer("❌ You are not part of this challenge.", reply_markup=back_menu(), parse_mode=None)
         return
+
+    # Resolve W/L caption into home-away using reporter side
+    if binary_won is not None:
+        from gaming.src.backend.services.game_catalog import binary_claim_to_home_away
+
+        side = _side_for(profile["id"], challenge)
+        home, away = binary_claim_to_home_away(
+            binary_won, side=side, is_creator=is_creator
+        )
+        single = None
 
     status = challenge.get("status")
     if status not in ("locked", "creator_locked", "submitted", "playing", "accepted"):
@@ -525,9 +605,12 @@ async def _process_screenshot_message(
 
     file_id = file_id_override or _extract_image_file_id(message)
     if not file_id:
+        from gaming.src.backend.services.game_catalog import is_binary_outcome
+
+        hint = "W" if is_binary_outcome(game_key) else "5-3"
         await message.answer(
             "❌ No image found. Send as Photo or File (PNG/JPG), not a path.\n"
-            f"Or reply to the image with /submit_score {match_code} 5-3",
+            f"Or reply to the image with /submit_score {match_code} {hint}",
             reply_markup=back_menu(),
             parse_mode=None,
         )
@@ -557,7 +640,9 @@ async def _process_screenshot_message(
         image_b64 = await _download_photo_b64(bot, file_id)
         ai = await _run_ai_on_screenshot(image_b64, challenge)
         if ai.get("ok"):
-            ai_home, ai_away = _map_ai_to_home_away(ai, challenge)
+            ai_home, ai_away = _map_ai_to_home_away(
+                ai, challenge, reporter_id=profile["id"]
+            )
             conf = ai.get("confidence") or 0
             clubs = ""
             if ai.get("team1_name") or ai.get("team2_name"):
@@ -565,10 +650,29 @@ async def _process_screenshot_message(
             ids = ""
             if ai.get("player1_id") or ai.get("player2_id"):
                 ids = f"\nIDs: {ai.get('player1_id') or '—'} / {ai.get('player2_id') or '—'}"
-            ai_line = (
-                f"\nAI scoreline: {bold(f'{ai_home}-{ai_away}')} "
-                f"(conf {bold(f'{conf:.0%}')}){clubs}{ids}"
-            )
+            from gaming.src.backend.services.game_catalog import is_binary_outcome
+
+            if is_binary_outcome(game_key) and ai_home is not None and ai_away is not None:
+                # Express AI result as W/L for the reporter when possible
+                side = _side_for(profile["id"], challenge)
+                if side == "home":
+                    claim = "W" if ai_home > ai_away else "L"
+                elif side == "away":
+                    claim = "W" if ai_away > ai_home else "L"
+                else:
+                    claim = "W" if (is_creator and ai_home > ai_away) or (
+                        not is_creator and ai_away > ai_home
+                    ) else "L"
+                ai_line = (
+                    f"\nAI result: you <b>{claim}</b> "
+                    f"(mapped {bold(f'{ai_home}-{ai_away}')}, conf {bold(f'{conf:.0%}')})"
+                    f"{clubs}{ids}"
+                )
+            else:
+                ai_line = (
+                    f"\nAI scoreline: {bold(f'{ai_home}-{ai_away}')} "
+                    f"(conf {bold(f'{conf:.0%}')}){clubs}{ids}"
+                )
             ai_update: dict[str, Any] = {
                 "ai_verified_score": f"{ai_home}-{ai_away}",
                 "ai_confidence": conf,
@@ -633,9 +737,12 @@ async def _process_screenshot_message(
             )
             return
     else:
+        from gaming.src.backend.services.game_catalog import is_binary_outcome
+
+        hint = "W" if is_binary_outcome(game_key) else "5-3"
         reply += (
-            f"\nCould not get a score. Reply with:\n"
-            f"{code(f'/submit_score {_match_code(None, challenge_id)} 5-3')}"
+            f"\nCould not read a result. Reply with:\n"
+            f"{code(f'/submit_score {_match_code(None, challenge_id)} {hint}')}"
         )
 
     from gaming.src.bot.utils.notify import get_balance_snapshot

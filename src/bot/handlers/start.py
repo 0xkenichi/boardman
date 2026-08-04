@@ -44,6 +44,16 @@ async def cmd_start(message: types.Message) -> None:
     if user is None:
         return
 
+    # Instant ack so /start never feels dead while we hit Supabase/Circle
+    try:
+        await message.answer(
+            "⏳ Opening Rematch…",
+            reply_markup=main_menu(),
+            parse_mode=None,
+        )
+    except Exception:
+        pass
+
     # Geo-fence for Telegram is opt-in via TELEGRAM_USER_COUNTRY (ISO-2).
     # Do NOT map language_code → country (e.g. "en" is not a region).
     # API geo-fence still applies to HTTP; bot demos stay unblocked unless set.
@@ -128,9 +138,14 @@ async def cmd_start(message: types.Message) -> None:
     addr = escape(str(address))
     bal_line = ""
     try:
+        import asyncio
+
         from gaming.src.backend.services.clawstation_circle import get_balance_summary
 
-        s = await get_balance_summary(profile["id"], chain_id="arc")
+        # Cap wait — never let balance RPC delay the welcome menu for all users
+        s = await asyncio.wait_for(
+            get_balance_summary(profile["id"], chain_id="arc"), timeout=2.5
+        )
         spend = float(s.get("spendable_usdc") or 0)
         other = float(s.get("other_usdc") or 0)
         total = spend + other
@@ -141,7 +156,7 @@ async def cmd_start(message: types.Message) -> None:
                 f"send it to your play address to stake.\n"
             )
     except Exception:
-        logger.warning("[Start] balance preview failed for %s", profile["id"], exc_info=True)
+        logger.warning("[Start] balance preview skipped/failed for %s", profile["id"])
 
     text = (
         f"🎮 <b>Welcome to Rematch, {name}!</b>\n"
