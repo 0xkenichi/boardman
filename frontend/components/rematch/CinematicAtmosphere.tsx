@@ -9,7 +9,6 @@
  */
 
 import { useEffect, useState } from 'react'
-import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 
 const SCENES = [
@@ -136,16 +135,15 @@ function Marquee({
 export function CinematicAtmosphere() {
   const path = usePathname() || ''
   const [scene, setScene] = useState(0)
+  // Dimmer on mini-app so UI stays readable; full intensity on marketing pages
+  const isApp = path.startsWith('/rematch/app')
 
   useEffect(() => {
-    if (path.startsWith('/rematch/app')) return
     const id = window.setInterval(() => {
       setScene((s) => (s + 1) % SCENES.length)
     }, 5200)
     return () => window.clearInterval(id)
-  }, [path])
-
-  if (path.startsWith('/rematch/app')) return null
+  }, [])
 
   const leftCards = SIDE_CARDS.filter((_, i) => i % 2 === 0)
   const rightCards = SIDE_CARDS.filter((_, i) => i % 2 === 1)
@@ -153,7 +151,9 @@ export function CinematicAtmosphere() {
   const poster = (c: (typeof SIDE_CARDS)[0], i: number) => (
     <article key={c.title} className="rm-poster" style={{ animationDelay: `${i * 0.35}s` }}>
       <div className="rm-poster-media">
-        <Image src={c.src} alt="" fill sizes="220px" className="rm-poster-img" />
+        {/* plain img = reliable local/static serving, no next/image layout quirks */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={c.src} alt="" className="rm-poster-img" />
         <div className="rm-poster-shade" />
       </div>
       <div className="rm-poster-meta">
@@ -165,22 +165,16 @@ export function CinematicAtmosphere() {
   )
 
   return (
-    <div className="rm-cinema" aria-hidden>
-      {/* Full-bleed rotating backgrounds */}
+    <div className={`rm-cinema ${isApp ? 'rm-cinema--app' : ''}`} aria-hidden>
+      {/* Full-bleed rotating backgrounds — always mounted so first paint shows art */}
       <div className="rm-cinema-bg">
         {SCENES.map((s, i) => (
           <div
             key={s.src}
             className={`rm-cinema-slide ${i === scene ? 'rm-cinema-slide--on' : ''}`}
           >
-            <Image
-              src={s.src}
-              alt=""
-              fill
-              sizes="100vw"
-              priority={i === 0}
-              className="rm-cinema-img"
-            />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={s.src} alt="" className="rm-cinema-img" />
           </div>
         ))}
         <div className="rm-cinema-vignette" />
@@ -193,53 +187,58 @@ export function CinematicAtmosphere() {
         <Marquee items={MARQUEE_B} reverse className="rm-marquee--mid" />
       </div>
 
-      {/* Active scene caption (mobile + desktop) */}
-      <div className="rm-cinema-caption">
-        <span className="rm-cinema-caption-live">LIVE</span>
-        <span className="rm-cinema-caption-title">{SCENES[scene].label}</span>
-        <span className="rm-cinema-caption-sub">{SCENES[scene].sub}</span>
-      </div>
+      {/* Active scene caption */}
+      {!isApp && (
+        <div className="rm-cinema-caption">
+          <span className="rm-cinema-caption-live">LIVE</span>
+          <span className="rm-cinema-caption-title">{SCENES[scene].label}</span>
+          <span className="rm-cinema-caption-sub">{SCENES[scene].sub}</span>
+        </div>
+      )}
 
-      {/* Side floating game posters (desktop columns + mobile strip) */}
-      <div className="rm-cinema-sides">
-        <div className="rm-cinema-col rm-cinema-col--left">
-          {leftCards.map((c, i) => poster(c, i))}
+      {/* Side floating game posters — marketing pages only (space on app is tight) */}
+      {!isApp && (
+        <div className="rm-cinema-sides">
+          <div className="rm-cinema-col rm-cinema-col--left">
+            {leftCards.map((c, i) => poster(c, i))}
+          </div>
+          <div className="rm-cinema-col rm-cinema-col--right">
+            {rightCards.map((c, i) => poster(c, i + 3))}
+          </div>
+          <div className="rm-cinema-mobile-strip">
+            {[...SIDE_CARDS, ...SIDE_CARDS].map((c, i) => (
+              <article key={`${c.title}-m-${i}`} className="rm-poster">
+                <div className="rm-poster-media">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={c.src} alt="" className="rm-poster-img" />
+                  <div className="rm-poster-shade" />
+                </div>
+                <div className="rm-poster-meta">
+                  <div className="rm-poster-title">{c.title}</div>
+                  <div className="rm-poster-tag">{c.tag}</div>
+                </div>
+              </article>
+            ))}
+          </div>
         </div>
-        <div className="rm-cinema-col rm-cinema-col--right">
-          {rightCards.map((c, i) => poster(c, i + 3))}
-        </div>
-        {/* Mobile-only full strip of all posters */}
-        <div className="rm-cinema-mobile-strip">
-          {[...SIDE_CARDS, ...SIDE_CARDS].map((c, i) => (
-            <article key={`${c.title}-m-${i}`} className="rm-poster">
-              <div className="rm-poster-media">
-                <Image src={c.src} alt="" fill sizes="160px" className="rm-poster-img" />
-                <div className="rm-poster-shade" />
-              </div>
-              <div className="rm-poster-meta">
-                <div className="rm-poster-title">{c.title}</div>
-                <div className="rm-poster-tag">{c.tag}</div>
-              </div>
-            </article>
+      )}
+
+      {!isApp && (
+        <div className="rm-platform-strip">
+          {[
+            { ico: '🎮', t: 'PlayStation' },
+            { ico: '🟩', t: 'Xbox' },
+            { ico: '💻', t: 'PC' },
+            { ico: '📱', t: 'Mobile' },
+            { ico: '💬', t: 'iMessage' },
+            { ico: '🏆', t: 'Earn USDC' },
+          ].map((p) => (
+            <span key={p.t} className="rm-platform-pill">
+              <span aria-hidden>{p.ico}</span> {p.t}
+            </span>
           ))}
         </div>
-      </div>
-
-      {/* Platform strip */}
-      <div className="rm-platform-strip">
-        {[
-          { ico: '🎮', t: 'PlayStation' },
-          { ico: '🟩', t: 'Xbox' },
-          { ico: '💻', t: 'PC' },
-          { ico: '📱', t: 'Mobile' },
-          { ico: '💬', t: 'iMessage' },
-          { ico: '🏆', t: 'Earn USDC' },
-        ].map((p) => (
-          <span key={p.t} className="rm-platform-pill">
-            <span aria-hidden>{p.ico}</span> {p.t}
-          </span>
-        ))}
-      </div>
+      )}
     </div>
   )
 }

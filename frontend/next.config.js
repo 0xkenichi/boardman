@@ -9,8 +9,9 @@ const nextConfig = {
   async redirects() {
     return [
       {
+        // Marketing home first — cinematic atmosphere lives on /rematch
         source: '/',
-        destination: '/rematch/app',
+        destination: '/rematch',
         permanent: false,
       },
     ]

@@ -231,17 +231,61 @@ export default function RematchPage() {
         </div>
       </section>
 
-      {/* Games strip */}
+      {/* In-page game posters — always visible even if background fails */}
       <section className="rm-section">
         <div className="rm-section-head">
           <p className="rm-section-title">What you can play</p>
-          <h2 className="rm-h2">Games that settle clean</h2>
+          <h2 className="rm-h2">Play on console · mobile · iMessage · PC</h2>
           <p className="rm-muted" style={{ margin: '0.35rem 0 0', maxWidth: '36rem' }}>
-            Finite outcome only — clear winner (or draw rules). More titles when the settle path
-            is solid.
+            Earn with your PlayStation, Xbox, PC, or phone. Lock stakes. Settle on the final
+            screen.
           </p>
         </div>
-        <div className="rm-games-grid">
+        <div className="rm-play-gallery">
+          {[
+            {
+              src: '/rematch/atmosphere/football.jpg',
+              title: 'Play EA FC',
+              tag: 'Console · Mobile',
+            },
+            {
+              src: '/rematch/atmosphere/battle.jpg',
+              title: 'Play Free Fire',
+              tag: 'Mobile 1v1',
+            },
+            {
+              src: '/rematch/atmosphere/fps.jpg',
+              title: 'Play Valorant',
+              tag: 'PC · shooters',
+            },
+            {
+              src: '/rematch/atmosphere/fight.jpg',
+              title: 'Fighting games',
+              tag: 'BO · final screen',
+            },
+            {
+              src: '/rematch/atmosphere/console.jpg',
+              title: 'PS · Xbox · PC',
+              tag: 'Earn on console',
+            },
+            {
+              src: '/rematch/atmosphere/mobile.jpg',
+              title: 'iMessage · Mobile',
+              tag: 'GamePigeon & more',
+            },
+          ].map((g) => (
+            <article key={g.title} className="rm-play-card">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={g.src} alt={g.title} className="rm-play-card-img" />
+              <div className="rm-play-card-body">
+                <span className="rm-play-card-badge">PLAY</span>
+                <div className="rm-play-card-title">{g.title}</div>
+                <div className="rm-play-card-tag">{g.tag}</div>
+              </div>
+            </article>
+          ))}
+        </div>
+        <div className="rm-games-grid" style={{ marginTop: '0.85rem' }}>
           {GAMES.map((g) => (
             <div key={g.name} className="rm-game-tile">
               <span className="rm-game-emoji" aria-hidden>

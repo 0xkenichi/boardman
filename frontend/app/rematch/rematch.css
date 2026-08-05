@@ -42,18 +42,21 @@
   padding: 1.15rem 1rem 6.5rem;
 }
 
-/* Ambient product background (layout) */
+/* Ambient product background (layout)
+   Keep shell transparent so fixed .rm-cinema art shows through. */
 .rm-shell {
   position: relative;
   flex: 1;
   min-height: 0;
-  background:
-    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(16, 185, 129, 0.14), transparent 55%),
-    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(16, 185, 129, 0.06), transparent 50%),
-    var(--rm-bg);
+  background: transparent;
   color: var(--rm-text);
   font-family: var(--rm-font);
   overflow-x: hidden;
+}
+
+/* Fallback if JS fails / cinema not mounted */
+body {
+  background-color: var(--rm-bg);
 }
 
 .rm-main-column {
@@ -91,25 +94,51 @@
 }
 
 .rm-cinema-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
   object-position: center;
   transform: scale(1.08);
   animation: rm-kenburns 14s ease-in-out infinite alternate;
-  filter: saturate(1.05) contrast(1.05);
+  filter: saturate(1.15) contrast(1.08) brightness(1.05);
 }
 
 .rm-cinema-slide--on .rm-cinema-img {
   animation-name: rm-kenburns;
 }
 
+/* Lighter overlay so game art is actually visible */
 .rm-cinema-vignette {
   position: absolute;
   inset: 0;
   z-index: 2;
   background:
-    radial-gradient(ellipse 55% 50% at 50% 42%, rgba(7, 8, 12, 0.35) 0%, rgba(7, 8, 12, 0.82) 70%, #07080c 100%),
-    linear-gradient(180deg, rgba(7, 8, 12, 0.55) 0%, transparent 18%, transparent 72%, rgba(7, 8, 12, 0.95) 100%),
-    linear-gradient(90deg, rgba(7, 8, 12, 0.88) 0%, transparent 18%, transparent 82%, rgba(7, 8, 12, 0.88) 100%);
+    radial-gradient(ellipse 70% 60% at 50% 40%, rgba(7, 8, 12, 0.15) 0%, rgba(7, 8, 12, 0.55) 75%, rgba(7, 8, 12, 0.85) 100%),
+    linear-gradient(180deg, rgba(7, 8, 12, 0.45) 0%, transparent 22%, transparent 65%, rgba(7, 8, 12, 0.88) 100%),
+    linear-gradient(90deg, rgba(7, 8, 12, 0.55) 0%, transparent 22%, transparent 78%, rgba(7, 8, 12, 0.55) 100%);
+}
+
+/* Mini-app: quieter background so cards stay readable */
+.rm-cinema--app .rm-cinema-vignette {
+  background:
+    radial-gradient(ellipse 80% 70% at 50% 40%, rgba(7, 8, 12, 0.55) 0%, rgba(7, 8, 12, 0.88) 100%),
+    linear-gradient(180deg, rgba(7, 8, 12, 0.7) 0%, rgba(7, 8, 12, 0.75) 100%);
+}
+
+.rm-cinema--app .rm-cinema-img {
+  filter: saturate(0.9) brightness(0.55);
+}
+
+.rm-cinema--app .rm-cinema-marquees {
+  opacity: 0.55;
+}
+
+.rm-cinema--app .rm-cinema-sides,
+.rm-cinema--app .rm-platform-strip,
+.rm-cinema--app .rm-cinema-caption {
+  display: none !important;
 }
 
 .rm-cinema-scan {
@@ -313,6 +342,10 @@
   }
 
   .rm-poster-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     object-fit: cover;
   }
 
@@ -454,6 +487,10 @@
   }
 
   .rm-cinema-mobile-strip .rm-poster-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     object-fit: cover;
   }
 
@@ -621,14 +658,87 @@
   margin-bottom: 0.9rem;
 }
 
-.rm-game-grid {
+/* Photo gallery of supported games / platforms */
+.rm-play-gallery {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.6rem;
+}
+
+@media (min-width: 560px) {
+  .rm-play-gallery {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.rm-play-card {
+  position: relative;
+  border-radius: 1rem;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  aspect-ratio: 16 / 11;
+  background: #0a0c10;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+.rm-play-card-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+}
+
+.rm-play-card:hover .rm-play-card-img {
+  transform: scale(1.06);
+}
+
+.rm-play-card-body {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0.7rem 0.75rem;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.88));
+  z-index: 1;
+}
+
+.rm-play-card-badge {
+  display: inline-block;
+  font-size: 0.55rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  color: #07080c;
+  background: #34d399;
+  padding: 0.12rem 0.35rem;
+  border-radius: 3px;
+  margin-bottom: 0.25rem;
+}
+
+.rm-play-card-title {
+  font-weight: 900;
+  font-size: 0.88rem;
+  color: #fff;
+  letter-spacing: -0.02em;
+}
+
+.rm-play-card-tag {
+  font-size: 0.65rem;
+  color: rgba(209, 213, 219, 0.85);
+  margin-top: 0.1rem;
+}
+
+.rm-game-grid,
+.rm-games-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 0.55rem;
 }
 
 @media (min-width: 560px) {
-  .rm-game-grid {
+  .rm-game-grid,
+  .rm-games-grid {
     grid-template-columns: repeat(4, 1fr);
   }
 }
