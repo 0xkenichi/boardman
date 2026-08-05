@@ -24,9 +24,9 @@ export function RematchNav() {
         top: 0,
         zIndex: 50,
         borderBottom: '1px solid rgba(255,255,255,0.06)',
-        background: 'rgba(7,8,12,0.88)',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
+        background: 'rgba(7,8,12,0.72)',
+        backdropFilter: 'blur(18px)',
+        WebkitBackdropFilter: 'blur(18px)',
       }}
     >
       <div
