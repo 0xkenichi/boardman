@@ -9,22 +9,28 @@
 
 ## 1. User experience (non-crypto)
 
+### Preferred: partner app (Kobox)
+
 ```
-User: “I want to play with ₦x / $y”
-  → Rematch shows: pay this amount / reference
-  → User pays in fiat (bank / USSD / card / mobile money)
-  → We detect payment → convert → credit play wallet (USDC)
-  → User sees: Balance $12.50
-  → They stake as today
+User wants Naira ↔ USDC or bank cash-out
+  → Rematch recommends Kobox (referral / download link)
+  → User funds, swaps, withdraws inside Kobox
+  → On-ramp: send USDC from Kobox → Rematch play address
+  → Off-ramp: withdraw USDC from Rematch → Kobox address → Naira bank in app
 ```
 
-**They never need to:**
+**Why:** users get a full banking app; we avoid being the only FX desk; rates/liquidity live where they already convert.
 
-- Buy crypto on an exchange  
-- Understand Arc / gas  
-- Bridge tokens  
+### Fallback: Rematch bank desk
 
-**Crypto users can still:** send USDC directly to their deposit address (keep forever).
+```
+User: “I want to play with ₦x / $y” (and skips Kobox)
+  → Rematch shows: pay this amount / reference to our account
+  → User pays fiat → proof → we convert → credit play wallet (USDC)
+  → Balance $ updates
+```
+
+**Crypto users can still:** send USDC directly to their play address (keep forever).
 
 ---
 
@@ -110,20 +116,19 @@ Good later; not the “send Naira to our account” simplicity you want first.
 ### Phase F0 — Design + bookkeeping (now)
 
 - [x] Strategy: abstract Balance $  
-- [ ] Pick **one** collection account (prefer business fintech when possible)  
-- [ ] Schema: `fiat_topups` table  
-  - `id`, `profile_id`, `ref`, `amount_fiat`, `currency`, `amount_usdc`, `status`, `provider_tx`, `created_at`  
-- [ ] Bot/web button: **Top up with bank** (testnet can mock “mark paid”)  
-- [ ] Ops dashboard or admin command: `/credit_topup REF` until webhooks exist  
+- [x] Collection accounts via env (`FIAT_NGN_*`, `FIAT_USD_*`)  
+- [x] Local store: `data/fiat_topups.json` (DB table later)  
+- [x] Bot: **Get money** → Naira / USD bank / crypto  
+- [x] Admin: `/topups`, `/credit_topup RM-XXXX`, `/reject_topup RM-XXXX`  
+- [x] Quote: commercial ₦ rate + fee = max($2 floor, 5% of gross)  
 
 ### Phase F1 — Manual recon MVP (mainnet pilot, tiny limits)
 
-- User generates ref + ₦ amount  
-- Pays your account  
-- You (or script matching bank alerts) mark paid  
-- System **transfers USDC** to their Circle play wallet on Arc  
-- Fee: e.g. 1–3% or flat ₦ fee  
-- Caps: **$100 / top-up**, **$200 / day / user** until registered properly  
+- User enters ₦ (or $) amount → bot quotes USDC credit after fee + unique `RM-` ref  
+- Pays collection account (Naira 9PSB / USD Lead)  
+- User pastes txn id or receipt photo  
+- Ops sends USDC to play address → `/credit_topup REF`  
+- Caps via env (`FIAT_MAX_*`, `FIAT_MAX_CREDIT_USDC`)  
 
 ### Phase F2 — Provider webhook
 
@@ -143,15 +148,44 @@ Good later; not the “send Naira to our account” simplicity you want first.
 
 ## 5. Conversion & fee model
 
+### Locked commercial rates (2026-08)
+
+| Direction | Rate | Meaning |
+|-----------|------|---------|
+| **On-ramp** (₦ → USDC) | **₦1,520 / $1** | `FIAT_NGN_PER_USD` — what users pay |
+| **Off-ramp** (USDC → ₦) | **₦1,500 / $1** | `FIAT_NGN_OFFRAMP_PER_USD` — what we pay out |
+| Your real convert | ~₦1,400 / $1 | Kobox / market (not shown to users) |
+| Fixed fee | **max($2, 5%)** | Covers Kobox ~1.5 USDC send + ops |
+
+**Why bid ≠ ask:** classic desk spread. User buys “expensive,” sells “cheaper.” Plus $2 floor so small top-ups don’t lose money on send fees.
+
+**Example on-ramp (₦10,000 @ 1520):**  
+gross $6.57 − $2 fee → **~$4.57 USDC** credited.
+
+**Example off-ramp ($20 USDC @ 1500):**  
+$20 − $2 fee = $18 → **₦27,000** to their bank.
+
 | Item | Approach |
 |------|----------|
-| FX | Published rate in app (₦ per $1) updated daily/hourly |
-| Fee | Transparent: “You pay ₦X → get $Y play balance” |
-| Platform cut | Fee % of fiat or spread on FX |
-| Float | You need **some** USDC on Arc to pay users — start small (treasury wallet) |
-| Failure | If USDC send fails: keep topup `pending_payout`, retry, support |
+| FX | Published rates above; update env when market moves hard |
+| Fee | Transparent: “You pay ₦X → get $Y” / “Cash out $Y → get ₦Z” |
+| Platform cut | FX spread (1520/1500) + floor fee |
+| Float | USDC treasury for credits; Naira float for off-ramp payouts |
+| Failure | Keep status `pending_payout`, retry, support |
 
-**Treasury:** a hot **gas + USDC** wallet you control funds users from. Fiat sits in bank; USDC inventory is separate (rebalance manually at first).
+**Treasury:** fiat in collection accounts; USDC inventory separate (rebalance via Kobox).
+
+### Off-ramp (cash out) — product decision
+
+| Path | Who | How |
+|------|-----|-----|
+| **Recommended** | Kobox (or any wallet) | Rematch **Withdraw → 0x** to their Kobox deposit address → swap/withdraw Naira in Kobox |
+| **Already have off-ramp** | Binance / other | Same: withdraw to that 0x |
+| **Desk (optional later)** | Rematch ops | Only if we want full bank payout ourselves — not required if Kobox is the rail |
+
+Bot copy: **Cash out via Kobox** + **To 0x (Kobox or any wallet)**.
+
+Env: `KOBOX_REFERRAL_URL`, `KOBOX_PARTNER_NAME`, `KOBOX_ENABLED`.
 
 ---
 
@@ -221,3 +255,22 @@ Do not mix testnet faucet language with real fiat. Separate `NETWORK=testnet|mai
 | Escrow | Unchanged dual-lock on USDC |
 
 **Payment rail = the missing door for non-crypto. Stack + catalog = the product. Together they are Rematch V2 money readiness.**
+
+---
+
+## 11. Settlement chains (fees + mainnet direction)
+
+| Chain | Role now | Gas reality | Notes |
+|-------|----------|-------------|--------|
+| **Arc** | Live **testnet** settlement | USDC-native gas — best UX on testnet | Keep for testnet / Arc path |
+| **Base** | Config ready (Sepolia legacy); **mainnet target** | L2 ETH gas — typically **cheapest** for USDC transfers | Prefer for real-money mainnet |
+| **Avalanche** | Config ready (Fuji next); mainnet later | AVAX gas — cheap but often **> Base** for simple transfers | Optional second rail |
+
+**Product decision (2026-08):**
+
+1. **Testnet now:** stay on **Arc** (current live path).  
+2. **Mainnet real stakes:** default settlement **Base** (low fees).  
+3. **Avalanche / Arc mainnet:** enable when float + gas tank + escrow are ready — multi-rail, not either/or.  
+4. Users still see **Balance $** — not chain jargon. Ops/backend picks settlement rail.
+
+**Base vs Avalanche (practical):** Base L2 is usually cheaper per USDC transfer than Avalanche C-Chain; Avalanche is still fine if users already hold AVAX/USDC there. Prefer **Base first** for Nigeria mainnet pilots to minimize gas eating small stakes.

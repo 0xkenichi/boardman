@@ -17,7 +17,7 @@ export function RematchFooter() {
     >
       <div
         style={{
-          maxWidth: isApp ? '28rem' : '42rem',
+          maxWidth: isApp ? '28rem' : '44rem',
           margin: '0 auto',
           padding: '1.1rem 1rem',
           display: 'flex',

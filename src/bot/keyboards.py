@@ -52,7 +52,7 @@ def main_menu(miniapp_url: str | None = None) -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(text="💰 Wallet", callback_data="menu:wallet"),
-        InlineKeyboardButton(text="💧 Get money", callback_data="ui:get_usdc"),
+        InlineKeyboardButton(text="💧 Get money", callback_data="ui:get_money"),
     )
     builder.row(
         InlineKeyboardButton(text="🔄 Rematch", callback_data="ui:rematch"),
@@ -127,7 +127,7 @@ def network_menu(current: str = "arc") -> InlineKeyboardMarkup:
         )
     )
     builder.row(
-        InlineKeyboardButton(text="💧 Get money", callback_data="ui:get_usdc"),
+        InlineKeyboardButton(text="💧 Get money", callback_data="ui:get_money"),
     )
     builder.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
     return builder.as_markup()
@@ -465,11 +465,110 @@ def wallet_menu() -> InlineKeyboardMarkup:
     """Actions on the wallet / balance screen."""
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="💧 Get money", callback_data="ui:get_usdc"),
+        InlineKeyboardButton(text="💧 Get money", callback_data="ui:get_money"),
         InlineKeyboardButton(text="🔄 Refresh", callback_data="menu:wallet"),
     )
     builder.row(
         InlineKeyboardButton(text="💸 Withdraw", callback_data="ui:withdraw"),
+    )
+    builder.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
+    return builder.as_markup()
+
+
+def get_money_menu() -> InlineKeyboardMarkup:
+    """Choose how to fund: Kobox (partner) first, then bank fallback / crypto."""
+    builder = InlineKeyboardBuilder()
+    try:
+        from gaming.src.backend.services.kobox_partner import (
+            kobox_enabled,
+            kobox_name,
+            kobox_referral_url,
+        )
+
+        if kobox_enabled():
+            url = kobox_referral_url()
+            label = f"⭐ Open {kobox_name()} (recommended)"
+            if url:
+                builder.row(InlineKeyboardButton(text=label[:64], url=url))
+            else:
+                builder.row(
+                    InlineKeyboardButton(text=label[:64], callback_data="ui:topup:kobox")
+                )
+    except Exception:
+        pass
+    builder.row(
+        InlineKeyboardButton(
+            text="🇳🇬 We'll do it — pay Naira to our bank",
+            callback_data="ui:topup:ngn",
+        ),
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="🇺🇸 We'll do it — pay USD to our bank",
+            callback_data="ui:topup:usd",
+        ),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🪙 Crypto / play address", callback_data="ui:topup:crypto"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="« Wallet", callback_data="menu:wallet"),
+        InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"),
+    )
+    return builder.as_markup()
+
+
+def fiat_amount_presets_menu(currency: str = "ngn") -> InlineKeyboardMarkup:
+    """Quick amounts for Naira or USD bank top-ups."""
+    builder = InlineKeyboardBuilder()
+    cur = (currency or "ngn").lower()
+    if cur == "usd":
+        for amt in (5, 10, 20, 50):
+            builder.add(
+                InlineKeyboardButton(
+                    text=f"${amt}",
+                    callback_data=f"ui:topup:amt:usd:{amt}",
+                )
+            )
+        builder.adjust(4)
+    else:
+        # ₦ presets (roughly → credit after ~$2 fee at ~1650)
+        for amt in (10000, 20000, 50000, 100000):
+            label = f"₦{amt // 1000}k" if amt >= 1000 else f"₦{amt}"
+            builder.add(
+                InlineKeyboardButton(
+                    text=label,
+                    callback_data=f"ui:topup:amt:ngn:{amt}",
+                )
+            )
+        builder.adjust(4)
+    builder.row(
+        InlineKeyboardButton(text="❌ Cancel", callback_data="ui:topup:cancel_wizard"),
+    )
+    return builder.as_markup()
+
+
+def fiat_confirm_menu() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="✅ Continue — show bank details", callback_data="ui:topup:confirm"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="❌ Cancel", callback_data="ui:topup:cancel_wizard"),
+    )
+    return builder.as_markup()
+
+
+def fiat_proof_menu(ref: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="🔄 Wallet", callback_data="menu:wallet"),
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="❌ Cancel this top-up",
+            callback_data=f"ui:topup:cancel:{ref}",
+        ),
     )
     builder.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
     return builder.as_markup()
@@ -489,6 +588,9 @@ def get_usdc_menu(
         InlineKeyboardButton(text="🔗 Open faucet", url=faucet_url),
     )
     builder.row(
+        InlineKeyboardButton(text="🇳🇬 Naira / 🇺🇸 USD bank", callback_data="ui:get_money"),
+    )
+    builder.row(
         InlineKeyboardButton(text="🔄 I funded — refresh", callback_data="menu:wallet"),
     )
     builder.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
@@ -496,13 +598,34 @@ def get_usdc_menu(
 
 
 def send_menu() -> InlineKeyboardMarkup:
-    """Withdraw / send destination picker."""
+    """Withdraw / send destination picker — Kobox cash-out first, then 0x / @tag."""
     builder = InlineKeyboardBuilder()
+    try:
+        from gaming.src.backend.services.kobox_partner import (
+            kobox_enabled,
+            kobox_name,
+            kobox_referral_url,
+        )
+
+        if kobox_enabled():
+            url = kobox_referral_url()
+            label = f"⭐ Cash out via {kobox_name()}"
+            if url:
+                builder.row(InlineKeyboardButton(text=label[:64], url=url))
+            else:
+                builder.row(
+                    InlineKeyboardButton(text=label[:64], callback_data="ui:withdraw:kobox")
+                )
+    except Exception:
+        pass
     builder.row(
-        InlineKeyboardButton(text="👤 To @tag (ClawStation)", callback_data="send_to_tag"),
+        InlineKeyboardButton(
+            text="📤 To 0x (Kobox or any wallet)",
+            callback_data="send_to_address",
+        ),
     )
     builder.row(
-        InlineKeyboardButton(text="📤 To 0x address (external)", callback_data="send_to_address"),
+        InlineKeyboardButton(text="👤 To @tag (Rematch player)", callback_data="send_to_tag"),
     )
     builder.row(
         InlineKeyboardButton(text="« Wallet", callback_data="menu:wallet"),

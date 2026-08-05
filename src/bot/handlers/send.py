@@ -120,16 +120,33 @@ async def start_withdraw(message: types.Message, state: FSMContext) -> None:
         logger.exception("[Withdraw] balance check failed")
 
     label = get_chain(pref).get("label", pref)
+    try:
+        from gaming.src.backend.services.kobox_partner import (
+            kobox_name,
+            withdraw_intro_extra_html,
+        )
+
+        partner_blurb = withdraw_intro_extra_html()
+        name = kobox_name()
+    except Exception:
+        partner_blurb = ""
+        name = "your bank app"
+
     await message.answer(
         "💸 <b>Withdraw USDC</b>\n\n"
         f"Active network: <b>{escape(label)}</b>\n"
         f"Available: <b>${bal:,.2f}</b> USDC\n"
-        f"Max per transfer: <b>${MAX_WITHDRAW_USDC:,.0f}</b>\n\n"
-        "Funds leave your ClawStation wallet on this network.\n"
-        "Switch network first if you want to withdraw from another chain.\n\n"
+        f"Max per transfer: <b>${MAX_WITHDRAW_USDC:,.0f}</b>\n"
+        f"{partner_blurb}\n"
+        f"<b>How</b>\n"
+        f"1. Open {escape(name)} (or any wallet) and copy its <b>USDC deposit address</b>\n"
+        f"2. Tap <b>To 0x</b> here and send from Rematch\n"
+        f"3. In {escape(name)}: swap USDC → Naira → withdraw to your bank\n\n"
+        "Or send to another Rematch player with @tag.\n\n"
         "Where should we send?",
         parse_mode=ParseMode.HTML,
         reply_markup=send_menu(),
+        disable_web_page_preview=True,
     )
 
 
@@ -160,6 +177,34 @@ async def cb_withdraw(callback: types.CallbackQuery, state: FSMContext) -> None:
             return await self._m.answer(*a, **k)
 
     await start_withdraw(_MsgProxy(msg, callback.from_user), state)  # type: ignore[arg-type]
+
+
+@router.callback_query(F.data == "ui:withdraw:kobox")
+async def cb_withdraw_kobox(callback: types.CallbackQuery, state: FSMContext) -> None:
+    """Explain partner cash-out when no URL is set (or user tapped the info button)."""
+    await callback.answer()
+    from gaming.src.backend.services.kobox_partner import (
+        kobox_name,
+        kobox_referral_url,
+        offramp_copy_html,
+    )
+
+    name = kobox_name()
+    url = kobox_referral_url()
+    link_line = f"\nOpen {escape(name)}: {escape(url)}\n" if url else ""
+    await callback.message.answer(
+        f"{offramp_copy_html()}\n"
+        f"{link_line}\n"
+        f"<b>In Rematch</b>\n"
+        f"1. In {escape(name)}, copy your <b>USDC deposit / receive address</b>\n"
+        f"2. Tap <b>To 0x (Kobox or any wallet)</b>\n"
+        f"3. Paste address + amount → confirm\n"
+        f"4. In {escape(name)}: swap → withdraw Naira to your bank\n\n"
+        f"Same steps work with any wallet/exchange you already use.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=send_menu(),
+        disable_web_page_preview=True,
+    )
 
 
 @router.callback_query(F.data == "send_to_tag")

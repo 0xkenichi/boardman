@@ -200,6 +200,22 @@ async def ui_community(callback: types.CallbackQuery) -> None:
 
 @router.callback_query(F.data == "ui:get_usdc")
 async def ui_get_usdc(callback: types.CallbackQuery) -> None:
+    """Legacy entry → funding chooser (Kobox / bank / crypto)."""
+    await callback.answer()
+    from gaming.src.backend.services.fiat_topup import commercial_rate
+    from gaming.src.backend.services.kobox_partner import get_money_intro_html
+    from gaming.src.bot.keyboards import get_money_menu
+
+    rate = commercial_rate()
+    await callback.message.answer(
+        get_money_intro_html(float(rate)),
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_money_menu(),
+        disable_web_page_preview=True,
+    )
+
+
+async def ui_get_usdc_crypto(callback: types.CallbackQuery) -> None:
     """Load Arc address → try Circle API drip → else fund helper + web faucet."""
     await callback.answer("Loading…")
     user = callback.from_user
@@ -256,12 +272,12 @@ async def ui_get_usdc(callback: types.CallbackQuery) -> None:
 
     # Fallback: address shown (tap-to-copy on Telegram) + fund page with address prefilled
     await callback.message.answer(
-        "💧 <b>Get money</b>\n\n"
-        f"Your address (tap to copy):\n<code>{h(addr)}</code>\n\n"
-        "1. Tap <b>Fund page</b> — address ready to copy\n"
-        "2. Open faucet → pick <b>Arc Testnet</b> → <b>USDC</b> → paste\n"
-        "3. Back here → Wallet → Refresh\n\n"
-        "Gas is paid in USDC — you only need USDC.",
+        "🪙 <b>Crypto deposit</b>\n\n"
+        f"Your play address (tap to copy):\n<code>{h(addr)}</code>\n\n"
+        "Send <b>USDC</b> on <b>Arc</b> to this address.\n"
+        "On testnet: use the faucet / Fund page.\n"
+        "Then Wallet → Refresh.\n\n"
+        "Prefer bank transfer? Use <b>Get money</b> → Naira or USD.",
         parse_mode=ParseMode.HTML,
         reply_markup=get_usdc_menu(
             faucet_url=CIRCLE_FAUCET_URL,

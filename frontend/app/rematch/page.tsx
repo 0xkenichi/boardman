@@ -13,10 +13,48 @@ const BOT = REMATCH_BOT_URL
 const FAUCET = 'https://faucet.circle.com/'
 
 const STEPS = [
-  { n: '01', t: 'Fund', d: 'Get USDC into your Arc play wallet' },
-  { n: '02', t: 'Challenge', d: 'Tag a friend, pick stake & game' },
-  { n: '03', t: 'Lock', d: 'Both players lock — stake is held' },
-  { n: '04', t: 'Play & settle', d: 'Upload the final screen. Winner paid.' },
+  {
+    n: '01',
+    t: 'Fund your wallet',
+    d: 'Get USDC (Kobox, bank top-up, or crypto) into your Rematch play wallet.',
+    ico: '💧',
+  },
+  {
+    n: '02',
+    t: 'Challenge someone',
+    d: 'Tag a friend or post public. Pick stake, game, and lock in.',
+    ico: '⚔️',
+  },
+  {
+    n: '03',
+    t: 'Both lock stake',
+    d: 'Escrow holds both sides. No one can ghost with the money.',
+    ico: '🔐',
+  },
+  {
+    n: '04',
+    t: 'Play & settle',
+    d: 'Finish the match. Send the final screen. Winner gets paid.',
+    ico: '🏆',
+  },
+]
+
+const GAMES = [
+  { emoji: '⚽', name: 'EA FC', where: 'Console · Mobile' },
+  { emoji: '🏀', name: 'NBA 2K', where: 'Console' },
+  { emoji: '🔥', name: 'Free Fire', where: 'Mobile 1v1' },
+  { emoji: '🎯', name: 'COD', where: 'Deathmatch' },
+  { emoji: '♟️', name: 'Chess', where: 'App · iMessage' },
+  { emoji: '🎲', name: 'Ludo & more', where: 'Casual' },
+  { emoji: '📱', name: 'iMessage', where: 'GamePigeon' },
+  { emoji: '🥊', name: 'Fighting', where: 'BO sets' },
+]
+
+const FEATURES = [
+  { t: 'Dual-lock escrow', d: 'Both players lock before play starts.' },
+  { t: 'Screenshot settle', d: 'Final screen is enough for many games.' },
+  { t: 'Balance in $', d: 'You see dollars — not chain homework.' },
+  { t: 'Telegram + web', d: 'Bot for DMs, site for open board.' },
 ]
 
 export default function RematchPage() {
@@ -24,40 +62,21 @@ export default function RematchPage() {
 
   const tabs: Record<string, React.ReactNode> = {
     flow: (
-      <div className="rm-stack" style={{ gap: '1rem' }}>
-        <h2 className="rm-h2" style={{ color: '#34d399' }}>
+      <div className="rm-stack" style={{ gap: '0.35rem' }}>
+        <h2 className="rm-h2" style={{ color: 'var(--rm-green-bright)', marginBottom: '0.75rem' }}>
           How it works
         </h2>
-        <div className="rm-stack">
+        <div className="rm-how-grid">
           {STEPS.map((s) => (
-            <div
-              key={s.n}
-              style={{
-                display: 'flex',
-                gap: '0.85rem',
-                alignItems: 'flex-start',
-                padding: '0.75rem 0',
-                borderBottom: '1px solid rgba(255,255,255,0.05)',
-              }}
-            >
-              <span
-                style={{
-                  fontSize: '0.7rem',
-                  fontWeight: 800,
-                  color: '#34d399',
-                  letterSpacing: '0.06em',
-                  minWidth: '1.6rem',
-                  paddingTop: 2,
-                }}
-              >
-                {s.n}
-              </span>
-              <div>
-                <div style={{ fontWeight: 800, marginBottom: 2 }}>{s.t}</div>
-                <div className="rm-muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-                  {s.d}
-                </div>
+            <div key={s.n} className="rm-how-step">
+              <div className="rm-how-step-top">
+                <span className="rm-how-ico" aria-hidden>
+                  {s.ico}
+                </span>
+                <span className="rm-how-n">{s.n}</span>
               </div>
+              <div className="rm-how-title">{s.t}</div>
+              <p className="rm-muted rm-how-desc">{s.d}</p>
             </div>
           ))}
         </div>
@@ -65,61 +84,83 @@ export default function RematchPage() {
     ),
     play: (
       <div className="rm-stack" style={{ gap: '0.85rem' }}>
-        <h2 className="rm-h2" style={{ color: '#34d399' }}>
+        <h2 className="rm-h2" style={{ color: 'var(--rm-green-bright)' }}>
           PLAY score
         </h2>
         <p className="rm-muted" style={{ margin: 0 }}>
-          Points for competing. <strong style={{ color: '#fff' }}>Not cash.</strong>
+          Points for competing. <strong style={{ color: '#fff' }}>Not cash.</strong> Climb tiers
+          and show up on the board.
         </p>
-        <table style={{ width: '100%', fontSize: '0.9rem', borderCollapse: 'collapse' }}>
-          <tbody>
-            {[
-              ['Win', '+100'],
-              ['Loss', '+40'],
-              ['Draw', '+50'],
-              ['No-show', '−50'],
-              ['Tiers', 'Bronze → Diamond'],
-            ].map(([k, v]) => (
-              <tr key={k} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                <td style={{ padding: '0.65rem 0', color: '#9ca3af' }}>{k}</td>
-                <td style={{ padding: '0.65rem 0', color: '#34d399', textAlign: 'right', fontWeight: 700 }}>
-                  {v}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="rm-score-grid">
+          {[
+            ['Win', '+100', 'green'],
+            ['Loss', '+40', 'muted'],
+            ['Draw', '+50', 'muted'],
+            ['No-show', '−50', 'red'],
+          ].map(([k, v, tone]) => (
+            <div key={k} className={`rm-score-cell rm-score-${tone}`}>
+              <span className="rm-score-k">{k}</span>
+              <span className="rm-score-v">{v}</span>
+            </div>
+          ))}
+        </div>
+        <p className="rm-muted" style={{ margin: 0, fontSize: '0.8rem' }}>
+          Tiers: Bronze → Silver → Gold → Platinum → Diamond
+        </p>
       </div>
     ),
     wallet: (
       <div className="rm-stack" style={{ gap: '0.85rem' }}>
-        <h2 className="rm-h2" style={{ color: '#34d399' }}>
-          Wallet
+        <h2 className="rm-h2" style={{ color: 'var(--rm-green-bright)' }}>
+          Wallet & funding
         </h2>
         <p className="rm-muted" style={{ margin: 0 }}>
-          Rematch runs on <strong style={{ color: '#fff' }}>Arc</strong>. Gas is USDC — you only
-          need USDC.
+          Play with a simple <strong style={{ color: '#fff' }}>Balance $</strong>. Fund however
+          you like — partner app, bank top-up, or crypto.
         </p>
-        <ul className="rm-muted" style={{ margin: 0, paddingLeft: '1.1rem', lineHeight: 1.7 }}>
-          <li>
-            <strong style={{ color: '#fff' }}>Get USDC</strong> —{' '}
-            <a href={FAUCET} className="text-emerald-400 underline" target="_blank" rel="noreferrer">
-              Circle faucet
-            </a>{' '}
-            → Arc → your address
-          </li>
-          <li>
-            <strong style={{ color: '#fff' }}>Withdraw</strong> — Wallet in bot or app
-          </li>
-        </ul>
+        <div className="rm-fund-list">
+          <div className="rm-fund-row">
+            <span className="rm-fund-ico">⭐</span>
+            <div>
+              <strong>Kobox</strong>
+              <p className="rm-muted" style={{ margin: '0.15rem 0 0', fontSize: '0.8rem' }}>
+                Swap Naira ↔ USDC yourself, then send to your play address.
+              </p>
+            </div>
+          </div>
+          <div className="rm-fund-row">
+            <span className="rm-fund-ico">🏦</span>
+            <div>
+              <strong>Bank top-up</strong>
+              <p className="rm-muted" style={{ margin: '0.15rem 0 0', fontSize: '0.8rem' }}>
+                Pay our account in the bot — we credit USDC after confirmation.
+              </p>
+            </div>
+          </div>
+          <div className="rm-fund-row">
+            <span className="rm-fund-ico">🪙</span>
+            <div>
+              <strong>Crypto</strong>
+              <p className="rm-muted" style={{ margin: '0.15rem 0 0', fontSize: '0.8rem' }}>
+                Send USDC to your deposit address.{' '}
+                <a href={FAUCET} className="rm-inline-link" target="_blank" rel="noreferrer">
+                  Testnet faucet
+                </a>
+              </p>
+            </div>
+          </div>
+        </div>
+        <Link href="/rematch/get-usdc" className="rm-btn rm-btn-ghost rm-btn-sm" style={{ width: 'auto' }}>
+          Open fund helper →
+        </Link>
       </div>
     ),
     legal: (
       <div className="rm-stack" style={{ gap: '0.75rem' }}>
-        <h2 className="rm-h2" style={{ color: '#fbbf24' }}>
+        <h2 className="rm-h2" style={{ color: 'var(--rm-amber)' }}>
           Before you play
         </h2>
-        <ul className="rm-muted" style={{ margin: 0, paddingLeft: '1.1rem', lineHeight: 1.7 }}>
+        <ul className="rm-rules-list">
           <li>Skill matches with proof — play fair.</li>
           <li>Only stake what you can afford to lose.</li>
           <li>PLAY is a score, not money.</li>
@@ -130,145 +171,160 @@ export default function RematchPage() {
   }
 
   return (
-    <div style={{ maxWidth: '42rem', margin: '0 auto', padding: '2rem 1rem 3rem' }}>
+    <div className="rm-marketing">
       {/* Hero */}
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '1.5rem',
-          marginBottom: '2rem',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+      <section className="rm-hero-card">
+        <div className="rm-hero-top">
           <Image
             src="/rematch-logo.jpg"
             alt="Rematch"
-            width={80}
-            height={80}
+            width={88}
+            height={88}
             className="rm-hero-logo"
             priority
           />
           <div>
-            <p className="rm-section-title">by sideQuest</p>
-            <h1
-              style={{
-                margin: 0,
-                fontSize: 'clamp(2.4rem, 8vw, 3.25rem)',
-                fontWeight: 900,
-                letterSpacing: '-0.04em',
-                lineHeight: 1,
-              }}
-            >
-              <span style={{ color: '#34d399' }}>Re</span>
-              <span style={{ color: '#fff' }}>match</span>
+            <p className="rm-section-title">1v1 skill matches · by sideQuest</p>
+            <h1 className="rm-hero-title">
+              <span className="rm-hero-re">Re</span>
+              <span>match</span>
             </h1>
           </div>
         </div>
 
-        <div>
-          <p
-            style={{
-              margin: '0 0 0.5rem',
-              fontSize: '1.25rem',
-              color: '#d1d5db',
-              lineHeight: 1.4,
-              maxWidth: '28rem',
-            }}
-          >
-            Lock in. Play. Settle. Run it back.
-          </p>
-          <p className="rm-muted" style={{ margin: 0, maxWidth: '28rem' }}>
-            1v1 skill matches — console, iMessage, or mobile. Stake, lock, send the final photo.
-            Telegram or web.
-          </p>
-        </div>
+        <p className="rm-hero-tagline">Lock in. Play. Settle. Run it back.</p>
+        <p className="rm-hero-sub">
+          Stake USDC on console, mobile, or iMessage 1v1s. Both lock, you play, send the final
+          photo — winner gets paid. Telegram bot or web.
+        </p>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.65rem' }}>
-          <Link
-            href="/rematch/app"
-            className="rm-btn rm-btn-primary"
-            style={{ width: 'auto', minWidth: 140, padding: '0.9rem 1.35rem' }}
-          >
+        <div className="rm-hero-cta">
+          <Link href="/rematch/app" className="rm-btn rm-btn-primary rm-btn-cta">
             Open web app
           </Link>
           <a
             href={REMATCH_GROUP_URL}
             target="_blank"
             rel="noreferrer"
-            className="rm-btn rm-btn-ghost"
-            style={{ width: 'auto', minWidth: 140, padding: '0.9rem 1.35rem' }}
+            className="rm-btn rm-btn-ghost rm-btn-cta"
           >
-            Live rooms (Telegram)
+            Live rooms
           </a>
-          <a
-            href={BOT}
-            target="_blank"
-            rel="noreferrer"
-            className="rm-btn rm-btn-ghost"
-            style={{ width: 'auto', minWidth: 140, padding: '0.9rem 1.35rem' }}
-          >
+          <a href={BOT} target="_blank" rel="noreferrer" className="rm-btn rm-btn-ghost rm-btn-cta">
             Telegram bot
           </a>
-          <a
-            href={FAUCET}
-            target="_blank"
-            rel="noreferrer"
-            className="rm-btn rm-btn-ghost"
-            style={{ width: 'auto', minWidth: 140, padding: '0.9rem 1.35rem' }}
-          >
-            Get USDC
-          </a>
         </div>
-      </div>
 
-      <div style={{ marginBottom: '1.5rem' }}>
+        <div className="rm-hero-stats">
+          <div className="rm-stat">
+            <span className="rm-stat-v">1v1</span>
+            <span className="rm-stat-l">Only skill games</span>
+          </div>
+          <div className="rm-stat">
+            <span className="rm-stat-v">2×</span>
+            <span className="rm-stat-l">Lock escrow</span>
+          </div>
+          <div className="rm-stat">
+            <span className="rm-stat-v">$</span>
+            <span className="rm-stat-l">Simple balance</span>
+          </div>
+        </div>
+      </section>
+
+      {/* Games strip */}
+      <section className="rm-section">
+        <div className="rm-section-head">
+          <p className="rm-section-title">What you can play</p>
+          <h2 className="rm-h2">Games that settle clean</h2>
+          <p className="rm-muted" style={{ margin: '0.35rem 0 0', maxWidth: '36rem' }}>
+            Finite outcome only — clear winner (or draw rules). More titles when the settle path
+            is solid.
+          </p>
+        </div>
+        <div className="rm-games-grid">
+          {GAMES.map((g) => (
+            <div key={g.name} className="rm-game-tile">
+              <span className="rm-game-emoji" aria-hidden>
+                {g.emoji}
+              </span>
+              <div>
+                <div className="rm-game-name">{g.name}</div>
+                <div className="rm-game-where">{g.where}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Features */}
+      <section className="rm-section">
+        <div className="rm-feature-grid">
+          {FEATURES.map((f) => (
+            <div key={f.t} className="rm-feature-card">
+              <div className="rm-feature-t">{f.t}</div>
+              <p className="rm-muted" style={{ margin: 0, fontSize: '0.82rem' }}>
+                {f.d}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="rm-section">
         <LiveRoomsCard variant="full" />
-      </div>
-
-      {/* Feature pills */}
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '0.45rem',
-          marginBottom: '1.5rem',
-        }}
-      >
-        {['Dual-lock escrow', 'Screenshot settle', 'Arc USDC', 'Public rooms', 'Telegram + web'].map(
-          (t) => (
-            <span key={t} className="rm-chip">
-              {t}
-            </span>
-          )
-        )}
-      </div>
+      </section>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '1rem' }}>
-        {(
-          [
-            ['flow', 'How it works'],
-            ['play', 'PLAY score'],
-            ['wallet', 'Wallet'],
-            ['legal', 'Rules'],
-          ] as const
-        ).map(([tab, label]) => (
-          <button
-            key={tab}
-            type="button"
-            onClick={() => setActiveTab(tab)}
-            className={`rm-tile ${activeTab === tab ? 'rm-tile-active' : ''}`}
-            style={{ width: 'auto', padding: '0.55rem 0.9rem', fontSize: '0.8rem' }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <section className="rm-section">
+        <div className="rm-section-head">
+          <p className="rm-section-title">Learn more</p>
+          <h2 className="rm-h2">Flow, scores & funding</h2>
+        </div>
+        <div className="rm-tab-bar" role="tablist">
+          {(
+            [
+              ['flow', 'How it works'],
+              ['play', 'PLAY score'],
+              ['wallet', 'Wallet'],
+              ['legal', 'Rules'],
+            ] as const
+          ).map(([tab, label]) => (
+            <button
+              key={tab}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab}
+              onClick={() => setActiveTab(tab)}
+              className={`rm-tab ${activeTab === tab ? 'rm-tab-on' : ''}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="rm-card rm-tab-panel" role="tabpanel">
+          {tabs[activeTab]}
+        </div>
+      </section>
 
-      <div className="rm-card" style={{ padding: '1.35rem 1.4rem' }}>
-        {tabs[activeTab]}
-      </div>
+      {/* Bottom CTA */}
+      <section className="rm-bottom-cta">
+        <div>
+          <h2 className="rm-h2" style={{ marginBottom: '0.35rem' }}>
+            Ready to run it back?
+          </h2>
+          <p className="rm-muted" style={{ margin: 0 }}>
+            Open the app or hop into Telegram — same matches either way.
+          </p>
+        </div>
+        <div className="rm-hero-cta" style={{ marginTop: 0 }}>
+          <Link href="/rematch/app" className="rm-btn rm-btn-primary rm-btn-cta">
+            Play now
+          </Link>
+          <a href={BOT} target="_blank" rel="noreferrer" className="rm-btn rm-btn-ghost rm-btn-cta">
+            Open bot
+          </a>
+        </div>
+      </section>
     </div>
   )
 }

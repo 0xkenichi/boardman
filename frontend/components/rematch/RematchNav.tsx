@@ -30,8 +30,8 @@ export function RematchNav() {
       }}
     >
       <div
+        className={isApp ? 'rm-nav-bar rm-nav-bar--app' : 'rm-nav-bar rm-nav-bar--site'}
         style={{
-          maxWidth: isApp ? '28rem' : '42rem',
           margin: '0 auto',
           padding: '0.7rem 1rem',
           display: 'flex',

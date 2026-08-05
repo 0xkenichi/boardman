@@ -28,6 +28,7 @@ from gaming.src.bot.handlers import lock_stake  # noqa: E402
 from gaming.src.bot.handlers import submit_score  # noqa: E402
 from gaming.src.bot.handlers import dispute  # noqa: E402
 from gaming.src.bot.handlers import simple_ui  # noqa: E402
+from gaming.src.bot.handlers import fiat_topup  # noqa: E402
 from gaming.src.bot.handlers import admin_safety  # noqa: E402
 from gaming.src.bot.handlers import tournament  # noqa: E402
 from gaming.src.bot.handlers import fallback  # noqa: E402
@@ -45,6 +46,7 @@ def _build_dispatcher() -> Dispatcher:
     dp.callback_query.middleware(UxCallbackMiddleware())
     # Button-first UX (FSM) — register early for menu callbacks
     dp.include_router(simple_ui.router)
+    dp.include_router(fiat_topup.router)
     dp.include_router(start.router)
     dp.include_router(balance.router)
     dp.include_router(profile.router)

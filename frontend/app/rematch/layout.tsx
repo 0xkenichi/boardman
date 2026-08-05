@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { RematchNav } from '@/components/rematch/RematchNav'
 import { RematchFooter } from '@/components/rematch/RematchFooter'
 import { RematchPwa } from '@/components/rematch/RematchPwa'
+import { SideRails } from '@/components/rematch/SideRails'
 import './rematch.css'
 
 export const metadata: Metadata = {
@@ -52,8 +53,10 @@ export const viewport: Viewport = {
 export default function RematchLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="rm-shell flex min-h-screen flex-col">
+      <div className="rm-bg-mesh" aria-hidden />
+      <SideRails />
       <RematchNav />
-      <div className="relative z-10 flex-1">{children}</div>
+      <div className="relative z-10 flex-1 rm-main-column">{children}</div>
       <RematchFooter />
       <RematchPwa />
     </div>

@@ -15,7 +15,14 @@ export function LiveRoomsCard({ variant = 'full' }: Props) {
   const compact = variant === 'compact'
 
   return (
-    <div className="rm-card" style={{ borderColor: 'rgba(52,211,153,0.28)' }}>
+    <div
+      className="rm-card"
+      style={{
+        borderColor: 'rgba(52,211,153,0.28)',
+        background:
+          'linear-gradient(145deg, rgba(16,185,129,0.1) 0%, rgba(16,20,28,0.9) 55%, rgba(7,8,12,0.95) 100%)',
+      }}
+    >
       <p className="rm-section-title" style={{ marginBottom: '0.35rem' }}>
         Live rooms · public games
       </p>
@@ -32,7 +39,7 @@ export function LiveRoomsCard({ variant = 'full' }: Props) {
         style={{
           display: 'grid',
           gridTemplateColumns: compact ? '1fr 1fr' : '1fr 1fr',
-          gap: '0.45rem',
+          gap: '0.5rem',
           marginBottom: '0.9rem',
         }}
       >
@@ -40,17 +47,18 @@ export function LiveRoomsCard({ variant = 'full' }: Props) {
           <div
             key={r.id}
             style={{
-              borderRadius: 12,
-              border: '1px solid rgba(255,255,255,0.07)',
-              background: 'rgba(0,0,0,0.28)',
-              padding: '0.55rem 0.65rem',
+              borderRadius: 14,
+              border: '1px solid rgba(255,255,255,0.08)',
+              background: 'rgba(0,0,0,0.32)',
+              padding: '0.65rem 0.7rem',
+              transition: 'border-color 0.15s, background 0.15s',
             }}
           >
-            <div style={{ fontWeight: 800, fontSize: '0.85rem' }}>
+            <div style={{ fontWeight: 800, fontSize: '0.88rem' }}>
               {r.emoji} {r.label}
             </div>
             {!compact ? (
-              <div className="rm-muted" style={{ fontSize: '0.7rem', marginTop: 2, marginBottom: 0 }}>
+              <div className="rm-muted" style={{ fontSize: '0.7rem', marginTop: 3, marginBottom: 0 }}>
                 {r.hint}
               </div>
             ) : null}
