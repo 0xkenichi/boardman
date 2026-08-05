@@ -67,7 +67,7 @@ export function MiniPayHost() {
             {state?.isMiniPay || force ? 'Running in MiniPay' : 'MiniPay ready'}
           </h2>
           <p className="rm-muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-            Same Rematch app — challenge, lock, screenshot settle. MiniPay is the host for Africa
+            Same Boardman app — challenge, lock, screenshot settle. MiniPay is the host for Africa
             distribution (Proof-of-Ship).
           </p>
         </div>
@@ -102,7 +102,7 @@ export function MiniPayHost() {
       {state?.error ? <p className="rm-err">{state.error}</p> : null}
 
       <p className="rm-muted" style={{ margin: '0.65rem 0 0', fontSize: '0.72rem' }}>
-        Stakes still use your Rematch play wallet (Balance $). MiniPay address is for host identity /
+        Stakes still use your Boardman play wallet (Balance $). MiniPay address is for host identity /
         future Celo USDC rails.{' '}
         <a href={MINIPAY_ENTRY_URL} style={{ color: '#35d07f' }}>
           Deep link

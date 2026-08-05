@@ -32,7 +32,7 @@ def _format_profile(profile: dict, history: list | None = None) -> str:
     rep = reputation_score(wins, losses, draws, play)
     streak_txt = f"🔥 {streak}" if streak else "0"
     text = (
-        f"👤 <b>Rematch profile</b>\n\n"
+        f"👤 <b>Boardman profile</b>\n\n"
         f"Name: <b>{name}</b>\n"
         f"Tag: <code>@{tag}</code>\n\n"
         f"🎮 <b>PLAY:</b> <b>{play:,}</b>\n"

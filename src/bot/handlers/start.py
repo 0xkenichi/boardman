@@ -47,7 +47,7 @@ async def cmd_start(message: types.Message) -> None:
     # Instant ack so /start never feels dead while we hit Supabase/Circle
     try:
         await message.answer(
-            "⏳ Opening Rematch…",
+            "⏳ Opening Boardman…",
             reply_markup=main_menu(),
             parse_mode=None,
         )
@@ -66,7 +66,7 @@ async def cmd_start(message: types.Message) -> None:
         try:
             check_region(_FakeRequest(headers))
         except BlockedRegionError:
-            await message.answer("Rematch isn't available in your region yet.")
+            await message.answer("Boardman isn't available in your region yet.")
             return
         except Exception as exc:
             logger.warning("[Start] Geo-fence check skipped due to error: %s", exc)
@@ -159,8 +159,8 @@ async def cmd_start(message: types.Message) -> None:
         logger.warning("[Start] balance preview skipped/failed for %s", profile["id"])
 
     text = (
-        f"🎮 <b>Welcome to Rematch, {name}!</b>\n"
-        f"<i>by sideQuest</i>\n\n"
+        f"🎮 <b>Welcome to Boardman, {name}!</b>\n"
+        f"<i>Digital boardman · by sideQuest</i>\n\n"
         f"Your tag: <code>@{tag}</code>\n"
         f"Friends challenge you with this.\n\n"
         f"{bal_line}"
@@ -178,7 +178,7 @@ async def cmd_start(message: types.Message) -> None:
         # Never fail silent — fall back to plain text so the user always gets a reply.
         logger.exception("[Start] Failed to send welcome HTML message: %s", exc)
         plain = (
-            f"🎮 Welcome to Rematch, {profile.get('display_name') or user.first_name}!\n\n"
+            f"🎮 Welcome to Boardman, {profile.get('display_name') or user.first_name}!\n\n"
             f"Tag: {profile.get('gaming_tag') or '—'}\n\n"
             f"Your Arc deposit address:\n"
             f"{address}\n\n"
@@ -264,10 +264,10 @@ async def cb_menu_learn(callback: types.CallbackQuery) -> None:
 
 @router.callback_query(F.data == "menu:app")
 async def cb_menu_app(callback: types.CallbackQuery) -> None:
-    """Send the Rematch site link."""
+    """Send the Boardman site link."""
     await callback.answer()
     await callback.message.edit_text(
-        f"🌐 Rematch\n\n{REMATCH_INFO_URL}",
+        f"🌐 Boardman\n\n{REMATCH_INFO_URL}",
         reply_markup=back_menu(),
     )
 

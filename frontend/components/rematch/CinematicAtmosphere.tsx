@@ -45,6 +45,7 @@ const SCENES = [
 ]
 
 const MARQUEE_A = [
+  'BOARDMAN',
   'PLAY EA FC',
   'PLAY FREE FIRE',
   'PLAY VALORANT',
@@ -54,6 +55,7 @@ const MARQUEE_A = [
   'PC',
   'MOBILE',
   'EARN WITH YOUR CONSOLE',
+  'DIGITAL BOARDMAN',
   '1v1 LOCK · PLAY · SETTLE',
   'RUN IT BACK',
 ]

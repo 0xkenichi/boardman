@@ -77,7 +77,7 @@ async def cmd_link_community(message: types.Message) -> None:
     # Allow admin, or any member when run in a group (first link sets target)
     if chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL):
         await message.answer(
-            "Run this command <b>inside</b> your Rematch community group "
+            "Run this command <b>inside</b> your Boardman community group "
             "(not in a private DM with the bot).\n\n"
             "1. Add @ClawStationOfficialBot to the group\n"
             "2. Give it permission to post messages\n"
@@ -92,7 +92,7 @@ async def cmd_link_community(message: types.Message) -> None:
             member = await message.bot.get_chat_member(chat.id, user.id)
             status = getattr(member, "status", None)
             if status not in ("creator", "administrator"):
-                await message.answer("Group admin or Rematch admin only.")
+                await message.answer("Group admin or Boardman admin only.")
                 return
         except Exception:
             await message.answer("Could not verify group admin status.")
@@ -119,7 +119,7 @@ async def cmd_link_community(message: types.Message) -> None:
     try:
         await message.bot.send_message(
             chat.id,
-            "📣 Rematch community linked — public open challenges will appear here.",
+            "📣 Boardman community linked — public open challenges will appear here.",
             parse_mode=ParseMode.HTML,
         )
     except Exception as exc:

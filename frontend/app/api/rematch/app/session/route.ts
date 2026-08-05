@@ -122,7 +122,7 @@ export async function POST(req: Request) {
       {
         ok: false,
         error: 'open_bot_first',
-        message: 'Open the Rematch Telegram bot once (/start), then sign in here.',
+        message: 'Open the Boardman Telegram bot once (/start), then sign in here.',
         bot: process.env.NEXT_PUBLIC_TELEGRAM_BOT_URL || 'https://t.me/ClawStationOfficialBot',
       },
       { status: 403 }

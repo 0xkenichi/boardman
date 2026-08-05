@@ -42,7 +42,7 @@ export function AppShell({
         ) : null}
         {children}
       </div>
-      <nav className="rm-nav" aria-label="Rematch app">
+      <nav className="rm-nav" aria-label="Boardman app">
         <div className="rm-nav-inner">
           {NAV.map((n) => {
             const active =

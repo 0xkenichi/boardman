@@ -50,7 +50,7 @@ def onramp_copy_html() -> str:
     return (
         f"⭐ <b>Recommended: {name}</b>\n"
         f"Download {name}, fund with Naira, swap to USDC, then send USDC to your "
-        f"<b>Rematch play address</b>. You control the rate and can bank there anytime.\n\n"
+        f"<b>Boardman play address</b>. You control the rate and can bank there anytime.\n\n"
         f"Or skip the app — pay our bank and <b>we credit you</b> (fee applies)."
     )
 
@@ -59,7 +59,7 @@ def offramp_copy_html() -> str:
     name = kobox_name()
     return (
         f"⭐ <b>Recommended: cash out via {name}</b>\n"
-        f"Withdraw USDC from Rematch to your <b>{name} deposit address</b>, "
+        f"Withdraw USDC from Boardman to your <b>{name} deposit address</b>, "
         f"then swap to Naira and withdraw to your bank inside {name}.\n\n"
         f"Already have another exchange/wallet? Send to that 0x instead — same flow."
     )

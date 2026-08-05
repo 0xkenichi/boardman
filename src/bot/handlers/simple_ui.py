@@ -145,7 +145,7 @@ async def ui_main(callback: types.CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     await state.clear()
     await callback.message.answer(
-        "🏠 <b>Rematch</b>\n\nTap a button — no commands needed.",
+        "🏠 <b>Boardman</b>\n\nTap a button — no commands needed.",
         reply_markup=main_menu(),
         parse_mode=ParseMode.HTML,
     )
@@ -316,7 +316,7 @@ async def ui_network_menu(callback: types.CallbackQuery) -> None:
 
     await callback.message.answer(
         "🌐 <b>Network</b>\n\n"
-        "Rematch runs on <b>Arc</b>.\n"
+        "Boardman runs on <b>Arc</b>.\n"
         f"Balance: <b>${bal:,.2f} USDC</b>\n\n"
         f"Deposit:\n<code>{h(addr)}</code>\n\n"
         "Need funds? Tap <b>Get money</b>.",
@@ -446,7 +446,7 @@ async def ui_public_board(callback: types.CallbackQuery) -> None:
 
     kb = InlineKeyboardBuilder()
     kb.row(InlineKeyboardButton(text="🏆 Open leaderboard", url=REMATCH_BOARD))
-    kb.row(InlineKeyboardButton(text="🌐 Rematch site", url=REMATCH_WEB))
+    kb.row(InlineKeyboardButton(text="🌐 Boardman site", url=REMATCH_WEB))
     kb.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
     await callback.message.answer(
         "\n".join(lines),
@@ -953,7 +953,7 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
             "visibility": visibility,
             "status": "open",
             "expires_at": expires.isoformat(),
-            "message": "Rematch challenge",
+            "message": "Boardman challenge",
             "settlement_chain": chain,
         }
     )

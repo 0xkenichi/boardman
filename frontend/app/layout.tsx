@@ -2,8 +2,9 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Rematch by sideQuest',
-  description: 'Lock in. Play. Settle. Run it back.',
+  title: 'Boardman by sideQuest',
+  description:
+    'Digital boardman for skill 1v1s — lock in, play, settle. by sideQuest.',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

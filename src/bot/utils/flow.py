@@ -1,4 +1,4 @@
-"""Simple player-facing flow copy for Rematch (button-first)."""
+"""Simple player-facing flow copy for Boardman (button-first)."""
 from __future__ import annotations
 
 from typing import Any, Optional
@@ -10,7 +10,7 @@ ARC_FAUCET_HINT = "Circle Faucet → Arc Testnet → USDC"
 
 def how_to_play() -> str:
     return (
-        "🎮 <b>How to play Rematch</b>\n\n"
+        "🎮 <b>How to play Boardman</b>\n\n"
         "<b>1. Get money</b>\n"
         "Wallet → <b>Get money</b> → fund the address shown.\n"
         "Balance = what you can stake (not old account credits).\n\n"
@@ -33,7 +33,7 @@ def how_to_play() -> str:
 
 def short_help() -> str:
     return (
-        "📋 <b>Rematch</b> · sideQuest\n\n"
+        "📋 <b>Boardman</b> · sideQuest\n\n"
         "🎮 My match · ⚔️ Challenge · 💰 Wallet · 👤 Profile\n\n"
         "/howto · /balance · /support_id"
     )
@@ -54,7 +54,7 @@ def rules_short() -> str:
 def play_points_short() -> str:
     return (
         "🎮 <b>PLAY points</b>\n\n"
-        "Score for competing on Rematch.\n"
+        "Score for competing on Boardman.\n"
         "• Win <b>+100</b> · Loss <b>+40</b> · Draw <b>+50</b>\n"
         "• No-show <b>−50</b>\n"
         "• New rivals earn more than endless rematches\n"

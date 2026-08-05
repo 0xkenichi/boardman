@@ -98,7 +98,7 @@ export function RematchPwa() {
   return (
     <div
       role="dialog"
-      aria-label="Install Rematch"
+      aria-label="Install Boardman"
       style={{
         position: 'fixed',
         left: 12,
@@ -127,12 +127,12 @@ export function RematchPwa() {
         />
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ margin: 0, fontWeight: 800, fontSize: '0.95rem' }}>
-            Add Rematch to Home Screen
+            Add Boardman to Home Screen
           </p>
           <p style={{ margin: '0.3rem 0 0', fontSize: '0.78rem', color: '#9ca3af', lineHeight: 1.4 }}>
             {isIos && !deferred
-              ? 'Tap Share → Add to Home Screen for a full-screen Rematch app.'
-              : 'Install for one-tap play — Rematch only, not sideQuest.'}
+              ? 'Tap Share → Add to Home Screen for a full-screen Boardman app.'
+              : 'Install for one-tap play — Boardman only, not the full sideQuest site.'}
           </p>
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
             {deferred ? (

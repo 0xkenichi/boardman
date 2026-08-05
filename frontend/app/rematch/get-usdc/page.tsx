@@ -40,7 +40,7 @@ function FundInner() {
         <div className="flex items-center gap-3">
           <Image
             src="/rematch-logo.jpg"
-            alt="Rematch"
+            alt="Boardman"
             width={48}
             height={48}
             className="rounded-xl border border-emerald-500/20"

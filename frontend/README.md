@@ -1,5 +1,6 @@
-# Rematch web (production)
+# Boardman web (production)
 
+**Brand:** Boardman by sideQuest (routes still under `/rematch` for stability)  
 **App:** `https://playingsidequest.fun/rematch/app`  
 **Security model:** `docs/WEBAPP_UX_AND_SECURITY.md`
 

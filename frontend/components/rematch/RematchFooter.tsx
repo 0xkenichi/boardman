@@ -29,7 +29,7 @@ export function RematchFooter() {
       >
         <p style={{ margin: 0, fontSize: '0.8rem', color: '#6b7280' }}>
           <span style={{ fontWeight: 800, color: '#9ca3af' }}>
-            <span style={{ color: '#34d399' }}>Re</span>match
+            <span style={{ color: '#34d399' }}>Board</span>man
           </span>{' '}
           by sideQuest
         </p>

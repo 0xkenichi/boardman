@@ -112,7 +112,7 @@ async def ui_topup_kobox_info(callback: types.CallbackQuery, state: FSMContext) 
         f"1. Install / open {name}" + (f" → {url}" if url else ""),
         "2. Fund with Naira (or use balance you already have)",
         "3. Swap to USDC inside the app",
-        "4. Send USDC to your <b>Rematch play address</b>:",
+        "4. Send USDC to your <b>Boardman play address</b>:",
     ]
     if play:
         lines.append(f"<code>{h(play)}</code>")

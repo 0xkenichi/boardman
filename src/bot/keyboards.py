@@ -1,4 +1,4 @@
-"""Inline keyboard builders for the Rematch Telegram bot (simple UX)."""
+"""Inline keyboard builders for the Boardman Telegram bot (simple UX)."""
 from __future__ import annotations
 
 import os
@@ -112,7 +112,7 @@ def community_menu() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="📋 Public board", callback_data="ui:board"),
         InlineKeyboardButton(text="⚔️ Post challenge", callback_data="ui:challenge"),
     )
-    builder.row(InlineKeyboardButton(text="🌐 Rematch site", url=REMATCH_WEB))
+    builder.row(InlineKeyboardButton(text="🌐 Boardman site", url=REMATCH_WEB))
     builder.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
     return builder.as_markup()
 
@@ -625,7 +625,7 @@ def send_menu() -> InlineKeyboardMarkup:
         ),
     )
     builder.row(
-        InlineKeyboardButton(text="👤 To @tag (Rematch player)", callback_data="send_to_tag"),
+        InlineKeyboardButton(text="👤 To @tag (Boardman player)", callback_data="send_to_tag"),
     )
     builder.row(
         InlineKeyboardButton(text="« Wallet", callback_data="menu:wallet"),

@@ -140,9 +140,9 @@ async def start_withdraw(message: types.Message, state: FSMContext) -> None:
         f"{partner_blurb}\n"
         f"<b>How</b>\n"
         f"1. Open {escape(name)} (or any wallet) and copy its <b>USDC deposit address</b>\n"
-        f"2. Tap <b>To 0x</b> here and send from Rematch\n"
+        f"2. Tap <b>To 0x</b> here and send from Boardman\n"
         f"3. In {escape(name)}: swap USDC → Naira → withdraw to your bank\n\n"
-        "Or send to another Rematch player with @tag.\n\n"
+        "Or send to another Boardman player with @tag.\n\n"
         "Where should we send?",
         parse_mode=ParseMode.HTML,
         reply_markup=send_menu(),
@@ -195,7 +195,7 @@ async def cb_withdraw_kobox(callback: types.CallbackQuery, state: FSMContext) ->
     await callback.message.answer(
         f"{offramp_copy_html()}\n"
         f"{link_line}\n"
-        f"<b>In Rematch</b>\n"
+        f"<b>In Boardman</b>\n"
         f"1. In {escape(name)}, copy your <b>USDC deposit / receive address</b>\n"
         f"2. Tap <b>To 0x (Kobox or any wallet)</b>\n"
         f"3. Paste address + amount → confirm\n"
@@ -229,7 +229,7 @@ async def cb_send_to_address(callback: types.CallbackQuery, state: FSMContext) -
         "💸 <b>Withdraw to an external wallet</b>\n\n"
         "Reply with: <code>0xAddress amount</code>\n"
         "Example: <code>0x1234…abcd 25</code>\n\n"
-        "⚠️ Withdraw on <b>Arc</b> only (same network as Rematch).",
+        "⚠️ Withdraw on <b>Arc</b> only (same network as Boardman).",
         parse_mode=ParseMode.HTML,
         reply_markup=back_menu(),
     )

@@ -6,16 +6,17 @@ import { CinematicAtmosphere } from '@/components/rematch/CinematicAtmosphere'
 import './rematch.css'
 
 export const metadata: Metadata = {
-  applicationName: 'Rematch',
+  applicationName: 'Boardman',
   title: {
-    default: 'Rematch',
-    template: '%s · Rematch',
+    default: 'Boardman',
+    template: '%s · Boardman',
   },
-  description: 'Lock in. Play. Settle. Run it back. — 1v1 skill matches with USDC.',
+  description:
+    'Digital boardman for skill 1v1s — both lock stake, play, final screen settles. by sideQuest.',
   manifest: '/rematch/manifest.webmanifest',
   appleWebApp: {
     capable: true,
-    title: 'Rematch',
+    title: 'Boardman',
     statusBarStyle: 'black-translucent',
   },
   icons: {
@@ -26,11 +27,11 @@ export const metadata: Metadata = {
     apple: [{ url: '/rematch/icon-180.png', sizes: '180x180', type: 'image/png' }],
   },
   openGraph: {
-    title: 'Rematch by sideQuest',
-    description: 'Lock in. Play. Settle. Run it back.',
+    title: 'Boardman by sideQuest',
+    description: 'Digital boardman. Lock in. Play. Settle. Run it back.',
     url: 'https://playingsidequest.fun/rematch',
-    siteName: 'Rematch',
-    images: [{ url: '/rematch-logo.jpg', width: 1024, height: 1024, alt: 'Rematch' }],
+    siteName: 'Boardman',
+    images: [{ url: '/rematch-logo.jpg', width: 1024, height: 1024, alt: 'Boardman' }],
   },
   other: {
     'mobile-web-app-capable': 'yes',
@@ -47,8 +48,8 @@ export const viewport: Viewport = {
 }
 
 /**
- * Rematch product shell — no sideQuest global navbar/footer.
- * PWA: Rematch-only manifest + SW scoped to /rematch/
+ * Boardman product shell — no sideQuest global navbar/footer.
+ * PWA: Boardman manifest + SW scoped to /rematch/ (stable path).
  */
 export default function RematchLayout({ children }: { children: React.ReactNode }) {
   return (

@@ -115,7 +115,7 @@ async def cmd_tlist(message: types.Message) -> None:
     open_rows = [r for r in rows if r.get("status") == "open"]
     live_rows = [r for r in rows if r.get("status") == "live"]
     lines = [
-        "🏆 <b>Rematch cups</b>",
+        "🏆 <b>Boardman cups</b>",
         f"{'💵 Money LIVE' if money_live() else '🧪 Dry-run seats (no USDC yet)'}",
         "",
     ]
@@ -241,7 +241,7 @@ async def cmd_tcreate(message: types.Message) -> None:
     preset = 8
     entry = 10.0
     game_id = "mobile.8_ball_pool"
-    title = "Rematch Cup"
+    title = "Boardman Cup"
     try:
         if len(parts) >= 2:
             preset = int(parts[1])

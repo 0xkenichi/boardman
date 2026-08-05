@@ -53,8 +53,8 @@ export function RematchNav() {
             color: '#fff',
           }}
         >
-          <span style={{ color: '#34d399' }}>Re</span>
-          <span>match</span>
+          <span style={{ color: '#34d399' }}>Board</span>
+          <span>man</span>
         </Link>
 
         {!isApp && (

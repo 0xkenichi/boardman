@@ -1,5 +1,5 @@
 /* Rematch-only service worker — scope /rematch/ */
-const CACHE = 'rematch-v2-cinema'
+const CACHE = 'boardman-v1'
 const PRECACHE = [
   '/rematch/manifest.webmanifest',
   '/rematch/icon-192.png',

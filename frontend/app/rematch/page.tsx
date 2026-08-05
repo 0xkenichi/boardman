@@ -1,12 +1,13 @@
 'use client'
 
 /**
- * Public Rematch marketing — playingsidequest.fun/rematch
+ * Public Boardman marketing — playingsidequest.fun/rematch
  */
 import { useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { LiveRoomsCard } from '@/components/rematch/LiveRoomsCard'
+import { BRAND } from '@/lib/brand'
 import { REMATCH_BOT_URL, REMATCH_GROUP_URL } from '@/lib/rematchLinks'
 
 const BOT = REMATCH_BOT_URL
@@ -16,7 +17,7 @@ const STEPS = [
   {
     n: '01',
     t: 'Fund your wallet',
-    d: 'Get USDC (Kobox, bank top-up, or crypto) into your Rematch play wallet.',
+    d: 'Get USDC (Kobox, bank top-up, or crypto) into your Boardman play wallet.',
     ico: '💧',
   },
   {
@@ -177,25 +178,25 @@ export default function RematchPage() {
         <div className="rm-hero-top">
           <Image
             src="/rematch-logo.jpg"
-            alt="Rematch"
+            alt={BRAND.name}
             width={88}
             height={88}
             className="rm-hero-logo"
             priority
           />
           <div>
-            <p className="rm-section-title">1v1 skill matches · by sideQuest</p>
+            <p className="rm-section-title">{BRAND.role} · by {BRAND.parent}</p>
             <h1 className="rm-hero-title">
-              <span className="rm-hero-re">Re</span>
-              <span>match</span>
+              <span className="rm-hero-re">Board</span>
+              <span>man</span>
             </h1>
           </div>
         </div>
 
-        <p className="rm-hero-tagline">Lock in. Play. Settle. Run it back.</p>
+        <p className="rm-hero-tagline">{BRAND.tagline}</p>
         <p className="rm-hero-sub">
-          Stake USDC on console, mobile, or iMessage 1v1s. Both lock, you play, send the final
-          photo — winner gets paid. Telegram bot or web.
+          The digital boardman holds both stakes. Play console, mobile, or iMessage 1v1s. Send the
+          final photo — winner gets paid. Telegram bot or web.
         </p>
 
         <div className="rm-hero-cta">

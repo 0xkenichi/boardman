@@ -28,7 +28,7 @@ export default function RematchError({
           Something went wrong
         </h1>
         <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
-          Rematch hit a client error. Wallet-extension noise in the console is usually
+          Boardman hit a client error. Wallet-extension noise in the console is usually
           safe to ignore — this box is for real app crashes.
         </p>
         <button
@@ -60,7 +60,7 @@ export default function RematchError({
             border: '1px solid #1f2937',
           }}
         >
-          Back to Rematch
+          Back to Boardman
         </a>
         {process.env.NODE_ENV !== 'production' && error?.message ? (
           <pre
