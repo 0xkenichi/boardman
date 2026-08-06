@@ -26,7 +26,7 @@ export default function MiniPayLandingPage() {
       <MiniPayHost />
 
       <div className="rm-stack" style={{ marginTop: '1rem' }}>
-        <Link href="/rematch/app?host=minipay" className="rm-btn rm-btn-primary">
+        <Link href="/app?host=minipay" className="rm-btn rm-btn-primary">
           Launch Rematch mini-app
         </Link>
         <a href={REMATCH_BOT_URL} target="_blank" rel="noreferrer" className="rm-btn rm-btn-ghost">

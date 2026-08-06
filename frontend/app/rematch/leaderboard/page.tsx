@@ -82,7 +82,7 @@ export default function RematchLeaderboardPage() {
         </p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
           <Link
-            href="/rematch/app"
+            href="/app"
             className="rm-btn rm-btn-primary"
             style={{ width: 'auto', padding: '0.55rem 1rem', fontSize: '0.8rem' }}
           >
@@ -226,7 +226,7 @@ export default function RematchLeaderboardPage() {
         </section>
 
         <p style={{ textAlign: 'center', margin: 0 }}>
-          <Link href="/rematch" className="rm-muted" style={{ fontSize: '0.8rem' }}>
+          <Link href="/" className="rm-muted" style={{ fontSize: '0.8rem' }}>
             About Rematch
           </Link>
         </p>

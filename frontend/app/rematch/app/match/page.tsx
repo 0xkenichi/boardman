@@ -87,7 +87,7 @@ export default function MatchListPage() {
                   <p className="rm-muted" style={{ margin: '0 0 0.75rem' }}>
                     No open matches. Challenge a friend or open a code.
                   </p>
-                  <Link href="/rematch/app/challenge" className="rm-btn rm-btn-primary">
+                  <Link href="/app/challenge" className="rm-btn rm-btn-primary">
                     ⚔️ New challenge
                   </Link>
                 </div>

@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   },
   description:
     'Boardman by sideQuest (formerly Rematch by sideQuest) — digital boardman for skill 1v1s. Lock stake, play, settle.',
-  manifest: '/rematch/manifest.webmanifest',
+  manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,
     title: 'Boardman',
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Boardman by sideQuest',
     description: 'Digital boardman. Lock in. Play. Settle. Run it back.',
-    url: 'https://playingsidequest.fun/rematch',
+    url: 'https://boardman.playingsidequest.fun',
     siteName: 'Boardman',
     images: [{ url: '/boardman-logo.jpg', width: 1024, height: 1024, alt: 'Boardman' }],
   },

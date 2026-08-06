@@ -239,7 +239,7 @@ export default function RematchAppHome() {
         <MiniPayHost />
 
         <div className="rm-stack">
-          <Link href="/rematch/app/challenge" className="rm-action">
+          <Link href="/app/challenge" className="rm-action">
             <span className="rm-action-ico">⚔️</span>
             <span className="rm-action-body">
               <span className="rm-action-title">Challenge a friend</span>
@@ -247,7 +247,7 @@ export default function RematchAppHome() {
             </span>
             <span className="rm-action-chev">›</span>
           </Link>
-          <Link href="/rematch/app/match" className="rm-action">
+          <Link href="/app/match" className="rm-action">
             <span className="rm-action-ico">🎮</span>
             <span className="rm-action-body">
               <span className="rm-action-title">My matches</span>
@@ -255,7 +255,7 @@ export default function RematchAppHome() {
             </span>
             <span className="rm-action-chev">›</span>
           </Link>
-          <Link href="/rematch/app/wallet" className="rm-action">
+          <Link href="/app/wallet" className="rm-action">
             <span className="rm-action-ico">💰</span>
             <span className="rm-action-body">
               <span className="rm-action-title">Wallet & fund</span>

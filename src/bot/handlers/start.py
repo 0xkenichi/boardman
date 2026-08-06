@@ -247,7 +247,7 @@ async def cb_menu_profile(callback: types.CallbackQuery) -> None:
     await cmd_profile(_callback_as_user_message(callback, "/profile"))
 
 
-REMATCH_INFO_URL = "https://playingsidequest.fun/rematch"
+REMATCH_INFO_URL = "https://boardman.playingsidequest.fun"
 
 
 @router.callback_query(F.data == "menu:learn")

@@ -4,21 +4,12 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  // If this project is served at the domain root (rematch.playingsidequest.fun
-  // or vercel.app), /rematch/* still works. Optional rewrite for convenience:
+  // Clean Boardman URLs are handled in middleware (rewrite / → /rematch, /app → /rematch/app).
+  // No root redirect to /rematch — that would break boardman.playingsidequest.fun/
   async redirects() {
-    return [
-      {
-        // Marketing home first — cinematic atmosphere lives on /rematch
-        source: '/',
-        destination: '/rematch',
-        permanent: false,
-      },
-    ]
+    return []
   },
   async rewrites() {
-    // Proxy Stack/API in production when STACK is same-origin optional —
-    // primary path is REMATCH_API_URL server-side env on BFF routes.
     return []
   },
 }

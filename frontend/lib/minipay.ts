@@ -99,4 +99,4 @@ export function chainLabel(chainId: number | null): string {
 /** MiniPay listing / deep-link entry for Rematch */
 export const MINIPAY_ENTRY_URL =
   process.env.NEXT_PUBLIC_MINIPAY_ENTRY_URL ||
-  'https://playingsidequest.fun/rematch/app?host=minipay'
+  'https://boardman.playingsidequest.fun/app?host=minipay'

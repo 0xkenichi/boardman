@@ -48,7 +48,7 @@ export default function RematchError({
           Try again
         </button>
         <a
-          href="/rematch"
+          href="/"
           style={{
             display: 'inline-block',
             background: '#111827',

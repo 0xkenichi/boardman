@@ -6,7 +6,7 @@ import os
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-REMATCH_WEB = os.getenv("REMATCH_WEB_URL", "https://playingsidequest.fun/rematch")
+REMATCH_WEB = os.getenv("REMATCH_WEB_URL", "https://boardman.playingsidequest.fun")
 REMATCH_BOARD = os.getenv(
     "REMATCH_LEADERBOARD_URL", "https://playingsidequest.fun/rematch/leaderboard"
 )

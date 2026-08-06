@@ -151,7 +151,7 @@ export default function RematchPage() {
             </div>
           </div>
         </div>
-        <Link href="/rematch/get-usdc" className="rm-btn rm-btn-ghost rm-btn-sm" style={{ width: 'auto' }}>
+        <Link href="/get-usdc" className="rm-btn rm-btn-ghost rm-btn-sm" style={{ width: 'auto' }}>
           Open fund helper →
         </Link>
       </div>
@@ -201,7 +201,7 @@ export default function RematchPage() {
         </p>
 
         <div className="rm-hero-cta">
-          <Link href="/rematch/app" className="rm-btn rm-btn-primary rm-btn-cta">
+          <Link href="/app" className="rm-btn rm-btn-primary rm-btn-cta">
             Open web app
           </Link>
           <a
@@ -363,7 +363,7 @@ export default function RematchPage() {
           </p>
         </div>
         <div className="rm-hero-cta" style={{ marginTop: 0 }}>
-          <Link href="/rematch/app" className="rm-btn rm-btn-primary rm-btn-cta">
+          <Link href="/app" className="rm-btn rm-btn-primary rm-btn-cta">
             Play now
           </Link>
           <a href={BOT} target="_blank" rel="noreferrer" className="rm-btn rm-btn-ghost rm-btn-cta">

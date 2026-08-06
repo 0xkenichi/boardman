@@ -6,7 +6,7 @@ import { BRAND } from '@/lib/brand'
 
 export function RematchFooter() {
   const path = usePathname() || ''
-  const isApp = path.startsWith('/rematch/app')
+  const isApp = path === '/app' || path.startsWith('/app/')
 
   return (
     <footer
@@ -47,17 +47,17 @@ export function RematchFooter() {
           {BRAND.formerlyNote}
         </p>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: '0.65rem' }}>
-          <Link href="/rematch" style={{ fontSize: '0.75rem', color: '#6b7280', textDecoration: 'none' }}>
+          <Link href="/" style={{ fontSize: '0.75rem', color: '#6b7280', textDecoration: 'none' }}>
             Home
           </Link>
           <Link
-            href="/rematch/leaderboard"
+            href="/leaderboard"
             style={{ fontSize: '0.75rem', color: '#6b7280', textDecoration: 'none' }}
           >
             Board
           </Link>
-          <Link
-            href="/"
+          <a
+            href="https://playingsidequest.fun"
             style={{
               fontSize: '0.75rem',
               fontWeight: 700,
@@ -68,8 +68,8 @@ export function RematchFooter() {
               padding: '0.35rem 0.7rem',
             }}
           >
-            Go back to sideQuest
-          </Link>
+            sideQuest
+          </a>
         </div>
       </div>
     </footer>

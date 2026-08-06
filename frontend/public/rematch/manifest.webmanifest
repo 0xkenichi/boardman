@@ -1,10 +1,10 @@
 {
-  "id": "/rematch/app",
+  "id": "/app",
   "name": "Boardman",
   "short_name": "Boardman",
   "description": "Boardman by sideQuest (formerly Rematch by sideQuest) — skill 1v1s. Lock in, play, settle.",
-  "start_url": "/rematch/app",
-  "scope": "/rematch/",
+  "start_url": "/app",
+  "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui", "browser"],
   "orientation": "portrait-primary",
@@ -42,13 +42,13 @@
     {
       "name": "Challenge",
       "short_name": "Challenge",
-      "url": "/rematch/app/challenge",
+      "url": "/app/challenge",
       "icons": [{ "src": "/rematch/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Wallet",
       "short_name": "Wallet",
-      "url": "/rematch/app/wallet",
+      "url": "/app/wallet",
       "icons": [{ "src": "/rematch/icon-192.png", "sizes": "192x192" }]
     }
   ],

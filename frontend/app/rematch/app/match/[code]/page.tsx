@@ -58,7 +58,7 @@ export default function MatchDetailPage() {
             {err || 'Loading match…'}
           </p>
           {err ? (
-            <Link href="/rematch/app/match" className="rm-btn rm-btn-ghost">
+            <Link href="/app/match" className="rm-btn rm-btn-ghost">
               Back to matches
             </Link>
           ) : null}

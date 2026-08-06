@@ -26,8 +26,8 @@ export const BRAND = {
   /** SEO / store description */
   description:
     'Boardman by sideQuest (formerly Rematch by sideQuest) — digital boardman for skill 1v1s. Lock stake, play, settle.',
-  /** Optional path prefix (routes still /rematch for stability) */
-  pathPrefix: '/rematch',
+  /** Public paths are clean (/); internal files still under app/rematch */
+  pathPrefix: '',
   /** Canonical product host (set DNS → rematch-web on Vercel) */
   host: 'boardman.playingsidequest.fun',
   /** Full marketing URL once DNS is live */

@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
-const MANIFEST_HREF = '/rematch/manifest.webmanifest'
-const SW_PATH = '/rematch/sw.js'
+const MANIFEST_HREF = '/manifest.webmanifest'
+const SW_PATH = '/sw.js'
 const DISMISS_KEY = 'rm_a2hs_dismissed_v1'
 
 type BeforeInstallPromptEvent = Event & {
@@ -52,7 +52,7 @@ export function RematchPwa() {
     setStandalone(isStandalone)
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register(SW_PATH, { scope: '/rematch/' }).catch(() => {
+      navigator.serviceWorker.register(SW_PATH, { scope: '/' }).catch(() => {
         /* ignore — install still works on many browsers without SW */
       })
     }

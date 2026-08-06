@@ -4,14 +4,14 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 const NAV = [
-  { href: '/rematch/app', label: 'Home', ico: '🏠' },
-  { href: '/rematch/app/challenge', label: 'Challenge', ico: '⚔️' },
-  { href: '/rematch/app/match', label: 'Match', ico: '🎮' },
-  { href: '/rematch/app/wallet', label: 'Wallet', ico: '💰' },
+  { href: '/app', label: 'Home', ico: '🏠' },
+  { href: '/app/challenge', label: 'Challenge', ico: '⚔️' },
+  { href: '/app/match', label: 'Match', ico: '🎮' },
+  { href: '/app/wallet', label: 'Wallet', ico: '💰' },
 ]
 
 /**
- * Mini-app shell under /rematch/app/*
+ * Mini-app shell under /app/* (clean Boardman URLs).
  * Product top nav is in rematch/layout; this is content + bottom tabs.
  */
 export function AppShell({
@@ -46,9 +46,7 @@ export function AppShell({
         <div className="rm-nav-inner">
           {NAV.map((n) => {
             const active =
-              n.href === '/rematch/app'
-                ? path === '/rematch/app'
-                : path.startsWith(n.href)
+              n.href === '/app' ? path === '/app' : path.startsWith(n.href)
             return (
               <Link key={n.href} href={n.href} className={active ? 'active' : ''}>
                 <span className="ico" aria-hidden>

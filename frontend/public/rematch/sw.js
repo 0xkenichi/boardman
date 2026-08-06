@@ -1,11 +1,13 @@
-/* Rematch-only service worker — scope /rematch/ */
-const CACHE = 'boardman-v1'
+/* Boardman service worker — scope / */
+const CACHE = 'boardman-v2-clean'
 const PRECACHE = [
+  '/manifest.webmanifest',
   '/rematch/manifest.webmanifest',
   '/rematch/icon-192.png',
   '/rematch/icon-512.png',
   '/rematch/icon-180.png',
-  '/rematch/app',
+  '/app',
+  '/',
 ]
 
 self.addEventListener('install', (event) => {
@@ -22,7 +24,11 @@ self.addEventListener('activate', (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((k) => k.startsWith('rematch-') && k !== CACHE).map((k) => caches.delete(k)))
+        Promise.all(
+          keys
+            .filter((k) => (k.startsWith('rematch-') || k.startsWith('boardman-')) && k !== CACHE)
+            .map((k) => caches.delete(k))
+        )
       )
       .then(() => self.clients.claim())
   )
@@ -33,11 +39,8 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return
 
   const url = new URL(req.url)
-  // Only handle same-origin rematch scope
   if (url.origin !== self.location.origin) return
-  if (!url.pathname.startsWith('/rematch')) return
 
-  // Network-first for app shell / HTML / API so balances stay fresh
   const isDoc =
     req.mode === 'navigate' ||
     (req.headers.get('accept') || '').includes('text/html') ||
@@ -49,19 +52,21 @@ self.addEventListener('fetch', (event) => {
         .then((res) => {
           const copy = res.clone()
           if (res.ok && req.mode === 'navigate') {
-            caches.open(CACHE).then((c) => c.put('/rematch/app', copy)).catch(() => {})
+            caches.open(CACHE).then((c) => c.put('/app', copy)).catch(() => {})
           }
           return res
         })
-        .catch(() => caches.match(req).then((c) => c || caches.match('/rematch/app')))
+        .catch(() => caches.match(req).then((c) => c || caches.match('/app') || caches.match('/')))
     )
     return
   }
 
-  // Cache-first for static icons / manifest
   if (
     url.pathname.startsWith('/rematch/icon-') ||
-    url.pathname.endsWith('manifest.webmanifest')
+    url.pathname.endsWith('manifest.webmanifest') ||
+    url.pathname === '/sw.js' ||
+    url.pathname === '/boardman-logo.jpg' ||
+    url.pathname === '/boardman-logo.png'
   ) {
     event.respondWith(
       caches.match(req).then(

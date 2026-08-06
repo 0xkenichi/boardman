@@ -65,11 +65,18 @@ vercel domains verify boardman.playingsidequest.fun --scope playingsidequest-452
 
 SSL is issued automatically by Vercel once DNS validates.
 
-### After DNS works
+### Clean URLs (live)
 
-- **https://boardman.playingsidequest.fun/** → Boardman marketing (`/rematch`)
-- **https://boardman.playingsidequest.fun/rematch/app** → web app  
-  (optional later: clean paths without `/rematch` prefix)
+| URL | Page |
+|-----|------|
+| **https://boardman.playingsidequest.fun/** | Marketing home |
+| **https://boardman.playingsidequest.fun/app** | Web app |
+| **https://boardman.playingsidequest.fun/app/challenge** | Challenge |
+| **https://boardman.playingsidequest.fun/leaderboard** | Board |
+| **https://boardman.playingsidequest.fun/get-usdc** | Fund helper |
+
+Legacy `/rematch/*` **308-redirects** to the clean path (middleware).  
+Internal Next routes still live under `app/rematch/*` (implementation detail).
 
 ## Logo
 

@@ -44,7 +44,7 @@ export default function RematchAppError({
           Try again
         </button>
         <a
-          href="/rematch/app"
+          href="/app"
           style={{
             color: '#34d399',
             fontWeight: 600,

@@ -90,7 +90,7 @@ function RailColumn({
 export function SideRails() {
   const path = usePathname() || ''
   // Keep mini-app focused; atmosphere is for marketing pages
-  if (path.startsWith('/rematch/app')) return null
+  if (path === '/app' || path.startsWith('/app/')) return null
 
   return (
     <div className="rm-side-rails" aria-hidden>

@@ -6,16 +6,16 @@ import { usePathname } from 'next/navigation'
 const BOT = process.env.NEXT_PUBLIC_TELEGRAM_BOT_URL || 'https://t.me/ClawStationOfficialBot'
 
 const LINKS = [
-  { href: '/rematch', label: 'Home', exact: true },
-  { href: '/rematch/app', label: 'Play' },
-  { href: '/rematch/leaderboard', label: 'Board' },
-  { href: '/rematch/minipay', label: 'MiniPay' },
-  { href: '/rematch/get-usdc', label: 'Fund' },
+  { href: '/', label: 'Home', exact: true },
+  { href: '/app', label: 'Play' },
+  { href: '/leaderboard', label: 'Board' },
+  { href: '/minipay', label: 'MiniPay' },
+  { href: '/get-usdc', label: 'Fund' },
 ]
 
 export function RematchNav() {
   const path = usePathname() || ''
-  const isApp = path.startsWith('/rematch/app')
+  const isApp = path === '/app' || path.startsWith('/app/')
 
   return (
     <header
@@ -41,7 +41,7 @@ export function RematchNav() {
         }}
       >
         <Link
-          href="/rematch"
+          href="/"
           style={{
             display: 'flex',
             alignItems: 'center',
