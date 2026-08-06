@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     template: '%s · Boardman',
   },
   description:
-    'Boardman by sideQuest (formerly Rematch by sideQuest) — digital boardman for skill 1v1s. Lock stake, play, settle.',
+    'Boardman by sideQuest (formerly Rematch by sideQuest) — skill 1v1s with dual-lock escrow. Waitlist open. Launch Sept 16, 2026 on Arc.',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,

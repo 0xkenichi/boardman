@@ -29,3 +29,7 @@ deploy/akash/deploy.generated.yml
 frontend/node_modules/
 frontend/.next/
 frontend/.env.local
+
+# Waitlist local dumps
+data/waitlist.json
+data/boardman-waitlist.json

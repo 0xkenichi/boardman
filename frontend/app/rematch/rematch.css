@@ -606,6 +606,62 @@ body {
   letter-spacing: 0.02em;
 }
 
+/* Waitlist launch page */
+.rm-waitlist-hero {
+  max-width: 36rem;
+}
+
+.rm-launch-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0 0 1rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  background: rgba(16, 185, 129, 0.1);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #d1fae5;
+}
+
+.rm-launch-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 10px rgba(52, 211, 153, 0.8);
+  animation: rm-pulse 1.6s ease-in-out infinite;
+}
+
+.rm-waitlist-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+}
+
+.rm-waitlist-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.65rem;
+  margin-top: 0.35rem;
+}
+
+@media (min-width: 520px) {
+  .rm-waitlist-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.rm-optional {
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--rm-dim);
+  font-size: 0.65rem;
+}
+
 .rm-hero-sub {
   margin: 0 0 1.25rem;
   max-width: 36rem;
