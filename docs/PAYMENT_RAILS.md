@@ -130,12 +130,32 @@ Good later; not the “send Naira to our account” simplicity you want first.
 - Ops sends USDC to play address → `/credit_topup REF`  
 - Caps via env (`FIAT_MAX_*`, `FIAT_MAX_CREDIT_USDC`)  
 
-### Phase F2 — Provider webhook
+### Phase F2 — Paystack (live)
 
-- Paystack/Flutterwave (or similar) payment link or virtual account per user/ref  
-- Webhook verifies signature  
-- Auto convert at FX rate (Oracle: manual rate table or API)  
-- Auto USDC transfer to play wallet  
+**How money actually moves (ops):**
+
+```
+Player pays ₦ on Paystack
+  → Paystack settles ₦ to your Nigerian bank (their settlement cycle)
+  → Boardman credits USDC from a PRE-FUNDED float (Kobox / treasury)
+  → You later convert bank ₦ → USDC to refill the float
+```
+
+You do **not** wait for FX mid-user-journey if float is ready.  
+**SLA:** e.g. 15–30 min during ops hours (`PAYSTACK_CREDIT_SLA_MINUTES`).
+
+| Piece | Status |
+|-------|--------|
+| Init transaction from bot | ✅ `paystack.initialize_transaction` |
+| Player Pay + “I've paid — check” | ✅ verifies via Paystack API |
+| Webhook notify | ✅ `/api/rematch/paystack/webhook` |
+| USDC send | **Manual first** — admin sends from float → `/credit_topup RM-XXXX` |
+| Auto Circle transfer | later |
+
+**Paystack dashboard webhook URL:**  
+`https://boardman.playingsidequest.fun/api/rematch/paystack/webhook`
+
+**Float rule of thumb:** keep enough USDC for a day of top-ups (e.g. $100–500 pilot).
 
 ### Phase F3 — Full compliance
 

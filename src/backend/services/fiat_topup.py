@@ -255,7 +255,8 @@ class FiatTopup:
     credit_usdc: float
     currency: str = "ngn"  # ngn | usd
     amount_fiat: float = 0.0  # ₦ or $ sent by user
-    status: str = "awaiting_payment"  # awaiting_payment | proof_submitted | credited | rejected | cancelled
+    status: str = "awaiting_payment"
+    # awaiting_payment | proof_submitted | paystack_paid | credited | rejected | cancelled
     proof_text: str = ""
     proof_file_id: str = ""
     usdc_tx: str = ""
@@ -263,6 +264,10 @@ class FiatTopup:
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     play_address: str = ""
+    provider: str = "bank"  # bank | paystack | usd_bank
+    paystack_reference: str = ""
+    paystack_access_code: str = ""
+    authorization_url: str = ""
 
     def touch(self) -> None:
         self.updated_at = datetime.now(timezone.utc).isoformat()
@@ -298,23 +303,33 @@ def create_topup(
     play_address: str = "",
     currency: str = "ngn",
     amount_fiat: Optional[Decimal] = None,
+    provider: str = "bank",
+    paystack_reference: str = "",
+    paystack_access_code: str = "",
+    authorization_url: str = "",
+    ref: Optional[str] = None,
 ) -> FiatTopup:
     cur = (currency or "ngn").lower()
     with _STORE_LOCK:
         rows = _load_all()
-        # unique ref
-        for _ in range(20):
-            ref = _new_ref()
-            if not any(r.get("ref") == ref for r in rows):
-                break
+        # unique ref (or caller-supplied, e.g. Paystack reference)
+        if ref:
+            out_ref = ref.strip().upper()
+            if any(r.get("ref") == out_ref for r in rows):
+                raise RuntimeError(f"Top-up ref already exists: {out_ref}")
         else:
-            raise RuntimeError("Could not allocate top-up reference")
+            for _ in range(20):
+                out_ref = _new_ref()
+                if not any(r.get("ref") == out_ref for r in rows):
+                    break
+            else:
+                raise RuntimeError("Could not allocate top-up reference")
 
         fiat_amt = float(amount_fiat) if amount_fiat is not None else (
             float(quote.gross_usd) if cur == "usd" else float(quote.amount_ngn)
         )
         top = FiatTopup(
-            ref=ref,
+            ref=out_ref,
             profile_id=profile_id,
             telegram_id=int(telegram_id),
             display_name=display_name or "",
@@ -326,10 +341,25 @@ def create_topup(
             currency=cur,
             amount_fiat=fiat_amt,
             play_address=play_address or "",
+            provider=(provider or "bank").lower(),
+            paystack_reference=paystack_reference or out_ref,
+            paystack_access_code=paystack_access_code or "",
+            authorization_url=authorization_url or "",
         )
         rows.append(asdict(top))
         _save_all(rows)
         return top
+
+
+def get_topup_by_paystack_ref(reference: str) -> Optional[dict]:
+    key = (reference or "").strip().upper()
+    with _STORE_LOCK:
+        for row in _load_all():
+            if str(row.get("paystack_reference") or "").upper() == key:
+                return row
+            if str(row.get("ref") or "").upper() == key:
+                return row
+    return None
 
 
 def get_topup(ref: str) -> Optional[dict]:

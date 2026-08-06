@@ -71,9 +71,12 @@ def get_money_intro_html(rate_ngn: float | int) -> str:
         "💧 <b>Get money</b>\n\n"
         f"{onramp_copy_html()}\n\n"
         f"<b>Options</b>\n"
-        f"• <b>{name}</b> — self-serve Naira ↔ USDC (best for most people)\n"
-        f"• <b>Pay our bank (Naira / USD)</b> — we convert & credit (₦{rate_ngn:,.0f}/$1 + fee)\n"
-        f"• <b>Crypto</b> — send USDC straight to your play address\n"
+        f"• <b>Paystack</b> — pay ₦ in-app (card/bank/USSD). We credit USDC after pay\n"
+        f"• <b>{name}</b> — self-serve Naira ↔ USDC\n"
+        f"• <b>Our bank</b> — transfer ₦ / USD, we convert (₦{rate_ngn:,.0f}/$1 + fee)\n"
+        f"• <b>Crypto</b> — send USDC to your play address\n\n"
+        f"<i>USDC credit SLA: usually within ops window after Naira is confirmed "
+        f"(keep a small USDC float so this is fast).</i>\n"
     )
 
 

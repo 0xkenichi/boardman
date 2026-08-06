@@ -45,6 +45,7 @@ from gaming.src.bot.keyboards import (
     fiat_confirm_menu,
     fiat_proof_menu,
     get_money_menu,
+    paystack_pay_menu,
     wallet_menu,
 )
 from gaming.src.bot.utils.db import get_or_create_profile
@@ -58,6 +59,7 @@ router = Router(name="fiat_topup")
 class FiatTopupWizard(StatesGroup):
     waiting_amount = State()
     waiting_proof = State()
+    waiting_paystack_amount = State()
 
 
 # ── Entry / chooser ──────────────────────────────────────────────────────────
@@ -193,6 +195,12 @@ async def ui_topup_amt_preset(callback: types.CallbackQuery, state: FSMContext) 
         return
     currency = parts[3].lower()
     raw = parts[4]
+    cur_state = await state.get_state()
+    if cur_state == FiatTopupWizard.waiting_paystack_amount.state:
+        await _start_paystack_for_amount(
+            callback.message, state, raw, user=callback.from_user
+        )
+        return
     await state.update_data(fiat_currency=currency)
     await state.set_state(FiatTopupWizard.waiting_amount)
     await _handle_amount(callback.message, state, raw, currency, user=callback.from_user)
@@ -422,6 +430,258 @@ async def ui_topup_cancel_wizard(callback: types.CallbackQuery, state: FSMContex
     await callback.message.answer("Cancelled.", reply_markup=get_money_menu())
 
 
+# ── Paystack path ────────────────────────────────────────────────────────────
+
+
+@router.callback_query(F.data == "ui:topup:paystack")
+async def ui_topup_paystack_start(callback: types.CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    from gaming.src.backend.services.paystack import paystack_configured, sla_minutes
+
+    if not paystack_configured():
+        await callback.message.answer(
+            "Paystack is not configured yet. Use bank transfer or Kobox.",
+            reply_markup=get_money_menu(),
+        )
+        return
+    await state.set_state(FiatTopupWizard.waiting_paystack_amount)
+    await state.update_data(fiat_currency="ngn", provider="paystack")
+    rate = commercial_rate()
+    floor = fee_floor()
+    sla = sla_minutes()
+    await callback.message.answer(
+        "⚡ <b>Pay with Paystack</b>\n\n"
+        f"Rate: <b>₦{rate:,.0f}</b> per $1 · fee max(<b>${floor}</b>, 5%)\n"
+        f"After Paystack confirms ₦, we credit USDC "
+        f"(usually within <b>~{sla} min</b> while ops are online).\n\n"
+        "<b>How USDC credit works</b>\n"
+        "1. You pay ₦ → Paystack settles Naira to our bank\n"
+        "2. We send USDC from a <b>pre-funded float</b> (Kobox/treasury)\n"
+        "3. Later we convert settled ₦ → refill the float\n\n"
+        "So you are <b>not</b> waiting for FX in real time — "
+        "as long as we keep USDC ready.\n\n"
+        "How much <b>Naira</b> will you pay?\n"
+        "Type an amount (e.g. <code>10000</code>) or pick a preset.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=fiat_amount_presets_menu("ngn"),
+    )
+
+
+@router.message(FiatTopupWizard.waiting_paystack_amount, F.text)
+async def ui_paystack_amount_text(message: types.Message, state: FSMContext) -> None:
+    await _start_paystack_for_amount(message, state, message.text or "", user=message.from_user)
+
+
+async def _start_paystack_for_amount(
+    message: types.Message,
+    state: FSMContext,
+    raw: str,
+    user: types.User | None,
+) -> None:
+    if not user:
+        return
+    from gaming.src.backend.services.paystack import (
+        initialize_transaction,
+        paystack_configured,
+        sla_minutes,
+    )
+
+    if not paystack_configured():
+        await message.answer("Paystack not configured.", reply_markup=get_money_menu())
+        await state.clear()
+        return
+    try:
+        amount = parse_ngn_amount(raw)
+        quote = quote_from_ngn(amount)
+    except ValueError as exc:
+        await message.answer(
+            f"❌ {escape(str(exc))}\n\nTry again or pick a preset.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=fiat_amount_presets_menu("ngn"),
+        )
+        return
+
+    profile = await get_or_create_profile(user)
+    play_addr = ""
+    try:
+        from gaming.src.backend.services.clawstation_circle import ensure_user_wallet
+
+        wallet = await ensure_user_wallet(profile["id"], chain_id="arc")
+        play_addr = wallet.get("address") or ""
+    except Exception:
+        logger.exception("[Paystack] wallet lookup failed")
+
+    # Allocate top-up first to get RM- ref, then init Paystack with that reference
+    try:
+        top = create_topup(
+            profile_id=profile["id"],
+            telegram_id=user.id,
+            display_name=user.full_name or user.username or "",
+            quote=quote,
+            play_address=play_addr,
+            currency="ngn",
+            amount_fiat=amount,
+            provider="paystack",
+        )
+        import os
+
+        email = (
+            (os.getenv("PAYSTACK_DEFAULT_EMAIL") or "").strip()
+            or f"tg{user.id}@boardman.playingsidequest.fun"
+        )
+        # Use a Paystack-safe reference (alphanumeric)
+        ps_ref = top.ref.replace("-", "")
+        init = initialize_transaction(
+            email=email,
+            amount_ngn=amount,
+            reference=ps_ref,
+            metadata={
+                "boardman_ref": top.ref,
+                "profile_id": profile["id"],
+                "telegram_id": str(user.id),
+                "credit_usdc": str(quote.credit_usdc),
+                "play_address": play_addr,
+            },
+        )
+        update_topup(
+            top.ref,
+            paystack_reference=ps_ref,
+            paystack_access_code=init.get("access_code") or "",
+            authorization_url=init.get("authorization_url") or "",
+            provider="paystack",
+        )
+        auth_url = init.get("authorization_url") or ""
+    except Exception as exc:
+        logger.exception("[Paystack] init failed")
+        await message.answer(
+            f"❌ Could not start Paystack: {h(exc)}",
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_money_menu(),
+        )
+        await state.clear()
+        return
+
+    await state.clear()
+    quote_html = format_quote_html(quote, ref=top.ref, currency="ngn")
+    sla = sla_minutes()
+    await message.answer(
+        f"⚡ <b>Paystack top-up ready</b>\n\n"
+        f"{quote_html}\n\n"
+        f"1. Tap <b>Open Paystack &amp; pay</b>\n"
+        f"2. Complete payment\n"
+        f"3. Tap <b>I've paid — check status</b>\n\n"
+        f"After ₦ is confirmed, we credit <b>${quote.credit_usdc:,.2f} USDC</b> "
+        f"from our float (target ~{sla} min during ops hours).",
+        parse_mode=ParseMode.HTML,
+        reply_markup=paystack_pay_menu(top.ref, auth_url),
+        disable_web_page_preview=True,
+    )
+    await _notify_admins_new_topup(top.ref)
+
+
+@router.callback_query(F.data.startswith("ui:topup:paystack:check:"))
+async def ui_paystack_check(callback: types.CallbackQuery, state: FSMContext) -> None:
+    await callback.answer("Checking Paystack…")
+    ref = (callback.data or "").split(":")[-1].upper()
+    row = get_topup(ref)
+    if not row:
+        await callback.message.answer("Unknown top-up.", reply_markup=get_money_menu())
+        return
+    if row.get("status") == "credited":
+        await callback.message.answer(
+            f"✅ Already credited ${float(row.get('credit_usdc') or 0):,.2f}.",
+            reply_markup=wallet_menu(),
+        )
+        return
+    if row.get("status") == "paystack_paid":
+        await callback.message.answer(
+            f"✅ Payment confirmed. USDC credit in progress "
+            f"(${float(row.get('credit_usdc') or 0):,.2f}).\n"
+            f"Admin will finish send if not automatic yet.",
+            reply_markup=wallet_menu(),
+        )
+        return
+
+    from gaming.src.backend.services.paystack import verify_transaction, sla_minutes
+
+    ps_ref = row.get("paystack_reference") or ref.replace("-", "")
+    try:
+        result = verify_transaction(ps_ref)
+    except Exception as exc:
+        await callback.message.answer(
+            f"❌ Could not verify: {h(exc)}\nTry again in a minute.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=paystack_pay_menu(ref, row.get("authorization_url") or ""),
+        )
+        return
+
+    if not result.get("paid"):
+        await callback.message.answer(
+            f"⏳ Not paid yet (status: <code>{h(result.get('status') or 'unknown')}</code>).\n"
+            f"Finish Paystack checkout, then tap check again.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=paystack_pay_menu(ref, row.get("authorization_url") or ""),
+        )
+        return
+
+    # Confirm amount roughly matches
+    paid_ngn = float(result.get("amount_ngn") or 0)
+    expected = float(row.get("amount_ngn") or row.get("amount_fiat") or 0)
+    if expected and abs(paid_ngn - expected) > 1.0:
+        update_topup(
+            ref,
+            status="proof_submitted",
+            proof_text=f"paystack_paid_amount_mismatch paid={paid_ngn} expected={expected}",
+            admin_note="amount_mismatch",
+        )
+        await callback.message.answer(
+            f"⚠️ Paid ₦{paid_ngn:,.2f} but quote was ₦{expected:,.0f}.\n"
+            f"Support will adjust credit. Ref <code>{h(ref)}</code>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=wallet_menu(),
+        )
+        await _notify_admins_proof(ref, f"Paystack amount mismatch {paid_ngn} vs {expected}", callback.message)
+        return
+
+    update_topup(
+        ref,
+        status="paystack_paid",
+        proof_text=f"paystack success channel={result.get('channel')} paid_at={result.get('paid_at')}",
+    )
+    credit = float(row.get("credit_usdc") or 0)
+    sla = sla_minutes()
+    await callback.message.answer(
+        f"✅ <b>Payment confirmed</b>\n\n"
+        f"Ref <code>{h(ref)}</code>\n"
+        f"Paid: <b>₦{paid_ngn:,.2f}</b>\n"
+        f"You get: <b>${credit:,.2f} USDC</b>\n\n"
+        f"We’re sending USDC to your play wallet "
+        f"(target ~{sla} min while ops are online).\n"
+        f"You’ll get a message when it’s done — Wallet → Refresh.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=wallet_menu(),
+    )
+    # Re-notify admins to send USDC
+    from gaming.src.backend.services.safety import admin_telegram_ids
+    from gaming.src.bot.utils.notify import _ensure_bot
+
+    bot = _ensure_bot()
+    text = (
+        f"⚡ <b>Paystack PAID</b> <code>{escape(ref)}</code>\n"
+        f"₦{paid_ngn:,.2f} → credit <b>${credit:,.2f}</b> USDC\n"
+        f"Play: <code>{escape(str(row.get('play_address') or '—'))}</code>\n"
+        f"User tg: {row.get('telegram_id')}\n"
+        f"1) Send USDC from float/Kobox\n"
+        f"2) /credit_topup {escape(ref)}"
+    )
+    if bot:
+        for aid in admin_telegram_ids():
+            try:
+                await bot.send_message(aid, text, parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+
+
 # ── Crypto path (existing faucet / address) ──────────────────────────────────
 
 
@@ -445,10 +705,15 @@ async def cmd_topups(message: types.Message) -> None:
         await message.answer("Admin only.")
         return
     pending = list_topups(status="proof_submitted", limit=15)
+    paystack_paid = list_topups(status="paystack_paid", limit=15)
     waiting = list_topups(status="awaiting_payment", limit=10)
     lines = ["📋 <b>Fiat top-ups</b>\n"]
-    if not pending and not waiting:
+    if not pending and not waiting and not paystack_paid:
         lines.append("No open top-ups.")
+    if paystack_paid:
+        lines.append("<b>Paystack paid — send USDC now:</b>")
+        for r in paystack_paid:
+            lines.append(_admin_line(r))
     if pending:
         lines.append("<b>Proof submitted (credit these):</b>")
         for r in pending:
@@ -557,9 +822,10 @@ def _admin_line(r: dict) -> str:
         sent = f"${float(r.get('amount_fiat') or r.get('gross_usd') or 0):,.2f}"
     else:
         sent = f"₦{float(r.get('amount_ngn') or r.get('amount_fiat') or 0):,.0f}"
+    prov = r.get("provider") or "bank"
     return (
         f"• <code>{h(r.get('ref'))}</code> "
-        f"{h(r.get('display_name') or '')} · {sent} → "
+        f"[{h(prov)}] {h(r.get('display_name') or '')} · {sent} → "
         f"<b>${float(r.get('credit_usdc') or 0):,.2f}</b> · "
         f"{h(r.get('status'))}"
     )

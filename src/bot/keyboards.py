@@ -496,6 +496,18 @@ def get_money_menu() -> InlineKeyboardMarkup:
                 )
     except Exception:
         pass
+    try:
+        from gaming.src.backend.services.paystack import paystack_configured
+
+        if paystack_configured():
+            builder.row(
+                InlineKeyboardButton(
+                    text="⚡ Pay with Paystack (₦)",
+                    callback_data="ui:topup:paystack",
+                ),
+            )
+    except Exception:
+        pass
     builder.row(
         InlineKeyboardButton(
             text="🇳🇬 We'll do it — pay Naira to our bank",
@@ -567,6 +579,28 @@ def fiat_proof_menu(ref: str) -> InlineKeyboardMarkup:
     builder.row(
         InlineKeyboardButton(
             text="❌ Cancel this top-up",
+            callback_data=f"ui:topup:cancel:{ref}",
+        ),
+    )
+    builder.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
+    return builder.as_markup()
+
+
+def paystack_pay_menu(ref: str, authorization_url: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    if authorization_url:
+        builder.row(
+            InlineKeyboardButton(text="💳 Open Paystack & pay", url=authorization_url),
+        )
+    builder.row(
+        InlineKeyboardButton(
+            text="✅ I've paid — check status",
+            callback_data=f"ui:topup:paystack:check:{ref}",
+        ),
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="❌ Cancel",
             callback_data=f"ui:topup:cancel:{ref}",
         ),
     )
