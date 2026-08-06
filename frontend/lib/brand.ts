@@ -19,6 +19,10 @@ export const BRAND = {
     'Digital boardman for skill 1v1s — both lock stake, play, final screen settles. by sideQuest.',
   /** Optional path prefix (routes still /rematch for stability) */
   pathPrefix: '/rematch',
+  /** Canonical product host (set DNS → rematch-web on Vercel) */
+  host: 'boardman.playingsidequest.fun',
+  /** Full marketing URL once DNS is live */
+  url: 'https://boardman.playingsidequest.fun',
 } as const
 
 export type Brand = typeof BRAND
