@@ -8,19 +8,19 @@
 
 | File | Use |
 |------|-----|
-| `boardman-logo.png` | Primary mark (transparent-friendly PNG) |
+| `boardman-logo.png` | **Primary mark** — B + gamers + handshake only (no rematch loop badge) |
 | `boardman-logo.jpg` | Primary mark (web) |
-| `boardman-logo-alt.jpg` | Alt composition |
-| `icon-512.png` | App / PWA icon |
+| `boardman-logo-alt.jpg` | Older alt composition |
+| `icon-512.png` | App / PWA icon (same as primary) |
 
 ## Coming soon / launch promo
 
 | File | Use |
 |------|-----|
-| `coming-soon-poster-16x9.jpg` | X / YouTube / landscape posts |
-| `coming-soon-poster-1x1.jpg` | Instagram / square posts |
-| `coming-soon-b-glow-16x9.jpg` | Alt B monogram still (no text) |
-| `boardman-coming-soon.mp4` | 10s slow-zoom trailer (post this) |
+| `coming-soon-poster-16x9.jpg` | X / YouTube — full poster, clean logo (no loop badge) |
+| `coming-soon-poster-1x1.jpg` | Instagram / square |
+| `coming-soon-b-glow-16x9.jpg` | **OK to keep loop arrows** — atmospheric B monogram only (no wordmark). Use for abstract/trailer B-roll |
+| `boardman-coming-soon.mp4` | 10s slow-zoom trailer from the clean full poster |
 
 ## Suggested caption
 
