@@ -25,11 +25,19 @@ Use a **fresh Kobox / Boardman-only** deposit address for:
 - Sending top-up credits to players  
 - Eventually fee cuts  
 
-Put it in env when ready:
+**Boardman V1 wallet (set 2026-08-06):**
+
+```text
+0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E
+```
+
+Roles until you split later: **ops treasury + fee recipient + resolver**.
 
 ```bash
-BOARDMAN_OPS_USDC_ADDRESS=0x...
-BOARDMAN_FEE_RECIPIENT=0x...   # same or separate
+BOARDMAN_OPS_USDC_ADDRESS=0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E
+BOARDMAN_FEE_RECIPIENT=0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E
+FEE_RECIPIENT_ADDRESS=0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E
+RESOLVER_ADDRESS=0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E
 ```
 
 ---
@@ -58,14 +66,12 @@ If the key is leaked, assume funds may already be gone; only move what you still
 | Fee / resolver | `0x39EcF94ed35451A67006dcCE4A467aecdfAB6940` | V0 |
 | Deployer | `0xB2CCcac46cE93C2ac27fDBF7248938CC57F29424` | V0 |
 
-Fill V1 when you create them:
-
 | Role | V1 address |
 |------|------------|
-| Boardman deployer / admin EOA | _TBD_ |
-| Fee recipient (platform cut) | _TBD_ |
-| Ops treasury (USDC credits) | _TBD_ (Kobox) |
-| ClawEscrow Arc mainnet | _TBD after deploy_ |
+| Boardman ops / fee / resolver EOA | `0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E` |
+| Kobox (off-platform swaps) | Your Kobox app — send USDC out from here or to players |
+| ClawEscrow Arc mainnet | _TBD after V1 deploy_ |
+| ClawEscrow Arc testnet (dry run) | _TBD optional_ |
 
 ---
 

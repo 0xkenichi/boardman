@@ -12,9 +12,20 @@
 
 ## Shared config (Arc / Avalanche deploys)
 
+### V0 archive (legacy Rematch testnet — do not use for Boardman mainnet)
+
 - **Deployer:** `0xB2CCcac46cE93C2ac27fDBF7248938CC57F29424`
 - **Fee Recipient:** `0x39EcF94ed35451A67006dcCE4A467aecdfAB6940`
 - **Resolver:** `0x39EcF94ed35451A67006dcCE4A467aecdfAB6940`
+
+### Boardman V1 wallets (product)
+
+| Role | Address |
+|------|---------|
+| Ops / fee / resolver | `0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E` |
+| Escrow contract | _pending deploy_ |
+
+See `contracts/deployments/boardman_v1_wallets.json` and `docs/BOARDMAN_V1_WALLETS.md`.
 - **Platform Fee:** 7% (`FEE_BPS = 700`)
 - **Max Stake:** $10,000 USDC per match
 
