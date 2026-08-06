@@ -29,6 +29,15 @@ deploy/akash/deploy.generated.yml
 frontend/node_modules/
 frontend/.next/
 frontend/.env.local
+frontend/tsconfig.tsbuildinfo
+
+# Hardhat / Solidity
+contracts/node_modules/
+contracts/artifacts/
+contracts/cache/
+contracts/typechain-types/
+contracts/coverage/
+contracts/coverage.json
 
 # Waitlist local dumps
 data/waitlist.json
