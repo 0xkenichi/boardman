@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { BRAND } from '@/lib/brand'
 
 export function RematchFooter() {
   const path = usePathname() || ''
@@ -27,11 +28,23 @@ export function RematchFooter() {
           gap: '0.65rem',
         }}
       >
-        <p style={{ margin: 0, fontSize: '0.8rem', color: '#6b7280' }}>
+        <p style={{ margin: 0, fontSize: '0.8rem', color: '#6b7280', textAlign: 'center' }}>
           <span style={{ fontWeight: 800, color: '#9ca3af' }}>
             <span style={{ color: '#34d399' }}>Board</span>man
           </span>{' '}
           by sideQuest
+        </p>
+        <p
+          style={{
+            margin: 0,
+            fontSize: '0.68rem',
+            color: '#4b5563',
+            textAlign: 'center',
+            lineHeight: 1.4,
+            maxWidth: '22rem',
+          }}
+        >
+          {BRAND.formerlyNote}
         </p>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: '0.65rem' }}>
           <Link href="/rematch" style={{ fontSize: '0.75rem', color: '#6b7280', textDecoration: 'none' }}>

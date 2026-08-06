@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     template: '%s · Boardman',
   },
   description:
-    'Digital boardman for skill 1v1s — both lock stake, play, final screen settles. by sideQuest.',
+    'Boardman by sideQuest (formerly Rematch by sideQuest) — digital boardman for skill 1v1s. Lock stake, play, settle.',
   manifest: '/rematch/manifest.webmanifest',
   appleWebApp: {
     capable: true,

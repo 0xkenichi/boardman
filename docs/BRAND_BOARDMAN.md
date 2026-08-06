@@ -3,7 +3,11 @@
 **Status:** product rebrand (2026-08)  
 **Company:** sideQuest  
 **Product (consumer):** **Boardman**  
-**Legacy product name:** Rematch (URLs/API may still say rematch)
+**Former public name:** **Rematch by sideQuest** (grants, applications, partner listings)
+
+> **Continuity note (use on site, bot, grant updates):**  
+> *Boardman by sideQuest — formerly Rematch by sideQuest.*  
+> Same product, same company. Name change only.
 
 ## Lockup
 
@@ -11,6 +15,8 @@
 |-----|------|
 | Product | Boardman |
 | Full | Boardman by sideQuest |
+| Formerly | Rematch by sideQuest |
+| UI note | Formerly Rematch by sideQuest |
 | Tagline | Lock in. Play. Settle. Run it back. |
 | Role | Digital boardman for skill 1v1s |
 

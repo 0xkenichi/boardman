@@ -160,7 +160,8 @@ async def cmd_start(message: types.Message) -> None:
 
     text = (
         f"🎮 <b>Welcome to Boardman, {name}!</b>\n"
-        f"<i>Digital boardman · by sideQuest</i>\n\n"
+        f"<i>Digital boardman · by sideQuest</i>\n"
+        f"<i>Formerly Rematch by sideQuest</i>\n\n"
         f"Your tag: <code>@{tag}</code>\n"
         f"Friends challenge you with this.\n\n"
         f"{bal_line}"

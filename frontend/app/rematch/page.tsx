@@ -194,6 +194,7 @@ export default function RematchPage() {
         </div>
 
         <p className="rm-hero-tagline">{BRAND.tagline}</p>
+        <p className="rm-formerly">{BRAND.formerlyNote}</p>
         <p className="rm-hero-sub">
           The digital boardman holds both stakes. Play console, mobile, or iMessage 1v1s. Send the
           final photo — winner gets paid. Telegram bot or web.

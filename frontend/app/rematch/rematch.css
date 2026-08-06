@@ -597,6 +597,15 @@ body {
   line-height: 1.3;
 }
 
+/* Continuity for grants / prior “Rematch by sideQuest” applications */
+.rm-formerly {
+  margin: 0 0 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--rm-dim);
+  letter-spacing: 0.02em;
+}
+
 .rm-hero-sub {
   margin: 0 0 1.25rem;
   max-width: 36rem;
