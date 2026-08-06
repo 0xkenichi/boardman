@@ -2,7 +2,7 @@
   "product": "Boardman by sideQuest",
   "formerly": "Rematch by sideQuest",
   "version": "v1",
-  "status": "wallets_set_pending_escrow_deploy",
+  "status": "escrow_deployed_partial",
   "updatedAt": "2026-08-06",
   "launchTarget": "2026-09-16",
   "settlementLaunch": "arc-mainnet",
@@ -21,7 +21,7 @@
   },
   "escrowV1": {
     "arcMainnet": null,
-    "arcTestnet": null,
+    "arcTestnet": "0x3cD57447490c81598Bd8CaCBe3843b24E5735A77",
     "baseSepolia": null
   },
   "nextSteps": [

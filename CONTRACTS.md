@@ -18,14 +18,17 @@
 - **Fee Recipient:** `0x39EcF94ed35451A67006dcCE4A467aecdfAB6940`
 - **Resolver:** `0x39EcF94ed35451A67006dcCE4A467aecdfAB6940`
 
-### Boardman V1 wallets (product)
+### Boardman V1 (product) — **BoardmanEscrow**
 
 | Role | Address |
 |------|---------|
 | Ops / fee / resolver | `0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E` |
-| Escrow contract | _pending deploy_ |
+| **BoardmanEscrow (Arc Testnet)** | `0x3cD57447490c81598Bd8CaCBe3843b24E5735A77` |
+| BoardmanEscrow Arc Mainnet | _pending Sept 16_ |
 
-See `contracts/deployments/boardman_v1_wallets.json` and `docs/BOARDMAN_V1_WALLETS.md`.
+Deploy artifacts: `contracts/deployments/boardman_v1_arcTestnet.json`  
+Contract source: `contracts/contracts/core/BoardmanEscrow.sol`  
+Legacy name **ClawEscrow** = V0 archive only.
 - **Platform Fee:** 7% (`FEE_BPS = 700`)
 - **Max Stake:** $10,000 USDC per match
 

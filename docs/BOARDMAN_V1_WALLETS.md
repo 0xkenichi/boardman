@@ -70,8 +70,9 @@ If the key is leaked, assume funds may already be gone; only move what you still
 |------|------------|
 | Boardman ops / fee / resolver EOA | `0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E` |
 | Kobox (off-platform swaps) | Your Kobox app — send USDC out from here or to players |
-| ClawEscrow Arc mainnet | _TBD after V1 deploy_ |
-| ClawEscrow Arc testnet (dry run) | _TBD optional_ |
+| **BoardmanEscrow Arc testnet** | `0x3cD57447490c81598Bd8CaCBe3843b24E5735A77` ✅ |
+| BoardmanEscrow Arc mainnet | _Sept 16_ |
+| BoardmanEscrow Base Sepolia | _need Sepolia ETH on wallet first_ |
 
 ---
 

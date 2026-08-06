@@ -1,0 +1,19 @@
+{
+  "product": "Boardman by sideQuest",
+  "formerly": "Rematch by sideQuest",
+  "version": "v1",
+  "contractName": "BoardmanEscrow",
+  "network": "arcTestnet",
+  "chainId": 5042002,
+  "contracts": {
+    "BoardmanEscrow": "0x3cD57447490c81598Bd8CaCBe3843b24E5735A77",
+    "ClawEscrow_V0_archive": "see contracts/deployments/* and CONTRACTS.md"
+  },
+  "config": {
+    "usdc": "0x3600000000000000000000000000000000000000",
+    "feeRecipient": "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E",
+    "resolver": "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E"
+  },
+  "deployedAt": "2026-08-06T04:49:46.294Z",
+  "deployer": "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E"
+}
