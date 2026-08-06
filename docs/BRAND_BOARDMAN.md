@@ -64,3 +64,38 @@ SSL is issued automatically by Vercel once DNS validates.
 - **https://boardman.playingsidequest.fun/** → Boardman marketing (`/rematch`)
 - **https://boardman.playingsidequest.fun/rematch/app** → web app  
   (optional later: clean paths without `/rematch` prefix)
+
+## Logo
+
+| File | Use |
+|------|-----|
+| `/boardman-logo.jpg` · `/boardman-logo.png` | Primary mark (B + handshake + dual gamers) |
+| `/boardman-logo-alt.jpg` | Alt closer to legacy R composition |
+| `/rematch/icon-{180,192,512}.png` | PWA icons (Boardman) |
+| `/rematch-logo.jpg` | Legacy path (mirrors primary for old links) |
+
+## What else to ship (priority)
+
+### Done
+- [x] Brand rename Boardman by sideQuest  
+- [x] Domain boardman.playingsidequest.fun  
+- [x] Marketing cinema + play gallery  
+- [x] Naira/USD bank top-up quotes + ops credit  
+- [x] Kobox partner CTAs (on/off ramp story)  
+- [x] New Boardman logo assets  
+
+### Do next (product)
+1. **Restart bot** with Boardman copy + bank env (`FIAT_*`, `KOBOX_REFERRAL_URL`)  
+2. **Paste real Kobox referral URL** in env  
+3. **BotFather** — display name + photo → Boardman + new logo  
+4. **Fund UX polish** — one screen: “Top up Naira / Kobox / Crypto” with quotes  
+5. **Ops float** — small USDC buffer for credits; document SLA  
+6. **Caps + safety** — min/max top-up, daily limits, admin IDs  
+7. **Mainnet settlement** — Base when ready (cheap gas); keep Arc testnet for now  
+8. **Optional:** Play balance 1:1 USDC-backed (chip UX like Blishcrown, honest $)  
+
+### Growth / polish
+9. Referral / welcome credit (non-cashable or capped)  
+10. Clean URLs (`boardman…/app` without `/rematch`)  
+11. Custom TG bot username if available (@BoardmanBot etc.)  
+12. ToS / skill-gaming disclaimer under Boardman name

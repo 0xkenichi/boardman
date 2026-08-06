@@ -177,7 +177,7 @@ export default function RematchPage() {
       <section className="rm-hero-card">
         <div className="rm-hero-top">
           <Image
-            src="/rematch-logo.jpg"
+            src="/boardman-logo.jpg"
             alt={BRAND.name}
             width={88}
             height={88}

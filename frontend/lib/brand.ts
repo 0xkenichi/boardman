@@ -23,6 +23,9 @@ export const BRAND = {
   host: 'boardman.playingsidequest.fun',
   /** Full marketing URL once DNS is live */
   url: 'https://boardman.playingsidequest.fun',
+  /** Primary logo path */
+  logo: '/boardman-logo.jpg',
+  logoPng: '/boardman-logo.png',
 } as const
 
 export type Brand = typeof BRAND

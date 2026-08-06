@@ -31,7 +31,7 @@ export const metadata: Metadata = {
     description: 'Digital boardman. Lock in. Play. Settle. Run it back.',
     url: 'https://playingsidequest.fun/rematch',
     siteName: 'Boardman',
-    images: [{ url: '/rematch-logo.jpg', width: 1024, height: 1024, alt: 'Boardman' }],
+    images: [{ url: '/boardman-logo.jpg', width: 1024, height: 1024, alt: 'Boardman' }],
   },
   other: {
     'mobile-web-app-capable': 'yes',

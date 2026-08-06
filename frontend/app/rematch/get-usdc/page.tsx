@@ -39,7 +39,7 @@ function FundInner() {
       <div className="max-w-lg mx-auto px-4 py-10 space-y-6">
         <div className="flex items-center gap-3">
           <Image
-            src="/rematch-logo.jpg"
+            src="/boardman-logo.jpg"
             alt="Boardman"
             width={48}
             height={48}
