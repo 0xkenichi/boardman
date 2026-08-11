@@ -66,12 +66,14 @@ def main() -> int:
 
     _ensure_layout()
 
-    token = os.environ.get("TELEGRAM_BOT_TOKEN_CLAWSTATION") or os.environ.get(
-        "TELEGRAM_BOT_TOKEN"
+    token = (
+        os.environ.get("TELEGRAM_BOT_TOKEN_BOARDMAN")
+        or os.environ.get("TELEGRAM_BOT_TOKEN_CLAWSTATION")
+        or os.environ.get("TELEGRAM_BOT_TOKEN")
     )
     if not token:
         print(
-            "[akash] FATAL: TELEGRAM_BOT_TOKEN_CLAWSTATION (or TELEGRAM_BOT_TOKEN) is not set",
+            "[akash] FATAL: TELEGRAM_BOT_TOKEN_BOARDMAN (or TELEGRAM_BOT_TOKEN_CLAWSTATION / TELEGRAM_BOT_TOKEN) is not set",
             flush=True,
         )
         return 1

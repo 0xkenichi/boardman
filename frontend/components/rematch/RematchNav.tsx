@@ -3,7 +3,9 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-const BOT = process.env.NEXT_PUBLIC_TELEGRAM_BOT_URL || 'https://t.me/ClawStationOfficialBot'
+import { telegramBotUrl } from '@/lib/telegramBot'
+
+const BOT = telegramBotUrl()
 
 const LINKS = [
   { href: '/', label: 'Home', exact: true },
@@ -45,7 +47,7 @@ export function RematchNav() {
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '0.15rem',
+            gap: '0.45rem',
             fontWeight: 900,
             letterSpacing: '-0.03em',
             fontSize: '1.05rem',
@@ -53,8 +55,18 @@ export function RematchNav() {
             color: '#fff',
           }}
         >
-          <span style={{ color: '#34d399' }}>Board</span>
-          <span>man</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/boardman-logo.jpg"
+            alt=""
+            width={28}
+            height={28}
+            style={{ borderRadius: 8, objectFit: 'cover' }}
+          />
+          <span>
+            <span style={{ color: '#34d399' }}>Board</span>
+            <span>man</span>
+          </span>
         </Link>
 
         {!isApp && (

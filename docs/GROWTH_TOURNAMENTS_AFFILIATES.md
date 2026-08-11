@@ -1,9 +1,10 @@
 # ClawStation — Growth Layers: Tournaments · Gaming Centers · Affiliates · Public Lobbies
 
-**Status:** brainstorm / product design (not implemented)  
-**Date:** 2026-07-19  
+**Status:** design + partial ship (centers QR · cups dry-run)  
+**Date:** 2026-07-19 · ops update 2026-08-09  
 **Builds on:** live 1v1 Arc escrow + short match codes + AI score proof  
-**Games (Tier A first):** EA FC → NBA 2K → Madden → eFootball/UFL → Rocket League 1v1 → Fighters (BO sets)
+**Ship notes:** `docs/ONILE_GAME_CENTERS.md` · `config/partners.yaml` · `?start=ctr_*` · Cups menu  
+**Games (Tier A first):** EA FC → mobile → **physical IRL** → NBA 2K → …
 
 ---
 

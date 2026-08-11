@@ -82,29 +82,25 @@ async def cmd_balance(message: types.Message) -> None:
     tier = tier_from_play_points(play)
     streak_txt = f"🔥 {streak}" if streak else "0"
 
-    # Headline = stakeable + other on-chain (user sees total money we know about)
+    # Abstract play balance — players don't need chain names
     total_known = spendable + other
     text = (
         f"💰 <b>Wallet</b>\n\n"
-        f"<b>Balance: ${total_known:,.2f}</b>\n"
+        f"<b>Play balance: ${spendable:,.2f}</b>\n"
+        f"<i>Ready to stake · all matches use this balance</i>\n"
     )
 
     if err and spendable < 0.01:
-        text += f"⚠️ Could not refresh play wallet ({escape(str(err)[:80])}).\n"
+        text += f"⚠️ Could not refresh play balance ({escape(str(err)[:80])}).\n"
 
-    text += (
-        f"\n<b>Play wallet</b> (stakes / matches)\n"
-        f"${spendable:,.2f}\n"
-    )
     if address:
-        text += f"<code>{escape(address)}</code>\n"
+        text += f"\nPlay address:\n<code>{escape(address)}</code>\n"
 
     if other > 0.009 and other_addr:
         text += (
-            f"\n⚠️ <b>Funds on another address: ${other:,.2f}</b>\n"
+            f"\n⚠️ <b>${other:,.2f} on another address</b>\n"
             f"<code>{escape(other_addr)}</code>\n"
-            f"<i>This is NOT your play wallet — send USDC to the play address "
-            f"above to stake. We will not hide this again.</i>\n"
+            f"<i>Not stakeable yet — send USDC to your play address above.</i>\n"
         )
 
     if ledger > 0.009 and ledger > total_known + 0.009:
@@ -115,8 +111,8 @@ async def cmd_balance(message: types.Message) -> None:
 
     if total_known < 0.01 and not err:
         text += (
-            "\nEmpty for matches. Tap <b>Get money</b>, fund the "
-            "<b>play wallet</b> address, wait ~30s, then <b>Refresh</b>.\n"
+            "\nEmpty. Tap <b>Get money</b> — Naira, Stellar USDC, Avalanche USDC, "
+            "or crypto all credit the same play balance.\n"
         )
 
     text += (

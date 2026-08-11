@@ -29,6 +29,7 @@ services:
           - https
     env:
       # --- required secrets (set real values in Console before deploy) ---
+      - TELEGRAM_BOT_TOKEN_BOARDMAN=
       - TELEGRAM_BOT_TOKEN_CLAWSTATION=
       - SUPABASE_URL=
       - SUPABASE_SERVICE_ROLE_KEY=
@@ -37,7 +38,8 @@ services:
       - CIRCLE_WALLET_SET_ID=
       # --- optional / defaults ---
       - CIRCLE_CLIENT_KEY=
-      - TELEGRAM_BOT_USERNAME_CLAWSTATION=ClawStationOfficialBot
+      - TELEGRAM_BOT_USERNAME_MYBOARDMAN=myboardmanOfficialBot
+      - TELEGRAM_BOT_USERNAME_CLAWSTATION=myboardmanOfficialBot
       - CLAWSTATION_BOT_MODE=polling
       - CLAW_DEFAULT_CHAIN=arc
       - CLAW_MAX_STAKE_USDC=25

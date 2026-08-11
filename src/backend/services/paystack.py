@@ -81,10 +81,12 @@ def _request(
         raise RuntimeError("PAYSTACK_SECRET_KEY not set")
     url = f"{PAYSTACK_BASE}{path}"
     data = None
+    # Cloudflare in front of api.paystack.co bans bare Python-urllib UA (Error 1010).
     headers = {
         "Authorization": f"Bearer {sk}",
         "Content-Type": "application/json",
         "Accept": "application/json",
+        "User-Agent": "Boardman/1.0 (+https://boardman.playingsidequest.fun; Paystack)",
     }
     if body is not None:
         data = json.dumps(body).encode("utf-8")
@@ -100,7 +102,13 @@ def _request(
             parsed = json.loads(err_body)
         except Exception:
             parsed = {"message": err_body or str(exc)}
-        raise RuntimeError(parsed.get("message") or f"Paystack HTTP {exc.code}") from exc
+        msg = (
+            parsed.get("message")
+            or parsed.get("detail")
+            or parsed.get("title")
+            or f"Paystack HTTP {exc.code}"
+        )
+        raise RuntimeError(msg) from exc
 
 
 def initialize_transaction(

@@ -72,11 +72,16 @@ export async function stackFetch(
 /** Fallback catalog when Rematch API is offline (keeps UI usable). */
 export const DEMO_GAMES = {
   categories: [
+    { id: 'physical', label: '🎲 Physical / Table' },
     { id: 'imessage', label: '📱 iMessage' },
     { id: 'mobile', label: '📲 Mobile' },
     { id: 'console', label: '🎮 Console' },
   ],
   games: [
+    { game_id: 'physical.chess', display_name: 'Chess', category: 'physical', emoji: '♟️' },
+    { game_id: 'physical.ludo', display_name: 'Ludo', category: 'physical', emoji: '🎲' },
+    { game_id: 'physical.monopoly', display_name: 'Monopoly', category: 'physical', emoji: '🏠' },
+    { game_id: 'physical.checkers', display_name: 'Checkers', category: 'physical', emoji: '🟥' },
     { game_id: 'mobile.fc_mobile', display_name: 'FC Mobile', category: 'mobile', emoji: '⚽' },
     { game_id: 'mobile.free_fire_1v1', display_name: 'Free Fire 1v1', category: 'mobile', emoji: '🔥' },
     { game_id: 'mobile.cod_mobile_1v1', display_name: 'COD Mobile 1v1', category: 'mobile', emoji: '🔫' },

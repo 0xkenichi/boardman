@@ -40,10 +40,22 @@ Valid proof looks like:
 
 Not valid: mid-game table only, lobby, free-play without a winner banner.
 
+## Physical / IRL (tabletop)
+
+Category `physical` — Chess, Ludo, Monopoly, Checkers, Other.
+
+| Caption | Meaning |
+|---------|---------|
+| `W` / `I won` | You won at the table |
+| `L` / `I lost` | You lost |
+
+Photo = **end board / score pad** (not an app win screen). No in-game name step.  
+Full write-up: `docs/PHYSICAL_GAMES.md` · catalog: `config/games/physical.yaml`
+
 ## Adding a new game
 
-1. Add entry under `config/games/mobile.yaml` (or imessage/console)
-2. Set `outcome_type`, `result_screen`, `ai_hints` from a real screenshot
+1. Add entry under `config/games/mobile.yaml` (or imessage / console / **physical**)
+2. Set `outcome_type`, `result_screen`, `ai_hints` from a real screenshot or board end state
 3. Restart the bot so the catalog cache reloads
 
 Prefer **real screenshots** when writing `ai_hints` — one solid example beats generic text.

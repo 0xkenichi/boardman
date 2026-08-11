@@ -213,11 +213,17 @@ async def _resolve_screenshot_source(ref: str) -> str:
     if len(ref) > 200 and "/" not in ref:
         return ref  # already base64
     # Telegram file_id → Bot API file URL
-    token = (
-        os.getenv("TELEGRAM_BOT_TOKEN_CLAWSTATION")
-        or os.getenv("TELEGRAM_BOT_TOKEN")
-        or ""
-    )
+    try:
+        from gaming.src.bot.telegram_env import telegram_bot_token
+
+        token = telegram_bot_token()
+    except Exception:
+        token = (
+            os.getenv("TELEGRAM_BOT_TOKEN_BOARDMAN")
+            or os.getenv("TELEGRAM_BOT_TOKEN_CLAWSTATION")
+            or os.getenv("TELEGRAM_BOT_TOKEN")
+            or ""
+        )
     if not token:
         return ref
     try:
@@ -716,11 +722,24 @@ async def settle_challenge(challenge_id: str, admin_winner_id: Optional[str] = N
                 "challenge_id": challenge_id,
             }
 
+    # Cup / tournament $0 progression matches skip on-chain escrow
+    is_cup = False
     try:
-        tx_hash = await _execute_payout(challenge, winner_id)
-    except EscrowError as exc:
-        logger.exception("[Settlement] Payout failed for %s", challenge_id)
-        raise SettlementError(f"payout failed: {exc}") from exc
+        from gaming.src.backend.services.tournament_matches import parse_cup_message
+
+        is_cup = bool(parse_cup_message(challenge.get("message")))
+    except Exception:
+        is_cup = False
+
+    stake = float(challenge.get("amount_usdc") or 0)
+    if is_cup and stake <= 0.009:
+        tx_hash = "cup-advance"
+    else:
+        try:
+            tx_hash = await _execute_payout(challenge, winner_id)
+        except EscrowError as exc:
+            logger.exception("[Settlement] Payout failed for %s", challenge_id)
+            raise SettlementError(f"payout failed: {exc}") from exc
 
     _update_challenge(
         challenge_id,
@@ -731,6 +750,53 @@ async def settle_challenge(challenge_id: str, admin_winner_id: Optional[str] = N
     )
     await _notify_result(challenge, winner_id, tx_hash)
     await _award_play_points(challenge, winner_id, no_show=False)
+    _credit_onile_partner(challenge)
+
+    # Auto-advance tournament bracket from settled 1v1
+    if is_cup and winner_id:
+        try:
+            from gaming.src.backend.services.tournament_matches import (
+                advance_from_settled_challenge,
+                notify_ready_matches,
+            )
+            from gaming.src.backend.services.tournament import finalize_tournament_payouts
+
+            t_adv = advance_from_settled_challenge(challenge, winner_id)
+            if t_adv:
+                if t_adv.get("status") == "live":
+                    await notify_ready_matches(t_adv)
+                elif t_adv.get("status") == "final":
+                    try:
+                        t_paid = await finalize_tournament_payouts(
+                            t_adv.get("code") or t_adv.get("id")
+                        )
+                        t_adv = t_paid or t_adv
+                    except Exception:
+                        logger.exception("[Settlement] cup payout finalize failed")
+                    # Notify finalists
+                    try:
+                        from gaming.src.bot.utils.notify import notify_user
+
+                        for block in t_adv.get("payouts") or []:
+                            for p in block.get("places") or []:
+                                pid = p.get("profile_id")
+                                if not pid:
+                                    continue
+                                await notify_user(
+                                    pid,
+                                    f"🏆 Cup <code>{t_adv.get('code')}</code> finished!\n"
+                                    f"Place <b>#{p.get('place')}</b> · "
+                                    f"${float(p.get('amount_usdc') or 0):,.2f}"
+                                    + (
+                                        " · paid"
+                                        if p.get("paid")
+                                        else " · payout pending"
+                                    ),
+                                )
+                    except Exception:
+                        logger.exception("[Settlement] cup final notify failed")
+        except Exception:
+            logger.exception("[Settlement] cup auto-advance failed for %s", challenge_id)
 
     return {
         "success": True,
@@ -739,6 +805,40 @@ async def settle_challenge(challenge_id: str, admin_winner_id: Optional[str] = N
         "winner_id": winner_id,
         "tx_hash": tx_hash,
     }
+
+
+def _credit_onile_partner(challenge: dict) -> None:
+    """Best-effort center/onile volume credit from platform fee slice."""
+    try:
+        from gaming.src.backend.services.partners import (
+            credit_partner_volume,
+            resolve_center_for_match,
+        )
+
+        stake = float(challenge.get("amount_usdc") or 0)
+        if stake <= 0:
+            return
+        # Dual lock: matched volume = 2 × stake
+        volume = stake * 2.0
+        meta = challenge.get("metadata") if isinstance(challenge.get("metadata"), dict) else {}
+        explicit = (meta or {}).get("partner_code") or challenge.get("partner_code")
+        code = resolve_center_for_match(
+            challenge.get("creator_id") or "",
+            challenge.get("opponent_id"),
+            explicit_code=explicit,
+        )
+        if not code:
+            return
+        credit_partner_volume(
+            partner_code=code,
+            match_ref=str(challenge.get("public_code") or challenge.get("id") or "")[:32],
+            volume_usdc=volume,
+            challenge_id=str(challenge.get("id") or ""),
+        )
+    except Exception:
+        logger.exception(
+            "[Settlement] partner credit failed for %s", challenge.get("id")
+        )
 
 
 async def _award_play_points(

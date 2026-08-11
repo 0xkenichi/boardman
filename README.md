@@ -10,10 +10,10 @@ Built by [sideQuest](https://playingsidequest.fun).
 
 | | |
 |--|--|
-| **Bot** | [t.me/ClawStationOfficialBot](https://t.me/ClawStationOfficialBot) |
-| **Site** | [playingsidequest.fun/rematch](https://playingsidequest.fun/rematch) |
-| **Leaderboard** | [playingsidequest.fun/rematch/leaderboard](https://playingsidequest.fun/rematch/leaderboard) |
-| **Get USDC** | [playingsidequest.fun/rematch/get-usdc](https://playingsidequest.fun/rematch/get-usdc) · [Circle faucet](https://faucet.circle.com/) |
+| **Bot** | [t.me/myboardmanOfficialBot](https://t.me/myboardmanOfficialBot) |
+| **Site** | [boardman.playingsidequest.fun](https://boardman.playingsidequest.fun) |
+| **Leaderboard** | [boardman.playingsidequest.fun/leaderboard](https://boardman.playingsidequest.fun/leaderboard) |
+| **Get USDC** | [boardman.playingsidequest.fun/get-usdc](https://boardman.playingsidequest.fun/get-usdc) · [Circle faucet](https://faucet.circle.com/) |
 
 ## How it works
 
@@ -72,6 +72,11 @@ Live product · shipping weekly · multi-chain testnets · mainnet path in progr
 | [`docs/PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md`](docs/PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md) | **Canonical** 1v1 / public / mobile / fiat / Arc decisions — do not forget |
 | [`docs/IMESSAGE_AND_CHANNELS.md`](docs/IMESSAGE_AND_CHANNELS.md) | iMessage games catalog · multi-channel · phone/API |
 | [`docs/MOBILE_GAMES.md`](docs/MOBILE_GAMES.md) | FC Mobile, Free Fire, COD, Valorant, PUBG, … |
+| [`docs/PHYSICAL_GAMES.md`](docs/PHYSICAL_GAMES.md) | IRL Chess, Ludo, Monopoly — lock → play table → settle |
+| [`docs/ONILE_GAME_CENTERS.md`](docs/ONILE_GAME_CENTERS.md) | Lagos onile / game centers — QR, cut, cups |
+| [`docs/TOURNAMENT_MODE.md`](docs/TOURNAMENT_MODE.md) | Cups / brackets (Model A entry pool) |
+| [`docs/onile_kit/ONE_PAGER.md`](docs/onile_kit/ONE_PAGER.md) | Printable desk card for shop owners |
+| `scripts/generate_onile_kit.py` | QR + desk card per center → `data/onile_kit/` |
 | [`docs/WEBAPP_AND_MINIPAY.md`](docs/WEBAPP_AND_MINIPAY.md) | Webapp + MiniPay overview |
 | [`docs/WEBAPP_UX_AND_SECURITY.md`](docs/WEBAPP_UX_AND_SECURITY.md) | Webapp parity · security · simple UX |
 | [`docs/V1_TO_V2_RELEASE.md`](docs/V1_TO_V2_RELEASE.md) | **V1 summary · upgrades · V2 offer · content kit** |
@@ -80,6 +85,7 @@ Live product · shipping weekly · multi-chain testnets · mainnet path in progr
 | `Dockerfile.akash` · `deploy/akash/deploy.yml` | Image + SDL |
 | `config/games/imessage.yaml` | GamePigeon / iMessage catalog |
 | `config/games/mobile.yaml` | FC Mobile, Free Fire 1v1, COD DM, … |
+| `config/games/physical.yaml` | Chess, Ludo, Monopoly IRL |
 
 ## License / contact
 

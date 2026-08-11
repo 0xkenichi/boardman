@@ -106,7 +106,10 @@ async function trySupabase(entry: Entry): Promise<boolean> {
 
 async function notifyTelegram(entry: Entry, duplicate: boolean) {
   const token =
-    process.env.TELEGRAM_BOT_TOKEN_CLAWSTATION || process.env.TELEGRAM_BOT_TOKEN || ''
+    process.env.TELEGRAM_BOT_TOKEN_BOARDMAN ||
+    process.env.TELEGRAM_BOT_TOKEN_CLAWSTATION ||
+    process.env.TELEGRAM_BOT_TOKEN ||
+    ''
   const raw =
     process.env.CLAW_ADMIN_TELEGRAM_IDS || process.env.ADMIN_TELEGRAM_IDS || ''
   if (!token || !raw) return

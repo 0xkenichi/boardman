@@ -222,6 +222,26 @@ async def watch_wallet_activity() -> dict:
         return {}
 
 
+async def watch_funding_rails() -> dict:
+    """Stellar Horizon (+ optional Avalanche) deposit detection for top-ups."""
+    out: dict = {}
+    try:
+        from gaming.src.backend.services.stellar_watcher import watch_stellar_deposits
+
+        out["stellar"] = await watch_stellar_deposits()
+    except Exception:
+        logger.exception("[RailWatch] stellar tick failed")
+        out["stellar"] = {"error": "exception"}
+    try:
+        from gaming.src.backend.services.avalanche_watcher import watch_avalanche_deposits
+
+        out["avalanche"] = await watch_avalanche_deposits()
+    except Exception:
+        logger.exception("[RailWatch] avalanche tick failed")
+        out["avalanche"] = {"error": "exception"}
+    return out
+
+
 def start_expiry_scheduler(interval_minutes: int = 2) -> AsyncIOScheduler:
     """Start async scheduler for expiry + settlement + report nudges + wallet watch."""
     import os
@@ -262,10 +282,24 @@ def start_expiry_scheduler(interval_minutes: int = 2) -> AsyncIOScheduler:
             coalesce=True,
             misfire_grace_time=30,
         )
+    # Stellar memo deposits (+ avax stub). Default 90s. Set STELLAR_WATCH_ENABLED=0 to skip.
+    rail_sec = int(os.getenv("FUNDING_RAIL_WATCH_SEC", "90"))
+    if rail_sec > 0:
+        scheduler.add_job(
+            watch_funding_rails,
+            "interval",
+            seconds=max(45, rail_sec),
+            id="boardman_funding_rail_watch",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=30,
+        )
     scheduler.start()
     logger.info(
-        "[Jobs] Scheduler started (expiry+settlement+nudge every %sm, wallet watch every %ss)",
+        "[Jobs] Scheduler started (expiry+settlement+nudge every %sm, wallet watch every %ss, rails every %ss)",
         interval_minutes,
         max(60, wallet_sec) if wallet_sec > 0 else 0,
+        max(45, rail_sec) if rail_sec > 0 else 0,
     )
     return scheduler

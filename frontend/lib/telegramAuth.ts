@@ -15,7 +15,10 @@ export type TelegramLoginUser = {
 }
 
 function botToken(): string {
+  // Prefer Boardman bot; legacy ClawStation aliases still work
   return (
+    process.env.TELEGRAM_BOT_TOKEN_BOARDMAN ||
+    process.env.TELEGRAM_BOT_TOKEN_MYBOARDMAN ||
     process.env.TELEGRAM_BOT_TOKEN_CLAWSTATION ||
     process.env.TELEGRAM_BOT_TOKEN ||
     ''

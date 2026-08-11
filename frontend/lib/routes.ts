@@ -18,6 +18,7 @@ export const routes = {
   atmosphere: (file: string) => `/rematch/atmosphere/${file}`,
   logo: '/boardman-logo.jpg',
   icon192: '/rematch/icon-192.png',
+  icon512: '/brand/icon-512.png',
   manifest: '/manifest.webmanifest',
   sw: '/sw.js',
 } as const

@@ -1,9 +1,41 @@
 # Rematch Tournament Mode — product design (v0 decisions)
 
-**Status:** product decision doc (not implemented)  
-**Date:** 2026-08-04  
-**Product:** Rematch (sideQuest)  
-**Related:** `GROWTH_TOURNAMENTS_AFFILIATES.md`, `PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md`, `PLAYBOOK.md`, live 1v1 escrow  
+**Status:** product decision doc + **v0 engine live** (dry-run seats; money gated)  
+**Date:** 2026-08-04 · ops update 2026-08-09  
+**Product:** Boardman (sideQuest)  
+**Related:** `GROWTH_TOURNAMENTS_AFFILIATES.md`, `ONILE_GAME_CENTERS.md`, `PHYSICAL_GAMES.md`, live 1v1 escrow  
+
+### Implementation snapshot
+
+| Piece | State |
+|-------|--------|
+| Bracket T4/T8/T16 + 3rd place | `src/backend/services/tournament.py` |
+| Bot commands + **Cups** menu | `src/bot/handlers/tournament.py` |
+| SQL | `sql/055_tournaments.sql` (optional; JSON store works) |
+| **Money on join** | `TOURNAMENTS_MONEY_LIVE=1` → entry lock via `tournament_money.py` |
+| **Auto-advance** | Settled cup 1v1 → `report_match_winner` → next challenge spawned |
+| Bracket 1v1s | `$0` challenges (`[CUP:code:match]`) — pot already funded |
+| Onile tag | `/tcreate … --center=IKEJA01` · deep link `?start=cup_CODE` |
+| Onile kit | `scripts/generate_onile_kit.py` → `data/onile_kit/` |
+
+### Money env
+
+```bash
+TOURNAMENTS_MONEY_LIVE=1
+TOURNAMENT_MONEY_MODE=transfer   # or commit (balance check only)
+TOURNAMENT_POT_ADDRESS=0x...     # default: BOARDMAN_OPS_USDC_ADDRESS
+TOURNAMENT_POT_WALLET_ID=...     # Circle wallet id for refunds + prize pays
+```
+
+### Flow (live)
+
+```
+/tcreate 8 5 physical.chess Night Cup --center=IKEJA01
+players /tjoin or ?start=cup_CODE  → entry USDC → pot
+/tstart CODE → R1 $0 challenges created + DMs
+players Report → settle → auto advance + next challenges
+final → pay 1st/2nd/3rd from pot wallet
+```
 
 **Purpose:** Answer, in one place: *who can host, who pays, how brackets run, how the bot/app feels, and what we ship first* — so we stop re-litigating economics mid-build.
 

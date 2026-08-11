@@ -79,7 +79,7 @@ async def cmd_link_community(message: types.Message) -> None:
         await message.answer(
             "Run this command <b>inside</b> your Boardman community group "
             "(not in a private DM with the bot).\n\n"
-            "1. Add @ClawStationOfficialBot to the group\n"
+            "1. Add @myboardmanOfficialBot to the group\n"
             "2. Give it permission to post messages\n"
             "3. Send <code>/link_community</code> in that group",
             parse_mode=ParseMode.HTML,

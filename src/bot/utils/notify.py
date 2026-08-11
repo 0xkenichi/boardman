@@ -49,7 +49,16 @@ def _ensure_bot() -> Optional[Bot]:
         return _bot
     import os
 
-    token = os.getenv("TELEGRAM_BOT_TOKEN_CLAWSTATION") or os.getenv("TELEGRAM_BOT_TOKEN")
+    try:
+        from gaming.src.bot.telegram_env import telegram_bot_token
+
+        token = telegram_bot_token()
+    except Exception:
+        token = (
+            os.getenv("TELEGRAM_BOT_TOKEN_BOARDMAN")
+            or os.getenv("TELEGRAM_BOT_TOKEN_CLAWSTATION")
+            or os.getenv("TELEGRAM_BOT_TOKEN")
+        )
     if not token:
         return None
     try:

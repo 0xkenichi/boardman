@@ -69,14 +69,17 @@ def get_money_intro_html(rate_ngn: float | int) -> str:
     name = kobox_name()
     return (
         "💧 <b>Get money</b>\n\n"
+        f"One <b>play balance</b> for stakes — you don't pick networks to play.\n"
+        f"Fund however you like; we put USDC on your play wallet (matches always stake there).\n\n"
         f"{onramp_copy_html()}\n\n"
         f"<b>Options</b>\n"
-        f"• <b>Paystack</b> — pay ₦ in-app (card/bank/USSD). We credit USDC after pay\n"
-        f"• <b>{name}</b> — self-serve Naira ↔ USDC\n"
-        f"• <b>Our bank</b> — transfer ₦ / USD, we convert (₦{rate_ngn:,.0f}/$1 + fee)\n"
-        f"• <b>Crypto</b> — send USDC to your play address\n\n"
-        f"<i>USDC credit SLA: usually within ops window after Naira is confirmed "
-        f"(keep a small USDC float so this is fast).</i>\n"
+        f"• <b>Paystack</b> — pay ₦ in-app. We credit play balance after pay\n"
+        f"• <b>{name}</b> — self-serve Naira ↔ USDC → send to play address\n"
+        f"• <b>Our bank</b> — transfer ₦ / USD (₦{rate_ngn:,.0f}/$1 + fee)\n"
+        f"• <b>USDC (link)</b> — send USDC with a memo; we credit play balance\n"
+        f"• <b>USDC (alt)</b> — send USDC with your ref; we credit play balance\n"
+        f"• <b>Crypto</b> — send USDC straight to your play address\n\n"
+        f"<i>One play balance for all stakes. Funding path is just plumbing.</i>\n"
     )
 
 

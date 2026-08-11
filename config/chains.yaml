@@ -38,9 +38,10 @@ chains:
   avalanche:
     id: avalanche
     label: Avalanche Fuji
+    # Settlement/escrow UI still Arc-only; Avalanche is a funding rail (see funding_rails.yaml).
     enabled: false
     recommended: false
-    status: next
+    status: funding
     circle_blockchain: AVAX-FUJI
     chain_id: 43113
     rpc_url: https://api.avax-test.network/ext/bc/C/rpc
@@ -53,7 +54,27 @@ chains:
     gas_tank_min_wei: "10000000000000000"   # 0.01 AVAX
     gas_tank_topup_wei: "50000000000000000" # 0.05 AVAX
     escrow_address: "0xFC44a06295d4fC58420027932A6FcB3C13D83859"
-    notes: "Next up after Arc is solid. Not offered to users yet (gas tank + polish)."
+    notes: "Funding rail only until USDC gas + BoardmanEscrow. Convert → Arc for stakes."
+
+  # Stellar is NOT EVM — not used for BoardmanEscrow. Payments / USDC funding only.
+  # Horizon + ops address live in funding_rails.yaml / env (BOARDMAN_OPS_USDC_STELLAR).
+  stellar:
+    id: stellar
+    label: Stellar
+    enabled: false
+    recommended: false
+    status: funding
+    circle_blockchain: ""
+    chain_id: 0
+    rpc_url: ""
+    explorer_tx: "https://stellar.expert/explorer/public/tx/"
+    usdc_address: ""
+    circle_usdc_token_id: ""
+    gas_token: XLM
+    gas_mode: stellar_native
+    gas_tank_required: false
+    escrow_address: ""
+    notes: "Path A: fund with USDC on Stellar → credit Arc play balance. No on-chain stakes here."
 
   base:
     id: base
@@ -113,9 +134,17 @@ chains:
     escrow_address: ""
     notes: "Celo testnet for MiniPay dev."
 
-# Phase C (later): if opponent lacks funds on settlement chain,
-# optional auto-bridge with extra fee_bps on their lock to cover CCTP costs.
+# Settlement policy (see also config/funding_rails.yaml)
+# Stakes / BoardmanEscrow ALWAYS on default_settlement_chain (arc) until a
+# rail has usdc_gas + can_stake. Stellar & Avalanche are funding rails only.
+settlement:
+  chain: arc
+  force_convert_for_stake: true
+  abstract_balance: true   # players see one USDC number
+
+# Phase C: bridge funding rails → Arc play wallet (CCTP / ops).
 bridge:
   enabled: false
   extra_fee_bps: 50   # +0.5% on top of platform 7% when we bridge for them
-  supported_sources: [arc, base, avalanche]
+  supported_sources: [stellar, avalanche, base, arc]
+  target: arc

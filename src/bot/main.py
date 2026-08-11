@@ -86,10 +86,57 @@ async def _set_bot_commands(bot: Bot) -> None:
     await bot.set_my_commands(commands)
 
 
+async def _set_bot_branding(bot: Bot) -> None:
+    """Name, descriptions, and menu button → Boardman site."""
+    from gaming.src.bot.brand_assets import boardman_site_url
+    from gaming.src.bot.telegram_env import telegram_bot_username
+
+    site = boardman_site_url()
+    uname = telegram_bot_username()
+    short = "Boardman · skill 1v1s with USDC. Formerly Rematch by sideQuest."
+    full = (
+        "Boardman by sideQuest — digital boardman for skill 1v1s.\n"
+        "Lock stake · play · settle. Formerly Rematch by sideQuest.\n\n"
+        f"Site: {site}\n"
+        f"Open: https://t.me/{uname}"
+    )
+    try:
+        await bot.set_my_name(name="Boardman · sideQuest")
+    except Exception:
+        logger.debug("[Bot] set_my_name skipped", exc_info=True)
+    try:
+        await bot.set_my_short_description(short_description=short[:120])
+    except Exception:
+        logger.debug("[Bot] set_my_short_description skipped", exc_info=True)
+    try:
+        await bot.set_my_description(description=full[:512])
+    except Exception:
+        logger.debug("[Bot] set_my_description skipped", exc_info=True)
+    try:
+        from aiogram.types import MenuButtonWebApp, WebAppInfo
+
+        await bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(
+                text="Boardman",
+                web_app=WebAppInfo(url=f"{site}/app"),
+            )
+        )
+    except Exception:
+        # Fallback: open site without mini-app if WebApp domain not configured
+        try:
+            from aiogram.types import MenuButtonCommands
+
+            await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+        except Exception:
+            logger.debug("[Bot] set_chat_menu_button skipped", exc_info=True)
+
+
 async def run_polling() -> None:
     """Run the bot in polling mode (default for local development)."""
     if not settings.BOT_TOKEN:
-        raise RuntimeError("TELEGRAM_BOT_TOKEN_CLAWSTATION or TELEGRAM_BOT_TOKEN must be set")
+        raise RuntimeError(
+            "TELEGRAM_BOT_TOKEN_BOARDMAN (or TELEGRAM_BOT_TOKEN_CLAWSTATION / TELEGRAM_BOT_TOKEN) must be set"
+        )
 
     bot = Bot(token=settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode=settings.PARSE_MODE))
     set_bot(bot)
@@ -100,6 +147,7 @@ async def run_polling() -> None:
         # Drop webhook + stale queue so laptop polling gets a clean stream.
         await bot.delete_webhook(drop_pending_updates=True)
         await _set_bot_commands(bot)
+        await _set_bot_branding(bot)
         me = await bot.get_me()
         logger.info("[Bot] Starting polling as @%s (id=%s)", me.username, me.id)
         # Only message + callbacks — avoids silent "not handled" for other update types
@@ -118,7 +166,9 @@ async def run_webhook(webhook_url: str, host: str = "0.0.0.0", port: int = 8080)
     can be wired in here; polling is the default fallback.
     """
     if not settings.BOT_TOKEN:
-        raise RuntimeError("TELEGRAM_BOT_TOKEN_CLAWSTATION or TELEGRAM_BOT_TOKEN must be set")
+        raise RuntimeError(
+            "TELEGRAM_BOT_TOKEN_BOARDMAN (or TELEGRAM_BOT_TOKEN_CLAWSTATION / TELEGRAM_BOT_TOKEN) must be set"
+        )
 
     bot = Bot(token=settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode=settings.PARSE_MODE))
     set_bot(bot)
@@ -126,6 +176,7 @@ async def run_webhook(webhook_url: str, host: str = "0.0.0.0", port: int = 8080)
     scheduler = start_expiry_scheduler()
 
     await _set_bot_commands(bot)
+    await _set_bot_branding(bot)
     await bot.set_webhook(
         url=webhook_url,
         allowed_updates=settings.ALLOWED_UPDATES,

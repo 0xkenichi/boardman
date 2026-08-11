@@ -19,12 +19,20 @@ except ImportError:
 
 from aiogram.enums import ParseMode
 
+from .telegram_env import (
+    telegram_bot_token,
+    telegram_bot_url,
+    telegram_bot_username,
+)
+
 
 class Settings:
-    """Runtime settings for the ClawStation Telegram bot."""
+    """Runtime settings for the Boardman Telegram bot."""
 
-    BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN_CLAWSTATION") or os.getenv("TELEGRAM_BOT_TOKEN")
-    BOT_USERNAME = os.getenv("TELEGRAM_BOT_USERNAME_CLAWSTATION") or os.getenv("TELEGRAM_BOT_USERNAME")
+    # Prefer TELEGRAM_BOT_TOKEN_BOARDMAN / TELEGRAM_BOT_USERNAME_MYBOARDMAN
+    BOT_TOKEN = telegram_bot_token()
+    BOT_USERNAME = telegram_bot_username()
+    BOT_URL = telegram_bot_url()
     MINIAPP_URL = os.getenv("MINIAPP_URL")
     WEBHOOK_URL = os.getenv("WEBHOOK_URL")
     # Default to polling so local demos work even if WEBHOOK_URL is set for other services.

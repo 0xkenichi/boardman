@@ -214,7 +214,7 @@ export default function BoardmanWaitlistPage() {
             rel="noreferrer"
             className="rm-btn rm-btn-ghost rm-btn-cta"
           >
-            Open bot
+            Open @myboardmanOfficialBot
           </a>
         </div>
       </section>

@@ -14,13 +14,13 @@
   "categories": ["games", "entertainment", "social"],
   "icons": [
     {
-      "src": "/rematch/icon-192.png",
-      "sizes": "192x192",
+      "src": "/boardman-logo.png",
+      "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/rematch/icon-512.png",
+      "src": "/brand/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
@@ -29,7 +29,7 @@
       "src": "/rematch/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "maskable"
+      "purpose": "any"
     },
     {
       "src": "/rematch/icon-512.png",
@@ -43,13 +43,13 @@
       "name": "Challenge",
       "short_name": "Challenge",
       "url": "/app/challenge",
-      "icons": [{ "src": "/rematch/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/boardman-logo.png", "sizes": "512x512" }]
     },
     {
       "name": "Wallet",
       "short_name": "Wallet",
       "url": "/app/wallet",
-      "icons": [{ "src": "/rematch/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/boardman-logo.png", "sizes": "512x512" }]
     }
   ],
   "prefer_related_applications": false

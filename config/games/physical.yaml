@@ -1,0 +1,85 @@
+# Physical / tabletop IRL catalog — finite-outcome 1v1 only
+# Play at the table; settle in the bot (dual lock → photo + mutual W/L → USDC).
+# See docs/PHYSICAL_GAMES.md · docs/PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md
+
+category: physical
+default_proof: board_photo
+default_stake_min_usdc: 1
+default_stake_max_usdc: 50
+
+games:
+  - game_id: physical.chess
+    display_name: "Chess"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "♟️"
+    venue: tabletop
+    result_screen: "End position — checkmate, resign, or agreed result; both players + board in frame when possible"
+    ai_hints:
+      - "Physical chess board or digital board photo at end of game"
+      - "Prefer checkmate / clear king capture / empty board after resign"
+      - "Reject mid-game positions without agreed winner signal"
+      - "Not Chess.com app win screen (that is mobile.chess_com / imessage.chess)"
+    duration_hint_min: 60
+    proof: dual_report_plus_photo
+    notes: "1v1 only. Photo of end board + both claim W/L."
+
+  - game_id: physical.ludo
+    display_name: "Ludo"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "🎲"
+    venue: tabletop
+    result_screen: "Board showing first player fully home (or agreed 1v1 finish); tokens + board visible"
+    ai_hints:
+      - "Physical Ludo / Ludo King board at finish — one colour fully home"
+      - "1v1 only — reject 4-player free-for-all without agreed pairing"
+      - "Not mobile Ludo King victory UI (use mobile.ludo for app)"
+    duration_hint_min: 45
+    proof: dual_report_plus_photo
+    notes: "1v1 only (two colours). Multi-player tables: two stakers only."
+
+  - game_id: physical.monopoly
+    display_name: "Monopoly"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "🏠"
+    venue: tabletop
+    result_screen: "Agreed end state — bankrupt opponent, or highest cash/assets after agreed stop"
+    ai_hints:
+      - "Physical Monopoly board / cash / property cards at agreed end"
+      - "Look for empty cash, bankrupt tokens, or scorepad totals"
+      - "Reject mid-game board without agreed finish rule"
+    duration_hint_min: 180
+    proof: dual_report_plus_photo
+    notes: >
+      Always agree the end rule before lock (e.g. first bankrupt, or cash after N turns).
+      Money is still 1v1: two stakers (or two team reps), not a multi-wallet pot.
+
+  - game_id: physical.checkers
+    display_name: "Checkers / Draughts"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "🟥"
+    venue: tabletop
+    result_screen: "End board — opponent has no moves / all pieces taken / resign"
+    ai_hints:
+      - "Physical checkers or draughts board at game over"
+      - "Clear one-sided piece count or empty side"
+      - "Reject mid-game without agreed winner"
+    duration_hint_min: 45
+    proof: dual_report_plus_photo
+
+  - game_id: physical.other
+    display_name: "Other board / table"
+    enabled: true
+    outcome_type: binary_winner
+    emoji: "🃏"
+    venue: tabletop
+    result_screen: "Clear end state both players accept (photo of board, score pad, or cards)"
+    ai_hints:
+      - "Physical tabletop game end — score pad, board, or cards showing a clear winner"
+      - "Reject ambiguous mid-game states"
+    duration_hint_min: 90
+    proof: dual_report_plus_photo
+    notes: "Any finite 1v1 with an agreed winner. Name the game in chat if useful."

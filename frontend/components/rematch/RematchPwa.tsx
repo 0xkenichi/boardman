@@ -119,7 +119,7 @@ export function RematchPwa() {
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/rematch/icon-192.png"
+          src="/boardman-logo.jpg"
           alt=""
           width={44}
           height={44}

@@ -22,12 +22,19 @@ _LINK_FILE = Path(
 
 
 def _bot_username() -> str:
-    return (
-        os.getenv("TELEGRAM_BOT_USERNAME_CLAWSTATION")
-        or os.getenv("NEXT_PUBLIC_TELEGRAM_BOT_USERNAME")
-        or os.getenv("TELEGRAM_BOT_USERNAME")
-        or "ClawStationOfficialBot"
-    ).lstrip("@")
+    try:
+        from gaming.src.bot.telegram_env import telegram_bot_username
+
+        return telegram_bot_username()
+    except Exception:
+        return (
+            os.getenv("TELEGRAM_BOT_USERNAME_MYBOARDMAN")
+            or os.getenv("TELEGRAM_BOT_USERNAME_BOARDMAN")
+            or os.getenv("TELEGRAM_BOT_USERNAME_CLAWSTATION")
+            or os.getenv("NEXT_PUBLIC_TELEGRAM_BOT_USERNAME")
+            or os.getenv("TELEGRAM_BOT_USERNAME")
+            or "myboardmanOfficialBot"
+        ).lstrip("@")
 
 
 def _load_linked_chat_id() -> Optional[Union[int, str]]:
@@ -91,7 +98,13 @@ def rematch_group_chat_ref() -> Optional[Union[int, str]]:
     m = re.search(r"(?:t\.me|telegram\.me)/(?:s/)?([A-Za-z][A-Za-z0-9_]{3,})", url)
     if m:
         name = m.group(1)
-        if name.lower() in ("joinchat", "share", "addstickers", "clawstationofficialbot"):
+        if name.lower() in (
+            "joinchat",
+            "share",
+            "addstickers",
+            "clawstationofficialbot",
+            "myboardmanofficialbot",
+        ):
             return None
         return f"@{name}"
     return None

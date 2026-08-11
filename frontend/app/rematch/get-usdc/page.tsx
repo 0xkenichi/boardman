@@ -10,7 +10,9 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 
-const BOT = 'https://t.me/ClawStationOfficialBot'
+import { telegramBotUrl } from '@/lib/telegramBot'
+
+const BOT = telegramBotUrl()
 const FAUCET = 'https://faucet.circle.com/'
 
 function FundInner() {

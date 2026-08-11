@@ -1,5 +1,5 @@
 """
-Game catalog loader — console + iMessage (+ future mobile).
+Game catalog loader — console, iMessage, mobile, physical/tabletop.
 
 Reads config/games/*.yaml. Safe if PyYAML missing (built-in seed).
 """
@@ -63,6 +63,61 @@ _SEED: list[dict[str, Any]] = [
         ],
         "duration_hint_min": 10,
         "emoji": "🎱",
+    },
+    {
+        "game_id": "physical.chess",
+        "display_name": "Chess",
+        "category": "physical",
+        "enabled": True,
+        "outcome_type": "binary_winner",
+        "result_screen": "End board — checkmate / resign / agreed",
+        "ai_hints": ["Physical chess end position", "checkmate or resign"],
+        "duration_hint_min": 60,
+        "emoji": "♟️",
+    },
+    {
+        "game_id": "physical.ludo",
+        "display_name": "Ludo",
+        "category": "physical",
+        "enabled": True,
+        "outcome_type": "binary_winner",
+        "result_screen": "Board showing first player fully home (1v1)",
+        "ai_hints": ["Physical Ludo end board", "1v1 only"],
+        "duration_hint_min": 45,
+        "emoji": "🎲",
+    },
+    {
+        "game_id": "physical.monopoly",
+        "display_name": "Monopoly",
+        "category": "physical",
+        "enabled": True,
+        "outcome_type": "binary_winner",
+        "result_screen": "Agreed end — bankrupt or highest cash after stop",
+        "ai_hints": ["Physical Monopoly end board or cash totals"],
+        "duration_hint_min": 180,
+        "emoji": "🏠",
+    },
+    {
+        "game_id": "physical.checkers",
+        "display_name": "Checkers / Draughts",
+        "category": "physical",
+        "enabled": True,
+        "outcome_type": "binary_winner",
+        "result_screen": "End board — no moves / all pieces taken / resign",
+        "ai_hints": ["Physical checkers end board"],
+        "duration_hint_min": 45,
+        "emoji": "🟥",
+    },
+    {
+        "game_id": "physical.other",
+        "display_name": "Other board / table",
+        "category": "physical",
+        "enabled": True,
+        "outcome_type": "binary_winner",
+        "result_screen": "Clear end state both accept (board, score pad, cards)",
+        "ai_hints": ["Physical tabletop end state with clear winner"],
+        "duration_hint_min": 90,
+        "emoji": "🃏",
     },
 ]
 
@@ -159,6 +214,7 @@ def list_games(
 def list_categories(*, enabled_only: bool = True) -> list[dict[str, str]]:
     """Unique categories with display labels."""
     labels = {
+        "physical": "🎲 Physical / Table",
         "imessage": "📱 iMessage",
         "console": "🎮 Console",
         "mobile": "📲 Mobile",
@@ -168,8 +224,8 @@ def list_categories(*, enabled_only: bool = True) -> list[dict[str, str]]:
         cat = g.get("category") or "other"
         if cat not in seen:
             seen.append(cat)
-    # Product order: iMessage → Mobile (FC Mobile focus) → Console
-    order = ["imessage", "mobile", "console"]
+    # Product order: Physical (IRL) → iMessage → Mobile → Console
+    order = ["physical", "imessage", "mobile", "console"]
     seen.sort(key=lambda c: order.index(c) if c in order else 99)
     return [{"id": c, "label": labels.get(c, c.title())} for c in seen]
 
@@ -185,6 +241,8 @@ def display_name(game_id: str) -> str:
         return f"{emoji} {name} (iMessage)".strip()
     if cat == "mobile" and "Mobile" not in name and not name.endswith("Mobile"):
         return f"{emoji} {name} (Mobile)".strip()
+    if cat == "physical" and "Physical" not in name and "IRL" not in name:
+        return f"{emoji} {name} (IRL)".strip()
     return f"{emoji} {name}".strip()
 
 
@@ -196,6 +254,23 @@ def is_imessage(game_id: str) -> bool:
 def is_mobile(game_id: str) -> bool:
     g = get_game(game_id)
     return bool(g and g.get("category") == "mobile") or str(game_id).startswith("mobile.")
+
+
+def is_physical(game_id: str) -> bool:
+    """Tabletop / IRL board games — settle in bot, play at the table."""
+    g = get_game(game_id)
+    return bool(g and g.get("category") == "physical") or str(game_id).startswith(
+        "physical."
+    )
+
+
+def requires_screen_name(game_id: str) -> bool:
+    """Binary digital games need on-screen gamertag; physical does not."""
+    if not is_binary_outcome(game_id):
+        return False
+    if is_physical(game_id):
+        return False
+    return True
 
 
 def outcome_type(game_id: str) -> str:
@@ -316,12 +391,29 @@ def how_to_report_short(game_id: str) -> str:
     emoji = (g or {}).get("emoji") or "🎮"
     binary = is_binary_outcome(game_id)
     cat = (g or {}).get("category") or ""
-    where = (
-        "on your phone"
-        if cat == "mobile"
-        else ("in iMessage" if cat == "imessage" else "on your console")
-    )
+    physical = cat == "physical" or is_physical(game_id)
+    if physical:
+        where = "at the table (IRL)"
+    elif cat == "mobile":
+        where = "on your phone"
+    elif cat == "imessage":
+        where = "in iMessage"
+    else:
+        where = "on your console"
     need = _short_result_screen(game_id, 90)
+
+    if physical:
+        return (
+            f"{emoji} <b>How to report — {name} (IRL)</b>\n\n"
+            f"Play happens <b>offline</b>. This bot only settles money.\n\n"
+            f"1. Finish the game <b>{where}</b>\n"
+            f"2. Photo the <b>end state</b>: <i>{need}</i>\n"
+            f"   (board, score pad, or both of you + board)\n"
+            f"3. Tap <b>Report result</b> → send that photo\n"
+            f"4. Tap <b>I won</b> or <b>I lost</b>\n\n"
+            f"Opponent reports too. Auto-pay only if you <b>agree</b>. "
+            f"Disagree → dispute."
+        )
 
     if binary:
         return (
@@ -356,12 +448,40 @@ def report_caption_help_html(game_id: str) -> str:
     result = _short_result_screen(game_id, 140)
     binary = is_binary_outcome(game_id)
     cat = (g or {}).get("category") or ""
+    physical = cat == "physical" or is_physical(game_id)
 
-    where = (
-        "your phone"
-        if cat == "mobile"
-        else ("iMessage" if cat == "imessage" else "your console / TV")
-    )
+    if physical:
+        where = "the table / board (real life)"
+    elif cat == "mobile":
+        where = "your phone"
+    elif cat == "imessage":
+        where = "iMessage"
+    else:
+        where = "your console / TV"
+
+    if physical:
+        lines = [
+            f"{emoji} <b>Submit result — {name} (IRL)</b>",
+            "",
+            "You played offline. Send proof of the <b>final board / score</b>, then say who won.",
+            "",
+            "<b>What to photograph</b>",
+            f"• {result}",
+            f"• Best: both players + end board in one shot",
+            "• Avoid mid-game positions with no clear winner",
+            "",
+            "<b>How to send it</b>",
+            "1. Tap 📎 → Photo",
+            "2. Pick the board / score pad photo",
+            "3. Send (caption optional — or type <code>W</code> / <code>L</code>)",
+            "4. Confirm <b>I won</b> or <b>I lost</b>",
+            "",
+            "No in-game gamertag needed — you're at the same table.",
+            "Opponent must report the matching result for auto-payout.",
+            "",
+            "Ready — send the photo now 👇",
+        ]
+        return "\n".join(lines)
 
     lines = [
         f"{emoji} <b>Submit result — {name}</b>",

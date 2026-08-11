@@ -60,6 +60,8 @@ def test_compute_payouts():
 
 
 def test_dry_run_flow(tmp_path, monkeypatch):
+    import asyncio
+
     store = tmp_path / "tournaments.json"
     monkeypatch.setenv("TOURNAMENT_FORCE_JSON", "1")
     monkeypatch.setenv("TOURNAMENTS_MONEY_LIVE", "0")
@@ -76,7 +78,7 @@ def test_dry_run_flow(tmp_path, monkeypatch):
     )
     code = t["code"]
     for i in range(4):
-        join_tournament(code, f"player-{i}")
+        asyncio.get_event_loop().run_until_complete(join_tournament(code, f"player-{i}"))
     t2 = start_tournament(code)
     assert t2["status"] == "live"
     assert len(t2["bracket"]) >= 2

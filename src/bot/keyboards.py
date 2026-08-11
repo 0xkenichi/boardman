@@ -6,14 +6,29 @@ import os
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-REMATCH_WEB = os.getenv("REMATCH_WEB_URL", "https://boardman.playingsidequest.fun")
+try:
+    from gaming.src.bot.brand_assets import boardman_site_url
+
+    REMATCH_WEB = boardman_site_url()
+except Exception:
+    REMATCH_WEB = os.getenv("REMATCH_WEB_URL", "https://boardman.playingsidequest.fun")
 REMATCH_BOARD = os.getenv(
-    "REMATCH_LEADERBOARD_URL", "https://playingsidequest.fun/rematch/leaderboard"
+    "REMATCH_LEADERBOARD_URL",
+    f"{REMATCH_WEB.rstrip('/')}/leaderboard",
 )
-REMATCH_BOT_URL = os.getenv(
-    "NEXT_PUBLIC_TELEGRAM_BOT_URL",
-    os.getenv("TELEGRAM_BOT_URL", "https://t.me/ClawStationOfficialBot"),
-)
+try:
+    from gaming.src.bot.telegram_env import telegram_bot_url as _bot_url
+
+    REMATCH_BOT_URL = _bot_url()
+except Exception:
+    REMATCH_BOT_URL = os.getenv(
+        "NEXT_PUBLIC_TELEGRAM_BOT_URL",
+        os.getenv("TELEGRAM_BOT_URL", "https://t.me/myboardmanOfficialBot"),
+    )
+
+
+# Default community invite (same as website Join community)
+DEFAULT_COMMUNITY_URL = "https://t.me/+4YrgJ6vO2h8zMjk0"
 
 
 def rematch_group_url() -> str | None:
@@ -21,14 +36,15 @@ def rematch_group_url() -> str | None:
 
     Set any of: REMATCH_TELEGRAM_GROUP_URL, TELEGRAM_GROUP_URL,
     NEXT_PUBLIC_TELEGRAM_GROUP_URL (same as web).
-    Returns None when unset or when it only points at the bot itself.
+    Falls back to the Boardman community invite.
+    Returns None only when the value is the bot DM itself (not a group).
     """
     raw = (
         os.getenv("REMATCH_TELEGRAM_GROUP_URL")
         or os.getenv("TELEGRAM_GROUP_URL")
         or os.getenv("NEXT_PUBLIC_TELEGRAM_GROUP_URL")
         or os.getenv("NEXT_PUBLIC_REMATCH_TG_GROUP")
-        or ""
+        or DEFAULT_COMMUNITY_URL
     ).strip()
     if not raw:
         return None
@@ -38,7 +54,10 @@ def rematch_group_url() -> str | None:
     bot = (REMATCH_BOT_URL or "").rstrip("/").lower()
     if raw.rstrip("/").lower() in (bot, f"{bot}/"):
         return None
-    if "clawstationofficialbot" in raw.lower() and "/+" not in raw:
+    low = raw.lower()
+    if "/+" not in low and any(
+        b in low for b in ("clawstationofficialbot", "myboardmanofficialbot")
+    ):
         return None
     return raw
 
@@ -56,6 +75,9 @@ def main_menu(miniapp_url: str | None = None) -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(text="🔄 Rematch", callback_data="ui:rematch"),
+        InlineKeyboardButton(text="🏆 Cups", callback_data="ui:cups"),
+    )
+    builder.row(
         InlineKeyboardButton(text="👤 Profile", callback_data="menu:profile"),
     )
     # Community + public board — always visible (not buried only under More)
@@ -83,7 +105,10 @@ def more_menu(miniapp_url: str | None = None) -> InlineKeyboardMarkup:
     group = rematch_group_url()
     builder.row(
         InlineKeyboardButton(text="📋 Public board", callback_data="ui:board"),
-        InlineKeyboardButton(text="🏆 Leaderboard", url=REMATCH_BOARD),
+        InlineKeyboardButton(text="🏆 Cups", callback_data="ui:cups"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🏅 Leaderboard", url=REMATCH_BOARD),
     )
     if group:
         builder.row(InlineKeyboardButton(text="💬 Join community · live rooms", url=group))
@@ -367,13 +392,14 @@ def stake_amount_menu() -> InlineKeyboardMarkup:
 
 
 def game_category_menu() -> InlineKeyboardMarkup:
-    """First step: iMessage vs Console (catalog-driven)."""
+    """First step: Physical / iMessage / Mobile / Console (catalog-driven)."""
     from gaming.src.backend.services.game_catalog import list_categories
 
     builder = InlineKeyboardBuilder()
     cats = list_categories(enabled_only=True)
     if not cats:
         cats = [
+            {"id": "physical", "label": "🎲 Physical / Table"},
             {"id": "imessage", "label": "📱 iMessage"},
             {"id": "console", "label": "🎮 Console"},
         ]
@@ -520,6 +546,26 @@ def get_money_menu() -> InlineKeyboardMarkup:
             callback_data="ui:topup:usd",
         ),
     )
+    # Multi-rail funding — same play balance; stakes always on Arc play wallet
+    try:
+        from gaming.src.backend.services.funding_rails import funding_rail_enabled
+
+        if funding_rail_enabled("stellar"):
+            builder.row(
+                InlineKeyboardButton(
+                    text="⭐ Fund with USDC (link)",
+                    callback_data="ui:topup:stellar",
+                ),
+            )
+        if funding_rail_enabled("avalanche"):
+            builder.row(
+                InlineKeyboardButton(
+                    text="🔺 Fund with USDC (alt)",
+                    callback_data="ui:topup:avalanche",
+                ),
+            )
+    except Exception:
+        pass
     builder.row(
         InlineKeyboardButton(text="🪙 Crypto / play address", callback_data="ui:topup:crypto"),
     )

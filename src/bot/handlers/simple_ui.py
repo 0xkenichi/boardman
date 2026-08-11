@@ -55,6 +55,7 @@ from gaming.src.backend.services.game_catalog import (
     display_name as game_display_name,
     is_imessage,
     is_mobile,
+    is_physical,
     proof_instructions,
 )
 from gaming.src.bot.utils.db import get_or_create_profile, get_profile_by_tag
@@ -811,12 +812,18 @@ async def ui_chal_category(callback: types.CallbackQuery, state: FSMContext) -> 
     await state.update_data(game_category=cat)
     await state.set_state(ChallengeWizard.waiting_game)
     label = {
+        "physical": "Physical / table (IRL)",
         "imessage": "iMessage games",
         "console": "Console",
         "mobile": "Mobile (FC Mobile & more)",
     }.get(cat, cat)
     hint = ""
-    if cat == "mobile":
+    if cat == "physical":
+        hint = (
+            "\n♟️ Chess · 🎲 Ludo · 🏠 Monopoly · 🟥 Checkers\n"
+            "<i>Play at the table · lock &amp; settle here · photo + both agree.</i>"
+        )
+    elif cat == "mobile":
         hint = (
             "\n⚽ <b>FC Mobile</b> · 🔥 Free Fire · 🔫 COD · 🗡️ Valorant · 🎯 PUBG\n"
             "<i>1v1 / TDM / private only — not open BR.</i>"
@@ -841,7 +848,19 @@ async def ui_chal_game(callback: types.CallbackQuery, state: FSMContext) -> None
     data = await state.get_data()
     gname = game_display_name(game)
     extra = ""
-    if is_imessage(game):
+    if is_physical(game):
+        extra = (
+            "\n\n🎲 <b>Physical / IRL mode</b>\n"
+            "After both lock: play <b>at the table</b>. "
+            "When done, both send a <b>board / score photo</b> and tap "
+            "<b>I won</b> or <b>I lost</b>. Agree → settle in USDC."
+        )
+        if game == "physical.monopoly":
+            extra += (
+                "\n\n🏠 <b>Monopoly:</b> agree the end rule <b>before</b> you lock "
+                "(first bankrupt, or highest cash after N turns)."
+            )
+    elif is_imessage(game):
         extra = (
             "\n\n📱 <b>iMessage mode</b>\n"
             "After both lock: play in iMessage, then send the "
@@ -1078,7 +1097,17 @@ async def ui_lock(callback: types.CallbackQuery) -> None:
         return
 
     amount = Decimal(str(ch["amount_usdc"]))
-    chain = ch.get("settlement_chain") or "base"
+    # All stakes settle on Arc (USDC gas + BoardmanEscrow). Funding rails
+    # (Stellar / Avalanche / Naira) only credit play balance first.
+    from gaming.src.backend.services.funding_rails import (
+        ensure_stake_ready,
+        settlement_rail_id,
+    )
+
+    chain = settlement_rail_id()
+    if (ch.get("settlement_chain") or "").lower() not in ("", "arc", chain):
+        # Old challenges may still say base — force Arc for product safety
+        chain = settlement_rail_id()
 
     gate = assert_money_ops_allowed(
         profile["id"], action="lock", amount=amount, kind="lock"
@@ -1093,21 +1122,32 @@ async def ui_lock(callback: types.CallbackQuery) -> None:
         await callback.message.answer(dup, reply_markup=match_actions_menu(ch, profile["id"]))
         return
 
-    # Preflight: chain-specific Circle wallet + balance (Arc ≠ Base wallet)
+    # Abstract balance: one play wallet (settlement rail). No chain homework.
     try:
+        ready = await ensure_stake_ready(profile["id"], amount)
+        if not ready.ok:
+            from gaming.src.bot.keyboards import get_money_menu
+
+            await callback.message.answer(
+                f"❌ {ready.message_html}",
+                parse_mode=ParseMode.HTML,
+                reply_markup=get_money_menu(),
+            )
+            clear_idempotent(idem_key)
+            return
         wallet = await ensure_user_wallet(profile["id"], chain_id=chain)
         bal = await get_usdc_balance(profile["id"], chain_id=chain)
         if bal < amount:
-            label = get_chain(chain).get("label", chain)
-            from gaming.src.bot.keyboards import get_usdc_menu
+            from gaming.src.bot.keyboards import get_money_menu
 
             await callback.message.answer(
-                f"❌ Not enough USDC for this match.\n"
+                f"❌ Not enough play money for this match.\n"
                 f"Need <b>${amount:,.2f}</b>, have <b>${bal:,.2f}</b>.\n\n"
-                f"Your address:\n<code>{h(wallet.get('address') or '')}</code>\n\n"
-                f"Tap <b>Get money</b>, then lock again.",
+                f"Play address:\n<code>{h(wallet.get('address') or '')}</code>\n\n"
+                f"Tap <b>Get money</b> (Naira, Stellar, Avalanche, or crypto) — "
+                f"all credit the same balance — then lock again.",
                 parse_mode=ParseMode.HTML,
-                reply_markup=get_usdc_menu(),
+                reply_markup=get_money_menu(),
             )
             clear_idempotent(idem_key)
             return

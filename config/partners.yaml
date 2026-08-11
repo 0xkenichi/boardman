@@ -1,0 +1,51 @@
+# Boardman partners — gaming centers (onile) + creators
+# Deep link: t.me/<bot>?start=ctr_<CODE>  e.g. ctr_IKEJA01
+# See docs/ONILE_GAME_CENTERS.md
+
+defaults:
+  volume_bps: 150          # 1.5% of matched stake from platform fee slice
+  payout_currency: USDC
+  status: active
+
+# Onile / game centers in Lagos (seed list — expand as you sign shops)
+partners:
+  - code: IKEJA01
+    type: center
+    display_name: "Ikeja Game Hub (demo)"
+    city: Lagos
+    area: Ikeja
+    status: active
+    volume_bps: 150
+    notes: "Demo partner for QR tests — replace with real shop"
+
+  - code: YABA01
+    type: center
+    display_name: "Yaba Playzone (demo)"
+    city: Lagos
+    area: Yaba
+    status: active
+    volume_bps: 150
+
+  - code: SURULERE01
+    type: center
+    display_name: "Surulere Console Spot (demo)"
+    city: Lagos
+    area: Surulere
+    status: active
+    volume_bps: 150
+
+  - code: LEKKI01
+    type: center
+    display_name: "Lekki Arena (demo)"
+    city: Lagos
+    area: Lekki
+    status: active
+    volume_bps: 150
+
+  - code: COMPUTER01
+    type: center
+    display_name: "Computer Village Onile (demo)"
+    city: Lagos
+    area: Computer Village / Ikeja
+    status: active
+    volume_bps: 150

@@ -695,6 +695,96 @@ async def ui_topup_crypto(callback: types.CallbackQuery, state: FSMContext) -> N
     await ui_get_usdc_crypto(callback)
 
 
+# ── Multi-rail funding (Stellar / Avalanche → credit Arc play balance) ───────
+
+
+async def _rail_topup_start(
+    callback: types.CallbackQuery,
+    state: FSMContext,
+    rail_id: str,
+) -> None:
+    """Create a top-up ref and show deposit instructions for a funding rail."""
+    await state.clear()
+    await callback.answer()
+    user = callback.from_user
+    if not user:
+        return
+
+    from gaming.src.backend.services.funding_rails import (
+        funding_instructions_html,
+        funding_rail_enabled,
+        ops_deposit_address,
+    )
+    from gaming.src.backend.services.fiat_topup import quote_from_usd
+
+    if not funding_rail_enabled(rail_id):
+        await callback.message.answer(
+            "That funding option is not available yet.",
+            reply_markup=get_money_menu(),
+        )
+        return
+
+    if rail_id in ("stellar", "avalanche") and not ops_deposit_address(rail_id):
+        # Still show instructions (explains how to configure) for stellar;
+        # for avalanche we may fall back to shared ops EOA.
+        pass
+
+    profile = await get_or_create_profile(user)
+    play_addr = ""
+    try:
+        from gaming.src.backend.services.clawstation_circle import ensure_user_wallet
+
+        w = await ensure_user_wallet(profile["id"], chain_id="arc")
+        play_addr = w.get("address") or ""
+    except Exception:
+        logger.exception("[FundingRail] wallet lookup failed rail=%s", rail_id)
+
+    # $0 placeholder quote — amount is freeform on-chain; ops credits actual
+    try:
+        quote = quote_from_usd(Decimal("10"))
+    except Exception:
+        quote = quote_from_usd(Decimal("5"))
+
+    top = create_topup(
+        profile_id=profile["id"],
+        telegram_id=user.id,
+        display_name=user.full_name or user.username or "",
+        quote=quote,
+        play_address=play_addr,
+        currency="usd",
+        amount_fiat=Decimal("0"),
+        provider=rail_id,
+    )
+    update_topup(top.ref, provider=rail_id)
+
+    html = funding_instructions_html(
+        rail_id,
+        play_address=play_addr,
+        topup_ref=top.ref,
+    )
+    html += (
+        f"\n\nAfter you send, tap <b>I've paid</b> or wait for ops to credit.\n"
+        f"Admin: <code>/credit_topup {top.ref}</code> after USDC is on the play address."
+    )
+    await callback.message.answer(
+        html,
+        parse_mode=ParseMode.HTML,
+        reply_markup=fiat_proof_menu(top.ref),
+        disable_web_page_preview=True,
+    )
+    await _notify_admins_new_topup(top.ref)
+
+
+@router.callback_query(F.data == "ui:topup:stellar")
+async def ui_topup_stellar(callback: types.CallbackQuery, state: FSMContext) -> None:
+    await _rail_topup_start(callback, state, "stellar")
+
+
+@router.callback_query(F.data == "ui:topup:avalanche")
+async def ui_topup_avalanche(callback: types.CallbackQuery, state: FSMContext) -> None:
+    await _rail_topup_start(callback, state, "avalanche")
+
+
 # ── Admin ────────────────────────────────────────────────────────────────────
 
 
@@ -706,10 +796,15 @@ async def cmd_topups(message: types.Message) -> None:
         return
     pending = list_topups(status="proof_submitted", limit=15)
     paystack_paid = list_topups(status="paystack_paid", limit=15)
+    rail_paid = list_topups(status="rail_paid", limit=15)
     waiting = list_topups(status="awaiting_payment", limit=10)
-    lines = ["📋 <b>Fiat top-ups</b>\n"]
-    if not pending and not waiting and not paystack_paid:
+    lines = ["📋 <b>Fiat / rail top-ups</b>\n"]
+    if not pending and not waiting and not paystack_paid and not rail_paid:
         lines.append("No open top-ups.")
+    if rail_paid:
+        lines.append("<b>Rail paid (Stellar/etc) — send Arc USDC now:</b>")
+        for r in rail_paid:
+            lines.append(_admin_line(r))
     if paystack_paid:
         lines.append("<b>Paystack paid — send USDC now:</b>")
         for r in paystack_paid:
@@ -724,7 +819,57 @@ async def cmd_topups(message: types.Message) -> None:
             lines.append(_admin_line(r))
     lines.append(
         "\n<code>/credit_topup RM-XXXX</code> after you send USDC\n"
-        "<code>/reject_topup RM-XXXX reason</code>"
+        "<code>/reject_topup RM-XXXX reason</code>\n"
+        "<code>/rails_status</code> multi-rail config"
+    )
+    await message.answer("\n".join(lines), parse_mode=ParseMode.HTML)
+
+
+@router.message(Command("rails_status"))
+async def cmd_rails_status(message: types.Message) -> None:
+    """Admin: funding rail configuration + watcher health."""
+    user = message.from_user
+    if not user or not is_admin(user.id):
+        await message.answer("Admin only.")
+        return
+    from gaming.src.backend.services.funding_rails import (
+        list_rails,
+        ops_deposit_address,
+        settlement_rail_id,
+        stellar_horizon_url,
+        stellar_network,
+    )
+    from gaming.src.backend.services.stellar_watcher import stellar_configured
+    from gaming.src.backend.services.avalanche_watcher import avalanche_status
+
+    lines = [
+        "🛤️ <b>Funding rails</b>\n",
+        f"Settlement (stakes): <b>{h(settlement_rail_id())}</b>",
+        f"Abstract balance: <b>on</b> (players see one play balance)\n",
+    ]
+    for r in list_rails(enabled_only=False):
+        rid = r.get("id") or "?"
+        en = "✅" if r.get("enabled") else "·"
+        stake = "stake" if r.get("can_stake") else "fund only"
+        lines.append(f"{en} <b>{h(rid)}</b> — {h(stake)} — {h(r.get('kind') or '')}")
+
+    st_addr = ops_deposit_address("stellar")
+    lines.append("\n<b>Stellar</b>")
+    lines.append(f"Configured: {'yes' if stellar_configured() else 'NO — set BOARDMAN_OPS_USDC_STELLAR'}")
+    lines.append(f"Network: {h(stellar_network())}")
+    lines.append(f"Horizon: <code>{h(stellar_horizon_url())}</code>")
+    if st_addr:
+        lines.append(f"Ops: <code>{h(st_addr)}</code>")
+
+    av = avalanche_status()
+    lines.append("\n<b>Avalanche</b>")
+    lines.append(f"Configured: {'yes' if av.get('configured') else 'no'}")
+    if av.get("ops_address"):
+        lines.append(f"Ops: <code>{h(av['ops_address'])}</code>")
+    lines.append(f"Mode: {h(str(av.get('mode')))}")
+
+    lines.append(
+        "\n<i>How to get keys: docs/OPS_WHAT_WE_NEED.md</i>"
     )
     await message.answer("\n".join(lines), parse_mode=ParseMode.HTML)
 

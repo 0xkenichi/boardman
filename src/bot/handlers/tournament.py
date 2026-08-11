@@ -1,20 +1,23 @@
 """
-Tournament Mode bot commands (v0).
+Tournament Mode bot commands (v0) + Cups menu.
 
 Ops (admin / @stillkenichi):
-  /tcreate [4|8] [entry] [game_id] [title...]
+  /tcreate [4|8] [entry] [game_id] [title...] [--center=CODE]
   /tstart CODE
   /tstart CODE force
   /twinner CODE MATCH_KEY @winner_or_profile
   /tcancel CODE [reason]
+  /partners
 
 Players:
-  /tlist
+  /tlist  ·  Cups button
   /tjoin CODE
   /tleave CODE
   /tstatus CODE
+  Deep link: t.me/bot?start=cup_CODE
 
 Money off until TOURNAMENTS_MONEY_LIVE=1.
+Onile centers: docs/ONILE_GAME_CENTERS.md · ?start=ctr_IKEJA01
 """
 from __future__ import annotations
 
@@ -33,6 +36,7 @@ from gaming.src.backend.services.tournament import (
     TournamentError,
     cancel_tournament,
     create_tournament,
+    cup_deep_link,
     format_tournament_card,
     get_tournament,
     join_tournament,
@@ -101,9 +105,19 @@ def _disabled_msg() -> str:
     )
 
 
-@router.message(Command("tlist"))
-@router.message(Command("tournaments"))
-async def cmd_tlist(message: types.Message) -> None:
+def _cups_list_keyboard(open_rows: list[dict]) -> InlineKeyboardBuilder:
+    kb = InlineKeyboardBuilder()
+    for t in open_rows[:8]:
+        code = t.get("code") or ""
+        n = len(t.get("entries") or [])
+        preset = t.get("preset")
+        label = f"✅ Join {code} ({n}/{preset})"[:64]
+        kb.row(InlineKeyboardButton(text=label, callback_data=f"t:join:{code}"))
+    kb.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
+    return kb
+
+
+async def _send_cups_list(message: types.Message) -> None:
     if not tournaments_enabled():
         await message.answer(_disabled_msg(), parse_mode=ParseMode.HTML, reply_markup=main_menu())
         return
@@ -118,17 +132,26 @@ async def cmd_tlist(message: types.Message) -> None:
         "🏆 <b>Boardman cups</b>",
         f"{'💵 Money LIVE' if money_live() else '🧪 Dry-run seats (no USDC yet)'}",
         "",
+        "Fixed brackets · entry pool · same proof as 1v1.",
+        "Onile nights: scan the shop QR, then join tonight's cup.",
+        "",
     ]
     if not rows:
-        lines.append("No cups yet. Ops: <code>/tcreate 8 10 mobile.8_ball_pool</code>")
+        lines.append(
+            "No cups yet.\n"
+            "Ops: <code>/tcreate 8 5 physical.chess Friday Chess --center=IKEJA01</code>"
+        )
     else:
         if open_rows:
-            lines.append("<b>Open</b>")
+            lines.append("<b>Open — tap Join below</b>")
             for t in open_rows:
                 n = len(t.get("entries") or [])
+                meta = t.get("metadata") or {}
+                center = meta.get("partner_code")
+                cbit = f" · 🏪{center}" if center else ""
                 lines.append(
                     f"· <code>{t.get('code')}</code> · {n}/{t.get('preset')} · "
-                    f"${float(t.get('entry_usdc') or 0):.0f} · {_esc(t.get('game_id'))}"
+                    f"${float(t.get('entry_usdc') or 0):.0f} · {_esc(t.get('game_id'))}{cbit}"
                 )
         if live_rows:
             lines.append("\n<b>Live</b>")
@@ -143,7 +166,86 @@ async def cmd_tlist(message: types.Message) -> None:
                 lines.append(
                     f"· <code>{t.get('code')}</code> · {t.get('status')}"
                 )
-    lines.append("\nJoin: <code>/tjoin CODE</code> · Status: <code>/tstatus CODE</code>")
+    lines.append(
+        "\nOr: <code>/tjoin CODE</code> · <code>/tstatus CODE</code>\n"
+        "Deep link: <code>?start=cup_CODE</code>"
+    )
+    kb = _cups_list_keyboard(open_rows)
+    await message.answer(
+        "\n".join(lines), parse_mode=ParseMode.HTML, reply_markup=kb.as_markup()
+    )
+
+
+@router.message(Command("tlist"))
+@router.message(Command("tournaments"))
+async def cmd_tlist(message: types.Message) -> None:
+    await _send_cups_list(message)
+
+
+@router.callback_query(F.data == "ui:cups")
+async def cb_cups(callback: types.CallbackQuery) -> None:
+    await callback.answer()
+    await _send_cups_list(callback.message)
+
+
+@router.callback_query(F.data.startswith("t:join:"))
+async def cb_tjoin(callback: types.CallbackQuery) -> None:
+    await callback.answer()
+    if not tournaments_enabled():
+        await callback.message.answer(_disabled_msg(), parse_mode=ParseMode.HTML)
+        return
+    user = callback.from_user
+    if not user:
+        return
+    code = (callback.data or "").split(":")[-1]
+    profile = await get_or_create_profile(user)
+    try:
+        t = await join_tournament(code, profile["id"])
+    except TournamentError as exc:
+        await callback.message.answer(f"❌ {escape(str(exc))}", reply_markup=main_menu())
+        return
+    except Exception as exc:
+        logger.exception("[Tournament] join cb")
+        await callback.message.answer(f"❌ {escape(str(exc))}", reply_markup=main_menu())
+        return
+    note = ""
+    if not money_live():
+        note = "\n\n🧪 <i>Dry-run: seat reserved — no USDC locked.</i>"
+    elif float(t.get("entry_usdc") or 0) > 0:
+        note = "\n\n💵 <i>Entry locked into pot.</i>"
+    await callback.message.answer(
+        f"✅ Joined cup <code>{escape(t.get('code') or code)}</code>."
+        f"{note}\n\n{_card(t)}",
+        parse_mode=ParseMode.HTML,
+        reply_markup=main_menu(),
+    )
+
+
+@router.message(Command("partners"))
+async def cmd_partners(message: types.Message) -> None:
+    """List onile / center partner codes (ops + public read)."""
+    from gaming.src.backend.services.partners import list_partners, partner_start_url
+
+    rows = list_partners(partner_type="center", active_only=True)
+    lines = [
+        "🏪 <b>Onile / game centers</b>",
+        "QR → <code>?start=ctr_CODE</code>",
+        "",
+    ]
+    if not rows:
+        lines.append("No partners in config/partners.yaml yet.")
+    else:
+        for p in rows:
+            code = p.get("code")
+            lines.append(
+                f"· <b>{_esc(p.get('display_name'))}</b> "
+                f"(<code>{_esc(code)}</code>) · {_esc(p.get('area') or p.get('city'))}"
+            )
+            if _is_ops(message.from_user):
+                lines.append(f"  {escape(partner_start_url(code))}")
+    lines.append(
+        "\nDocs: onile GTM · physical IRL games · cups for Friday nights."
+    )
     await message.answer("\n".join(lines), parse_mode=ParseMode.HTML, reply_markup=main_menu())
 
 
@@ -177,7 +279,7 @@ async def cmd_tjoin(message: types.Message) -> None:
         return
     profile = await get_or_create_profile(user)
     try:
-        t = join_tournament(parts[1].strip(), profile["id"])
+        t = await join_tournament(parts[1].strip(), profile["id"])
     except TournamentError as exc:
         await message.answer(f"❌ {escape(str(exc))}", reply_markup=main_menu())
         return
@@ -187,7 +289,12 @@ async def cmd_tjoin(message: types.Message) -> None:
         return
     note = ""
     if not money_live():
-        note = "\n\n🧪 <i>Dry-run: seat reserved — no USDC locked. " "When we go live, entry will lock on join.</i>"
+        note = (
+            "\n\n🧪 <i>Dry-run: seat reserved — no USDC locked. "
+            "Set TOURNAMENTS_MONEY_LIVE=1 for real entry locks.</i>"
+        )
+    elif float(t.get("entry_usdc") or 0) > 0:
+        note = "\n\n💵 <i>Entry locked into cup pot.</i>"
     await message.answer(
         f"✅ Joined cup <code>{escape(t.get('code') or '')}</code>."
         f"{note}\n\n{_card(t)}",
@@ -210,12 +317,13 @@ async def cmd_tleave(message: types.Message) -> None:
         return
     profile = await get_or_create_profile(user)
     try:
-        t = leave_tournament(parts[1].strip(), profile["id"])
+        t = await leave_tournament(parts[1].strip(), profile["id"])
     except TournamentError as exc:
         await message.answer(f"❌ {escape(str(exc))}", reply_markup=main_menu())
         return
     await message.answer(
-        f"Left cup <code>{escape(t.get('code') or '')}</code>.\n\n{_card(t)}",
+        f"Left cup <code>{escape(t.get('code') or '')}</code>."
+        f"{' Entry refunded (or queued).' if money_live() else ''}\n\n{_card(t)}",
         parse_mode=ParseMode.HTML,
         reply_markup=main_menu(),
     )
@@ -226,7 +334,7 @@ async def cmd_tleave(message: types.Message) -> None:
 
 @router.message(Command("tcreate"))
 async def cmd_tcreate(message: types.Message) -> None:
-    """Ops: /tcreate 8 10 mobile.8_ball_pool Friday Night Pool"""
+    """Ops: /tcreate 8 5 physical.chess Friday Chess --center=IKEJA01"""
     user = message.from_user
     if not _is_ops(user):
         await message.answer("Ops only — use /tlist to browse cups.", reply_markup=main_menu())
@@ -234,13 +342,18 @@ async def cmd_tcreate(message: types.Message) -> None:
     if not tournaments_enabled():
         await message.answer(_disabled_msg(), parse_mode=ParseMode.HTML)
         return
-    # /tcreate [preset] [entry] [game_id] [title...]
     text = (message.text or "").strip()
+    # Strip --center=CODE / --partner=CODE from title tail
+    partner_code = None
+    m = re.search(r"--(?:center|partner|ctr)=([A-Za-z0-9_]+)", text, re.I)
+    if m:
+        partner_code = m.group(1)
+        text = (text[: m.start()] + text[m.end() :]).strip()
+
     parts = text.split(maxsplit=4)
-    # parts[0]=/tcreate
     preset = 8
-    entry = 10.0
-    game_id = "mobile.8_ball_pool"
+    entry = 5.0
+    game_id = "physical.chess"
     title = "Boardman Cup"
     try:
         if len(parts) >= 2:
@@ -253,8 +366,10 @@ async def cmd_tcreate(message: types.Message) -> None:
             title = parts[4]
     except ValueError:
         await message.answer(
-            "Usage: <code>/tcreate 8 10 mobile.8_ball_pool Friday Night</code>\n"
-            "preset: 4 | 8 | 16 · entry USDC · game_id · title",
+            "Usage:\n"
+            "<code>/tcreate 8 5 physical.chess Friday Chess --center=IKEJA01</code>\n"
+            "<code>/tcreate 4 10 EAFC Ikeja EA FC</code>\n"
+            "preset: 4 | 8 | 16 · entry USDC · game_id · title · optional --center=",
             parse_mode=ParseMode.HTML,
             reply_markup=main_menu(),
         )
@@ -269,19 +384,23 @@ async def cmd_tcreate(message: types.Message) -> None:
             entry_usdc=entry,
             title=title,
             visibility="public",
+            partner_code=partner_code,
         )
     except TournamentError as exc:
         await message.answer(f"❌ {escape(str(exc))}", reply_markup=main_menu())
         return
 
+    link = cup_deep_link(t["code"])
     kb = InlineKeyboardBuilder()
     kb.row(
-        InlineKeyboardButton(
-            text="📋 Status", callback_data=f"t:status:{t['code']}"
-        )
+        InlineKeyboardButton(text="📋 Status", callback_data=f"t:status:{t['code']}")
+    )
+    kb.row(
+        InlineKeyboardButton(text="✅ Join (you)", callback_data=f"t:join:{t['code']}")
     )
     await message.answer(
-        f"✅ Cup created (money {'LIVE' if money_live() else 'dry-run'}).\n\n{_card(t)}",
+        f"✅ Cup created (money {'LIVE' if money_live() else 'dry-run'}).\n"
+        f"Share QR / link:\n<code>{escape(link)}</code>\n\n{_card(t)}",
         parse_mode=ParseMode.HTML,
         reply_markup=kb.as_markup(),
     )
@@ -308,28 +427,14 @@ async def cmd_tstart(message: types.Message) -> None:
         await message.answer(f"❌ {escape(str(exc))}", reply_markup=main_menu())
         return
     await message.answer(
-        f"▶️ Cup <b>LIVE</b>.\n\n{_card(t)}",
+        f"▶️ Cup <b>LIVE</b>. Bracket 1v1s spawned (report to advance).\n\n{_card(t)}",
         parse_mode=ParseMode.HTML,
         reply_markup=main_menu(),
     )
-    # Notify entrants of R1 pairings
     try:
-        from gaming.src.bot.utils.notify import notify_user
+        from gaming.src.backend.services.tournament_matches import notify_ready_matches
 
-        for m in t.get("bracket") or []:
-            if m.get("status") != "ready" or m.get("round") != 1:
-                continue
-            for pid in (m.get("player_a"), m.get("player_b")):
-                if not pid:
-                    continue
-                opp = m.get("player_b") if pid == m.get("player_a") else m.get("player_a")
-                await notify_user(
-                    pid,
-                    f"🏆 Cup <code>{escape(t.get('code') or '')}</code> started!\n"
-                    f"Round 1 match <code>{escape(m.get('match_key') or '')}</code>\n"
-                    f"Play your opponent, then ops set winner with "
-                    f"<code>/twinner {escape(t.get('code') or '')} {escape(m.get('match_key') or '')} WINNER</code>",
-                )
+        await notify_ready_matches(t)
     except Exception:
         logger.exception("[Tournament] notify R1 failed")
 
@@ -367,6 +472,24 @@ async def cmd_twinner(message: types.Message) -> None:
     except TournamentError as exc:
         await message.answer(f"❌ {escape(str(exc))}", reply_markup=main_menu())
         return
+    if t2.get("status") == "final" and money_live():
+        try:
+            from gaming.src.backend.services.tournament import finalize_tournament_payouts
+
+            t2 = await finalize_tournament_payouts(code)
+        except Exception:
+            logger.exception("[Tournament] finalize payouts after twinner")
+    else:
+        try:
+            from gaming.src.backend.services.tournament_matches import (
+                attach_challenges_to_ready_matches,
+                notify_ready_matches,
+            )
+
+            t2 = attach_challenges_to_ready_matches(t2)
+            await notify_ready_matches(t2)
+        except Exception:
+            logger.exception("[Tournament] spawn after twinner")
     await message.answer(
         f"✅ Match <code>{escape(match_key)}</code> recorded.\n\n{_card(t2)}",
         parse_mode=ParseMode.HTML,
@@ -386,12 +509,13 @@ async def cmd_tcancel(message: types.Message) -> None:
         return
     reason = parts[2] if len(parts) > 2 else "ops"
     try:
-        t = cancel_tournament(parts[1], reason=reason)
+        t = await cancel_tournament(parts[1], reason=reason)
     except TournamentError as exc:
         await message.answer(f"❌ {escape(str(exc))}", reply_markup=main_menu())
         return
     await message.answer(
-        f"🗑 Cup cancelled.\n\n{_card(t)}",
+        f"🗑 Cup cancelled."
+        f"{' Refunds attempted for locked entries.' if money_live() else ''}\n\n{_card(t)}",
         parse_mode=ParseMode.HTML,
         reply_markup=main_menu(),
     )

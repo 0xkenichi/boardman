@@ -19,8 +19,10 @@ from gaming.src.backend.services.game_catalog import (
     binary_claim_to_home_away,
     display_name,
     is_binary_outcome,
+    is_physical,
     parse_result_caption,
     report_caption_help_html,
+    requires_screen_name,
 )
 
 
@@ -63,6 +65,8 @@ def missing_for_ruling(
 
     Binary VS games (8 Ball Pool etc.) **require** an on-screen name so we can
     tell Finch from Emmanuella without operator help.
+
+    Physical / tabletop IRL: photo + mutual W/L only (no gamertag).
     """
     gid = game_id_of(ch)
     binary = is_binary_outcome(gid)
@@ -71,10 +75,11 @@ def missing_for_ruling(
         miss.append("photo")
     # Identity first — who is this Telegram user in the game?
     name = (screen_name or my_ingame_name(ch, profile_id) or "").strip()
-    if binary and not name:
+    if requires_screen_name(gid) and not name:
         miss.append("name")
     side = my_side(ch, profile_id)
     # Scoreline: side required. Binary: side optional if we have name + W/L
+    # Physical: no sides (you're at the same table).
     if not binary and not side:
         miss.append("side")
     has_outcome = (home is not None and away is not None) or binary_won is not None
@@ -149,6 +154,14 @@ def ask_outcome_html(ch: dict, profile_id: str) -> str:
     name = display_name(gid) if gid else "this game"
     side = my_side(ch, profile_id) or "?"
     ign = my_ingame_name(ch, profile_id) or "?"
+    if is_physical(gid):
+        return (
+            f"⚖️ <b>Who won — {name}?</b>\n\n"
+            f"You played IRL. Look at the end board / score you just photo'd.\n"
+            f"Did <b>you</b> win this match?\n\n"
+            f"Your opponent will answer too. Both must <b>agree</b> for auto-payout.\n"
+            f"If you disagree, use dispute — don't force a wrong claim."
+        )
     if is_binary_outcome(gid):
         return (
             f"⚖️ <b>Who won — {name}?</b>\n\n"
@@ -227,6 +240,16 @@ def confirm_html(
     ign = (screen_name or my_ingame_name(ch, profile_id) or "—").strip()
     if binary_won is not None:
         claim = "WON" if binary_won else "LOST"
+        if is_physical(gid):
+            return (
+                f"📋 <b>Confirm your report — {name}</b>\n\n"
+                f"• Venue: <b>IRL / table</b>\n"
+                f"• You claim: <b>{claim}</b>\n"
+                f"• Settlement map: <code>{home}-{away}</code>\n\n"
+                f"Board photo attached. We only auto-pay if your opponent’s report "
+                f"<b>agrees</b> (they lost if you won).\n\n"
+                f"Tap <b>Submit report</b> only if this is correct."
+            )
         return (
             f"📋 <b>Confirm your report — {name}</b>\n\n"
             f"• In-game name: <b>{ign}</b>\n"

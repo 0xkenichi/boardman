@@ -13,7 +13,18 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+def _bot_token() -> str:
+    try:
+        from gaming.src.bot.telegram_env import telegram_bot_token
+
+        return telegram_bot_token()
+    except Exception:
+        return (
+            os.getenv("TELEGRAM_BOT_TOKEN_BOARDMAN")
+            or os.getenv("TELEGRAM_BOT_TOKEN_CLAWSTATION")
+            or os.getenv("TELEGRAM_BOT_TOKEN")
+            or ""
+        )
 
 
 async def send_telegram_message(telegram_id: int, text: str, parse_mode: str = "Markdown") -> bool:
@@ -21,11 +32,12 @@ async def send_telegram_message(telegram_id: int, text: str, parse_mode: str = "
     Send a text message to a Telegram user.
     Returns True if sent successfully, False otherwise.
     """
-    if not TELEGRAM_BOT_TOKEN:
+    token = _bot_token()
+    if not token:
         logger.warning("[TelegramNotifier] TELEGRAM_BOT_TOKEN not configured")
         return False
 
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {
         "chat_id": telegram_id,
         "text": text,

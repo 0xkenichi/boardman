@@ -1,0 +1,93 @@
+# Boardman multi-rail money model
+#
+# Product rule:
+#   - Players see ONE abstract USDC balance ("play money").
+#   - They may fund via Naira, Stellar USDC, Avalanche USDC, or Arc USDC.
+#   - All stakes / BoardmanEscrow locks settle on the settlement rail only.
+#   - Today settlement rail = Arc (USDC gas + BoardmanEscrow).
+#   - Other rails are funding only until they support USDC gas + dual-lock escrow.
+#
+# Convert policy:
+#   - Funds that arrive on a non-settlement rail are converted into the
+#     settlement play wallet (manual ops float now; CCTP/bridge later).
+
+settlement_rail: arc
+
+# When true, lock_stake refuses if spendable on settlement rail < stake
+# even if user has USDC sitting on funding rails (must convert first).
+require_settlement_for_stake: true
+
+# Hide chain names in player copy; use labels below instead.
+player_copy:
+  balance_label: "Play balance"
+  settlement_label: "ready to play"
+  pending_label: "on the way / other wallet"
+  convert_hint: "We'll move it into play money before your next stake."
+
+rails:
+  arc:
+    id: arc
+    kind: settlement          # funding + stake + gas in USDC
+    enabled: true
+    player_label: "Play wallet"
+    admin_label: "Arc (settlement)"
+    usdc_gas: true
+    can_stake: true           # BoardmanEscrow lives here
+    deposit_mode: play_address  # each user has their own Arc address
+    notes: "Home rail. Gas = USDC. Stakes always land here."
+
+  avalanche:
+    id: avalanche
+    kind: funding             # until USDC gas + escrow V1 on Avax
+    enabled: true             # show as funding option
+    player_label: "USDC (Avalanche)"
+    admin_label: "Avalanche Fuji/C-Chain"
+    usdc_gas: false           # needs AVAX for gas today
+    can_stake: false          # force convert → Arc
+    deposit_mode: ops_address # send to ops, memo = top-up ref
+    env_ops_address: BOARDMAN_OPS_USDC_AVALANCHE
+    # Fallback: same ops EOA if multi-chain; override in .env when split
+    notes: "Funding only. Convert to Arc before stake."
+
+  stellar:
+    id: stellar
+    kind: funding
+    enabled: true
+    player_label: "USDC (Stellar)"
+    admin_label: "Stellar USDC"
+    usdc_gas: true            # Stellar fees tiny / asset-native UX
+    can_stake: false          # no BoardmanEscrow on Stellar (not EVM)
+    deposit_mode: ops_address
+    env_ops_address: BOARDMAN_OPS_USDC_STELLAR
+    env_ops_memo_prefix: BOARDMAN_STELLAR_MEMO_PREFIX
+    network_env: STELLAR_NETWORK   # testnet | public
+    horizon_env: STELLAR_HORIZON_URL
+    notes: "Path A payments rail. SEP-24 anchors later; memo deposits now."
+
+  paystack_ngn:
+    id: paystack_ngn
+    kind: funding
+    enabled: true
+    player_label: "Pay with Naira"
+    can_stake: false
+    deposit_mode: fiat
+    notes: "Existing Paystack → ops credits Arc play wallet."
+
+  bank_ngn:
+    id: bank_ngn
+    kind: funding
+    enabled: true
+    player_label: "Bank transfer (Naira)"
+    can_stake: false
+    deposit_mode: fiat
+
+bridge:
+  # Auto-move funding-rail USDC → Arc play wallet
+  auto_convert_to_settlement: false   # true when CCTP/ops bot is live
+  mode: manual_ops                    # manual_ops | cctp | partner
+  extra_fee_bps: 0                    # charge 0 for now; raise if bridge costs
+  supported_sources:
+    - stellar
+    - avalanche
+    - base
+  target: arc

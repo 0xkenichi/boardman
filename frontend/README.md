@@ -39,9 +39,9 @@ http://localhost:3000/rematch/app
 ```bash
 NODE_ENV=production
 REMATCH_SESSION_SECRET=<32+ random bytes>
-TELEGRAM_BOT_TOKEN_CLAWSTATION=<bot token>
-NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=ClawStationOfficialBot
-NEXT_PUBLIC_TELEGRAM_BOT_URL=https://t.me/ClawStationOfficialBot
+TELEGRAM_BOT_TOKEN_BOARDMAN=<bot token>
+NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=myboardmanOfficialBot
+NEXT_PUBLIC_TELEGRAM_BOT_URL=https://t.me/myboardmanOfficialBot
 REMATCH_API_URL=https://<your-gaming-api-host>
 REMATCH_API_KEY=<same key as API REMATCH_API_KEY>
 ```

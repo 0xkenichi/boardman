@@ -30,7 +30,10 @@ function verifySignature(rawBody: string, signature: string | null): boolean {
 
 async function notifyTelegram(text: string) {
   const token =
-    process.env.TELEGRAM_BOT_TOKEN_CLAWSTATION || process.env.TELEGRAM_BOT_TOKEN || ''
+    process.env.TELEGRAM_BOT_TOKEN_BOARDMAN ||
+    process.env.TELEGRAM_BOT_TOKEN_CLAWSTATION ||
+    process.env.TELEGRAM_BOT_TOKEN ||
+    ''
   const raw =
     process.env.CLAW_ADMIN_TELEGRAM_IDS || process.env.ADMIN_TELEGRAM_IDS || ''
   if (!token || !raw) return
@@ -112,7 +115,10 @@ export async function POST(req: NextRequest) {
   // Optional: notify the player that payment was seen
   const playerTg = meta.telegram_id
   const token =
-    process.env.TELEGRAM_BOT_TOKEN_CLAWSTATION || process.env.TELEGRAM_BOT_TOKEN || ''
+    process.env.TELEGRAM_BOT_TOKEN_BOARDMAN ||
+    process.env.TELEGRAM_BOT_TOKEN_CLAWSTATION ||
+    process.env.TELEGRAM_BOT_TOKEN ||
+    ''
   if (token && playerTg) {
     try {
       await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {

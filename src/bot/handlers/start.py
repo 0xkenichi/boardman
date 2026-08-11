@@ -83,17 +83,122 @@ async def cmd_start(message: types.Message) -> None:
     except Exception as exc:
         logger.warning("[Start] chat id update failed: %s", exc)
 
-    # Deep link from community group: /start m_ZF8G5QKT or join_CODE
+    # Deep links: ctr_IKEJA01 (onile) · cup_ABC123 · m_XXXX (public match)
     payload = _start_payload(message)
-    if payload.lower().startswith(("m_", "join_", "match_")):
-        code_ref = payload.split("_", 1)[1].strip()
-        if code_ref:
-            try:
+    if payload:
+        try:
+            from gaming.src.backend.services.partners import (
+                attribute_profile,
+                get_partner,
+                parse_start_payload,
+                welcome_html,
+            )
+            from gaming.src.bot.keyboards import main_menu as mm
+
+            kind, value = parse_start_payload(payload)
+
+            if kind == "partner" and value:
+                result = attribute_profile(
+                    profile["id"], value, first_touch_only=True, source="start_deeplink"
+                )
+                partner = result.get("partner") or get_partner(value)
+                if partner and result.get("ok"):
+                    await message.answer(
+                        welcome_html(partner),
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=mm(),
+                    )
+                    # Fall through to normal welcome after partner card
+                elif not partner:
+                    await message.answer(
+                        f"Partner code <code>{escape(value)}</code> not found. "
+                        f"Ask the desk for a fresh QR.",
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=mm(),
+                    )
+
+            elif kind == "cup" and value:
+                from gaming.src.backend.services.tournament import (
+                    format_tournament_card,
+                    get_tournament,
+                    join_tournament,
+                    money_live,
+                    tournaments_enabled,
+                    TournamentError,
+                )
+                from aiogram.types import InlineKeyboardButton
+                from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+                if not tournaments_enabled():
+                    await message.answer(
+                        "Cups are paused right now. Try a normal challenge.",
+                        reply_markup=mm(),
+                    )
+                    return
+                t = get_tournament(value)
+                if not t:
+                    await message.answer(
+                        f"Cup <code>{escape(value)}</code> not found.",
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=mm(),
+                    )
+                    return
+                # Auto-join if open; else show status
+                if (t.get("status") or "") == "open":
+                    try:
+                        t = await join_tournament(value, profile["id"])
+                        note = ""
+                        if not money_live():
+                            note = "\n\n🧪 <i>Dry-run seat — no USDC locked yet.</i>"
+                        elif float(t.get("entry_usdc") or 0) > 0:
+                            note = "\n\n💵 <i>Entry locked into pot.</i>"
+                        kb = InlineKeyboardBuilder()
+                        kb.row(
+                            InlineKeyboardButton(
+                                text="📋 Cup status",
+                                callback_data=f"t:status:{t.get('code')}",
+                            )
+                        )
+                        kb.row(
+                            InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main")
+                        )
+                        await message.answer(
+                            f"✅ Joined cup <code>{escape(t.get('code') or value)}</code>."
+                            f"{note}\n\n{format_tournament_card(t)}",
+                            parse_mode=ParseMode.HTML,
+                            reply_markup=kb.as_markup(),
+                        )
+                        return
+                    except TournamentError as exc:
+                        # already in / full → still show card
+                        logger.info("[Start] cup join: %s", exc)
+                kb = InlineKeyboardBuilder()
+                if (t.get("status") or "") == "open":
+                    kb.row(
+                        InlineKeyboardButton(
+                            text="✅ Join cup",
+                            callback_data=f"t:join:{t.get('code')}",
+                        )
+                    )
+                kb.row(
+                    InlineKeyboardButton(
+                        text="📋 Status", callback_data=f"t:status:{t.get('code')}"
+                    )
+                )
+                kb.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
+                await message.answer(
+                    format_tournament_card(t),
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=kb.as_markup(),
+                )
+                return
+
+            elif kind == "match" and value:
                 from gaming.src.backend.services.game_catalog import display_name as game_display_name
                 from gaming.src.backend.services.match_codes import display_code, load_challenge_by_ref
-                from gaming.src.bot.keyboards import challenge_confirm_menu, main_menu as mm
+                from gaming.src.bot.keyboards import challenge_confirm_menu
 
-                ch = load_challenge_by_ref(code_ref)
+                ch = load_challenge_by_ref(value)
                 if ch and (ch.get("status") or "").lower() == "open":
                     mcode = display_code(ch)
                     gname = game_display_name(ch.get("game") or "EAFC")
@@ -112,8 +217,8 @@ async def cmd_start(message: types.Message) -> None:
                     reply_markup=mm(),
                 )
                 return
-            except Exception:
-                logger.exception("[Start] deep-link match open failed payload=%s", payload)
+        except Exception:
+            logger.exception("[Start] deep-link failed payload=%s", payload)
 
     # Arc-only product surface for now
     try:
@@ -174,7 +279,20 @@ async def cmd_start(message: types.Message) -> None:
         f"Tap <b>How to play</b> under More anytime."
     )
     try:
-        await message.answer(text, reply_markup=main_menu(), parse_mode=ParseMode.HTML)
+        from aiogram.types import FSInputFile
+
+        from gaming.src.bot.brand_assets import boardman_logo_path
+
+        logo = boardman_logo_path()
+        if logo is not None:
+            await message.answer_photo(
+                photo=FSInputFile(str(logo)),
+                caption=text,
+                reply_markup=main_menu(),
+                parse_mode=ParseMode.HTML,
+            )
+        else:
+            await message.answer(text, reply_markup=main_menu(), parse_mode=ParseMode.HTML)
     except Exception as exc:
         # Never fail silent — fall back to plain text so the user always gets a reply.
         logger.exception("[Start] Failed to send welcome HTML message: %s", exc)

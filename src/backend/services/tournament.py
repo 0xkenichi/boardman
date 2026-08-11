@@ -242,6 +242,7 @@ def create_tournament(
     chain_id: str = "arc",
     fee_bps: int = DEFAULT_FEE_BPS,
     payout_card: Optional[dict] = None,
+    partner_code: Optional[str] = None,
 ) -> dict[str, Any]:
     if not tournaments_enabled():
         raise TournamentError("Tournaments are disabled (TOURNAMENTS_ENABLED=0)")
@@ -251,6 +252,23 @@ def create_tournament(
         raise TournamentError("entry_usdc must be >= 0")
     if visibility not in ("public", "private"):
         raise TournamentError("visibility must be public or private")
+
+    meta: dict[str, Any] = {"model": "A_entry_pool", "v": 0}
+    if partner_code:
+        try:
+            from gaming.src.backend.services.partners import get_partner, normalize_partner_code
+
+            pc = normalize_partner_code(partner_code)
+            partner = get_partner(pc) if pc else None
+            if not partner:
+                raise TournamentError(f"Unknown partner/center code: {partner_code}")
+            meta["partner_code"] = partner["code"]
+            meta["partner_name"] = partner.get("display_name")
+        except TournamentError:
+            raise
+        except Exception as exc:
+            logger.warning("[Tournament] partner resolve failed: %s", exc)
+            meta["partner_code"] = str(partner_code).strip().upper()
 
     tid = str(uuid.uuid4())
     code = _code(6)
@@ -272,7 +290,7 @@ def create_tournament(
         "pot_usdc": 0.0,
         "bracket": [],
         "payouts": [],
-        "metadata": {"model": "A_entry_pool", "v": 0},
+        "metadata": meta,
         "created_at": now,
         "updated_at": now,
         "started_at": None,
@@ -389,7 +407,7 @@ def list_tournaments(
     return out[:limit]
 
 
-def join_tournament(ref: str, profile_id: str) -> dict[str, Any]:
+async def join_tournament(ref: str, profile_id: str) -> dict[str, Any]:
     t = get_tournament(ref)
     if not t:
         raise TournamentError("Tournament not found")
@@ -401,35 +419,54 @@ def join_tournament(ref: str, profile_id: str) -> dict[str, Any]:
     if len(entries) >= int(t["preset"]):
         raise TournamentError("Cup is full")
 
+    entry_fee = float(t.get("entry_usdc") or 0)
+    entry_tx = None
+    amount_locked = 0.0
+    seat = "joined"
+
+    if money_live() and entry_fee > 0:
+        try:
+            from gaming.src.backend.services.tournament_money import (
+                TournamentMoneyError,
+                lock_entry,
+            )
+            from decimal import Decimal
+
+            pay = await lock_entry(
+                profile_id, Decimal(str(entry_fee)), cup_code=str(t.get("code") or "")
+            )
+            entry_tx = pay.get("tx_hash")
+            amount_locked = float(pay.get("amount_usdc") or entry_fee)
+            seat = "locked"
+        except Exception as exc:
+            # Re-raise as TournamentError for bot copy
+            from gaming.src.backend.services.tournament_money import TournamentMoneyError
+
+            if isinstance(exc, TournamentMoneyError):
+                raise TournamentError(str(exc)) from exc
+            logger.exception("[Tournament] money join failed")
+            raise TournamentError(f"Could not lock entry: {exc}") from exc
+    elif money_live() and entry_fee <= 0:
+        seat = "locked"
+
     entry = {
         "id": str(uuid.uuid4()),
         "tournament_id": t["id"],
         "profile_id": profile_id,
-        "seat_status": "joined" if not money_live() else "locked",
-        "entry_tx_hash": None,
-        "amount_usdc": float(t.get("entry_usdc") or 0) if money_live() else 0.0,
+        "seat_status": seat,
+        "entry_tx_hash": entry_tx,
+        "amount_usdc": amount_locked if money_live() else 0.0,
         "created_at": _now(),
     }
 
-    # Money path stub — when live, call escrow vault lock here
-    if money_live():
-        raise TournamentError(
-            "Money live join not wired yet — set TOURNAMENTS_MONEY_LIVE=0 for dry-run, "
-            "or implement entry vault lock."
-        )
-
-    pot = float(t.get("pot_usdc") or 0)
-    # Dry-run: pot is *projected* full roster value for display only until start
-    # While filling, pot_usdc tracks projected = seats * entry
     new_count = len(entries) + 1
-    entry_fee = float(t.get("entry_usdc") or 0)
     pot = new_count * entry_fee
 
     if _probe_supabase() and _use_supabase:
         try:
             _sb().schema("gaming").table("tournament_entries").insert(entry).execute()
             _sb().schema("gaming").table("tournaments").update(
-                {"pot_usdc": pot, "updated_at": _now()}
+                {"pot_usdc": pot, "updated_at": _now(), "money_live": money_live()}
             ).eq("id", t["id"]).execute()
             return get_tournament(t["id"])  # type: ignore
         except Exception:
@@ -441,20 +478,48 @@ def join_tournament(ref: str, profile_id: str) -> dict[str, Any]:
     if tid in data["tournaments"]:
         data["tournaments"][tid]["pot_usdc"] = pot
         data["tournaments"][tid]["updated_at"] = _now()
+        data["tournaments"][tid]["money_live"] = money_live()
     _save_json(data)
     return get_tournament(tid)  # type: ignore
 
 
-def leave_tournament(ref: str, profile_id: str) -> dict[str, Any]:
+async def leave_tournament(ref: str, profile_id: str) -> dict[str, Any]:
     t = get_tournament(ref)
     if not t:
         raise TournamentError("Tournament not found")
     if t.get("status") != "open":
         raise TournamentError("Can only leave while cup is open")
     tid = t["id"]
-    entries = [e for e in (t.get("entries") or []) if e.get("profile_id") != profile_id]
-    if len(entries) == len(t.get("entries") or []):
+    mine = next(
+        (e for e in (t.get("entries") or []) if e.get("profile_id") == profile_id),
+        None,
+    )
+    if not mine:
         raise TournamentError("You are not in this cup")
+
+    if money_live() and float(mine.get("amount_usdc") or t.get("entry_usdc") or 0) > 0:
+        try:
+            from gaming.src.backend.services.tournament_money import (
+                TournamentMoneyError,
+                refund_entry,
+            )
+            from decimal import Decimal
+
+            await refund_entry(
+                profile_id,
+                Decimal(str(mine.get("amount_usdc") or t.get("entry_usdc") or 0)),
+                cup_code=str(t.get("code") or ""),
+                entry_tx_hash=mine.get("entry_tx_hash"),
+            )
+        except Exception as exc:
+            from gaming.src.backend.services.tournament_money import TournamentMoneyError
+
+            if isinstance(exc, TournamentMoneyError):
+                raise TournamentError(str(exc)) from exc
+            logger.exception("[Tournament] refund failed")
+            raise TournamentError(f"Refund failed: {exc}") from exc
+
+    entries = [e for e in (t.get("entries") or []) if e.get("profile_id") != profile_id]
     entry_fee = float(t.get("entry_usdc") or 0)
     pot = len(entries) * entry_fee
 
@@ -507,6 +572,10 @@ def start_tournament(ref: str, *, force: bool = False) -> dict[str, Any]:
         else:
             raise TournamentError(f"Player count {n} not a preset {PRESETS}")
 
+    # Money live: do not force-start underfilled cups
+    if money_live() and force and n < preset:
+        raise TournamentError("Cannot force-start underfilled cups when money is live")
+
     player_ids = [e["profile_id"] for e in entries[:n]]
     bracket = build_bracket(player_ids)
     pot = n * float(t.get("entry_usdc") or 0)
@@ -524,25 +593,41 @@ def start_tournament(ref: str, *, force: bool = False) -> dict[str, Any]:
                     "preset": n,
                 }
             ).eq("id", t["id"]).execute()
-            return get_tournament(t["id"])  # type: ignore
+            t_live = get_tournament(t["id"])  # type: ignore
         except Exception:
             logger.exception("[Tournament] start supabase failed")
+            t_live = None
+    else:
+        t_live = None
 
-    data = _load_json()
-    tid = t["id"]
-    if tid in data["tournaments"]:
-        data["tournaments"][tid]["status"] = "live"
-        data["tournaments"][tid]["bracket"] = bracket
-        data["tournaments"][tid]["pot_usdc"] = pot
-        data["tournaments"][tid]["started_at"] = now
-        data["tournaments"][tid]["updated_at"] = now
-        data["tournaments"][tid]["preset"] = n
-        # trim entries if force
-        data["entries"][tid] = [
-            e for e in data["entries"].get(tid, []) if e.get("profile_id") in player_ids
-        ]
-    _save_json(data)
-    return get_tournament(tid)  # type: ignore
+    if not t_live:
+        data = _load_json()
+        tid = t["id"]
+        if tid in data["tournaments"]:
+            data["tournaments"][tid]["status"] = "live"
+            data["tournaments"][tid]["bracket"] = bracket
+            data["tournaments"][tid]["pot_usdc"] = pot
+            data["tournaments"][tid]["started_at"] = now
+            data["tournaments"][tid]["updated_at"] = now
+            data["tournaments"][tid]["preset"] = n
+            # trim entries if force
+            data["entries"][tid] = [
+                e for e in data["entries"].get(tid, []) if e.get("profile_id") in player_ids
+            ]
+        _save_json(data)
+        t_live = get_tournament(tid)  # type: ignore
+
+    # Spawn $0 1v1 challenges for R1 and notify
+    try:
+        from gaming.src.backend.services.tournament_matches import (
+            attach_challenges_to_ready_matches,
+        )
+
+        t_live = attach_challenges_to_ready_matches(t_live or t)
+    except Exception:
+        logger.exception("[Tournament] spawn R1 challenges failed")
+
+    return t_live or get_tournament(t["id"])  # type: ignore
 
 
 def _save_bracket(tid: str, bracket: list, extra: Optional[dict] = None) -> None:
@@ -653,22 +738,75 @@ def report_match_winner(
         extra["status"] = "final"
         extra["finished_at"] = _now()
         extra["payouts"] = payouts
-        # Money live payouts would go here
-        if money_live() and payouts:
-            logger.warning(
-                "[Tournament] money_live final — wire vault payout for %s", t.get("code")
-            )
 
     _save_bracket(t["id"], bracket, extra)
+    t_out = get_tournament(t["id"])  # type: ignore
+
+    # Spawn next-round challenges when new matches became ready
+    if not finished:
+        try:
+            from gaming.src.backend.services.tournament_matches import (
+                attach_challenges_to_ready_matches,
+            )
+
+            t_out = attach_challenges_to_ready_matches(t_out or t)
+        except Exception:
+            logger.exception("[Tournament] spawn next challenges failed")
+
+    return t_out
+
+
+async def finalize_tournament_payouts(ref: str) -> dict[str, Any]:
+    """Pay place prizes when cup is final (money live). Idempotent-ish."""
+    t = get_tournament(ref)
+    if not t:
+        raise TournamentError("Tournament not found")
+    if t.get("status") != "final":
+        raise TournamentError("Cup is not final yet")
+    payouts = list(t.get("payouts") or [])
+    if not payouts:
+        return t
+    block = payouts[0]
+    if block.get("paid"):
+        return t
+    if not money_live():
+        return t
+    from gaming.src.backend.services.tournament_money import pay_payouts
+
+    paid_block = await pay_payouts(block, cup_code=str(t.get("code") or ""))
+    payouts[0] = paid_block
+    _save_bracket(t["id"], list(t.get("bracket") or []), {"payouts": payouts})
     return get_tournament(t["id"])  # type: ignore
 
 
-def cancel_tournament(ref: str, reason: str = "") -> dict[str, Any]:
+async def cancel_tournament(ref: str, reason: str = "") -> dict[str, Any]:
     t = get_tournament(ref)
     if not t:
         raise TournamentError("Tournament not found")
     if t.get("status") in ("final", "cancelled"):
         raise TournamentError(f"Already {t.get('status')}")
+
+    # Refund locked entries while open (or anytime pre-final)
+    if money_live() and t.get("status") in ("open", "locked", "live"):
+        from gaming.src.backend.services.tournament_money import refund_entry
+        from decimal import Decimal
+
+        for e in t.get("entries") or []:
+            amt = float(e.get("amount_usdc") or t.get("entry_usdc") or 0)
+            if amt <= 0:
+                continue
+            try:
+                await refund_entry(
+                    e["profile_id"],
+                    Decimal(str(amt)),
+                    cup_code=str(t.get("code") or ""),
+                    entry_tx_hash=e.get("entry_tx_hash"),
+                )
+            except Exception:
+                logger.exception(
+                    "[Tournament] cancel refund failed for %s", e.get("profile_id")
+                )
+
     extra = {
         "status": "cancelled",
         "updated_at": _now(),
@@ -677,7 +815,6 @@ def cancel_tournament(ref: str, reason: str = "") -> dict[str, Any]:
             "cancel_reason": reason or "ops",
         },
     }
-    # refunds when money_live — stub
     if _probe_supabase() and _use_supabase:
         try:
             _sb().schema("gaming").table("tournaments").update(extra).eq(
@@ -721,6 +858,10 @@ def format_tournament_card(t: dict, *, tags: Optional[dict[str, str]] = None) ->
         f"Fee: {int(t.get('fee_bps') or DEFAULT_FEE_BPS) / 100:.0f}% · "
         f"Payout 65/20/15 after fee",
     ]
+    meta = t.get("metadata") or {}
+    if meta.get("partner_code"):
+        pname = meta.get("partner_name") or meta.get("partner_code")
+        lines.append(f"🏪 Center: <b>{_esc(pname)}</b> (<code>{_esc(meta.get('partner_code'))}</code>)")
     if entries:
         lines.append("\n<b>Roster</b>")
         for i, e in enumerate(entries, 1):
@@ -748,10 +889,21 @@ def format_tournament_card(t: dict, *, tags: Optional[dict[str, str]] = None) ->
         if not block.get("paid"):
             lines.append("<i>Payouts recorded — money rail not sent (dry-run)</i>")
     lines.append(
-        f"\nJoin: <code>/tjoin {code}</code>\n"
+        f"\nJoin: <code>/tjoin {code}</code> · deep link <code>cup_{code}</code>\n"
         f"Status: <code>/tstatus {code}</code>"
     )
     return "\n".join(lines)
+
+
+def cup_deep_link(code: str, bot_url: Optional[str] = None) -> str:
+    """t.me deep link for QR / share."""
+    base = (bot_url or os.getenv("TELEGRAM_BOT_URL") or "https://t.me/myboardmanOfficialBot").rstrip(
+        "/"
+    )
+    c = (code or "").strip().upper()
+    if not c:
+        return base
+    return f"{base}?start=cup_{c}"
 
 
 def _esc(s: str) -> str:
