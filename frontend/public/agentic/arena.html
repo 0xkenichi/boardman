@@ -241,14 +241,19 @@
     .fx-piece {
       position: absolute; display: flex; align-items: center; justify-content: center;
       width: 12.5%; height: 12.5%;
-      transition: transform 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+      /* Snappy slide — lag was long CSS + long sleeps stacked on top of think time */
+      transition: transform 0.12s cubic-bezier(0.2, 0.85, 0.25, 1);
       z-index: 30;
+      will-change: transform;
     }
     .fx-piece.walking {
-      transition: transform 0.85s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.85s ease;
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
       opacity: 0.95; z-index: 40;
     }
     .fx-piece.walking.done { opacity: 0; }
+    body.mode-classic .fx-piece {
+      transition: transform 0.1s ease-out;
+    }
     .slash {
       position: absolute; width: 12.5%; height: 12.5%;
       display: flex; align-items: center; justify-content: center;
@@ -1379,7 +1384,6 @@
       setupCoords();
       const board = el("board");
       const hideSquares = opts.hideSquares || new Set();
-      board.innerHTML = "";
       const fileChars = "abcdefgh";
       const rows = game.board();
       let kingInCheck = null;
@@ -1395,6 +1399,8 @@
         }
       }
 
+      // DocumentFragment — one paint instead of 64 appends (felt like lag on move)
+      const frag = document.createDocumentFragment();
       for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
           const sq = document.createElement("div");
@@ -1413,16 +1419,20 @@
           if (p && !hideSquares.has(name)) {
             sq.appendChild(makeUnitEl(p.color, p.type));
           }
-          board.appendChild(sq);
+          frag.appendChild(sq);
         }
       }
+      board.innerHTML = "";
+      board.appendChild(frag);
 
-      // graveyard
+      // graveyard (creator only — skip DOM if hidden)
       const g = el("graveyard");
-      const chips = fallen
-        .map((f) => `<span class="chip">${f.color === "w" ? "W" : "B"} ${ROLE[f.type]}</span>`)
-        .join("");
-      g.innerHTML = `<span class="mono" style="width:100%;margin-bottom:2px">Fallen</span>${chips || "<span class='mono'>—</span>"}`;
+      if (g && !document.body.classList.contains("view-audience")) {
+        const chips = fallen
+          .map((f) => `<span class="chip">${f.color === "w" ? "W" : "B"} ${ROLE[f.type]}</span>`)
+          .join("");
+        g.innerHTML = `<span class="mono" style="width:100%;margin-bottom:2px">Fallen</span>${chips || "<span class='mono'>—</span>"}`;
+      }
     }
 
     function clearFx() {
@@ -1430,8 +1440,8 @@
     }
 
     async function animateKingCommand(color, fromSq) {
-      if (viewMode !== "arena") return;
-      // find king square of moving side
+      // Skip command beat in classic (was 520ms lag every move)
+      if (viewMode !== "arena" || GM.fastAnim) return;
       const rows = game.board();
       const files = "abcdefgh";
       let kingSq = null;
@@ -1445,8 +1455,6 @@
       }
       if (!kingSq) return;
       renderBoard({ commandFrom: kingSq, commandTo: fromSq });
-
-      // command line
       const k = sqToRC(kingSq);
       const t = sqToRC(fromSq);
       const line = document.createElement("div");
@@ -1465,25 +1473,21 @@
       line.style.width = len + "%";
       line.style.transform = `rotate(${ang}deg)`;
       el("fxLayer").appendChild(line);
-      setStatus(
-        color === "w"
-          ? "Raja’s King signals the unit…"
-          : "Nero’s King points the order…",
-        true
-      );
-      await sleep(520);
+      await sleep(180);
       clearFx();
     }
 
     async function animateMove(move) {
       // move: chess.js verbose move {from,to,color,piece,captured,san}
+      // Fast piece slide; think time is separate (5–10s) so recording can speed up later
       const from = move.from;
       const to = move.to;
       const hide = new Set([from]);
       if (move.captured) hide.add(to);
 
-      // King command beat (Arena)
-      await animateKingCommand(move.color, from);
+      if (viewMode === "arena" && !GM.fastAnim) {
+        await animateKingCommand(move.color, from);
+      }
 
       renderBoard({ hideSquares: hide });
 
@@ -1497,48 +1501,32 @@
       flying.style.top = f.r * 12.5 + "%";
       fx.appendChild(flying);
 
-      // force layout then slide
-      flying.getBoundingClientRect();
-      flying.style.transform = `translate(${(t.c - f.c) * 100}%, ${(t.r - f.r) * 100}%)`;
+      requestAnimationFrame(() => {
+        flying.style.transform = `translate(${(t.c - f.c) * 100}%, ${(t.r - f.r) * 100}%)`;
+      });
 
+      const slideMs = viewMode === "arena" && !GM.fastAnim ? 160 : 120;
       if (move.captured) {
-        await sleep(180);
-        // slash + boom on target
-        const slash = document.createElement("div");
-        slash.className = "slash";
-        slash.textContent = "⚔️";
-        slash.style.left = t.c * 12.5 + "%";
-        slash.style.top = t.r * 12.5 + "%";
-        fx.appendChild(slash);
-        const boom = document.createElement("div");
-        boom.className = "boom";
-        boom.style.left = t.c * 12.5 + "%";
-        boom.style.top = t.r * 12.5 + "%";
-        fx.appendChild(boom);
-        setStatus(
-          `${ROLE[move.piece]} clashes with ${ROLE[move.captured]} — ${move.san}`,
-          true
-        );
-        await sleep(280);
-
-        // defeated piece walks off
+        await sleep(slideMs);
+        if (viewMode === "arena" && !GM.fastAnim) {
+          const slash = document.createElement("div");
+          slash.className = "slash";
+          slash.textContent = "⚔️";
+          slash.style.left = t.c * 12.5 + "%";
+          slash.style.top = t.r * 12.5 + "%";
+          fx.appendChild(slash);
+          const boom = document.createElement("div");
+          boom.className = "boom";
+          boom.style.left = t.c * 12.5 + "%";
+          boom.style.top = t.r * 12.5 + "%";
+          fx.appendChild(boom);
+          await sleep(120);
+        }
         const defeatedColor = move.color === "w" ? "b" : "w";
-        const dead = document.createElement("div");
-        dead.className = "fx-piece walking";
-        dead.appendChild(makeUnitEl(defeatedColor, move.captured));
-        dead.style.left = t.c * 12.5 + "%";
-        dead.style.top = t.r * 12.5 + "%";
-        fx.appendChild(dead);
-        dead.getBoundingClientRect();
-        // walk toward nearest edge (right for black, left for white fallen)
-        const offX = defeatedColor === "w" ? -140 : 140;
-        const offY = 40 + Math.random() * 40;
-        dead.style.transform = `translate(${offX}%, ${offY}%) rotate(${defeatedColor === "w" ? -18 : 18}deg) scale(0.75)`;
-        setTimeout(() => dead.classList.add("done"), 50);
         fallen.push({ color: defeatedColor, type: move.captured });
-        await sleep(viewMode === "arena" ? 700 : 200);
+        await sleep(viewMode === "arena" && !GM.fastAnim ? 200 : 40);
       } else {
-        await sleep(viewMode === "arena" ? 400 : 220);
+        await sleep(slideMs + 20);
       }
 
       clearFx();
@@ -1612,13 +1600,15 @@
       return null;
     }
 
-    /* ── Local Stockfish (WASM) — real GM-strength in the browser ──
-       Free remote APIs top out ~depth 18 / 100ms. Local SF can go depth 18–22. */
+    /* ── Local Stockfish (WASM) — long think, snappy board ──
+       5–10s per move for real strength; animate pieces fast (record then speed up). */
     const GM = {
-      // Both agents equal strength (GM band). Personality = openings only.
-      depth: 18,
-      movetimeMs: 1200, // real think time (not 70ms toy)
-      bookPlies: 6,
+      depth: 22, // search deep; movetime is the real limit
+      movetimeMs: 7500, // default 7.5s — range 5–10s via ?movetime=
+      bookPlies: 4, // less book, more engine
+      fastAnim: true, // snappy pieces even in Arena Live
+      threads: 2,
+      hashMb: 64,
     };
     let sfEngine = null; // { worker, ready, inflight }
     let sfInitPromise = null;
@@ -1671,10 +1661,25 @@
                 worker.postMessage("isready");
               });
             await waitReady();
+            // Stronger search options (supported by stockfish.js UCI)
+            try {
+              worker.postMessage("setoption name Threads value " + GM.threads);
+              worker.postMessage("setoption name Hash value " + GM.hashMb);
+              worker.postMessage("setoption name Skill Level value 20");
+              worker.postMessage("isready");
+            } catch (_) {}
             eng.ready = true;
             sfEngine = eng;
-            setText("enginePill", "Stockfish local · GM d" + GM.depth);
-            log("Local Stockfish ready (grandmaster depth " + GM.depth + ")");
+            setText(
+              "enginePill",
+              "Stockfish · " + (GM.movetimeMs / 1000).toFixed(1) + "s/move · d" + GM.depth
+            );
+            log(
+              "Local Stockfish ready — " +
+                (GM.movetimeMs / 1000).toFixed(1) +
+                "s think / depth up to " +
+                GM.depth
+            );
             return eng;
           } catch (err) {
             lastErr = err;
@@ -1700,30 +1705,39 @@
           reject(e);
           return;
         }
+        // Stop any previous search so we don't queue lag
+        try {
+          eng.worker.postMessage("stop");
+        } catch (_) {}
         let bestUci = null;
         let evalPawns = null;
         let mate = null;
+        let depthSeen = 0;
         const timeout = setTimeout(() => {
+          try {
+            eng.worker.postMessage("stop");
+          } catch (_) {}
           cleanup();
-          if (bestUci) resolve({ uci: bestUci, eval: evalPawns, mate, source: "stockfish_wasm" });
+          if (bestUci) resolve({ uci: bestUci, eval: evalPawns, mate, source: "stockfish_wasm", depth: depthSeen });
           else reject(new Error("stockfish go timeout"));
-        }, Math.max(movetime + 4000, 8000));
+        }, movetime + 5000);
         const onLine = (line) => {
-          // info ... score cp 34 ... or score mate 3
           if (line.startsWith("info ")) {
             const mMate = line.match(/\bscore mate (-?\d+)/);
             const mCp = line.match(/\bscore cp (-?\d+)/);
             const mPv = line.match(/\bpv ([a-h][1-8][a-h][1-8][qrbn]?)/);
+            const mDep = line.match(/\bdepth (\d+)/);
             if (mMate) mate = parseInt(mMate[1], 10);
             if (mCp) evalPawns = parseInt(mCp[1], 10) / 100;
             if (mPv) bestUci = mPv[1];
+            if (mDep) depthSeen = parseInt(mDep[1], 10);
           }
           if (line.startsWith("bestmove ")) {
             const parts = line.split(/\s+/);
             const uci = parts[1] && parts[1] !== "(none)" ? parts[1] : bestUci;
             cleanup();
             if (!uci) reject(new Error("no bestmove"));
-            else resolve({ uci, eval: evalPawns, mate, source: "stockfish_wasm" });
+            else resolve({ uci, eval: evalPawns, mate, source: "stockfish_wasm", depth: depthSeen });
           }
         };
         const cleanup = () => {
@@ -1733,8 +1747,8 @@
         eng.listeners.push(onLine);
         eng.worker.postMessage("ucinewgame");
         eng.worker.postMessage("position fen " + fen);
-        // Prefer movetime for stable strength; depth as secondary
-        eng.worker.postMessage("go depth " + depth + " movetime " + movetime);
+        // movetime alone uses full budget (depth+movetime stops early on depth)
+        eng.worker.postMessage("go movetime " + movetime);
       });
     }
 
@@ -1763,19 +1777,27 @@
       const depth = GM.depth;
       const fen = game.fen();
 
-      // 1) Local Stockfish WASM (strongest, no free-tier think-time cap)
+      // 1) Local Stockfish WASM — full 5–10s think (best move)
       try {
+        setText(
+          "enginePill",
+          `${forSide} thinking… ${(GM.movetimeMs / 1000).toFixed(0)}s`
+        );
+        const t0 = performance.now();
         const sf = await localStockfishGo(fen, { depth, movetime: GM.movetimeMs });
+        const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
         const parsed = uciToSan(fen, sf.uci);
         if (parsed) {
           let ev = sf.eval;
           if (sf.mate != null) {
-            // UCI mate score is side-to-move POV; convert-ish to white POV for UI
             const stmWhite = fen.includes(" w ");
             const abs = 20;
             ev = (sf.mate > 0 ? abs : -abs) * (stmWhite ? 1 : -1);
           }
-          setText("enginePill", `Stockfish GM · d${depth} · ${forSide}`);
+          setText(
+            "enginePill",
+            `SF d${sf.depth || "?"} · ${elapsed}s · ${forSide}`
+          );
           return {
             san: parsed.san,
             uci: parsed.uci,
@@ -2061,7 +2083,8 @@
             ` · ${choice.source}`,
           true
         );
-        await sleep(viewMode === "arena" ? 380 : 500);
+        // Short beat between moves — think time already spent; keep board snappy
+        await sleep(viewMode === "arena" && !GM.fastAnim ? 200 : 80);
       }
 
       const result = resolveResult(resignSide);
@@ -2193,15 +2216,23 @@
 
     // Prefer Classic for clean spectator first look; Arena Live via ?mode=arena
     const params = new URLSearchParams(location.search);
-    // Optional: ?depth=20&movetime=2000 for even stronger local SF
-    if (params.get("depth")) GM.depth = Math.max(12, Math.min(24, parseInt(params.get("depth"), 10) || 18));
-    if (params.get("movetime"))
-      GM.movetimeMs = Math.max(200, Math.min(10000, parseInt(params.get("movetime"), 10) || 1200));
+    // ?movetime=5000..10000 (ms)  ?depth=18..24  ?fastanim=0 for full Arena FX
+    if (params.get("depth")) {
+      GM.depth = Math.max(14, Math.min(28, parseInt(params.get("depth"), 10) || 22));
+    }
+    if (params.get("movetime")) {
+      GM.movetimeMs = Math.max(5000, Math.min(10000, parseInt(params.get("movetime"), 10) || 7500));
+    }
+    if (params.get("fastanim") === "0") GM.fastAnim = false;
     setUiView(params.get("view") === "creator" ? "creator" : "audience");
     setViewMode(params.get("mode") === "arena" ? "arena" : "classic");
     renderMeta();
     renderBoard();
     renderSpectator();
+    setText(
+      "enginePill",
+      "Stockfish · " + (GM.movetimeMs / 1000).toFixed(1) + "s/move"
+    );
     // Warm Stockfish WASM so first move isn't cold
     initLocalStockfish().catch((e) => log("SF warmup: " + e.message));
   </script>
