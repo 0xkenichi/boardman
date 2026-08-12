@@ -60,6 +60,18 @@ export async function GET(req: NextRequest) {
     rpc: arcRpcUrl(),
     usdc: arcUsdcAddress(),
     balances: results,
+    // augment with on-chain volume if backend exposes it
+    volume: await (async () => {
+      try {
+        const base = process.env.STACK_API_URL || 'http://localhost:8000'
+        const r = await fetch(`${base}/api/stack/agentic/agents/onchain_volume`, { cache: 'no-store' })
+        if (!r.ok) return {}
+        const j = await r.json()
+        return j.totals || {}
+      } catch (e) {
+        return {}
+      }
+    })(),
     note: 'Agent bankrolls on creator desk should match these Arc testnet USDC balances when on-chain mode is live.',
   })
 }

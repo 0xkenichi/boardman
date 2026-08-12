@@ -216,6 +216,37 @@ async def get_agent(
     return {"success": True, "agent": a}
 
 
+@router.get("/agents/onchain_volume")
+async def agents_onchain_volume(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
+    """Aggregate on-chain locked/settled volumes per agent from matches records."""
+    from gaming.src.stack.agentic.store import load_json
+
+    try:
+        data = load_json("matches.json", {"matches": {}})
+    except Exception:
+        raise HTTPException(500, "matches data not available")
+    matches = list(data.get("matches", {}).values())
+    totals: dict[str, dict[str, float]] = {}
+    for m in matches:
+        stake = float(m.get("stake_usdc") or 0)
+        # if settlement_mode indicates onchain, count as locked
+        mode = m.get("settlement_mode") or "demo_ledger"
+        for aid in (m.get("agent_a_id"), m.get("agent_b_id")):
+            if not aid:
+                continue
+            t = totals.setdefault(aid, {"locked_count": 0, "locked_usdc": 0.0, "settled_count": 0, "settled_usdc": 0.0})
+            if mode == "onchain":
+                t["locked_count"] += 1
+                t["locked_usdc"] += stake
+            # settled onchain if onchain_settle present
+            if m.get("onchain_settle"):
+                t["settled_count"] += 1
+                # winner gets owner_payout in fee_split, but stake is a reasonable proxy
+                t["settled_usdc"] += stake
+
+    return {"success": True, "totals": totals}
+
+
 @router.get("/agents/{agent_id}/wallet")
 async def get_agent_wallet(
     agent_id: str,
