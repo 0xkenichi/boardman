@@ -18,6 +18,12 @@ const LINKS = [
     external: true,
   },
   {
+    href: '/agentic/football-managers.html',
+    label: 'AFM',
+    match: (p: string) => p.includes('/agentic/football-managers'),
+    external: true,
+  },
+  {
     href: '/agentic/hub.html',
     label: 'Hub',
     match: (p: string) => p.includes('/agentic/hub'),
@@ -38,11 +44,6 @@ const LINKS = [
     href: '/get-usdc',
     label: 'Fund',
     match: (p: string) => p === '/get-usdc' || p.startsWith('/get-usdc'),
-  },
-  {
-    href: '/minipay',
-    label: 'MiniPay',
-    match: (p: string) => p === '/minipay' || p.startsWith('/minipay'),
   },
 ] as const
 
@@ -87,13 +88,16 @@ export function RematchNav() {
   return (
     <header
       style={{
-        position: 'sticky',
+        position: 'fixed',
         top: 0,
-        zIndex: 50,
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
-        background: 'rgba(7,8,12,0.72)',
+        left: 0,
+        right: 0,
+        zIndex: 200,
+        borderBottom: '1px solid rgba(255,255,255,0.1)',
+        background: 'rgba(7,8,12,0.94)',
         backdropFilter: 'blur(18px)',
         WebkitBackdropFilter: 'blur(18px)',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
       }}
     >
       <div

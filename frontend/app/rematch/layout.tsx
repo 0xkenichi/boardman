@@ -57,7 +57,7 @@ export const viewport: Viewport = {
  */
 export default function RematchLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rm-shell flex min-h-screen flex-col">
+    <div className="rm-shell flex min-h-screen flex-col" style={{ paddingTop: '3.5rem' }}>
       <CinematicAtmosphere />
       <RematchNav />
       <div className="relative z-10 flex-1 rm-main-column">{children}</div>

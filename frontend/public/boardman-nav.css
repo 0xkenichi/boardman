@@ -1,12 +1,19 @@
 /* Shared Boardman site navigation (static pages + optional embed) */
 .bm-nav {
-  position: sticky;
+  position: fixed;
   top: 0;
-  z-index: 100;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(7, 8, 12, 0.88);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  left: 0;
+  right: 0;
+  z-index: 200;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(7, 8, 12, 0.94);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+/* Offset content so fixed nav doesn't cover the first heading */
+body[data-bm-nav] {
+  padding-top: 3.4rem;
 }
 .bm-nav-inner {
   max-width: 1100px;

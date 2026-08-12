@@ -1613,11 +1613,17 @@
             if (data.balance != null) tgUser.balance = data.balance;
             renderAuth();
           } else if (data && data.error === "stack_not_configured") {
-            log("Wallet API offline — set REMATCH_API_URL on host. " + (data.message || ""));
+            log("Wallet API offline — " + (data.message || "try again after refresh"));
             setStatus("Wallet backend offline — can't debit yet", true);
           } else {
-            log("Bet failed: " + (data && (data.message || data.error) || res.status));
-            setStatus("Bet failed", true);
+            log(
+              "Bet failed: " +
+                (data && (data.message || data.error) || res.status) +
+                (data && data.balance != null
+                  ? " · bal $" + Number(data.balance).toFixed(2)
+                  : "")
+            );
+            setStatus("Bet failed — " + (data && data.error ? data.error : "error"), true);
           }
           return;
         }
