@@ -91,31 +91,53 @@ class HybridEngine:
             self.last_eval = None
             return bm
 
-        # 1b) Optional ASI:One reasoning (Nero by default) — free API key, no Arc gas
+        # 1b) LLM reasoning layers for Nero (ASI → Gemini → then Stockfish)
+        # Free API keys only; no Arc gas. Order: BOARDMAN_NERO_REASONERS=asi,gemini
         try:
             from gaming.src.stack.agentic.runtime.asi_reasoner import (
                 agent_uses_asi,
                 asi_enabled,
-                reason_chess_move,
+                reason_chess_move as asi_reason,
+            )
+            from gaming.src.stack.agentic.runtime.gemini_reasoner import (
+                gemini_enabled,
+                reason_chess_move as gemini_reason,
             )
 
-            if asi_enabled() and agent_uses_asi(self.agent_id, "nero"):
+            if agent_uses_asi(self.agent_id, "nero"):
                 persona = str(
                     getattr(self.mind, "directive", "")
                     or getattr(self.mind, "blurb", "")
                     or ""
                 )
-                hit = reason_chess_move(
-                    board,
-                    agent_name=self.agent_id or "nero",
-                    persona=persona,
-                )
-                if hit and hit.get("move") is not None:
-                    self.last_source = f"asi1:{hit.get('model')}"
-                    self.last_eval = None
-                    return hit["move"]
+                order = (
+                    os.getenv("BOARDMAN_NERO_REASONERS") or "asi,gemini"
+                ).lower().replace(" ", "")
+                for name in [x for x in order.split(",") if x]:
+                    hit = None
+                    try:
+                        if name in {"asi", "asi1", "asi-one"} and asi_enabled():
+                            hit = asi_reason(
+                                board,
+                                agent_name=self.agent_id or "nero",
+                                persona=persona,
+                            )
+                        elif name in {"gemini", "google"} and gemini_enabled():
+                            hit = gemini_reason(
+                                board,
+                                agent_name=self.agent_id or "nero",
+                                persona=persona,
+                            )
+                    except Exception as exc:
+                        logger.warning("[%s] %s reasoner failed: %s", self.agent_id, name, exc)
+                        hit = None
+                    if hit and hit.get("move") is not None:
+                        src = hit.get("source") or name
+                        self.last_source = f"{src}:{hit.get('model')}"
+                        self.last_eval = None
+                        return hit["move"]
         except Exception as exc:
-            logger.warning("[%s] ASI reasoner failed: %s", self.agent_id, exc)
+            logger.warning("[%s] LLM reasoners failed: %s", self.agent_id, exc)
 
         # 2) Grandmaster path: pure Stockfish best move at max free depth
         if use_stockfish():

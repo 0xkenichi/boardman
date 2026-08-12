@@ -1754,11 +1754,10 @@
       });
     }
 
-    async function asiMoveForNero(fen) {
-      // Nero-only: ASI:One reasoning via server proxy (free key on server).
-      // Raja never hits this path.
+    async function llmMoveForNero(fen) {
+      // Nero-only: ASI:One and/or free Gemini via server proxy. Raja never hits this.
       try {
-        setText("enginePill", "Nero · ASI:One reasoning…");
+        setText("enginePill", "Nero · LLM reasoning (ASI / Gemini)…");
         const legal = game.moves({ verbose: true });
         const legal_moves = legal.map((m) => m.from + m.to + (m.promotion || ""));
         const legal_san = legal.map((m) => m.san);
@@ -1780,21 +1779,26 @@
             san = p ? p.san : null;
           }
           if (san) {
-            setText("enginePill", `Nero · ASI:One · ${data.model || "asi1"}`);
-            log("Nero ASI:One → " + san);
+            const src = data.source === "gemini" ? "Gemini" : "ASI:One";
+            setText("enginePill", `Nero · ${src} · ${data.model || ""}`);
+            log(`Nero ${src} → ${san}`);
             return {
               san,
               uci: data.uci,
-              source: "asi1.ai",
+              source: data.source || "llm",
               eval: null,
             };
           }
         }
         if (data && data.fallback) {
-          log("ASI unavailable (" + (data.error || "no key") + ") — Nero falls back to Stockfish");
+          log(
+            "LLM unavailable (" +
+              (data.error || "no keys") +
+              ") — Nero falls back to Stockfish"
+          );
         }
       } catch (e) {
-        log("ASI proxy: " + e.message + " — Nero Stockfish fallback");
+        log("LLM proxy: " + e.message + " — Nero Stockfish fallback");
       }
       return null;
     }
@@ -1823,10 +1827,10 @@
       const depth = GM.depth;
       const fen = game.fen();
 
-      // Nero: try free ASI:One reasoning first (server key). Raja = pure Stockfish.
+      // Nero: free ASI:One and/or Gemini first (server keys). Raja = pure Stockfish.
       if (forSide === "nero") {
-        const asi = await asiMoveForNero(fen);
-        if (asi) return asi;
+        const llm = await llmMoveForNero(fen);
+        if (llm) return llm;
       }
 
       // Local Stockfish WASM — full 5–10s think (Raja always; Nero fallback)

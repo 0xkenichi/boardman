@@ -1,27 +1,44 @@
 /**
- * Free ASI:One reasoning proxy for Nero (server-side key only).
+ * Nero reasoning proxy — free LLM layers (server-side keys only).
  *
- * POST { fen, agent?: "nero" }
+ * Order (BOARDMAN_NERO_REASONERS, default asi,gemini):
+ *   1. ASI:One  (ASI_ONE_API_KEY)
+ *   2. Gemini   (GEMINI_API_KEY / GOOGLE_API_KEY)
+ * Then client falls back to Stockfish.
+ *
+ * POST { fen, agent?, legal_moves, legal_san }
  * → { ok, san, uci, source, model } | { ok:false, error, fallback:true }
- *
- * Env: ASI_ONE_API_KEY (or ASI_API_KEY), optional ASI_ONE_MODEL=asi1-mini
  */
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const BASE = process.env.ASI_ONE_BASE_URL || "https://api.asi1.ai/v1";
-const MODEL = process.env.ASI_ONE_MODEL || "asi1-mini";
+const ASI_BASE = process.env.ASI_ONE_BASE_URL || "https://api.asi1.ai/v1";
+const ASI_MODEL = process.env.ASI_ONE_MODEL || "asi1-mini";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 
-function apiKey(): string {
+function asiKey(): string {
   return (process.env.ASI_ONE_API_KEY || process.env.ASI_API_KEY || "").trim();
+}
+function geminiKey(): string {
+  return (
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
+    ""
+  ).trim();
 }
 
 function agentAllowed(agent: string): boolean {
   const raw = (process.env.BOARDMAN_ASI_AGENTS || "nero").toLowerCase();
   if (raw === "*" || raw === "all") return true;
   return raw.split(",").some((t) => agent.toLowerCase().includes(t.trim()));
+}
+
+function reasonerOrder(): string[] {
+  const raw = (process.env.BOARDMAN_NERO_REASONERS || "asi,gemini").toLowerCase().replace(/\s+/g, "");
+  return raw.split(",").filter(Boolean);
 }
 
 function parseMove(text: string, legalUci: string[], legalSan: string[]): { uci?: string; san?: string } {
@@ -61,6 +78,98 @@ function matchLegal(cand: string, legalUci: string[], legalSan: string[]): { uci
   return null;
 }
 
+function neroPrompt(fen: string, legalUci: string[], legalSan: string[]): { system: string; user: string } {
+  const system =
+    "You are Nero, a defensive chess grandmaster (Sicilian/French structures). " +
+    'Reply with JSON only: {"move":"<one UCI or SAN from the legal list>"}. No other text.';
+  const user =
+    `FEN: ${fen}\n` +
+    `Legal UCI: ${legalUci.slice(0, 60).join(", ")}${legalUci.length > 60 ? "…" : ""}\n` +
+    `Legal SAN: ${legalSan.slice(0, 40).join(", ")}\n` +
+    "Pick the strongest practical defensive/counterpunching move.";
+  return { system, user };
+}
+
+async function tryAsi(
+  fen: string,
+  legalUci: string[],
+  legalSan: string[]
+): Promise<{ uci: string; san?: string; model: string; source: string } | { error: string }> {
+  const key = asiKey();
+  if (!key) return { error: "ASI_ONE_API_KEY not set" };
+  const { system, user } = neroPrompt(fen, legalUci, legalSan);
+  const r = await fetch(`${ASI_BASE.replace(/\/$/, "")}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${key}`,
+    },
+    body: JSON.stringify({
+      model: ASI_MODEL,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+      temperature: 0.15,
+      max_tokens: 128,
+    }),
+    signal: AbortSignal.timeout(25000),
+  });
+  if (!r.ok) {
+    const errText = await r.text().catch(() => "");
+    return { error: `ASI HTTP ${r.status}: ${errText.slice(0, 160)}` };
+  }
+  const data = (await r.json()) as {
+    choices?: Array<{ message?: { content?: string | Array<{ text?: string }> } }>;
+  };
+  let content = data.choices?.[0]?.message?.content || "";
+  if (Array.isArray(content)) {
+    content = content.map((p) => (typeof p === "string" ? p : p?.text || "")).join(" ");
+  }
+  const parsed = parseMove(String(content), legalUci, legalSan);
+  if (!parsed.uci) return { error: "ASI non-legal move", };
+  return { uci: parsed.uci, san: parsed.san, model: ASI_MODEL, source: "asi1.ai" };
+}
+
+async function tryGemini(
+  fen: string,
+  legalUci: string[],
+  legalSan: string[]
+): Promise<{ uci: string; san?: string; model: string; source: string } | { error: string }> {
+  const key = geminiKey();
+  if (!key) return { error: "GEMINI_API_KEY not set" };
+  const { system, user } = neroPrompt(fen, legalUci, legalSan);
+  const url =
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent` +
+    `?key=${encodeURIComponent(key)}`;
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: system + "\n\n" + user }],
+        },
+      ],
+      generationConfig: { temperature: 0.15, maxOutputTokens: 128 },
+    }),
+    signal: AbortSignal.timeout(25000),
+  });
+  if (!r.ok) {
+    const errText = await r.text().catch(() => "");
+    return { error: `Gemini HTTP ${r.status}: ${errText.slice(0, 160)}` };
+  }
+  const data = (await r.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  const content = parts.map((p) => p.text || "").join("\n");
+  const parsed = parseMove(content, legalUci, legalSan);
+  if (!parsed.uci) return { error: "Gemini non-legal move" };
+  return { uci: parsed.uci, san: parsed.san, model: GEMINI_MODEL, source: "gemini" };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => ({}))) as {
@@ -71,12 +180,8 @@ export async function POST(req: NextRequest) {
     };
     const agent = String(body.agent || "nero");
     if (!agentAllowed(agent)) {
-      return NextResponse.json({ ok: false, error: "agent not configured for ASI", fallback: true }, { status: 200 });
-    }
-    const key = apiKey();
-    if (!key) {
       return NextResponse.json(
-        { ok: false, error: "ASI_ONE_API_KEY not set on server (free key from asi1.ai)", fallback: true },
+        { ok: false, error: "agent not configured for LLM reasoning", fallback: true },
         { status: 200 }
       );
     }
@@ -84,8 +189,6 @@ export async function POST(req: NextRequest) {
     if (!fen) {
       return NextResponse.json({ ok: false, error: "fen required", fallback: true }, { status: 400 });
     }
-
-    // Arena always sends legal_moves from chess.js client — no server chess dep
     const legalUci = Array.isArray(body.legal_moves) ? body.legal_moves.map(String) : [];
     const legalSan = Array.isArray(body.legal_san) ? body.legal_san.map(String) : [];
     if (!legalUci.length) {
@@ -95,61 +198,42 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const system =
-      "You are Nero, a defensive chess grandmaster (Sicilian/French structures). " +
-      'Reply with JSON only: {"move":"<one UCI or SAN from the legal list>"}. No other text.';
-    const user =
-      `FEN: ${fen}\n` +
-      `Legal UCI: ${legalUci.slice(0, 60).join(", ")}${legalUci.length > 60 ? "…" : ""}\n` +
-      `Legal SAN: ${legalSan.slice(0, 40).join(", ")}\n` +
-      "Pick the strongest practical defensive/counterpunching move.";
+    const errors: string[] = [];
+    for (const name of reasonerOrder()) {
+      try {
+        let result: { uci: string; san?: string; model: string; source: string } | { error: string };
+        if (name === "asi" || name === "asi1" || name === "asi-one") {
+          result = await tryAsi(fen, legalUci, legalSan);
+        } else if (name === "gemini" || name === "google") {
+          result = await tryGemini(fen, legalUci, legalSan);
+        } else {
+          continue;
+        }
+        if ("error" in result) {
+          errors.push(`${name}: ${result.error}`);
+          continue;
+        }
+        return NextResponse.json({
+          ok: true,
+          uci: result.uci,
+          san: result.san,
+          source: result.source,
+          model: result.model,
+          agent,
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        errors.push(`${name}: ${msg}`);
+      }
+    }
 
-    const r = await fetch(`${BASE.replace(/\/$/, "")}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-        temperature: 0.15,
-        max_tokens: 128,
-      }),
-      signal: AbortSignal.timeout(25000),
-    });
-
-    if (!r.ok) {
-      const errText = await r.text().catch(() => "");
-      return NextResponse.json(
-        { ok: false, error: `ASI HTTP ${r.status}: ${errText.slice(0, 200)}`, fallback: true },
-        { status: 200 }
-      );
-    }
-    const data = (await r.json()) as {
-      choices?: Array<{ message?: { content?: string | Array<{ text?: string }> } }>;
-    };
-    let content = data.choices?.[0]?.message?.content || "";
-    if (Array.isArray(content)) {
-      content = content.map((p) => (typeof p === "string" ? p : p?.text || "")).join(" ");
-    }
-    const parsed = parseMove(String(content), legalUci, legalSan);
-    if (!parsed.uci) {
-      return NextResponse.json(
-        { ok: false, error: "ASI returned non-legal move", raw: String(content).slice(0, 300), fallback: true },
-        { status: 200 }
-      );
-    }
     return NextResponse.json({
-      ok: true,
-      uci: parsed.uci,
-      san: parsed.san,
-      source: "asi1.ai",
-      model: MODEL,
-      agent,
+      ok: false,
+      error: errors.length ? errors.join(" | ") : "no LLM reasoners configured",
+      fallback: true,
+      tried: reasonerOrder(),
+      asi_configured: Boolean(asiKey()),
+      gemini_configured: Boolean(geminiKey()),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -160,9 +244,12 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     ok: true,
-    asi_configured: Boolean(apiKey()),
-    model: MODEL,
+    asi_configured: Boolean(asiKey()),
+    gemini_configured: Boolean(geminiKey()),
+    asi_model: ASI_MODEL,
+    gemini_model: GEMINI_MODEL,
+    order: reasonerOrder(),
     agents: process.env.BOARDMAN_ASI_AGENTS || "nero",
-    note: "POST { fen, agent:'nero' } — free ASI:One key; Arc not required for thinking",
+    note: "Nero LLM chain: ASI:One and/or free Gemini; then Stockfish. No Arc gas for thinking.",
   });
 }

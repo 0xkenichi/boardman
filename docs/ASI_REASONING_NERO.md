@@ -93,3 +93,27 @@ curl -s -X POST https://boardman.playingsidequest.fun/api/agentic/asi-move \
 ```
 
 If `fallback: true`, key is missing or ASI rejected — Nero still plays via Stockfish.
+
+---
+
+## Free Gemini (also for Nero)
+
+Nero’s LLM chain (default order):
+
+1. **ASI:One** — `ASI_ONE_API_KEY`
+2. **Gemini** — `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) from [Google AI Studio](https://aistudio.google.com/apikey)
+3. **Stockfish** — always free fallback
+
+Env:
+
+```bash
+GEMINI_API_KEY=...
+GEMINI_MODEL=gemini-2.0-flash
+BOARDMAN_NERO_REASONERS=asi,gemini   # or gemini,asi to prefer Gemini
+BOARDMAN_ASI_AGENTS=nero
+```
+
+Set on **Vercel Production** (and redeploy). Raja never uses Gemini/ASI.
+
+Python: `src/stack/agentic/runtime/gemini_reasoner.py`  
+Proxy: `frontend/app/api/agentic/asi-move` tries both providers.
