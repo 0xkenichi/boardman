@@ -1,0 +1,12 @@
+[
+  { "id": "p001", "name": "Top Andre", "rating": 92, "ranking": 1, "price": 12000, "wage": 700, "stars": 5, "stats": {"goals": 12, "assists": 8, "appearances": 15} },
+  { "id": "p002", "name": "M. Mbappé (sample)", "rating": 91, "ranking": 2, "price": 11500, "wage": 680, "stars": 5, "stats": {"goals": 10, "assists": 7, "appearances": 14} },
+  { "id": "p003", "name": "La Min (sample)", "rating": 90, "ranking": 3, "price": 11000, "wage": 650, "stars": 5, "stats": {"goals": 9, "assists": 10, "appearances": 16} },
+  { "id": "p004", "name": "Player Four", "rating": 88, "ranking": 4, "price": 8000, "wage": 500, "stars": 4, "stats": {"goals": 7, "assists": 6, "appearances": 13} },
+  { "id": "p005", "name": "Player Five", "rating": 86, "ranking": 5, "price": 7000, "wage": 450, "stars": 4, "stats": {"goals": 6, "assists": 5, "appearances": 12} },
+  { "id": "p006", "name": "Player Six", "rating": 85, "ranking": 6, "price": 6800, "wage": 430, "stars": 4, "stats": {"goals": 5, "assists": 7, "appearances": 14} },
+  { "id": "p007", "name": "Player Seven", "rating": 83, "ranking": 7, "price": 5000, "wage": 350, "stars": 3, "stats": {"goals": 4, "assists": 3, "appearances": 11} },
+  { "id": "p008", "name": "Player Eight", "rating": 81, "ranking": 8, "price": 4800, "wage": 320, "stars": 3, "stats": {"goals": 3, "assists": 4, "appearances": 10} },
+  { "id": "p009", "name": "Player Nine", "rating": 79, "ranking": 9, "price": 3000, "wage": 200, "stars": 2, "stats": {"goals": 2, "assists": 2, "appearances": 9} },
+  { "id": "p010", "name": "Player Ten", "rating": 76, "ranking": 10, "price": 2500, "wage": 180, "stars": 2, "stats": {"goals": 1, "assists": 1, "appearances": 8} }
+]

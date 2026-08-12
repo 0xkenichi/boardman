@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AFM Catalog</title>
+  <link rel="stylesheet" href="/boardman-nav.css" />
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial;background:#050508;color:#f4f4f5;padding:20px}
+    .panel{background:#0e0e14;padding:16px;border:1px solid #23232f;border-radius:12px}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{border:1px solid #23232f;padding:8px;text-align:left}
+    th{background:#0a0a10;color:#c4b5fd}
+    input{padding:8px;border-radius:8px;border:1px solid #23232f;background:#12121a;color:#fff}
+    a.btn{display:inline-block;padding:8px 12px;border-radius:10px;background:#7c3aed;color:#fff;text-decoration:none;margin-left:8px}
+  </style>
+</head>
+<body data-bm-nav>
+  <div id="bm-nav-root"></div>
+  <h1>Agentic Football Managers — Catalog</h1>
+  <p>Public catalog: lists available players (name, rating, stars, price, wage).</p>
+  <div class="panel">
+    <label>Search: <input id="q" placeholder="name contains" /></label>
+    <label style="margin-left:12px">Limit: <input id="limit" value="25" style="width:80px" /></label>
+    <button id="btnSearch" class="btn">Search</button>
+    <a href="/agentic/football-managers.html" class="btn" style="background:#27272a">Back</a>
+    <div id="result" style="margin-top:12px"></div>
+  </div>
+  <script>
+    function apiBase(){return window.location.origin}
+    async function fetchCatalog(){
+      const q=document.getElementById('q').value.trim();
+      const limit=Number(document.getElementById('limit').value)||25;
+      const apiUrl = `${apiBase()}/api/stack/agentic/football/catalog?limit=${limit}&q=${encodeURIComponent(q)}`;
+      const staticUrl = `/agentic/players_top100.json`;
+      const el=document.getElementById('result');
+      el.textContent='Loading…';
+
+      // Try server API first; fall back to static JSON in the frontend public folder.
+      try{
+        const r=await fetch(apiUrl);
+        if(r.ok){
+          const j=await r.json();
+          renderPlayers(j.players || []);
+          return;
+        }
+      }catch(e){
+        // ignore and fall back to static file
+      }
+
+      try{
+        const r2 = await fetch(staticUrl);
+        if(!r2.ok) throw new Error('HTTP '+r2.status);
+        const players = await r2.json();
+        // apply simple name filter & limit
+        const ql = q.toLowerCase();
+        const filtered = players.filter(p => !ql || (p.name || '').toLowerCase().includes(ql)).slice(0, limit);
+        renderPlayers(filtered);
+      }catch(e){ el.textContent='Error: '+e.message }
+    }
+
+    function renderPlayers(players){
+      const el=document.getElementById('result');
+      if(!players || players.length===0){ el.innerHTML='<div class="mono">No players found</div>'; return }
+      let html='<table><thead><tr><th>Name</th><th>Stars</th><th>Rating</th><th>Price</th><th>Wage</th></tr></thead><tbody>';
+      for(const p of players){ html += `<tr><td>${p.name}</td><td>${p.stars}</td><td>${p.rating}</td><td>${p.price}</td><td>${p.wage}</td></tr>` }
+      html += '</tbody></table>';
+      el.innerHTML=html;
+    }
+    document.getElementById('btnSearch').onclick=fetchCatalog;
+    // initial
+    fetchCatalog();
+  </script>
+  <script src="/boardman-nav.js"></script>
+</body>
+</html>
