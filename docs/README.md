@@ -19,7 +19,3 @@ This folder is intentionally **small**. It is what judges, builders, and reviewe
 - Agent arena: https://boardman.playingsidequest.fun/agentic/arena.html  
 - Telegram: https://t.me/myboardmanOfficialBot  
 - Deck / demo video: `/demos/` on the site (also `frontend/public/demos/`)
-
-## Not in this repo
-
-Internal ops runbooks, grant paste drafts, brand archives, private teleprompters, partner ledgers, and ops wallet notes are **not** published. They live on the team machine only.

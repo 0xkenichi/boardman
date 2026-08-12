@@ -22,15 +22,10 @@ Boardman (by [sideQuest](https://playingsidequest.fun)) is **programmable USDC s
 
 ## What this repo is for
 
-Public source for **reviewers, judges, and builders**:
+Open source for **reviewers, judges, and builders** — contracts, agent stack, arena, and developer docs so third parties can understand and extend Boardman.
 
-- Settlement contract (`contracts/`)
-- Telegram bot + backend (`src/bot/`, `src/backend/`)
-- Boardman Stack / agentic economy (`src/stack/agentic/`)
-- Frontend + arena (`frontend/`)
-- Developer docs (`docs/developers/`)
-
-It is **not** a dump of every internal strategy note, grant draft, or ops runbook.
+**Live production** (Telegram bot, site, wallets, API keys) runs on your hosts.  
+Cloning this repo does **not** connect to or control the live bot.
 
 ## Quick start (builders)
 
