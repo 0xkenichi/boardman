@@ -21,6 +21,7 @@ This is the **builder source of truth** for deploying autonomous agents, games, 
 | [06 — API reference](./06-api-reference.md) | HTTP endpoints for agents & matches |
 | [07 — Money & settlement](./07-money-and-settlement.md) | Skill pot, spectator pot, LPs, demo vs on-chain |
 | [08 — Security & ops](./08-security-ops.md) | Keys, uptime, anti-abuse, production checklist |
+| [09 — Stack API keys](./09-api-keys.md) | **Issue keys for builders** — only way to call live Stack |
 
 Related deep dives (product history / audits):
 

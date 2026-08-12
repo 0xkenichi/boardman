@@ -1,16 +1,77 @@
-"""HTTP API for Boardman agentic arena — /api/stack/agentic/*"""
+"""HTTP API for Boardman agentic arena — /api/stack/agentic/*
+
+Auth (required for all routes except GET /health when keys are configured):
+  X-Rematch-Key / X-Boardman-Key / X-Stack-Key / Authorization: Bearer
+  See scripts/issue_stack_api_key.py and docs/developers/09-api-keys.md
+"""
 from __future__ import annotations
 
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+
+from gaming.src.backend.rematch_auth import (
+    ApiKeyPrincipal,
+    extract_api_key,
+    load_api_key_map,
+    resolve_api_key,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/stack/agentic", tags=["boardman-agentic"])
+
+
+def require_stack_api_key(
+    x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
+    x_boardman_key: Optional[str] = Header(default=None, alias="X-Boardman-Key"),
+    x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
+    authorization: Optional[str] = Header(default=None),
+) -> ApiKeyPrincipal:
+    """
+    Gate Stack agentic API.
+
+    - If no keys configured at all → 503 (refuse open production).
+    - If keys configured → must match one of them.
+    Set BOARDMAN_STACK_ALLOW_OPEN=1 only for local demos without keys.
+    """
+    import os
+
+    mapping = load_api_key_map()
+    allow_open = os.getenv("BOARDMAN_STACK_ALLOW_OPEN", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if not mapping:
+        if allow_open:
+            return ApiKeyPrincipal(key_id="open", builder_id="open_demo", is_master=False)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Boardman Stack API keys not configured. "
+                "Set REMATCH_API_KEY and/or BOARDMAN_STACK_API_KEYS "
+                "(see docs/developers/09-api-keys.md). "
+                "Local demo only: BOARDMAN_STACK_ALLOW_OPEN=1"
+            ),
+        )
+    got = extract_api_key(
+        x_rematch_key=x_rematch_key,
+        x_boardman_key=x_boardman_key,
+        x_stack_key=x_stack_key,
+        authorization=authorization,
+    )
+    principal = resolve_api_key(got)
+    if not principal:
+        raise HTTPException(
+            status_code=401,
+            detail="invalid or missing Stack API key (X-Rematch-Key / Bearer)",
+        )
+    return principal
 
 
 class CreateMatchBody(BaseModel):
@@ -37,6 +98,7 @@ class DemoBody(BaseModel):
 
 @router.get("/health")
 async def agentic_health():
+    """Liveness (no key) — does not list agents or accept writes."""
     from gaming.src.stack.agentic.registry import get_registry
     from gaming.src.stack.agentic.store import data_dir
 
@@ -47,11 +109,12 @@ async def agentic_health():
         "data_dir": str(data_dir()),
         "agents": len(reg.list_agents()),
         "games": len(reg.list_games()),
+        "auth": "X-Rematch-Key required for data routes",
     }
 
 
 @router.get("/games")
-async def list_games():
+async def list_games(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.registry import get_registry
     from gaming.src.stack.agentic.games.catalog import list_games as catalog_games
 
@@ -65,7 +128,7 @@ async def list_games():
 
 
 @router.get("/agents")
-async def list_agents():
+async def list_agents(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.registry import get_registry
 
     agents = get_registry().list_agents()
@@ -74,7 +137,7 @@ async def list_agents():
 
 
 @router.post("/agents/demo/seed")
-async def seed_demo_agents():
+async def seed_demo_agents(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.registry import get_registry
     from gaming.src.stack.agentic.chess.personas import get_persona
 
@@ -89,7 +152,10 @@ async def seed_demo_agents():
 
 
 @router.get("/agents/{agent_id}")
-async def get_agent(agent_id: str):
+async def get_agent(
+    agent_id: str,
+    _: ApiKeyPrincipal = Depends(require_stack_api_key),
+):
     from gaming.src.stack.agentic.registry import get_registry
     from gaming.src.stack.agentic.chess.personas import get_persona
     from gaming.src.stack.agentic import ledger
@@ -105,14 +171,14 @@ async def get_agent(agent_id: str):
 
 
 @router.get("/matches")
-async def list_matches(limit: int = 30):
+async def list_matches(limit: int = 30, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.matches import get_match_service
 
     return {"success": True, "matches": get_match_service().list_matches(limit)}
 
 
 @router.get("/matches/{match_id}")
-async def get_match(match_id: str):
+async def get_match(match_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.matches import get_match_service
 
     m = get_match_service().get(match_id)
@@ -122,7 +188,7 @@ async def get_match(match_id: str):
 
 
 @router.post("/matches")
-async def create_match(body: CreateMatchBody):
+async def create_match(body: CreateMatchBody, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.matches import get_match_service
 
     try:
@@ -140,7 +206,7 @@ async def create_match(body: CreateMatchBody):
 
 
 @router.post("/matches/{match_id}/lock")
-async def lock_match(match_id: str):
+async def lock_match(match_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.matches import get_match_service
 
     try:
@@ -151,7 +217,7 @@ async def lock_match(match_id: str):
 
 
 @router.post("/matches/{match_id}/play")
-async def play_match(match_id: str, body: RunBody = RunBody()):
+async def play_match(match_id: str, body: RunBody = RunBody(), _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.matches import get_match_service
 
     try:
@@ -177,7 +243,7 @@ class DemoGameBody(BaseModel):
 
 
 @router.post("/demo/game")
-async def demo_any_game(body: DemoGameBody = DemoGameBody()):
+async def demo_any_game(body: DemoGameBody = DemoGameBody(), _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Raja vs Nero on any catalog game — lock, play, fees, spectator pot."""
     from gaming.src.stack.agentic.matches import get_match_service
 
@@ -212,7 +278,7 @@ class RegisterAgentBody(BaseModel):
 
 
 @router.post("/agents/register")
-async def register_agent(body: RegisterAgentBody):
+async def register_agent(body: RegisterAgentBody, principal: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Deploy a third-party agent (wallet + identity + fees + optional webhook)."""
     from gaming.src.stack.agentic.registry import get_registry
 
@@ -261,11 +327,15 @@ async def register_agent(body: RegisterAgentBody):
             rec = data["agents"][rec["agent_id"]]
     except Exception as e:
         raise HTTPException(400, str(e)) from e
-    return {"success": True, "agent": rec}
+    return {
+        "success": True,
+        "agent": rec,
+        "issued_by": principal.builder_id,
+    }
 
 
 @router.post("/demo/chess")
-async def demo_chess(body: DemoBody = DemoBody()):
+async def demo_chess(body: DemoBody = DemoBody(), _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """
     Seed Raja vs Nero, dual-lock USDC, play live chess, settle.
     """
@@ -383,7 +453,7 @@ def _demo_stream(body: DemoBody):
 
 
 @router.get("/ledger")
-async def ledger_snapshot():
+async def ledger_snapshot(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic import ledger
 
     snap = ledger.snapshot()
@@ -398,14 +468,14 @@ async def ledger_snapshot():
 
 
 @router.get("/time-controls")
-async def time_controls():
+async def time_controls(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.clock import list_time_controls
 
     return {"success": True, "controls": list_time_controls()}
 
 
 @router.get("/economy/policy")
-async def economy_policy():
+async def economy_policy(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Public fee / deploy policy for creators wiring agents."""
     from gaming.src.stack.agentic.economy.fees import (
         DEFAULT_PLATFORM_FEE_BPS,
@@ -447,7 +517,7 @@ class BetBody(BaseModel):
 
 
 @router.post("/matches/{match_id}/spectator/bet")
-async def spectator_bet(match_id: str, body: BetBody):
+async def spectator_bet(match_id: str, body: BetBody, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from decimal import Decimal
     from gaming.src.stack.agentic.economy.spectator import SpectatorBook
 
@@ -464,7 +534,7 @@ async def spectator_bet(match_id: str, body: BetBody):
 
 
 @router.get("/matches/{match_id}/spectator")
-async def spectator_book(match_id: str):
+async def spectator_book(match_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.economy.spectator import SpectatorBook
 
     book = SpectatorBook().get(match_id)
@@ -474,7 +544,7 @@ async def spectator_book(match_id: str):
 
 
 @router.get("/matches/{match_id}/odds")
-async def match_odds(match_id: str, eval_pawns: Optional[float] = None, ply: int = 0):
+async def match_odds(match_id: str, eval_pawns: Optional[float] = None, ply: int = 0, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """
     Live market snapshot: prior win-rate + pool odds + eval blend + risk/reward.
     """

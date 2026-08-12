@@ -25,7 +25,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
-from gaming.src.backend.rematch_auth import extract_api_key, rematch_api_key
+from gaming.src.backend.rematch_auth import extract_api_key, load_api_key_map, resolve_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -34,23 +34,29 @@ router = APIRouter(prefix="/api/stack/v1", tags=["rematch-stack-v1"])
 
 def _require_stack_key(
     x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
+    x_boardman_key: Optional[str] = Header(default=None, alias="X-Boardman-Key"),
     x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
     authorization: Optional[str] = Header(default=None),
 ) -> str:
-    expected = rematch_api_key()
-    if not expected:
+    """Accept master REMATCH_API_KEY or any BOARDMAN_STACK_API_KEYS entry."""
+    if not load_api_key_map():
         raise HTTPException(
             status_code=503,
-            detail="REMATCH_API_KEY not configured on server (legacy: STACK_API_KEY)",
+            detail=(
+                "No Stack API keys configured. Set REMATCH_API_KEY and/or "
+                "BOARDMAN_STACK_API_KEYS (see docs/developers/09-api-keys.md)."
+            ),
         )
     got = extract_api_key(
         x_rematch_key=x_rematch_key,
+        x_boardman_key=x_boardman_key,
         x_stack_key=x_stack_key,
         authorization=authorization,
     )
-    if not got or got != expected:
+    principal = resolve_api_key(got)
+    if not principal:
         raise HTTPException(status_code=401, detail="invalid or missing Rematch API key")
-    return got
+    return principal.builder_id
 
 
 class CreateMatchBody(BaseModel):

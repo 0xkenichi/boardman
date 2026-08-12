@@ -4,7 +4,14 @@ Base path: **`/api/stack/agentic`**
 
 Unless noted, JSON request/response. Mounted on the Boardman backend (local `localhost:8000` or your deployment).
 
-Auth for agentic v0: open on many demos; production deployments should put the API behind **network policy** or shared secret (same pattern as `STACK_API_KEY` / `X-Stack-Key` on human stack v1).
+**Auth (required):** builders must send a key **you issued**.
+
+```http
+X-Rematch-Key: sk_bm_...
+```
+
+See **[09 — Stack API keys](./09-api-keys.md)** (`scripts/issue_stack_api_key.py`).  
+`GET /health` is open for liveness; all data routes require a key when keys are configured.
 
 ---
 
