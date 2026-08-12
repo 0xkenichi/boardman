@@ -449,6 +449,31 @@
     }
     details.moves-box summary::-webkit-details-marker { display: none; }
     details.moves-box[open] summary { margin-bottom: 6px; color: #e4e4e7; }
+    .auth-pill {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      font-size: 0.78rem; color: var(--muted); max-width: 420px;
+    }
+    .auth-pill.ok { color: #bbf7d0; }
+    .auth-pill strong { color: #e4e4e7; }
+    .tg-modal {
+      position: fixed; inset: 0; z-index: 80;
+      background: rgba(0,0,0,0.65);
+      display: flex; align-items: center; justify-content: center;
+      padding: 16px;
+    }
+    .tg-modal[hidden] { display: none !important; }
+    .tg-modal-card {
+      background: var(--panel); border: 1px solid var(--line);
+      border-radius: 16px; padding: 20px; max-width: 380px; width: 100%;
+    }
+    .tg-modal-card h3 { margin: 0 0 8px; font-size: 1.05rem; }
+    .wallet-box {
+      border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px;
+      margin-bottom: 12px; background: #0a0a10;
+    }
+    .wallet-box .wb-title { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+    .wallet-box .wb-bal { font-size: 1.15rem; font-weight: 700; margin-top: 4px; }
+    .wallet-box .wb-addr { font-size: 0.68rem; color: var(--muted); word-break: break-all; margin-top: 4px; }
   </style>
 </head>
 <body class="mode-classic view-audience" data-bm-nav>
@@ -465,9 +490,23 @@
         <button type="button" id="viewAudience" class="on">Spectator</button>
         <button type="button" id="viewCreator">Creator desk</button>
       </div>
+      <div class="auth-pill" id="authPill">
+        <span id="authLabel">Sign in to bet with your Telegram wallet</span>
+        <button type="button" class="secondary" id="btnTgLogin" style="padding:6px 10px;font-size:0.78rem">Log in with Telegram</button>
+        <button type="button" class="secondary" id="btnLogout" style="padding:6px 10px;font-size:0.78rem;display:none">Log out</button>
+      </div>
       <div class="pill creator-only" id="enginePill">Stockfish GM · loading…</div>
     </div>
   </header>
+  <div id="tgLoginModal" class="tg-modal" hidden>
+    <div class="tg-modal-card">
+      <h3>Log in with Telegram</h3>
+      <p class="hint">Same account as the Boardman bot. Your play wallet balance is used for spectator bets.</p>
+      <div id="tgWidgetHost" style="min-height:48px;display:flex;justify-content:center"></div>
+      <p class="hint" id="tgLoginHint">Open the bot once with /start if this is your first time.</p>
+      <button type="button" class="secondary" id="tgModalClose" style="margin-top:12px;width:100%">Close</button>
+    </div>
+  </div>
 
   <div class="layout">
     <section class="panel">
@@ -522,6 +561,11 @@
     <aside class="panel side">
       <!-- SPECTATOR SURFACE -->
       <div class="audience-only">
+        <div class="wallet-box" id="walletBox">
+          <div class="wb-title">Your Boardman wallet (Telegram)</div>
+          <div class="wb-bal" id="walletBal">Sign in to load balance</div>
+          <div class="wb-addr mono" id="walletAddr">—</div>
+        </div>
         <div class="pot-banner">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
             <div>
@@ -535,8 +579,8 @@
         </div>
 
         <p class="hint">
-          Set how much you want to stake, then pick a side.
-          You can’t bet more than room left in the pot.
+          Log in with Telegram to bet from the <strong>same wallet</strong> as the bot.
+          You can’t bet more than room left in the pot or your balance.
         </p>
 
         <div class="bet-amount-box">
@@ -799,6 +843,11 @@
     let matchCap = 20;
     let matchBinding = "—";
     let betAmount = 1; // spectator stake (slider + custom input)
+    // Telegram → same Boardman profile / play wallet as the bot
+    let tgUser = null; // { authenticated, profileId, tag, name, balance, address }
+    let tgBotUsername = "myboardmanOfficialBot";
+    let tgBotUrl = "https://t.me/myboardmanOfficialBot";
+    let betInFlight = false;
     // stats for prior odds
     let form = {
       raja: { wins: 12, losses: 8, draws: 2 },
@@ -1054,17 +1103,22 @@
       syncBetAmountUI(room);
       const canBet = st === "open" && room >= 0.25 - 0.001;
       const amt = clampBetAmount(betAmount, room);
+      const loggedIn = !!(tgUser && tgUser.authenticated);
       if (el("betA")) {
-        el("betA").disabled = !canBet;
-        el("betA").textContent = canBet
+        el("betA").disabled = !canBet || betInFlight;
+        el("betA").textContent = !loggedIn
+          ? "Log in to bet on Raja"
+          : canBet
           ? `Bet $${amt.toFixed(2)} on Raja`
           : st === "open"
             ? "Pot full"
             : "Bets closed";
       }
       if (el("betB")) {
-        el("betB").disabled = !canBet;
-        el("betB").textContent = canBet
+        el("betB").disabled = !canBet || betInFlight;
+        el("betB").textContent = !loggedIn
+          ? "Log in to bet on Nero"
+          : canBet
           ? `Bet $${amt.toFixed(2)} on Nero`
           : st === "open"
             ? "Pot full"
@@ -1164,8 +1218,162 @@
       renderMarket();
     }
 
-    function placeBet(side) {
+    function renderAuth() {
+      const pill = el("authPill");
+      const label = el("authLabel");
+      const loginBtn = el("btnTgLogin");
+      const logoutBtn = el("btnLogout");
+      if (tgUser && tgUser.authenticated) {
+        if (pill) pill.classList.add("ok");
+        const bal =
+          tgUser.balance != null && Number.isFinite(Number(tgUser.balance))
+            ? Number(tgUser.balance).toFixed(2)
+            : "—";
+        if (label) {
+          label.innerHTML =
+            `<strong>@${escapeHtml(tgUser.tag || "player")}</strong> · $${bal} USDC`;
+        }
+        if (loginBtn) loginBtn.style.display = "none";
+        if (logoutBtn) logoutBtn.style.display = "";
+        setText("walletBal", `$${bal} USDC spendable`);
+        setText(
+          "walletAddr",
+          tgUser.address
+            ? tgUser.address
+            : "Wallet loads after bot /start · same profile as Telegram"
+        );
+      } else {
+        if (pill) pill.classList.remove("ok");
+        if (label) label.textContent = "Sign in to bet with your Telegram wallet";
+        if (loginBtn) loginBtn.style.display = "";
+        if (logoutBtn) logoutBtn.style.display = "none";
+        setText("walletBal", "Sign in to load balance");
+        setText("walletAddr", "—");
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    async function refreshWallet() {
+      try {
+        const res = await fetch("/api/rematch/app/me", { credentials: "include" });
+        const data = await res.json();
+        if (data && data.ok) {
+          tgUser = {
+            authenticated: true,
+            profileId: data.profileId,
+            tag: data.tag,
+            name: data.name,
+            balance: data.balance,
+            address: data.address || "",
+            demo: data.demo,
+          };
+          renderAuth();
+          return true;
+        }
+      } catch (e) {
+        /* ignore */
+      }
+      tgUser = null;
+      renderAuth();
+      return false;
+    }
+
+    async function loadAuthConfig() {
+      try {
+        const res = await fetch("/api/agentic/auth-config");
+        const data = await res.json();
+        if (data && data.bot_username) tgBotUsername = data.bot_username;
+        if (data && data.bot_url) tgBotUrl = data.bot_url;
+      } catch (e) {
+        /* defaults */
+      }
+    }
+
+    function openTgLoginModal() {
+      const modal = el("tgLoginModal");
+      const host = el("tgWidgetHost");
+      if (!modal || !host) return;
+      modal.hidden = false;
+      host.innerHTML = "";
+      // Official Telegram Login Widget
+      window.onTelegramAuth = async function (user) {
+        try {
+          const body = { mode: "telegram", ...user };
+          const res = await fetch("/api/rematch/app/session", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const data = await res.json();
+          if (data && data.ok) {
+            modal.hidden = true;
+            await refreshWallet();
+            log(`Signed in as @${tgUser?.tag || data.tag} — bets use your Boardman wallet`);
+            setStatus("Logged in with Telegram — your bot wallet is ready", true);
+            return;
+          }
+          if (data && data.error === "open_bot_first") {
+            setText(
+              "tgLoginHint",
+              "Open the Boardman bot once (/start), then try again. " + (data.bot || tgBotUrl)
+            );
+            log("Open Telegram bot first: " + (data.bot || tgBotUrl));
+            return;
+          }
+          setText("tgLoginHint", "Login failed: " + (data.error || data.message || res.status));
+          log("Telegram login failed: " + (data.error || res.status));
+        } catch (e) {
+          setText("tgLoginHint", "Login error: " + e.message);
+        }
+      };
+      const script = document.createElement("script");
+      script.src = "https://telegram.org/js/telegram-widget.js?22";
+      script.async = true;
+      script.setAttribute("data-telegram-login", tgBotUsername);
+      script.setAttribute("data-size", "large");
+      script.setAttribute("data-radius", "12");
+      script.setAttribute("data-onauth", "onTelegramAuth(user)");
+      script.setAttribute("data-request-access", "write");
+      host.appendChild(script);
+      setText(
+        "tgLoginHint",
+        "Uses @" + tgBotUsername + ". Same account as the bot. Domain must be allowed in BotFather."
+      );
+    }
+
+    async function logoutTg() {
+      try {
+        await fetch("/api/rematch/app/session", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: "logout" }),
+        });
+      } catch (e) {
+        /* ignore */
+      }
+      tgUser = null;
+      renderAuth();
+      log("Logged out");
+    }
+
+    async function placeBet(side) {
+      if (betInFlight) return;
       if (spectator.status !== "open") return;
+      if (!tgUser || !tgUser.authenticated) {
+        openTgLoginModal();
+        setStatus("Log in with Telegram to bet from your Boardman wallet", true);
+        log("Bet blocked — sign in with Telegram first");
+        return;
+      }
       const room = potRoom();
       if (room < 0.25 - 0.001) {
         spectator.status = "full";
@@ -1173,24 +1381,75 @@
         return;
       }
       let amount = clampBetAmount(betAmount, room);
+      // Cap by wallet balance when known
+      if (tgUser.balance != null && Number.isFinite(Number(tgUser.balance))) {
+        amount = Math.min(amount, Number(tgUser.balance));
+      }
       if (amount < 0.25 || amount > room + 0.0001) {
         log(`Bet rejected — amount $${amount} exceeds room $${room.toFixed(2)}`);
         setBetAmount(room);
         return;
       }
-      // Hard cap: never more than pot room
       amount = Math.min(amount, room);
       amount = Math.round(amount * 100) / 100;
-      spectator.bets.push({ side, amount });
-      if (side === "a") spectator.a += amount;
-      else spectator.b += amount;
-      maybeClosePot();
-      // Keep stake but clamp to new room
-      const newRoom = potRoom();
-      if (betAmount > newRoom) setBetAmount(newRoom > 0 ? newRoom : 0.25);
-      renderMarket();
-      const dec = side === "a" ? (el("decA") && el("decA").textContent) : (el("decB") && el("decB").textContent);
-      log(`Fan bet $${amount.toFixed(2)} on ${side === "a" ? "Raja" : "Nero"} @ ${dec || "?"}`);
+
+      betInFlight = true;
+      if (el("betA")) el("betA").disabled = true;
+      if (el("betB")) el("betB").disabled = true;
+      try {
+        const res = await fetch("/api/agentic/spectator-bet", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ amount, side, match_id: "arena" }),
+        });
+        const data = await res.json();
+        if (!data || !data.ok) {
+          if (data && data.error === "unauthorized") {
+            openTgLoginModal();
+            log("Session expired — sign in again");
+          } else if (data && data.error === "insufficient_balance") {
+            log(
+              "Insufficient Boardman balance ($" +
+                (data.balance != null ? Number(data.balance).toFixed(2) : "?") +
+                "). Fund via Telegram → Get money."
+            );
+            setStatus("Not enough USDC — fund wallet in the bot", true);
+            if (data.balance != null) tgUser.balance = data.balance;
+            renderAuth();
+          } else if (data && data.error === "stack_not_configured") {
+            log("Wallet API offline — set REMATCH_API_URL on host. " + (data.message || ""));
+            setStatus("Wallet backend offline — can't debit yet", true);
+          } else {
+            log("Bet failed: " + (data && (data.message || data.error) || res.status));
+            setStatus("Bet failed", true);
+          }
+          return;
+        }
+        if (data.balance != null) tgUser.balance = data.balance;
+        if (data.address) tgUser.address = data.address;
+        spectator.bets.push({ side, amount, paid: true, profileId: tgUser.profileId });
+        if (side === "a") spectator.a += amount;
+        else spectator.b += amount;
+        maybeClosePot();
+        const newRoom = potRoom();
+        if (betAmount > newRoom) setBetAmount(newRoom > 0 ? newRoom : 0.25);
+        renderAuth();
+        renderMarket();
+        const dec =
+          side === "a"
+            ? el("decA") && el("decA").textContent
+            : el("decB") && el("decB").textContent;
+        log(
+          `@${tgUser.tag} bet $${amount.toFixed(2)} on ${side === "a" ? "Raja" : "Nero"} @ ${dec || "?"} · bal $${Number(tgUser.balance || 0).toFixed(2)}`
+        );
+        setStatus(`Bet placed from Telegram wallet · $${amount.toFixed(2)}`, true);
+      } catch (e) {
+        log("Bet network error: " + e.message);
+      } finally {
+        betInFlight = false;
+        renderMarket();
+      }
     }
 
     function addLp(side, amount) {
@@ -1209,9 +1468,44 @@
       );
     }
 
-    function settleSpectator(winnerSide) {
+    async function creditWallet(amount, reason) {
+      if (!tgUser || !tgUser.authenticated || !(amount > 0)) return false;
+      try {
+        const res = await fetch("/api/agentic/spectator-payout", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ amount, reason }),
+        });
+        const data = await res.json();
+        if (data && data.ok) {
+          if (data.balance != null) tgUser.balance = data.balance;
+          renderAuth();
+          return true;
+        }
+        log("Payout API: " + (data && data.error || res.status));
+      } catch (e) {
+        log("Payout error: " + e.message);
+      }
+      return false;
+    }
+
+    async function settleSpectator(winnerSide) {
       const pot = spectator.a + spectator.b;
       if (!winnerSide || pot <= 0) {
+        // Draw / empty — refund this user's paid bets to Telegram wallet
+        let refund = 0;
+        for (const b of spectator.bets) {
+          if (b.paid) refund += b.amount;
+        }
+        if (refund > 0) {
+          const ok = await creditWallet(refund, "spectator_refund_draw");
+          log(
+            ok
+              ? `Refunded $${refund.toFixed(2)} to your Boardman wallet`
+              : `Draw refund $${refund.toFixed(2)} pending (API offline)`
+          );
+        }
         spectator.status = "settled";
         renderMarket();
         log("Spectator pot refunded (draw)");
@@ -1231,6 +1525,14 @@
       else form.nero.wins += 1;
       if (winnerSide === "a") form.nero.losses += 1;
       else form.raja.losses += 1;
+      if (youWin > 0) {
+        const ok = await creditWallet(youWin, "spectator_win");
+        log(
+          ok
+            ? `Credited $${youWin.toFixed(2)} winnings to your Telegram Boardman wallet`
+            : `Winnings $${youWin.toFixed(2)} calculated (credit API offline)`
+        );
+      }
       renderMarket();
       log(
         `Spectator settle: pot $${pot.toFixed(2)} · take $${(platform + creators).toFixed(2)} · your return $${youWin.toFixed(2)}`
@@ -1238,7 +1540,7 @@
       if (spectator.bets.length) {
         setStatus(
           youWin > 0
-            ? `You won $${youWin.toFixed(2)} from the pot`
+            ? `You won $${youWin.toFixed(2)} — paid to Boardman wallet`
             : "Your side lost — pot paid winners",
           true
         );
@@ -2235,14 +2537,14 @@
         log(
           `SKILL $${pot.toFixed(2)} → plat $${fee.toFixed(2)} · creator $${creatorFee.toFixed(2)} · bankroll +$${ownerPayout.toFixed(2)} (LP mark +$${lpCut.toFixed(2)}) · seed sunk`
         );
-        settleSpectator(winner === "raja" ? "a" : "b");
+        await settleSpectator(winner === "raja" ? "a" : "b");
       } else {
         // Draw: refund skill stakes + seeds
         bal.raja += matchStake + spectator.seedA;
         bal.nero += matchStake + spectator.seedB;
         setText("winnerLabel", "draw");
         setText("payoutLabel", "skill + seed refund both");
-        settleSpectator(null);
+        await settleSpectator(null);
       }
       renderMeta();
       highlightTurn();
@@ -2256,6 +2558,18 @@
     el("viewCreator").onclick = () => setUiView("creator");
     el("betA").onclick = () => placeBet("a");
     el("betB").onclick = () => placeBet("b");
+    if (el("btnTgLogin")) el("btnTgLogin").onclick = () => openTgLoginModal();
+    if (el("btnLogout")) el("btnLogout").onclick = () => logoutTg();
+    if (el("tgModalClose"))
+      el("tgModalClose").onclick = () => {
+        if (el("tgLoginModal")) el("tgLoginModal").hidden = true;
+      };
+    // Restore Telegram session + wallet on load
+    (async () => {
+      await loadAuthConfig();
+      await refreshWallet();
+      renderAuth();
+    })();
     if (el("betSlider")) {
       el("betSlider").addEventListener("input", (e) => {
         setBetAmount(e.target.value, { fromSlider: true });

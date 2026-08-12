@@ -172,6 +172,137 @@ async def web_wallet_snapshot(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@router.post("/spectator/bet")
+async def web_spectator_bet(
+    body: dict,
+    x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
+    x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
+    authorization: Optional[str] = Header(default=None),
+):
+    """
+    Debit a human play balance for an agent-arena spectator stake.
+    Same profile / wallet identity as Telegram bot.
+
+    body: { profile_id, amount, side, match_id? }
+    """
+    _require_key(x_rematch_key, x_stack_key, authorization)
+    profile_id = str(body.get("profile_id") or "").strip()
+    try:
+        amount = float(body.get("amount") or 0)
+    except (TypeError, ValueError):
+        amount = 0.0
+    side = str(body.get("side") or "").strip().lower()
+    match_id = str(body.get("match_id") or "arena")[:64]
+
+    if not profile_id:
+        raise HTTPException(status_code=400, detail="profile_id required")
+    if amount < 0.25:
+        raise HTTPException(status_code=400, detail="amount must be >= 0.25")
+    if side not in ("a", "b", "raja", "nero", "white", "black"):
+        raise HTTPException(status_code=400, detail="side must be a|b|raja|nero")
+    if side in ("raja", "white"):
+        side = "a"
+    if side in ("nero", "black"):
+        side = "b"
+
+    try:
+        from gaming.src.backend.services.safety import is_paused
+        from gaming.src.backend.services.clawstation_circle import get_balance_summary
+        from gaming.src.backend.db_layer_blockchain import debit_wallet, get_wallet_balance
+
+        if is_paused():
+            raise HTTPException(status_code=503, detail="platform_paused")
+
+        summary = await get_balance_summary(profile_id)
+        # Prefer internal ledger (bot play balance); fall back to spendable view
+        ledger = float(summary.get("ledger_usdc") or 0)
+        spendable = float(summary.get("spendable_usdc") or 0)
+        available = max(ledger, spendable)
+        if available + 1e-9 < amount:
+            return {
+                "success": False,
+                "error": "insufficient_balance",
+                "balance": available,
+                "address": summary.get("address") or "",
+                "message": "Not enough USDC on your Boardman wallet. Fund via Telegram bot → Get money.",
+            }
+
+        ok = await debit_wallet(profile_id, amount)
+        if not ok:
+            bal = await get_wallet_balance(profile_id)
+            return {
+                "success": False,
+                "error": "insufficient_balance",
+                "balance": float(bal),
+                "address": summary.get("address") or "",
+            }
+
+        new_bal = await get_wallet_balance(profile_id)
+        try:
+            from decimal import Decimal
+
+            from gaming.src.backend.services.wallet_activity import log_debit
+
+            log_debit(
+                profile_id,
+                Decimal(str(amount)),
+                str(summary.get("chain_id") or "arc"),
+                status="spectator_bet",
+                source=f"arena:{match_id}:{side}",
+            )
+        except Exception:
+            pass
+
+        return {
+            "success": True,
+            "profile_id": profile_id,
+            "amount": amount,
+            "side": side,
+            "match_id": match_id,
+            "balance": float(new_bal),
+            "address": summary.get("address") or "",
+            "wallet": summary.get("address") or "",
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("[RematchWeb] spectator bet failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/spectator/payout")
+async def web_spectator_payout(
+    body: dict,
+    x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
+    x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
+    authorization: Optional[str] = Header(default=None),
+):
+    """
+    Credit winnings (or refund) back to the same Telegram-linked profile wallet.
+    body: { profile_id, amount, reason? }
+    """
+    _require_key(x_rematch_key, x_stack_key, authorization)
+    profile_id = str(body.get("profile_id") or "").strip()
+    try:
+        amount = float(body.get("amount") or 0)
+    except (TypeError, ValueError):
+        amount = 0.0
+    reason = str(body.get("reason") or "spectator_payout")[:80]
+    if not profile_id:
+        raise HTTPException(status_code=400, detail="profile_id required")
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="amount must be positive")
+    try:
+        from gaming.src.backend.db_layer_blockchain import credit_wallet, get_wallet_balance
+
+        await credit_wallet(profile_id, amount, tx_hash=f"spectator:{reason}", source=reason)
+        bal = await get_wallet_balance(profile_id)
+        return {"success": True, "profile_id": profile_id, "amount": amount, "balance": float(bal)}
+    except Exception as exc:
+        logger.exception("[RematchWeb] spectator payout failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @router.get("/matches")
 async def web_match_history(
     profile_id: str = Query(...),
