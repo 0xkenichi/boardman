@@ -4,12 +4,14 @@ Google Gemini as a free *strategy amplifier* for Boardman agents.
 Every builder ships a different mind. Gemini does not replace strategy —
 it applies strategy_id / mind / strategy JSON you pass in.
 
-Env (free key from https://aistudio.google.com/apikey):
-  GEMINI_API_KEY_NERO=...            preferred Nero-scoped name
-  GEMINI_API_KEY=...                 or GOOGLE_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY
-  GEMINI_MODEL=gemini-2.0-flash      free-tier friendly
-  BOARDMAN_NERO_REASONERS=asi,gemini order of LLM attempts (then Stockfish)
-  BOARDMAN_ASI_AGENTS=nero           which agents use LLM layers (* or all = any)
+Per-agent keys (preferred):
+  GEMINI_API_KEY_NERO / GEMINI_API_KEY_RAJA / GEMINI_API_KEY_<SLUG>
+Shared fallback (only if agent is on BOARDMAN_LLM_AGENTS allow-list):
+  GEMINI_API_KEY / GOOGLE_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY
+
+Also:
+  GEMINI_MODEL=gemini-2.0-flash
+  BOARDMAN_LLM_REASONERS=asi,gemini   (or BOARDMAN_NERO_REASONERS)
   BOARDMAN_GEMINI_TIMEOUT_SEC=25
 """
 from __future__ import annotations
@@ -25,35 +27,35 @@ from typing import Any, Optional
 
 import chess
 
+from gaming.src.stack.agentic.runtime.agent_keys import (
+    gemini_enabled_for,
+    resolve_gemini_key,
+)
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "gemini-2.0-flash"
 API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
 
-def gemini_enabled() -> bool:
-    return bool(_api_key())
-
-
-def _api_key() -> str:
-    # Prefer Nero-scoped key if set (builders often name keys per agent)
-    return (
-        os.getenv("GEMINI_API_KEY_NERO")
+def gemini_enabled(agent_id: str = "", name: str = "") -> bool:
+    """True if this agent has a usable Gemini key (dedicated or shared+allow)."""
+    if agent_id or name:
+        return gemini_enabled_for(agent_id, name)
+    # Legacy: any key present at all
+    return bool(
+        resolve_gemini_key("nero", "nero")
+        or resolve_gemini_key("raja", "raja")
         or os.getenv("GEMINI_API_KEY")
         or os.getenv("GOOGLE_API_KEY")
-        or os.getenv("GOOGLE_GENERATIVE_AI_API_KEY")
-        or ""
-    ).strip()
+    )
 
 
+# Back-compat alias used by older hybrid_engine imports
 def agent_uses_llm(agent_id: str = "", name: str = "") -> bool:
-    """Same agent allow-list as ASI (BOARDMAN_ASI_AGENTS, default nero)."""
-    raw = (os.getenv("BOARDMAN_ASI_AGENTS") or "nero").strip().lower()
-    if raw in {"*", "all", "1", "true"}:
-        return True
-    tokens = [t.strip() for t in raw.split(",") if t.strip()]
-    hay = f"{agent_id} {name}".lower()
-    return any(t in hay for t in tokens)
+    from gaming.src.stack.agentic.runtime.agent_keys import llm_enabled_for
+
+    return llm_enabled_for(agent_id, name)
 
 
 def _try_parse(board: chess.Board, cand: str) -> Optional[chess.Move]:
@@ -98,10 +100,9 @@ def _parse_move_from_text(text: str, board: chess.Board) -> Optional[chess.Move]
     return None
 
 
-def _generate(prompt: str, *, timeout: float) -> str:
+def _generate(prompt: str, *, api_key: str, timeout: float) -> str:
     model = os.getenv("GEMINI_MODEL") or DEFAULT_MODEL
-    key = _api_key()
-    q = urllib.parse.urlencode({"key": key})
+    q = urllib.parse.urlencode({"key": api_key})
     url = f"{API_BASE}/models/{model}:generateContent?{q}"
     body = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
@@ -117,6 +118,7 @@ def _generate(prompt: str, *, timeout: float) -> str:
         headers={"Content-Type": "application/json", "User-Agent": "BoardmanAgent/gemini-reasoner"},
         method="POST",
     )
+    logger.info("[gemini] POST generateContent model=%s", model)
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
     cands = payload.get("candidates") or []
@@ -131,18 +133,23 @@ def reason_chess_move(
     board: chess.Board,
     *,
     agent_name: str = "Agent",
+    agent_id: str = "",
     persona: str = "",
     strategy: Optional[dict[str, Any]] = None,
     mind: Any = None,
     openings: Optional[list[str]] = None,
     strategy_id: str = "",
+    wallet_address: str = "",
     timeout_sec: Optional[float] = None,
 ) -> Optional[dict[str, Any]]:
     """
     Ask Gemini to pick a move that fits *this agent's* strategy.
     Builders pass different mind/strategy — Gemini amplifies that style, not a global bot.
+    Enforces FIDE rule book via system prompt + legal_moves filter.
     """
-    if not gemini_enabled():
+    api_key = resolve_gemini_key(agent_id, agent_name)
+    if not api_key:
+        logger.info("[gemini] no key for agent_id=%s name=%s — skip", agent_id, agent_name)
         return None
 
     from gaming.src.stack.agentic.runtime.strategy_prompt import (
@@ -150,6 +157,12 @@ def reason_chess_move(
         build_user_prompt,
         strategy_from_mind,
     )
+    from gaming.src.stack.agentic.chess.rule_book import is_legal_move, terminal_reason
+
+    term = terminal_reason(board)
+    if term:
+        logger.info("[gemini] position terminal (%s) — no move", term)
+        return None
 
     timeout = float(timeout_sec or os.getenv("BOARDMAN_GEMINI_TIMEOUT_SEC") or "25")
     legal = list(board.legal_moves)
@@ -167,10 +180,16 @@ def reason_chess_move(
     strat = strategy or strategy_from_mind(
         mind,
         agent_name=agent_name,
+        agent_id=agent_id,
         openings=openings,
         strategy_id=strategy_id,
         strategy_notes=persona,
+        wallet_address=wallet_address,
     )
+    if wallet_address and not strat.get("wallet_address"):
+        strat["wallet_address"] = wallet_address
+    if agent_id and not strat.get("agent_id"):
+        strat["agent_id"] = agent_id
     if persona and not strat.get("strategy_notes"):
         strat["strategy_notes"] = persona
     if persona and not strat.get("directive"):
@@ -186,13 +205,14 @@ def reason_chess_move(
     prompt = system + "\n\n" + user
 
     try:
-        raw = _generate(prompt, timeout=timeout)
+        raw = _generate(prompt, api_key=api_key, timeout=timeout)
+        logger.info("[gemini] ok agent=%s raw_len=%s", agent_name, len(raw))
     except Exception as exc:
-        logger.warning("[gemini] generate failed: %s", exc)
+        logger.warning("[gemini] generate failed agent=%s: %s", agent_name, exc)
         return None
 
     mv = _parse_move_from_text(raw, board)
-    if mv is None or mv not in board.legal_moves:
+    if mv is None or not is_legal_move(board, mv):
         logger.warning("[gemini] illegal or unparsed move from: %s", raw[:200])
         return None
 
@@ -209,5 +229,7 @@ def reason_chess_move(
         "raw": raw[:500],
         "model": os.getenv("GEMINI_MODEL") or DEFAULT_MODEL,
         "agent": strat.get("agent_name") or agent_name,
+        "agent_id": agent_id or strat.get("agent_id") or "",
+        "wallet_address": strat.get("wallet_address") or wallet_address,
         "strategy_id": strat.get("strategy_id") or "",
     }

@@ -1,21 +1,19 @@
 /**
  * LLM reasoning proxy for Boardman agents (server-side keys only).
  *
- * Gemini / ASI are a *plus* on each builder's strategy — not a fixed Nero bot.
- * Every builder ships a different mind; pass `strategy` (or we use a demo default
- * for Nero only). Stack still enforces: move must be legal.
+ * Per-agent keys (do not share one brain credential across agents):
+ *   GEMINI_API_KEY_NERO / GEMINI_API_KEY_RAJA / GEMINI_API_KEY_<SLUG>
+ *   ASI_ONE_API_KEY_NERO / ASI_ONE_API_KEY_RAJA / ASI_ONE_API_KEY_<SLUG>
+ * Shared fallback only if agent is on BOARDMAN_LLM_AGENTS allow-list:
+ *   GEMINI_API_KEY / ASI_ONE_API_KEY
  *
- * Order (BOARDMAN_NERO_REASONERS, default asi,gemini):
- *   1. ASI:One  (ASI_ONE_API_KEY)
- *   2. Gemini   (GEMINI_API_KEY / GOOGLE_API_KEY)
- * Then client falls back to Stockfish.
+ * Every agent is bound to wallet_address for stakes; chess legality is FIDE.
+ * Rule book is injected into the system prompt; only legal_moves may be returned.
  *
  * POST {
- *   fen, agent?, legal_moves, legal_san?,
- *   strategy?: { agent_name, directive, archetype, blurb, strategy_id,
- *                strategy_notes, principles, avoid, openings, aggression, ... }
+ *   fen, agent?, agent_id?, wallet?, legal_moves, legal_san?,
+ *   strategy?: { ... mind / strategy fields, wallet_address }
  * }
- * → { ok, san, uci, source, model, strategy_id } | { ok:false, error, fallback:true }
  */
 import { NextRequest, NextResponse } from "next/server";
 
@@ -26,9 +24,28 @@ const ASI_BASE = process.env.ASI_ONE_BASE_URL || "https://api.asi1.ai/v1";
 const ASI_MODEL = process.env.ASI_ONE_MODEL || "asi1-mini";
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 
+const RULE_BOOK_COMPACT = `
+=== BOARDMAN CHESS RULE BOOK (MANDATORY — NEVER BREAK) ===
+Source: FIDE Laws of Chess (Articles 1–5). You are bound by these rules.
+
+1. BOARD & SETUP — 8×8, White moves first, alternate turns, one legal move.
+2. PIECES — K:1 sq; Q: rank/file/diag; R: rank/file; B: diag; N: L-jump; P: fwd 1/2, capture diag.
+3. CHECK — must resolve (move king / capture / block). NEVER leave own king in check.
+4. CHECKMATE — king in check with no legal escape → lose. Game over.
+5. CASTLING — king 2 toward rook, rook to crossed square; only if neither moved, path clear, not through/into/out of check.
+6. EN PASSANT — only on the move immediately after opponent double-pawn push.
+7. PROMOTION — pawn on last rank must become Q/R/B/N same move.
+8. ILLEGAL — anything not in the provided legal_moves list is FORBIDDEN.
+9. DRAWS — stalemate, dead position, repetition, 50/75-move as applicable.
+10. Strategy never overrides legality. Reply JSON only: {"move":"<UCI or SAN from list>"}.
+=== END RULE BOOK ===
+`.trim();
+
 type Strategy = {
   agent_name?: string;
   agent_id?: string;
+  wallet_address?: string;
+  wallet?: string;
   directive?: string;
   archetype?: string;
   blurb?: string;
@@ -44,7 +61,6 @@ type Strategy = {
   draw_aversion?: number;
 };
 
-/** Demo default only when arena omits strategy for Nero — builders should send their own. */
 const NERO_DEMO_STRATEGY: Strategy = {
   agent_name: "Nero",
   agent_id: "agent_nero_sicilian_french",
@@ -62,47 +78,116 @@ const NERO_DEMO_STRATEGY: Strategy = {
   draw_aversion: 0.9,
 };
 
-function asiKey(): string {
-  return (process.env.ASI_ONE_API_KEY || process.env.ASI_API_KEY || "").trim();
+const RAJA_DEMO_STRATEGY: Strategy = {
+  agent_name: "Raja",
+  agent_id: "agent_raja_kia_alekhine",
+  directive: "WIN by attack. Attack is the best defence. Hunt the king, force mates.",
+  archetype: "attacker",
+  blurb: "Mate-hungry attacker. KIA storms, Open Sicilian Yugoslav, Italian pressure.",
+  strategy_id: "raja_mate_hunter_v3",
+  strategy_notes: "Initiative first; king hunts; refuse quiet equality when an attack exists.",
+  openings: ["kings_indian_attack", "yugoslav_attack", "italian_fried_liver", "alekhines_defence"],
+  aggression: 1.85,
+  king_attack: 1.9,
+  counterpunch: 0.55,
+  sacrifice_bias: 1.55,
+  draw_aversion: 1.7,
+};
+
+function agentSlugs(agent: string, agentId: string): string[] {
+  const hay = `${agent} ${agentId}`.toLowerCase();
+  const out: string[] = [];
+  const push = (s: string) => {
+    const t = s.replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    if (t && !out.includes(t)) out.push(t);
+  };
+  if (agent) push(agent);
+  if (agentId) {
+    push(agentId);
+    for (const p of agentId.replace(/-/g, "_").split("_")) {
+      if (p && !["agent", "v1", "v2", "v3"].includes(p)) push(p);
+    }
+  }
+  if (hay.includes("nero")) push("nero");
+  if (hay.includes("raja")) push("raja");
+  return out;
 }
-function geminiKey(): string {
-  // Prefer Nero-scoped key if set (e.g. GEMINI_API_KEY_NERO from Vercel)
-  return (
-    process.env.GEMINI_API_KEY_NERO ||
+
+function allowList(): string[] {
+  const raw = (process.env.BOARDMAN_LLM_AGENTS || process.env.BOARDMAN_ASI_AGENTS || "nero,raja").toLowerCase();
+  if (raw === "*" || raw === "all") return ["*"];
+  return raw.split(",").map((t) => t.trim()).filter(Boolean);
+}
+
+function onAllowList(agent: string, agentId: string): boolean {
+  const tokens = allowList();
+  if (tokens.includes("*")) return true;
+  const hay = `${agent} ${agentId}`.toLowerCase();
+  return tokens.some((t) => hay.includes(t));
+}
+
+function resolveGeminiKey(agent: string, agentId: string): string {
+  const slugs = agentSlugs(agent, agentId);
+  for (const s of slugs) {
+    const k = (process.env[`GEMINI_API_KEY_${s.toUpperCase()}`] || "").trim();
+    if (k) return k;
+  }
+  const shared = (
     process.env.GEMINI_API_KEY ||
     process.env.GOOGLE_API_KEY ||
     process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
     ""
   ).trim();
+  if (shared && onAllowList(agent, agentId)) return shared;
+  // historical Nero-scoped shared
+  const nero = (process.env.GEMINI_API_KEY_NERO || "").trim();
+  if (nero && `${agent} ${agentId}`.toLowerCase().includes("nero")) return nero;
+  return "";
 }
 
-function agentAllowed(agent: string): boolean {
-  const raw = (process.env.BOARDMAN_ASI_AGENTS || "nero").toLowerCase();
-  if (raw === "*" || raw === "all") return true;
-  return raw.split(",").some((t) => agent.toLowerCase().includes(t.trim()));
+function resolveAsiKey(agent: string, agentId: string): string {
+  const slugs = agentSlugs(agent, agentId);
+  for (const s of slugs) {
+    const k = (
+      process.env[`ASI_ONE_API_KEY_${s.toUpperCase()}`] ||
+      process.env[`ASI_API_KEY_${s.toUpperCase()}`] ||
+      ""
+    ).trim();
+    if (k) return k;
+  }
+  const shared = (process.env.ASI_ONE_API_KEY || process.env.ASI_API_KEY || "").trim();
+  if (shared && onAllowList(agent, agentId)) return shared;
+  return "";
 }
 
 function reasonerOrder(): string[] {
-  const raw = (process.env.BOARDMAN_NERO_REASONERS || "asi,gemini").toLowerCase().replace(/\s+/g, "");
+  const raw = (process.env.BOARDMAN_LLM_REASONERS || process.env.BOARDMAN_NERO_REASONERS || "asi,gemini")
+    .toLowerCase()
+    .replace(/\s+/g, "");
   return raw.split(",").filter(Boolean);
 }
 
-function normalizeStrategy(raw: unknown, agent: string): Strategy {
+function normalizeStrategy(raw: unknown, agent: string, agentId: string, wallet: string): Strategy {
   const s = (raw && typeof raw === "object" ? raw : {}) as Strategy;
-  const base =
-    Object.keys(s).length > 0
-      ? s
-      : agent.toLowerCase().includes("nero")
-        ? { ...NERO_DEMO_STRATEGY }
-        : {
-            agent_name: agent,
-            directive: "WIN. Play the strongest move that fits your strategy.",
-            archetype: "balanced",
-            strategy_id: "custom",
-          };
+  let base: Strategy;
+  if (Object.keys(s).length > 0) {
+    base = s;
+  } else if (agent.toLowerCase().includes("nero") || agentId.toLowerCase().includes("nero")) {
+    base = { ...NERO_DEMO_STRATEGY };
+  } else if (agent.toLowerCase().includes("raja") || agentId.toLowerCase().includes("raja")) {
+    base = { ...RAJA_DEMO_STRATEGY };
+  } else {
+    base = {
+      agent_name: agent,
+      directive: "WIN. Play the strongest move that fits your strategy.",
+      archetype: "balanced",
+      strategy_id: "custom",
+    };
+  }
   return {
     agent_name: String(base.agent_name || agent),
-    agent_id: String(base.agent_id || ""),
+    agent_id: String(base.agent_id || agentId || ""),
+    wallet_address: String(base.wallet_address || base.wallet || wallet || ""),
     directive: String(base.directive || "WIN. Play the strongest move that fits your strategy."),
     archetype: String(base.archetype || "balanced"),
     blurb: String(base.blurb || ""),
@@ -119,17 +204,19 @@ function normalizeStrategy(raw: unknown, agent: string): Strategy {
   };
 }
 
-/** System prompt from *this builder's* strategy — not a global chess bot. */
 function buildSystemPrompt(strategy: Strategy): string {
   const name = strategy.agent_name || "Agent";
   const lines = [
     `You are ${name}, an autonomous chess agent on Boardman Stack.`,
     "You play only legal moves from the provided list.",
     "Your builder defined a unique strategy. Apply it — do not invent a different persona.",
+    "You MUST NEVER break the Boardman Chess Rule Book (FIDE Laws). Legality overrides style.",
     "",
     `Directive: ${strategy.directive || "WIN."}`,
     `Archetype: ${strategy.archetype || "balanced"}`,
   ];
+  if (strategy.wallet_address) lines.push(`Wallet identity (stakes / settlement): ${strategy.wallet_address}`);
+  if (strategy.agent_id) lines.push(`Agent id: ${strategy.agent_id}`);
   if (strategy.blurb) lines.push(`Scout report: ${strategy.blurb}`);
   if (strategy.strategy_id) lines.push(`Strategy id: ${strategy.strategy_id}`);
   if (strategy.strategy_notes || strategy.principles) {
@@ -156,8 +243,11 @@ function buildSystemPrompt(strategy: Strategy): string {
     "When choosing a move:",
     "1) Prefer lines that fit the strategy notes over generic engine chess.",
     "2) Still refuse blunders that clearly hang heavy material when avoidable.",
-    '3) Reply with JSON only: {"move":"<UCI or SAN from the legal list>"}.',
-    "No commentary outside JSON."
+    "3) Never leave your king in check; never break castling / en passant / promotion rules.",
+    '4) Reply with JSON only: {"move":"<UCI or SAN from the legal list>"}.',
+    "No commentary outside JSON.",
+    "",
+    RULE_BOOK_COMPACT
   );
   return lines.join("\n");
 }
@@ -167,7 +257,7 @@ function buildUserPrompt(fen: string, legalUci: string[], legalSan: string[]): s
     `FEN: ${fen}\n` +
     `Legal UCI: ${legalUci.slice(0, 60).join(", ")}${legalUci.length > 60 ? "…" : ""}\n` +
     `Legal SAN: ${legalSan.slice(0, 40).join(", ")}\n` +
-    "Pick one legal move that best executes YOUR strategy."
+    "Pick one legal move that best executes YOUR strategy. Never break the rule book."
   );
 }
 
@@ -212,15 +302,16 @@ async function tryAsi(
   system: string,
   user: string,
   legalUci: string[],
-  legalSan: string[]
+  legalSan: string[],
+  apiKey: string
 ): Promise<{ uci: string; san?: string; model: string; source: string } | { error: string }> {
-  const key = asiKey();
-  if (!key) return { error: "ASI_ONE_API_KEY not set" };
+  if (!apiKey) return { error: "ASI key not set for this agent" };
+  console.info("[asi-move] calling ASI model=%s", ASI_MODEL);
   const r = await fetch(`${ASI_BASE.replace(/\/$/, "")}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${key}`,
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
       model: ASI_MODEL,
@@ -235,6 +326,7 @@ async function tryAsi(
   });
   if (!r.ok) {
     const errText = await r.text().catch(() => "");
+    console.warn("[asi-move] ASI HTTP %s %s", r.status, errText.slice(0, 120));
     return { error: `ASI HTTP ${r.status}: ${errText.slice(0, 160)}` };
   }
   const data = (await r.json()) as {
@@ -245,7 +337,8 @@ async function tryAsi(
     content = content.map((p) => (typeof p === "string" ? p : p?.text || "")).join(" ");
   }
   const parsed = parseMove(String(content), legalUci, legalSan);
-  if (!parsed.uci) return { error: "ASI non-legal move" };
+  if (!parsed.uci) return { error: "ASI non-legal move (rule book reject)" };
+  console.info("[asi-move] ASI ok uci=%s", parsed.uci);
   return { uci: parsed.uci, san: parsed.san, model: ASI_MODEL, source: "asi1.ai" };
 }
 
@@ -253,13 +346,14 @@ async function tryGemini(
   system: string,
   user: string,
   legalUci: string[],
-  legalSan: string[]
+  legalSan: string[],
+  apiKey: string
 ): Promise<{ uci: string; san?: string; model: string; source: string } | { error: string }> {
-  const key = geminiKey();
-  if (!key) return { error: "GEMINI_API_KEY_NERO / GEMINI_API_KEY not set" };
+  if (!apiKey) return { error: "Gemini key not set for this agent" };
+  console.info("[asi-move] calling Gemini model=%s", GEMINI_MODEL);
   const url =
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent` +
-    `?key=${encodeURIComponent(key)}`;
+    `?key=${encodeURIComponent(apiKey)}`;
   const r = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -276,6 +370,7 @@ async function tryGemini(
   });
   if (!r.ok) {
     const errText = await r.text().catch(() => "");
+    console.warn("[asi-move] Gemini HTTP %s %s", r.status, errText.slice(0, 120));
     return { error: `Gemini HTTP ${r.status}: ${errText.slice(0, 160)}` };
   }
   const data = (await r.json()) as {
@@ -284,7 +379,8 @@ async function tryGemini(
   const parts = data.candidates?.[0]?.content?.parts || [];
   const content = parts.map((p) => p.text || "").join("\n");
   const parsed = parseMove(content, legalUci, legalSan);
-  if (!parsed.uci) return { error: "Gemini non-legal move" };
+  if (!parsed.uci) return { error: "Gemini non-legal move (rule book reject)" };
+  console.info("[asi-move] Gemini ok uci=%s", parsed.uci);
   return { uci: parsed.uci, san: parsed.san, model: GEMINI_MODEL, source: "gemini" };
 }
 
@@ -293,18 +389,36 @@ export async function POST(req: NextRequest) {
     const body = (await req.json().catch(() => ({}))) as {
       fen?: string;
       agent?: string;
+      agent_id?: string;
+      wallet?: string;
+      wallet_address?: string;
       legal_moves?: string[];
       legal_san?: string[];
       strategy?: Strategy;
       mind?: Strategy;
     };
-    const agent = String(body.agent || "nero");
-    if (!agentAllowed(agent)) {
+    const agent = String(body.agent || body.strategy?.agent_name || "nero");
+    const agentId = String(body.agent_id || body.strategy?.agent_id || "");
+    const wallet = String(body.wallet_address || body.wallet || body.strategy?.wallet_address || "");
+
+    const geminiKey = resolveGeminiKey(agent, agentId);
+    const asiKey = resolveAsiKey(agent, agentId);
+    if (!geminiKey && !asiKey) {
       return NextResponse.json(
-        { ok: false, error: "agent not configured for LLM reasoning", fallback: true },
+        {
+          ok: false,
+          error: `no LLM API key for agent '${agent}' (set GEMINI_API_KEY_${agent.toUpperCase()} or ASI_ONE_API_KEY_${agent.toUpperCase()})`,
+          fallback: true,
+          gemini_configured: false,
+          asi_configured: false,
+          agent,
+          agent_id: agentId,
+          wallet_address: wallet,
+        },
         { status: 200 }
       );
     }
+
     const fen = String(body.fen || "");
     if (!fen) {
       return NextResponse.json({ ok: false, error: "fen required", fallback: true }, { status: 400 });
@@ -318,18 +432,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const strategy = normalizeStrategy(body.strategy || body.mind, agent);
+    const strategy = normalizeStrategy(body.strategy || body.mind, agent, agentId, wallet);
     const system = buildSystemPrompt(strategy);
     const user = buildUserPrompt(fen, legalUci, legalSan);
 
     const errors: string[] = [];
+    const tried: string[] = [];
     for (const name of reasonerOrder()) {
       try {
         let result: { uci: string; san?: string; model: string; source: string } | { error: string };
         if (name === "asi" || name === "asi1" || name === "asi-one") {
-          result = await tryAsi(system, user, legalUci, legalSan);
+          tried.push("asi");
+          result = await tryAsi(system, user, legalUci, legalSan, asiKey);
         } else if (name === "gemini" || name === "google") {
-          result = await tryGemini(system, user, legalUci, legalSan);
+          tried.push("gemini");
+          result = await tryGemini(system, user, legalUci, legalSan, geminiKey);
         } else {
           continue;
         }
@@ -344,7 +461,11 @@ export async function POST(req: NextRequest) {
           source: result.source,
           model: result.model,
           agent: strategy.agent_name || agent,
+          agent_id: strategy.agent_id || agentId,
+          wallet_address: strategy.wallet_address || wallet,
           strategy_id: strategy.strategy_id || "",
+          rule_book: "fide-2023-boardman-v1",
+          api_call: result.source,
         });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -356,10 +477,14 @@ export async function POST(req: NextRequest) {
       ok: false,
       error: errors.length ? errors.join(" | ") : "no LLM reasoners configured",
       fallback: true,
-      tried: reasonerOrder(),
-      asi_configured: Boolean(asiKey()),
-      gemini_configured: Boolean(geminiKey()),
+      tried,
+      asi_configured: Boolean(asiKey),
+      gemini_configured: Boolean(geminiKey),
       strategy_id: strategy.strategy_id || "",
+      agent,
+      agent_id: agentId,
+      wallet_address: wallet,
+      rule_book: "fide-2023-boardman-v1",
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -368,16 +493,36 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
+  const demo = [
+    { agent: "nero", agent_id: "agent_nero_sicilian_french" },
+    { agent: "raja", agent_id: "agent_raja_kia_alekhine" },
+  ];
   return NextResponse.json({
     ok: true,
-    asi_configured: Boolean(asiKey()),
-    gemini_configured: Boolean(geminiKey()),
+    rule_book: {
+      version: "fide-2023-boardman-v1",
+      authority: "FIDE Laws of Chess (2023)",
+      binding: "all Boardman chess agents — never break",
+      doc: "/agentic/docs.html#chess-rule-book",
+    },
+    order: reasonerOrder(),
+    agents_allow: allowList(),
+    per_agent: demo.map((d) => ({
+      ...d,
+      gemini_configured: Boolean(resolveGeminiKey(d.agent, d.agent_id)),
+      asi_configured: Boolean(resolveAsiKey(d.agent, d.agent_id)),
+      gemini_dedicated: Boolean(
+        process.env[`GEMINI_API_KEY_${d.agent.toUpperCase()}`]
+      ),
+      asi_dedicated: Boolean(
+        process.env[`ASI_ONE_API_KEY_${d.agent.toUpperCase()}`]
+      ),
+    })),
     asi_model: ASI_MODEL,
     gemini_model: GEMINI_MODEL,
-    order: reasonerOrder(),
-    agents: process.env.BOARDMAN_ASI_AGENTS || "nero",
     note:
-      "LLM keys amplify each builder's strategy (pass strategy JSON). " +
-      "Not a one-size Nero bot. Stockfish remains free fallback. No Arc gas for thinking.",
+      "Set GEMINI_API_KEY_NERO and GEMINI_API_KEY_RAJA (and/or ASI_ONE_API_KEY_*) " +
+      "so each agent has its own teaching key. Shared keys only apply to BOARDMAN_LLM_AGENTS. " +
+      "Illegal moves are rejected. Stockfish remains free fallback.",
   });
 }

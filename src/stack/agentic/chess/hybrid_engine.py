@@ -36,12 +36,16 @@ class HybridEngine:
         mind: Mind,
         *,
         agent_id: str = "",
+        agent_name: str = "",
+        wallet_address: str = "",
         rng: Optional[random.Random] = None,
         depth: Optional[int] = None,
         think_ms: Optional[int] = None,
     ) -> None:
         self.mind = mind
         self.agent_id = agent_id
+        self.agent_name = agent_name or getattr(mind, "name", "") or agent_id
+        self.wallet_address = wallet_address
         self.rng = rng or random.Random()
         # GM mode: both sides use max free Stockfish. Personality is openings only —
         # never nerf Nero or divert to worse "attacking" moves (that looked stupid).
@@ -92,21 +96,27 @@ class HybridEngine:
             return bm
 
         # 1b) LLM reasoning layers (ASI → Gemini → then Stockfish)
-        # Free API keys only; no Arc gas. Order: BOARDMAN_NERO_REASONERS=asi,gemini
+        # Per-agent free API keys; no Arc gas. Order: BOARDMAN_LLM_REASONERS=asi,gemini
         # Each builder's mind/strategy is the prompt — LLMs amplify it, not replace it.
+        # FIDE rule book is injected; illegal moves are rejected.
         try:
+            from gaming.src.stack.agentic.runtime.agent_keys import (
+                asi_enabled_for,
+                gemini_enabled_for,
+                llm_enabled_for,
+                reasoner_order,
+            )
             from gaming.src.stack.agentic.runtime.asi_reasoner import (
-                agent_uses_asi,
-                asi_enabled,
                 reason_chess_move as asi_reason,
             )
             from gaming.src.stack.agentic.runtime.gemini_reasoner import (
-                gemini_enabled,
                 reason_chess_move as gemini_reason,
             )
             from gaming.src.stack.agentic.runtime.strategy_prompt import strategy_from_mind
+            from gaming.src.stack.agentic.chess.rule_book import is_legal_move
 
-            if agent_uses_asi(self.agent_id, getattr(self.mind, "name", "") or ""):
+            aname = self.agent_name or getattr(self.mind, "name", "") or self.agent_id
+            if llm_enabled_for(self.agent_id, aname):
                 openings = list(
                     getattr(self.mind, "openings", None)
                     or getattr(self.mind, "book_ids_white", None)
@@ -114,35 +124,57 @@ class HybridEngine:
                 )
                 strategy = strategy_from_mind(
                     self.mind,
-                    agent_name=self.agent_id or "agent",
+                    agent_name=aname or "agent",
                     agent_id=self.agent_id or "",
                     openings=openings if isinstance(openings, list) else [],
                     strategy_id=str(getattr(self.mind, "strategy_id", "") or ""),
+                    wallet_address=self.wallet_address or "",
                 )
-                order = (
-                    os.getenv("BOARDMAN_NERO_REASONERS") or "asi,gemini"
-                ).lower().replace(" ", "")
-                for name in [x for x in order.split(",") if x]:
+                for name in reasoner_order():
                     hit = None
                     try:
-                        if name in {"asi", "asi1", "asi-one"} and asi_enabled():
+                        if name in {"asi", "asi1", "asi-one"} and asi_enabled_for(
+                            self.agent_id, aname
+                        ):
+                            logger.info(
+                                "[%s] calling ASI reasoner wallet=%s",
+                                self.agent_id,
+                                self.wallet_address[:10] if self.wallet_address else "",
+                            )
                             hit = asi_reason(
                                 board,
-                                agent_name=strategy.get("agent_name") or self.agent_id,
+                                agent_name=strategy.get("agent_name") or aname,
+                                agent_id=self.agent_id,
                                 strategy=strategy,
                                 mind=self.mind,
+                                wallet_address=self.wallet_address,
                             )
-                        elif name in {"gemini", "google"} and gemini_enabled():
+                        elif name in {"gemini", "google"} and gemini_enabled_for(
+                            self.agent_id, aname
+                        ):
+                            logger.info(
+                                "[%s] calling Gemini reasoner wallet=%s",
+                                self.agent_id,
+                                self.wallet_address[:10] if self.wallet_address else "",
+                            )
                             hit = gemini_reason(
                                 board,
-                                agent_name=strategy.get("agent_name") or self.agent_id,
+                                agent_name=strategy.get("agent_name") or aname,
+                                agent_id=self.agent_id,
                                 strategy=strategy,
                                 mind=self.mind,
+                                wallet_address=self.wallet_address,
                             )
                     except Exception as exc:
                         logger.warning("[%s] %s reasoner failed: %s", self.agent_id, name, exc)
                         hit = None
                     if hit and hit.get("move") is not None:
+                        mv = hit["move"]
+                        if not is_legal_move(board, mv):
+                            logger.warning(
+                                "[%s] %s returned illegal move — discard", self.agent_id, name
+                            )
+                            continue
                         src = hit.get("source") or name
                         sid = hit.get("strategy_id") or strategy.get("strategy_id") or ""
                         tag = f"{src}:{hit.get('model')}"
@@ -150,7 +182,7 @@ class HybridEngine:
                             tag = f"{tag}:{sid}"
                         self.last_source = tag
                         self.last_eval = None
-                        return hit["move"]
+                        return mv
         except Exception as exc:
             logger.warning("[%s] LLM reasoners failed: %s", self.agent_id, exc)
 
@@ -441,3 +473,19 @@ def mind_from_agent(agent: dict[str, Any]) -> Mind:
     if agent.get("openings") and not raw.get("openings"):
         raw["openings"] = agent["openings"]
     return Mind.from_dict(raw)
+
+
+def hybrid_from_agent(
+    agent: dict[str, Any],
+    *,
+    rng: Optional[random.Random] = None,
+) -> HybridEngine:
+    """Wire HybridEngine to the agent's registry wallet + identity."""
+    mind = mind_from_agent(agent)
+    return HybridEngine(
+        mind,
+        agent_id=str(agent.get("agent_id") or ""),
+        agent_name=str(agent.get("name") or ""),
+        wallet_address=str(agent.get("wallet_address") or ""),
+        rng=rng,
+    )

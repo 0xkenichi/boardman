@@ -1347,15 +1347,51 @@
             return;
           }
           if (data && data.error === "open_bot_first") {
+            const botLink = data.bot || tgBotUrl;
             setText(
               "tgLoginHint",
-              "Open the Boardman bot once (/start), then try again. " + (data.bot || tgBotUrl)
+              "Telegram OK, but no profile row for your id in the DB. " +
+                "If you already use the bot, this is often a web API/DB config issue. " +
+                "Otherwise /start the bot once: " +
+                botLink +
+                (data.telegramId ? " (tg id " + data.telegramId + ")" : "")
             );
-            log("Open Telegram bot first: " + (data.bot || tgBotUrl));
+            log(
+              "open_bot_first · tg=" +
+                (data.telegramId || "?") +
+                " · " +
+                (data.message || botLink)
+            );
+            setStatus("Profile not found in DB for this Telegram login", true);
             return;
           }
-          setText("tgLoginHint", "Login failed: " + (data.error || data.message || res.status));
-          log("Telegram login failed: " + (data.error || res.status));
+          if (data && data.error === "profile_lookup_failed") {
+            setText(
+              "tgLoginHint",
+              "Telegram OK — website cannot reach Boardman database. " +
+                (data.detail || data.message || "") +
+                " (ops: check REMATCH_API_URL + REMATCH_API_KEY on Vercel)"
+            );
+            log(
+              "profile_lookup_failed · " +
+                (data.detail || "") +
+                " · status=" +
+                (data.status || res.status)
+            );
+            setStatus("Server cannot look up your bot account — config issue", true);
+            return;
+          }
+          setText(
+            "tgLoginHint",
+            "Login failed: " +
+              (data.error || data.message || res.status) +
+              (data.message ? " — " + data.message : "")
+          );
+          log(
+            "Telegram login failed: " +
+              (data.error || res.status) +
+              (data.message ? " · " + data.message : "")
+          );
         } catch (e) {
           setText("tgLoginHint", "Login error: " + e.message);
         }
@@ -1770,14 +1806,14 @@
     }
 
     function renderMeta() {
-      setText("rajaMeta", "Mate-hungry · sharp openings");
-      setText("neroMeta", "Solid counter · Sicilian / French");
-      setText("rajaWallet", "wallet " + AGENTS.raja.wallet);
-      setText("neroWallet", "wallet " + AGENTS.nero.wallet);
-      setText("rajaContract", "contract " + AGENTS.raja.contract);
-      setText("neroContract", "contract " + AGENTS.nero.contract);
-      setText("balRaja", bal.raja.toFixed(2) + " USDC");
-      setText("balNero", bal.nero.toFixed(2) + " USDC");
+      setText("rajaMeta", "Mate-hungry · plays as wallet");
+      setText("neroMeta", "Solid counter · plays as wallet");
+      setText("rajaWallet", "plays as " + AGENTS.raja.wallet);
+      setText("neroWallet", "plays as " + AGENTS.nero.wallet);
+      setText("rajaContract", "identity " + AGENTS.raja.contract);
+      setText("neroContract", "identity " + AGENTS.nero.contract);
+      setText("balRaja", bal.raja.toFixed(2) + " USDC @ wallet");
+      setText("balNero", bal.nero.toFixed(2) + " USDC @ wallet");
       setText("stakeLabel", "$" + (matchStake || 0).toFixed(2));
       setText("potLabel", "$" + ((matchStake || 0) * 2).toFixed(2));
       setText("lpRaja", "$" + lpPool.raja.toFixed(2));
@@ -2200,21 +2236,33 @@
       });
     }
 
-    async function llmMoveForNero(fen) {
-      // Nero demo: ASI/Gemini amplify *Nero's* strategy (not a global chess bot).
-      // Builders pass their own strategy JSON — every agent is built differently.
+    async function llmMoveForAgent(side, fen) {
+      // Per-agent ASI/Gemini keys amplify *this* agent's strategy + FIDE rule book.
+      // Agent plays under its wallet_address. Illegal moves are rejected server-side.
+      const A = AGENTS[side];
+      if (!A) return null;
       try {
-        setText("enginePill", "Nero · strategy + LLM (ASI / Gemini)…");
+        setText(
+          "enginePill",
+          `${A.name} · wallet ${shortAddr(A.wallet)} · LLM (ASI/Gemini)…`
+        );
+        log(`API call → /api/agentic/asi-move for ${A.name} (${A.wallet})`);
         const legal = game.moves({ verbose: true });
         const legal_moves = legal.map((m) => m.from + m.to + (m.promotion || ""));
         const legal_san = legal.map((m) => m.san);
-        const strategy = AGENTS.nero.strategy || null;
+        const strategy = {
+          ...(A.strategy || {}),
+          wallet_address: A.wallet,
+          agent_id: (A.strategy && A.strategy.agent_id) || "",
+        };
         const res = await fetch("/api/agentic/asi-move", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             fen,
-            agent: "nero",
+            agent: side,
+            agent_id: strategy.agent_id,
+            wallet_address: A.wallet,
             legal_moves,
             legal_san,
             strategy,
@@ -2228,32 +2276,80 @@
             san = p ? p.san : null;
           }
           if (san) {
-            const src = data.source === "gemini" ? "Gemini" : "ASI:One";
-            const sid = data.strategy_id || (strategy && strategy.strategy_id) || "";
+            const src =
+              data.source === "gemini"
+                ? "Gemini"
+                : data.source === "asi1.ai"
+                  ? "ASI:One"
+                  : data.source || "LLM";
+            const sid = data.strategy_id || strategy.strategy_id || "";
             setText(
               "enginePill",
-              `Nero · ${src}${sid ? " · " + sid : ""} · ${data.model || ""}`
+              `${A.name} · ${src}${sid ? " · " + sid : ""} · ${data.model || ""}`
             );
-            log(`Nero ${src}${sid ? " [" + sid + "]" : ""} → ${san}`);
+            log(
+              `API ok · ${A.name} · ${src}${data.model ? " " + data.model : ""}` +
+                `${sid ? " [" + sid + "]" : ""} · rule_book ${data.rule_book || "fide"} → ${san}` +
+                (data.wallet_address ? ` · wallet ${shortAddr(data.wallet_address)}` : "")
+            );
             return {
               san,
               uci: data.uci,
               source: data.source || "llm",
               eval: null,
+              api: true,
             };
           }
         }
         if (data && data.fallback) {
           log(
-            "LLM unavailable (" +
-              (data.error || "no keys") +
-              ") — Nero falls back to Stockfish (strategy still in openings/mind)"
+            `API fallback · ${A.name}: ${data.error || "no keys"}` +
+              ` (gemini=${data.gemini_configured ? "yes" : "no"} asi=${data.asi_configured ? "yes" : "no"})` +
+              " — Stockfish path (strategy still in openings/mind; rules still enforced)"
           );
         }
       } catch (e) {
-        log("LLM proxy: " + e.message + " — Nero Stockfish fallback");
+        log(`API error · ${A.name}: ${e.message} — Stockfish fallback`);
       }
       return null;
+    }
+
+    function shortAddr(a) {
+      if (!a || a.length < 12) return a || "—";
+      return a.slice(0, 6) + "…" + a.slice(-4);
+    }
+
+    async function probeLlmKeys() {
+      try {
+        const res = await fetch("/api/agentic/asi-move");
+        const data = await res.json();
+        if (!data || !data.ok) return;
+        const lines = (data.per_agent || [])
+          .map(
+            (p) =>
+              `${p.agent}: gemini=${p.gemini_configured ? "ON" : "off"}` +
+              `${p.gemini_dedicated ? "(dedicated)" : ""}` +
+              ` asi=${p.asi_configured ? "ON" : "off"}` +
+              `${p.asi_dedicated ? "(dedicated)" : ""}`
+          )
+          .join(" · ");
+        log(
+          `LLM key probe · ${lines || "no agents"} · order=${(data.order || []).join(",")}` +
+            ` · rule_book ${data.rule_book?.version || "?"}`
+        );
+        if (el("enginePill") && !playing) {
+          const any =
+            (data.per_agent || []).some((p) => p.gemini_configured || p.asi_configured);
+          setText(
+            "enginePill",
+            any
+              ? "LLM keys detected — agents will call ASI/Gemini"
+              : "No Gemini/ASI keys — set GEMINI_API_KEY_NERO / _RAJA on Vercel"
+          );
+        }
+      } catch (e) {
+        log("LLM key probe failed: " + e.message);
+      }
     }
 
     async function stockfishMove(forSide) {
@@ -2280,18 +2376,18 @@
       const depth = GM.depth;
       const fen = game.fen();
 
-      // Nero: free ASI:One and/or Gemini first (server keys). Raja = pure Stockfish.
-      if (forSide === "nero") {
-        const llm = await llmMoveForNero(fen);
+      // Per-agent free ASI:One / Gemini first (dedicated keys). Both agents eligible.
+      // Must obey FIDE rule book — server rejects illegal moves.
+      {
+        const llm = await llmMoveForAgent(forSide, fen);
         if (llm) return llm;
       }
 
-      // Local Stockfish WASM — full 5–10s think (Raja always; Nero fallback)
+      // Local Stockfish WASM — full 5–10s think (fallback when no LLM key / fail)
       try {
         setText(
           "enginePill",
-          `${forSide} thinking… ${(GM.movetimeMs / 1000).toFixed(0)}s` +
-            (forSide === "nero" ? " (SF fallback)" : "")
+          `${forSide} · ${shortAddr(AGENTS[forSide]?.wallet)} thinking… ${(GM.movetimeMs / 1000).toFixed(0)}s (SF)`
         );
         const t0 = performance.now();
         const sf = await localStockfishGo(fen, { depth, movetime: GM.movetimeMs });
@@ -2835,10 +2931,19 @@
     renderSpectator();
     setText(
       "enginePill",
-      "Stockfish · " + (GM.movetimeMs / 1000).toFixed(1) + "s/move"
+      "Stockfish · " + (GM.movetimeMs / 1000).toFixed(1) + "s/move · probing LLM keys…"
+    );
+    log(
+      "Agents play under wallet addresses · Raja " +
+        AGENTS.raja.wallet +
+        " · Nero " +
+        AGENTS.nero.wallet +
+        " · FIDE rule book is mandatory"
     );
     // Warm Stockfish WASM so first move isn't cold
     initLocalStockfish().catch((e) => log("SF warmup: " + e.message));
+    // Show whether Gemini/ASI keys are actually configured (why "Gemini not used")
+    probeLlmKeys();
   </script>
   <script src="/boardman-nav.js"></script>
 </body>

@@ -1,22 +1,16 @@
 """
 ASI:One (api.asi1.ai) as a free reasoning layer for Boardman agents.
 
-Architecture (what we mean by "who does what"):
-
-  Arc .............. money & settlement (USDC escrow, bankrolls) — not a brain
+Architecture:
+  Arc .............. money & settlement (USDC escrow) — not a brain
   Boardman Stack ... matchmaking, legal moves, stakes, spectators
-  ASI:One .......... optional LLM reasoning — *applies the builder's strategy*
+  ASI:One .......... optional LLM reasoning — applies the builder's strategy
+  Chess rule book .. FIDE laws — NEVER broken (prompt + legal_moves gate)
 
-Every builder ships a different mind. ASI does not invent a global chess persona;
-it amplifies the strategy declared in the agent manifest / mind / request payload.
-
-Env (free tier key from https://asi1.ai developer docs):
-  ASI_ONE_API_KEY=...          required for live ASI calls
-  ASI_ONE_BASE_URL=https://api.asi1.ai/v1
-  ASI_ONE_MODEL=asi1-mini      # free-leaning default; or asi1 / asi1-ultra
-  BOARDMAN_ASI_AGENTS=nero     # comma agent name/id substrings that use ASI
-  BOARDMAN_ASI_TIMEOUT_SEC=25
-  BOARDMAN_ASI_FALLBACK_SF=1   # if ASI fails, fall back to Stockfish
+Per-agent keys:
+  ASI_ONE_API_KEY_NERO / ASI_ONE_API_KEY_RAJA / ASI_ONE_API_KEY_<SLUG>
+Shared fallback if agent is on BOARDMAN_LLM_AGENTS:
+  ASI_ONE_API_KEY / ASI_API_KEY
 """
 from __future__ import annotations
 
@@ -30,32 +24,29 @@ from typing import Any, Optional
 
 import chess
 
+from gaming.src.stack.agentic.runtime.agent_keys import (
+    asi_enabled_for,
+    resolve_asi_key,
+)
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_BASE = "https://api.asi1.ai/v1"
 DEFAULT_MODEL = "asi1-mini"
 
 
-def asi_enabled() -> bool:
-    key = (os.getenv("ASI_ONE_API_KEY") or os.getenv("ASI_API_KEY") or "").strip()
-    return bool(key)
+def asi_enabled(agent_id: str = "", name: str = "") -> bool:
+    if agent_id or name:
+        return asi_enabled_for(agent_id, name)
+    return bool(resolve_asi_key("nero", "nero") or os.getenv("ASI_ONE_API_KEY"))
 
 
 def agent_uses_asi(agent_id: str = "", name: str = "") -> bool:
-    """Only agents listed in BOARDMAN_ASI_AGENTS (default: nero) use ASI."""
-    raw = (os.getenv("BOARDMAN_ASI_AGENTS") or "nero").strip().lower()
-    if raw in {"*", "all", "1", "true"}:
-        return True
-    tokens = [t.strip() for t in raw.split(",") if t.strip()]
-    hay = f"{agent_id} {name}".lower()
-    return any(t in hay for t in tokens)
+    """Agent may use ASI if it has a key (dedicated or shared+allow)."""
+    return asi_enabled_for(agent_id, name)
 
 
-def _api_key() -> str:
-    return (os.getenv("ASI_ONE_API_KEY") or os.getenv("ASI_API_KEY") or "").strip()
-
-
-def _post_chat(messages: list[dict[str, str]], *, timeout: float) -> str:
+def _post_chat(messages: list[dict[str, str]], *, api_key: str, timeout: float) -> str:
     base = (os.getenv("ASI_ONE_BASE_URL") or DEFAULT_BASE).rstrip("/")
     model = os.getenv("ASI_ONE_MODEL") or DEFAULT_MODEL
     url = f"{base}/chat/completions"
@@ -71,21 +62,20 @@ def _post_chat(messages: list[dict[str, str]], *, timeout: float) -> str:
         data=data,
         headers={
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {_api_key()}",
+            "Authorization": f"Bearer {api_key}",
             "User-Agent": "BoardmanAgent/asi-reasoner",
         },
         method="POST",
     )
+    logger.info("[asi] POST chat/completions model=%s", model)
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
-    # OpenAI-compatible shape
     choices = payload.get("choices") or []
     if not choices:
         raise RuntimeError(f"ASI empty choices: {payload}")
     msg = choices[0].get("message") or {}
     content = msg.get("content") or ""
     if isinstance(content, list):
-        # some APIs return content parts
         content = " ".join(
             str(p.get("text") if isinstance(p, dict) else p) for p in content
         )
@@ -93,12 +83,9 @@ def _post_chat(messages: list[dict[str, str]], *, timeout: float) -> str:
 
 
 def _parse_move_from_text(text: str, board: chess.Board) -> Optional[chess.Move]:
-    """Extract a legal SAN or UCI move from model text."""
     if not text:
         return None
-    # Prefer JSON {"move":"..."}
     try:
-        # find first {...}
         m = re.search(r"\{[^{}]+\}", text)
         if m:
             obj = json.loads(m.group(0))
@@ -109,13 +96,11 @@ def _parse_move_from_text(text: str, board: chess.Board) -> Optional[chess.Move]
     except Exception:
         pass
 
-    # UCI tokens
     for tok in re.findall(r"\b([a-h][1-8][a-h][1-8][qrbnQRBN]?)\b", text):
         mv = _try_parse(board, tok)
         if mv:
             return mv
 
-    # SAN-ish tokens (longest first)
     cleaned = text.replace("`", " ").replace('"', " ").replace("'", " ")
     for tok in sorted(re.findall(r"[A-Za-z0-9\+#=x\-]+", cleaned), key=len, reverse=True):
         if len(tok) < 2 or tok.lower() in {"move", "json", "best", "play", "san", "uci"}:
@@ -145,21 +130,22 @@ def reason_chess_move(
     board: chess.Board,
     *,
     agent_name: str = "Agent",
+    agent_id: str = "",
     persona: str = "",
     strategy: Optional[dict[str, Any]] = None,
     mind: Any = None,
     openings: Optional[list[str]] = None,
     strategy_id: str = "",
+    wallet_address: str = "",
     timeout_sec: Optional[float] = None,
 ) -> Optional[dict[str, Any]]:
     """
     Ask ASI:One for one legal move that fits *this agent's* strategy.
-
-    Builders pass different mind/strategy — ASI amplifies that style.
-    Returns {move, san, uci, source, raw, strategy_id} or None.
-    Free if you have an ASI_ONE_API_KEY. No Arc gas required.
+    Returns {move, san, uci, source, raw, strategy_id, wallet_address} or None.
     """
-    if not asi_enabled():
+    api_key = resolve_asi_key(agent_id, agent_name)
+    if not api_key:
+        logger.info("[asi] no key for agent_id=%s name=%s — skip", agent_id, agent_name)
         return None
 
     from gaming.src.stack.agentic.runtime.strategy_prompt import (
@@ -167,6 +153,11 @@ def reason_chess_move(
         build_user_prompt,
         strategy_from_mind,
     )
+    from gaming.src.stack.agentic.chess.rule_book import is_legal_move, terminal_reason
+
+    term = terminal_reason(board)
+    if term:
+        return None
 
     timeout = float(timeout_sec or os.getenv("BOARDMAN_ASI_TIMEOUT_SEC") or "25")
     legal = list(board.legal_moves)
@@ -184,10 +175,16 @@ def reason_chess_move(
     strat = strategy or strategy_from_mind(
         mind,
         agent_name=agent_name,
+        agent_id=agent_id,
         openings=openings,
         strategy_id=strategy_id,
         strategy_notes=persona,
+        wallet_address=wallet_address,
     )
+    if wallet_address and not strat.get("wallet_address"):
+        strat["wallet_address"] = wallet_address
+    if agent_id and not strat.get("agent_id"):
+        strat["agent_id"] = agent_id
     if persona and not strat.get("strategy_notes"):
         strat["strategy_notes"] = persona
     if persona and not strat.get("directive"):
@@ -207,14 +204,16 @@ def reason_chess_move(
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
+            api_key=api_key,
             timeout=timeout,
         )
+        logger.info("[asi] ok agent=%s raw_len=%s", agent_name, len(raw))
     except Exception as exc:
-        logger.warning("[asi] chat failed: %s", exc)
+        logger.warning("[asi] chat failed agent=%s: %s", agent_name, exc)
         return None
 
     mv = _parse_move_from_text(raw, board)
-    if mv is None or mv not in board.legal_moves:
+    if mv is None or not is_legal_move(board, mv):
         logger.warning("[asi] illegal or unparsed move from: %s", raw[:200])
         return None
 
@@ -231,5 +230,7 @@ def reason_chess_move(
         "raw": raw[:500],
         "model": os.getenv("ASI_ONE_MODEL") or DEFAULT_MODEL,
         "agent": strat.get("agent_name") or agent_name,
+        "agent_id": agent_id or strat.get("agent_id") or "",
+        "wallet_address": strat.get("wallet_address") or wallet_address,
         "strategy_id": strat.get("strategy_id") or "",
     }

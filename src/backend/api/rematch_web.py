@@ -53,23 +53,54 @@ async def web_profile_by_telegram(
     x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
     authorization: Optional[str] = Header(default=None),
 ):
-    """Resolve telegram_id → Rematch profile (for web login)."""
+    """Resolve telegram_id → Rematch profile (for web login).
+
+    Looks up Supabase ``profiles`` by ``telegram_id`` (same row the bot creates on /start).
+    """
     _require_key(x_rematch_key, x_stack_key, authorization)
     try:
         from gaming.src.bot.utils.db import _fetch_by_telegram_id
 
-        row = _fetch_by_telegram_id(int(telegram_id))
+        tid = int(telegram_id)
+        row = _fetch_by_telegram_id(tid)
+        # Some older rows stored telegram_id as text — retry string match
+        if not row:
+            try:
+                sb = _sb()
+                r = (
+                    sb.table("profiles")
+                    .select(
+                        "id, display_name, gaming_tag, gaming_tier, gaming_reputation_score, "
+                        "telegram_id, circle_wallet_id, gaming_deposit_address, play_points"
+                    )
+                    .eq("telegram_id", str(tid))
+                    .limit(1)
+                    .execute()
+                )
+                data = r.data or []
+                row = data[0] if data else None
+            except Exception:
+                logger.warning(
+                    "[RematchWeb] string telegram_id fallback failed for %s", tid, exc_info=True
+                )
     except Exception as exc:
         logger.exception("[RematchWeb] profile lookup failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     if not row:
+        logger.info("[RematchWeb] no profile for telegram_id=%s", telegram_id)
         return {
             "success": True,
             "found": False,
             "telegram_id": telegram_id,
             "message": "No profile yet — open the Telegram bot once (/start)",
         }
+    logger.info(
+        "[RematchWeb] found profile id=%s tag=%s for telegram_id=%s",
+        row.get("id"),
+        row.get("gaming_tag"),
+        telegram_id,
+    )
 
     return {
         "success": True,

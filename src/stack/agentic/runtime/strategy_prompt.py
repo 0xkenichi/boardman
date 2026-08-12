@@ -19,6 +19,7 @@ def strategy_from_mind(
     openings: Optional[list[str]] = None,
     strategy_id: str = "",
     strategy_notes: str = "",
+    wallet_address: str = "",
     extra: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Normalize strategy fields from a Mind object, dict, or free-form builder payload."""
@@ -60,6 +61,7 @@ def strategy_from_mind(
     return {
         "agent_name": agent_name or m.get("name") or "Agent",
         "agent_id": agent_id or m.get("agent_id") or "",
+        "wallet_address": wallet_address or str(m.get("wallet_address") or m.get("wallet") or ""),
         "directive": str(m.get("directive") or "WIN. Play the strongest move that fits your strategy."),
         "archetype": str(m.get("archetype") or "balanced"),
         "blurb": str(m.get("blurb") or ""),
@@ -77,16 +79,22 @@ def strategy_from_mind(
 
 
 def build_system_prompt(strategy: dict[str, Any]) -> str:
-    """System message: identity + builder strategy — not a fixed global chess bot."""
+    """System message: identity + builder strategy + mandatory FIDE rule book."""
     name = strategy.get("agent_name") or "Agent"
+    wallet = strategy.get("wallet_address") or strategy.get("wallet") or ""
     lines = [
         f"You are {name}, an autonomous chess agent on Boardman Stack.",
         "You play only legal moves from the provided list.",
         "Your builder defined a unique strategy. Apply it — do not invent a different persona.",
+        "You MUST NEVER break the Boardman Chess Rule Book (FIDE Laws). Legality overrides style.",
         "",
         f"Directive: {strategy.get('directive') or 'WIN.'}",
         f"Archetype: {strategy.get('archetype') or 'balanced'}",
     ]
+    if wallet:
+        lines.append(f"Wallet identity (stakes / settlement): {wallet}")
+    if strategy.get("agent_id"):
+        lines.append(f"Agent id: {strategy['agent_id']}")
     if strategy.get("blurb"):
         lines.append(f"Scout report: {strategy['blurb']}")
     if strategy.get("strategy_id"):
@@ -122,11 +130,14 @@ def build_system_prompt(strategy: dict[str, Any]) -> str:
             "When choosing a move:",
             "1) Prefer lines that fit the strategy notes over generic engine chess.",
             "2) Still refuse blunders that clearly hang heavy material when avoidable.",
-            "3) Reply with JSON only: {\"move\":\"<UCI or SAN from the legal list>\"}.",
+            "3) Never leave your king in check; never play illegal castling / en passant / promotion.",
+            "4) Reply with JSON only: {\"move\":\"<UCI or SAN from the legal list>\"}.",
             "No commentary outside JSON.",
         ]
     )
-    return "\n".join(lines)
+    from gaming.src.stack.agentic.chess.rule_book import rule_book_system_suffix
+
+    return "\n".join(lines) + rule_book_system_suffix()
 
 
 def build_user_prompt(

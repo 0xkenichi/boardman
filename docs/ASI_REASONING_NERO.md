@@ -61,16 +61,28 @@ Stack still enforces: **response must be one of `legal_moves`.**
 
 ### Strategy + free Gemini (also no Arc)
 1. Key from [Google AI Studio](https://aistudio.google.com/apikey).
-2. Env (any one of these names works):
+2. **Per-agent keys** (recommended — Nero and Raja each get their own brain key):
    ```
-   GEMINI_API_KEY_NERO=...   # preferred for Nero-scoped key
-   # or GEMINI_API_KEY=... / GOOGLE_API_KEY=...
+   GEMINI_API_KEY_NERO=...
+   GEMINI_API_KEY_RAJA=...
+   ASI_ONE_API_KEY_NERO=...   # optional
+   ASI_ONE_API_KEY_RAJA=...
    GEMINI_MODEL=gemini-2.0-flash
-   BOARDMAN_NERO_REASONERS=asi,gemini   # or gemini,asi
-   BOARDMAN_ASI_AGENTS=nero
+   BOARDMAN_LLM_AGENTS=nero,raja
+   BOARDMAN_LLM_REASONERS=asi,gemini   # or gemini,asi
+   ```
+3. Shared fallback only (legacy):
+   ```
+   GEMINI_API_KEY=...
+   BOARDMAN_LLM_AGENTS=nero,raja
    ```
 
-Set keys on **Vercel Production** (frontend proxy) and/or agent host; **redeploy**.
+Set keys on **Vercel Production** (frontend proxy) and/or agent host; **redeploy**.  
+Without keys, arena falls back to Stockfish and logs `LLM key probe · gemini=off`.
+
+### Chess rule book (mandatory)
+All LLM prompts include the FIDE-based Boardman rule book. Illegal moves are
+rejected. See [`CHESS_RULE_BOOK.md`](./CHESS_RULE_BOOK.md).
 
 ### Arc testnet money (optional)
 Only for on-chain dual-lock — never required for thinking. See developer docs [05 — Contracts](./developers/05-contracts.md).

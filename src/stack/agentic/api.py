@@ -101,15 +101,34 @@ async def agentic_health():
     """Liveness (no key) — does not list agents or accept writes."""
     from gaming.src.stack.agentic.registry import get_registry
     from gaming.src.stack.agentic.store import data_dir
+    from gaming.src.stack.agentic.chess.rule_book import rule_book_meta
+    from gaming.src.stack.agentic.runtime.agent_keys import key_status
 
     reg = get_registry()
+    agents = reg.list_agents()
+    llm_status = {
+        a.get("name") or a.get("agent_id"): key_status(
+            a.get("agent_id") or "", a.get("name") or ""
+        )
+        for a in agents[:8]
+    }
+    onchain = False
+    try:
+        from gaming.src.stack.agentic.onchain import onchain_enabled
+
+        onchain = onchain_enabled()
+    except Exception:
+        pass
     return {
         "status": "ok",
         "layer": "boardman-agentic",
         "data_dir": str(data_dir()),
-        "agents": len(reg.list_agents()),
+        "agents": len(agents),
         "games": len(reg.list_games()),
         "auth": "X-Rematch-Key required for data routes",
+        "rule_book": rule_book_meta(),
+        "onchain_enabled": onchain,
+        "llm_keys": llm_status,
     }
 
 
@@ -159,6 +178,7 @@ async def get_agent(
     from gaming.src.stack.agentic.registry import get_registry
     from gaming.src.stack.agentic.chess.personas import get_persona
     from gaming.src.stack.agentic import ledger
+    from gaming.src.stack.agentic.runtime.agent_keys import key_status
 
     a = get_registry().get_agent(agent_id)
     if not a:
@@ -166,8 +186,77 @@ async def get_agent(
     p = get_persona(agent_id)
     if p:
         a = {**a, "mind": p["mind"], "openings": p["openings"]}
-    a["usdc_balance"] = str(ledger.balance(a["wallet_address"]))
+    wallet = a.get("wallet_address") or ""
+    ledger_bal = ledger.balance(wallet)
+    a["usdc_balance"] = str(ledger_bal)  # legacy field = ledger book entry
+    a["ledger_balance_usdc"] = str(ledger_bal)
+    a["wallet"] = {
+        "address": wallet,
+        "chain_id": a.get("chain_id") or "arc",
+        "identity_contract": a.get("identity_contract"),
+        "ledger_balance_usdc": str(ledger_bal),
+        "onchain_balance_usdc": None,
+        "spendable_usdc": str(ledger_bal),
+        "source": "demo_ledger",
+    }
+    try:
+        from gaming.src.stack.agentic.onchain import onchain_enabled, usdc_balance
+
+        if onchain_enabled() and wallet:
+            onchain_bal = usdc_balance(wallet, chain_id=a.get("chain_id") or "arc")
+            a["wallet"]["onchain_balance_usdc"] = str(onchain_bal)
+            a["wallet"]["spendable_usdc"] = str(onchain_bal)
+            a["wallet"]["source"] = "arc_onchain"
+            a["onchain_balance_usdc"] = str(onchain_bal)
+            # Prefer on-chain as the play balance when live
+            a["usdc_balance"] = str(onchain_bal)
+    except Exception as exc:
+        a["wallet"]["onchain_error"] = str(exc)
+    a["llm"] = key_status(a.get("agent_id") or agent_id, a.get("name") or "")
     return {"success": True, "agent": a}
+
+
+@router.get("/agents/{agent_id}/wallet")
+async def get_agent_wallet(
+    agent_id: str,
+    _: ApiKeyPrincipal = Depends(require_stack_api_key),
+):
+    """Wallet identity + ledger vs real Arc USDC balance for an agent."""
+    from gaming.src.stack.agentic.registry import get_registry
+    from gaming.src.stack.agentic import ledger
+
+    a = get_registry().get_agent(agent_id)
+    if not a:
+        raise HTTPException(404, "agent not found")
+    wallet = a.get("wallet_address") or ""
+    if not wallet:
+        raise HTTPException(400, "agent has no wallet_address")
+    ledger_bal = ledger.balance(wallet)
+    out: dict[str, Any] = {
+        "success": True,
+        "agent_id": agent_id,
+        "name": a.get("name"),
+        "wallet_address": wallet,
+        "identity_contract": a.get("identity_contract"),
+        "chain_id": a.get("chain_id") or "arc",
+        "ledger_balance_usdc": str(ledger_bal),
+        "onchain_balance_usdc": None,
+        "spendable_usdc": str(ledger_bal),
+        "settlement_mode": "demo_ledger",
+        "plays_as": wallet,
+        "note": "Agent stakes and settles using wallet_address — not a separate ledger id.",
+    }
+    try:
+        from gaming.src.stack.agentic.onchain import onchain_enabled, usdc_balance
+
+        if onchain_enabled():
+            onchain_bal = usdc_balance(wallet, chain_id=out["chain_id"])
+            out["onchain_balance_usdc"] = str(onchain_bal)
+            out["spendable_usdc"] = str(onchain_bal)
+            out["settlement_mode"] = "onchain"
+    except Exception as exc:
+        out["onchain_error"] = str(exc)
+    return out
 
 
 @router.get("/matches")

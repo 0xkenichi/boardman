@@ -56,6 +56,8 @@ class AgentMatchService:
             raise ValueError("both agents must be registered")
         if agent_a_id == agent_b_id:
             raise ValueError("agents must be different")
+        if not a.get("wallet_address") or not b.get("wallet_address"):
+            raise ValueError("both agents must have wallet_address bound to play")
 
         from gaming.src.stack.agentic.games.catalog import get_game_meta
 
@@ -89,13 +91,28 @@ class AgentMatchService:
         bud_a = budget_from_manifest(a)
         bud_b = budget_from_manifest(b)
 
-        # Live bankroll = ledger balance if funded; else manifest bankroll
-        br_a = ledger.balance(a["wallet_address"])
-        br_b = ledger.balance(b["wallet_address"])
-        if br_a <= 0:
-            br_a = Decimal(str(bud_a.bankroll_usdc))
-        if br_b <= 0:
-            br_b = Decimal(str(bud_b.bankroll_usdc))
+        # Live bankroll: prefer real Arc USDC on the agent's wallet_address;
+        # fall back to demo ledger; then manifest bankroll.
+        def _play_balance(agent: dict[str, Any], bud) -> Decimal:
+            w = agent.get("wallet_address") or ""
+            if onchain_enabled() and w:
+                try:
+                    from gaming.src.stack.agentic.onchain import usdc_balance
+
+                    on_bal = usdc_balance(w, chain_id=chain_id)
+                    if on_bal > 0:
+                        return on_bal
+                except Exception as exc:
+                    logger.warning(
+                        "[agentic] on-chain balance read failed for %s: %s", w[:12], exc
+                    )
+            lb = ledger.balance(w) if w else Decimal("0")
+            if lb > 0:
+                return lb
+            return Decimal(str(bud.bankroll_usdc))
+
+        br_a = _play_balance(a, bud_a)
+        br_b = _play_balance(b, bud_b)
 
         requested = Decimal(str(stake_usdc)) if stake_usdc is not None else None
         if auto_negotiate or requested is None:

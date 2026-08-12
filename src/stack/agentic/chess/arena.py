@@ -152,12 +152,16 @@ def play_match(
     white_engine = HybridEngine(
         w_mind,
         agent_id=white_agent["agent_id"],
+        agent_name=str(white_agent.get("name") or ""),
+        wallet_address=str(white_agent.get("wallet_address") or ""),
         rng=rng_w,
         depth=w_depth,
     )
     black_engine = HybridEngine(
         b_mind,
         agent_id=black_agent["agent_id"],
+        agent_name=str(black_agent.get("name") or ""),
+        wallet_address=str(black_agent.get("wallet_address") or ""),
         rng=rng_b,
         depth=b_depth,
     )
@@ -355,11 +359,15 @@ def iter_match(
     white_engine = HybridEngine(
         mind_from_agent(white_agent),
         agent_id=white_agent["agent_id"],
+        agent_name=str(white_agent.get("name") or ""),
+        wallet_address=str(white_agent.get("wallet_address") or ""),
         rng=random.Random(rng_seed + 1),
     )
     black_engine = HybridEngine(
         mind_from_agent(black_agent),
         agent_id=black_agent["agent_id"],
+        agent_name=str(black_agent.get("name") or ""),
+        wallet_address=str(black_agent.get("wallet_address") or ""),
         rng=random.Random(rng_seed + 2),
     )
     events: list[dict[str, Any]] = []
