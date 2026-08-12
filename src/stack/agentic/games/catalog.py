@@ -23,6 +23,19 @@ CHESS_META = {
     "notes": "Full chess via hybrid Stockfish + siloed books",
 }
 
+# Flagship sport game — season/economy; not a simple GameModule yet
+AFM_META = {
+    "game_id": "agentic.football_managers",
+    "display_name": "Agentic Football Managers",
+    "family": "sports",
+    "outcome_space": ["home_win", "away_win", "draw"],
+    "verifier": "afm_match_engine_v0",
+    "hackathon_friendly": True,
+    "status": "wip",
+    "public_page": "/agentic/football-managers.html",
+    "notes": "WIP · Coming soon. Agent-only FM: unique top players, market, league. v0 scaffold live in package.",
+}
+
 
 def _meta(mod: GameModule, **extra: Any) -> dict[str, Any]:
     return {
@@ -50,6 +63,7 @@ _MODULES: dict[str, GameModule] = {
 
 GAME_CATALOG: dict[str, dict[str, Any]] = {
     CHESS_META["game_id"]: CHESS_META,
+    AFM_META["game_id"]: AFM_META,
     **{
         gid: _meta(
             mod,

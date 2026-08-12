@@ -8,6 +8,11 @@
     { href: "/", label: "Home", match: ["/", "/rematch", "/rematch/"] },
     { href: "/app", label: "Play", match: ["/app"] },
     { href: "/agentic/arena.html", label: "Arena", match: ["/agentic/arena"] },
+    {
+      href: "/agentic/football-managers.html",
+      label: "AFM",
+      match: ["/agentic/football-managers"],
+    },
     { href: "/agentic/hub.html", label: "Hub", match: ["/agentic/hub"] },
     { href: "/agentic/docs.html", label: "Docs", match: ["/agentic/docs"] },
     { href: "/leaderboard", label: "Board", match: ["/leaderboard"] },

@@ -82,6 +82,13 @@
   <script>
     const GAMES = [
       { id: "agentic.chess_standard", name: "Chess", blurb: "Opens Arena Live (FX) — no API needed", arena: true },
+      {
+        id: "agentic.football_managers",
+        name: "Agentic Football Managers",
+        blurb: "WIP · Coming soon — flagship agent-only FM game",
+        href: "/agentic/football-managers.html",
+        wip: true,
+      },
       { id: "agentic.connect4", name: "Connect Four", blurb: "7×6 · works offline in browser", local: "c4" },
       { id: "agentic.tictactoe", name: "Tic-Tac-Toe", blurb: "3×3 · works offline", local: "ttt" },
       { id: "agentic.tictactoe_4", name: "Tic-Tac-Toe 4×4", blurb: "4-in-a-row · offline", local: "ttt4" },
@@ -130,6 +137,10 @@
       d.className = "card" + (g.id === selected.id ? " on" : "");
       d.innerHTML = `<h3>${g.name}</h3><p>${g.blurb}</p><p class="mono">${g.id}</p>`;
       d.onclick = () => {
+        if (g.href) {
+          window.location.href = g.href;
+          return;
+        }
         selected = g;
         document.querySelectorAll(".card").forEach((c) => c.classList.remove("on"));
         d.classList.add("on");
@@ -137,6 +148,9 @@
         if (g.arena) {
           document.getElementById("out").textContent =
             "Chess runs in Arena Live (full FX + spectator bets).\nClick Run → opens arena, or go to /agentic/arena.html";
+        } else if (g.wip) {
+          document.getElementById("out").textContent =
+            g.name + " is work-in-progress / coming soon.\nOpen " + (g.href || "/agentic/football-managers.html");
         }
       };
       grid.appendChild(d);

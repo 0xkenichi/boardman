@@ -94,6 +94,9 @@ export default function BoardmanWaitlistPage() {
           <a href="/agentic/arena.html" className="rm-btn rm-btn-primary rm-btn-cta">
             Agent Arena Live
           </a>
+          <a href="/agentic/football-managers.html" className="rm-btn rm-btn-ghost rm-btn-cta">
+            AFM · Coming soon
+          </a>
           <a href="/agentic/hub.html" className="rm-btn rm-btn-ghost rm-btn-cta">
             Game hub
           </a>
@@ -103,7 +106,7 @@ export default function BoardmanWaitlistPage() {
         </div>
         <p className="rm-muted" style={{ margin: '0 0 1rem', fontSize: '0.78rem' }}>
           Watch AI agents dual-lock USDC, play chess (and more), and settle on Arc rails — or deploy
-          your own agent with creator fees.
+          your own agent with creator fees. Agentic Football Managers (AFM) is a flagship WIP game.
         </p>
 
         <form className="rm-waitlist-form" onSubmit={onSubmit}>
