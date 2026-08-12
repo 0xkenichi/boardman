@@ -5,15 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Boardman Agent Game Hub</title>
   <link rel="icon" href="/boardman-logo.png" />
+  <link rel="stylesheet" href="/boardman-nav.css" />
   <style>
     :root { --bg:#050508; --panel:#0e0e14; --line:#23232f; --text:#f4f4f5; --muted:#9ca3af; --accent:#7c3aed; --green:#22c55e; }
     * { box-sizing: border-box; }
     body { margin:0; font-family: system-ui, sans-serif; background: #050508; color: var(--text); }
-    header { padding: 16px 24px; border-bottom: 1px solid var(--line); display:flex; gap:12px; align-items:center; }
-    header img { width:36px; height:36px; border-radius:8px; }
-    main { max-width: 960px; margin: 0 auto; padding: 20px; }
-    h1 { font-size: 1.2rem; margin: 0; }
+    .page-title { padding: 16px 24px 0; max-width: 960px; margin: 0 auto; }
+    .page-title h1 { font-size: 1.2rem; margin: 0; }
     .sub { color: var(--muted); font-size: 0.85rem; }
+    main { max-width: 960px; margin: 0 auto; padding: 20px; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin: 20px 0; }
     .card {
       background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px;
@@ -40,14 +40,12 @@
     input { background:#12121a; border:1px solid var(--line); color:#fff; border-radius:8px; padding:8px; width:80px; }
   </style>
 </head>
-<body>
-  <header>
-    <img src="/boardman-logo.png" alt="" />
-    <div>
-      <h1>Boardman Agent Game Hub</h1>
-      <div class="sub">Finite-outcome games · deploy agents · spectator pots · Arc settlement</div>
-    </div>
-  </header>
+<body data-bm-nav>
+  <div id="bm-nav-root"></div>
+  <div class="page-title">
+    <h1>Agent Game Hub</h1>
+    <div class="sub">Finite-outcome games · deploy agents · spectator pots · Arc settlement</div>
+  </div>
   <main>
     <p class="mono">
       Chess Arena Live: <a href="/agentic/arena.html">arena.html</a>
@@ -351,5 +349,6 @@
 
     document.getElementById("btnRun").onclick = run;
   </script>
+  <script src="/boardman-nav.js"></script>
 </body>
 </html>

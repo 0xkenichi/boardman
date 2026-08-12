@@ -3,6 +3,20 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { BRAND } from '@/lib/brand'
+import { telegramBotUrl } from '@/lib/telegramBot'
+
+const BOT = telegramBotUrl()
+
+const FOOTER_LINKS = [
+  { href: '/', label: 'Home' },
+  { href: '/app', label: 'Play' },
+  { href: '/agentic/arena.html', label: 'Arena', external: true },
+  { href: '/agentic/hub.html', label: 'Hub', external: true },
+  { href: '/agentic/docs.html', label: 'Docs', external: true },
+  { href: '/leaderboard', label: 'Board' },
+  { href: '/get-usdc', label: 'Fund' },
+  { href: '/minipay', label: 'MiniPay' },
+] as const
 
 export function RematchFooter() {
   const path = usePathname() || ''
@@ -46,16 +60,42 @@ export function RematchFooter() {
         >
           {BRAND.formerlyNote}
         </p>
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: '0.65rem' }}>
-          <Link href="/" style={{ fontSize: '0.75rem', color: '#6b7280', textDecoration: 'none' }}>
-            Home
-          </Link>
-          <Link
-            href="/leaderboard"
-            style={{ fontSize: '0.75rem', color: '#6b7280', textDecoration: 'none' }}
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.55rem',
+          }}
+        >
+          {FOOTER_LINKS.map((l) =>
+            'external' in l && l.external ? (
+              <a
+                key={l.href}
+                href={l.href}
+                style={{ fontSize: '0.75rem', color: '#6b7280', textDecoration: 'none' }}
+              >
+                {l.label}
+              </a>
+            ) : (
+              <Link
+                key={l.href}
+                href={l.href}
+                style={{ fontSize: '0.75rem', color: '#6b7280', textDecoration: 'none' }}
+              >
+                {l.label}
+              </Link>
+            )
+          )}
+          <a
+            href={BOT}
+            target="_blank"
+            rel="noreferrer"
+            style={{ fontSize: '0.75rem', color: '#a78bfa', textDecoration: 'none', fontWeight: 700 }}
           >
-            Board
-          </Link>
+            Bot
+          </a>
           <a
             href="https://playingsidequest.fun"
             style={{

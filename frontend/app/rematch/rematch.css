@@ -1567,33 +1567,38 @@ body {
   margin-bottom: 1.15rem;
 }
 
-/* Top nav responsive helpers */
+/* Top nav responsive helpers — full Boardman link row on all sizes */
 .rm-nav-bar--app {
   max-width: 28rem;
 }
 .rm-nav-bar--site {
-  max-width: 44rem;
+  max-width: 1100px;
 }
 .rm-desktop-nav {
-  display: none;
+  display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.15rem;
+  justify-content: center;
 }
 .rm-nav-bot {
-  display: none;
+  display: inline-flex;
   border-radius: 999px;
-  background: linear-gradient(180deg, #12c48a, #059669);
+  background: linear-gradient(180deg, #7c3aed, #6d28d9);
   color: #fff !important;
   padding: 0.4rem 0.75rem;
   font-size: 0.7rem;
   font-weight: 700;
   text-decoration: none;
 }
-@media (min-width: 640px) {
+@media (max-width: 720px) {
   .rm-desktop-nav {
-    display: flex;
-  }
-  .rm-nav-bot {
-    display: inline-flex;
+    order: 3;
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.1rem;
   }
 }

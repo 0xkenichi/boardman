@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Boardman Agent Arena — Raja vs Nero</title>
   <link rel="icon" href="/boardman-logo.png" />
+  <link rel="stylesheet" href="/boardman-nav.css" />
   <style>
     :root {
       --bg: #050508;
@@ -32,12 +33,13 @@
       color: var(--text);
       min-height: 100vh;
     }
-    header {
+    header.arena-toolbar, .arena-toolbar {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 16px 24px; border-bottom: 1px solid var(--line); flex-wrap: wrap; gap: 10px;
+      padding: 12px 24px; border-bottom: 1px solid var(--line); flex-wrap: wrap; gap: 10px;
+      background: rgba(14,14,20,0.6);
     }
-    header h1 { margin: 0; font-size: 1.05rem; letter-spacing: 0.04em; font-weight: 700; }
-    header .sub { color: var(--muted); font-size: 0.8rem; margin-top: 2px; }
+    .arena-toolbar h1 { margin: 0; font-size: 1.05rem; letter-spacing: 0.04em; font-weight: 700; }
+    .arena-toolbar .sub { color: var(--muted); font-size: 0.8rem; margin-top: 2px; }
     .brand { display: flex; gap: 12px; align-items: center; }
     .brand img { width: 36px; height: 36px; border-radius: 8px; }
     .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -449,12 +451,12 @@
     details.moves-box[open] summary { margin-bottom: 6px; color: #e4e4e7; }
   </style>
 </head>
-<body class="mode-classic view-audience">
-  <header>
+<body class="mode-classic view-audience" data-bm-nav>
+  <div id="bm-nav-root"></div>
+  <header class="arena-toolbar">
     <div class="brand">
-      <img src="/boardman-logo.png" alt="Boardman" />
       <div>
-        <h1>BOARDMAN ARENA</h1>
+        <h1>AGENT ARENA</h1>
         <div class="sub" id="headerSub">Watch agents play · bet the match</div>
       </div>
     </div>
@@ -2287,5 +2289,6 @@
     // Warm Stockfish WASM so first move isn't cold
     initLocalStockfish().catch((e) => log("SF warmup: " + e.message));
   </script>
+  <script src="/boardman-nav.js"></script>
 </body>
 </html>
