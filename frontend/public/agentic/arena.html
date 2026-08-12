@@ -474,6 +474,41 @@
     .wallet-box .wb-title { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
     .wallet-box .wb-bal { font-size: 1.15rem; font-weight: 700; margin-top: 4px; }
     .wallet-box .wb-addr { font-size: 0.68rem; color: var(--muted); word-break: break-all; margin-top: 4px; }
+    /* Official-style dual clocks */
+    .clock-row {
+      display: flex; gap: 10px; justify-content: center; align-items: stretch;
+      margin: 10px 0 4px; flex-wrap: wrap;
+    }
+    .clock-face {
+      min-width: 140px; padding: 10px 14px; border-radius: 12px;
+      border: 1px solid var(--line); background: #0a0a10; text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+    .clock-face .clk-name { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .clock-face .clk-time {
+      font-size: 1.65rem; font-weight: 800; letter-spacing: 0.04em;
+      color: #e4e4e7; margin-top: 2px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .clock-face.active-clock {
+      border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent);
+      background: #12121c;
+    }
+    .clock-face.active-clock .clk-time { color: #fde68a; }
+    .clock-face.flagged .clk-time { color: #f87171; }
+    .clock-face .clk-color { font-size: 0.68rem; color: var(--muted); margin-top: 2px; }
+    .tc-bar {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center;
+      margin: 8px 0 4px;
+    }
+    .tc-bar label { font-size: 0.75rem; color: var(--muted); }
+    .tc-bar button {
+      font-size: 0.78rem; padding: 6px 12px; border-radius: 999px;
+      border: 1px solid var(--line); background: #111118; color: #d4d4d8; cursor: pointer;
+    }
+    .tc-bar button.on { border-color: var(--accent); color: #fff; background: #1a1a28; }
+    .coin-banner {
+      text-align: center; font-size: 0.85rem; color: #c4b5fd; min-height: 1.2em; margin: 4px 0 8px;
+    }
   </style>
 </head>
 <body class="mode-classic view-audience" data-bm-nav>
@@ -512,14 +547,14 @@
     <section class="panel">
       <div class="agents">
         <div class="agent" id="cardRaja">
-          <div class="tag">White · attacker</div>
+          <div class="tag" id="tagRaja">Raja · agent</div>
           <h3>Raja <span class="form-pill" id="formRaja">—</span></h3>
           <div class="mono" id="rajaMeta">Mate-hungry · sharp openings</div>
           <div class="mono creator-only" id="rajaWallet"></div>
           <div class="mono creator-only" id="rajaContract"></div>
         </div>
         <div class="agent" id="cardNero">
-          <div class="tag">Black · defender</div>
+          <div class="tag" id="tagNero">Nero · agent</div>
           <h3>Nero <span class="form-pill" id="formNero">—</span></h3>
           <div class="mono" id="neroMeta">Solid counter · Sicilian / French</div>
           <div class="mono creator-only" id="neroWallet"></div>
@@ -527,6 +562,27 @@
         </div>
       </div>
       <div class="vs-line audience-only">Skill match · equal stakes · public betting pot</div>
+
+      <div class="tc-bar" id="tcBar" role="group" aria-label="Time control">
+        <label>Clock each</label>
+        <button type="button" data-tc="1" id="tc1">1 min</button>
+        <button type="button" data-tc="5" id="tc5" class="on">5 min</button>
+        <button type="button" data-tc="10" id="tc10">10 min</button>
+        <button type="button" data-tc="random" id="tcRandom" title="Random 1 / 5 / 10">Random</button>
+      </div>
+      <div class="coin-banner" id="coinBanner">Coin flip assigns White / Black each match</div>
+      <div class="clock-row" aria-label="Chess clocks">
+        <div class="clock-face" id="clockRaja">
+          <div class="clk-name">Raja</div>
+          <div class="clk-time" id="clockRajaTime">5:00</div>
+          <div class="clk-color" id="clockRajaColor">—</div>
+        </div>
+        <div class="clock-face" id="clockNero">
+          <div class="clk-name">Nero</div>
+          <div class="clk-time" id="clockNeroTime">5:00</div>
+          <div class="clk-color" id="clockNeroColor">—</div>
+        </div>
+      </div>
 
       <div class="mode-bar">
         <div class="mode-toggle" role="group" aria-label="Board view mode">
@@ -831,6 +887,20 @@
     let evalHistory = []; // white-POV engine evals
     let uiView = "audience"; // audience | creator
     const FEE_BPS = 300;
+
+    // Colors are agents, not fixed seats — coin flip each match
+    // whiteAgent / blackAgent: 'raja' | 'nero'
+    let whiteAgent = "raja";
+    let blackAgent = "nero";
+    // Time control: max 10 min each for test; 1 / 5 / 10 or random pick
+    const TC_OPTIONS = { 1: 60_000, 5: 300_000, 10: 600_000 };
+    let tcPref = 5; // minutes or 'random'
+    let clockMs = { raja: 300_000, nero: 300_000 };
+    let clockBaseMs = 300_000;
+    let clockTickTimer = null;
+    let clockSide = null; // agent key whose clock is running
+    let clockTurnStarted = 0;
+    let flagSide = null;
     // Only resign when engine says mate-in-N is forced (not soft "bad eval")
     // Soft resigns made the board look mid-game while UI claimed a finish.
     const RESIGN_MATE_SCORE = 15; // |eval| from mate lines (~mate announced as ±20)
@@ -1052,8 +1122,8 @@
       const tot = ta + tb;
       const poolA = tot > 0 ? clamp((ta + 0.01) / (tot + 0.02)) : 0.5;
       const pWhite = evalToPWhite(spectator.lastEval);
-      // Raja is white in demo
-      const liveA = pWhite;
+      // Live odds follow who is White this match (coin flip)
+      const liveA = whiteAgent === "raja" ? pWhite : 1 - pWhite;
       const stage = stageOf(spectator.ply);
       const pA = blend(priorA, poolA, liveA, stage);
       const pB = 1 - pA;
@@ -1697,8 +1767,15 @@
       if (resignSide === "nero") {
         return { winner: "raja", how: "resignation" };
       }
+      if (flagSide === "raja") {
+        return { winner: "nero", how: "flag (time)" };
+      }
+      if (flagSide === "nero") {
+        return { winner: "raja", how: "flag (time)" };
+      }
       if (game.in_checkmate()) {
-        const winner = game.turn() === "w" ? "nero" : "raja";
+        // Side to move is mated → other color wins → that agent
+        const winner = game.turn() === "w" ? blackAgent : whiteAgent;
         return { winner, how: "checkmate" };
       }
       if (game.in_stalemate()) {
@@ -1718,20 +1795,135 @@
       if (recent.length >= 4) {
         const avg = recent.reduce((a, b) => a + b, 0) / recent.length;
         if (avg >= 3.0) {
-          return { winner: "raja", how: "adjudication (eval +" + avg.toFixed(1) + ")" };
+          return { winner: whiteAgent, how: "adjudication (eval +" + avg.toFixed(1) + ")" };
         }
         if (avg <= -3.0) {
-          return { winner: "nero", how: "adjudication (eval " + avg.toFixed(1) + ")" };
+          return { winner: blackAgent, how: "adjudication (eval " + avg.toFixed(1) + ")" };
         }
       }
       const { wm, bm } = materialScore();
       if (Math.abs(wm - bm) >= 6) {
         return {
-          winner: wm > bm ? "raja" : "nero",
+          winner: wm > bm ? whiteAgent : blackAgent,
           how: "adjudication (material)",
         };
       }
       return { winner: null, how: "draw (unfinished — equal)" };
+    }
+
+    function formatClock(ms) {
+      const s = Math.max(0, Math.ceil(ms / 1000));
+      const m = Math.floor(s / 60);
+      const r = s % 60;
+      return m + ":" + String(r).padStart(2, "0");
+    }
+
+    function resolveTcMs() {
+      if (tcPref === "random") {
+        const picks = [1, 5, 10];
+        const m = picks[Math.floor(Math.random() * picks.length)];
+        return { minutes: m, ms: TC_OPTIONS[m] };
+      }
+      const m = Number(tcPref) || 5;
+      const clamped = Math.min(10, Math.max(1, m));
+      const key = clamped === 1 || clamped === 10 ? clamped : 5;
+      return { minutes: key, ms: TC_OPTIONS[key] || 300_000 };
+    }
+
+    function coinFlipColors() {
+      // Fair coin: 50/50 who sits White
+      if (Math.random() < 0.5) {
+        whiteAgent = "raja";
+        blackAgent = "nero";
+      } else {
+        whiteAgent = "nero";
+        blackAgent = "raja";
+      }
+      setText(
+        "coinBanner",
+        "🪙 Coin flip · White: " +
+          AGENTS[whiteAgent].name +
+          " · Black: " +
+          AGENTS[blackAgent].name
+      );
+      log(
+        "Coin flip → White " +
+          AGENTS[whiteAgent].name +
+          " · Black " +
+          AGENTS[blackAgent].name
+      );
+      setText(
+        "tagRaja",
+        (whiteAgent === "raja" ? "White" : "Black") + " · " + AGENTS.raja.strategy.archetype
+      );
+      setText(
+        "tagNero",
+        (whiteAgent === "nero" ? "White" : "Black") + " · " + AGENTS.nero.strategy.archetype
+      );
+      setText("clockRajaColor", whiteAgent === "raja" ? "White" : "Black");
+      setText("clockNeroColor", whiteAgent === "nero" ? "White" : "Black");
+    }
+
+    function renderClocks() {
+      setText("clockRajaTime", formatClock(clockMs.raja));
+      setText("clockNeroTime", formatClock(clockMs.nero));
+      const cr = el("clockRaja");
+      const cn = el("clockNero");
+      if (cr) {
+        cr.classList.toggle("active-clock", playing && clockSide === "raja");
+        cr.classList.toggle("flagged", clockMs.raja <= 0);
+      }
+      if (cn) {
+        cn.classList.toggle("active-clock", playing && clockSide === "nero");
+        cn.classList.toggle("flagged", clockMs.nero <= 0);
+      }
+    }
+
+    function stopClockTick() {
+      if (clockTickTimer) {
+        clearInterval(clockTickTimer);
+        clockTickTimer = null;
+      }
+      // Apply elapsed on active side
+      if (clockSide && clockTurnStarted) {
+        const used = Date.now() - clockTurnStarted;
+        clockMs[clockSide] = Math.max(0, clockMs[clockSide] - used);
+        clockTurnStarted = 0;
+      }
+      clockSide = null;
+      renderClocks();
+    }
+
+    function startClockFor(agentKey) {
+      stopClockTick();
+      if (!playing || flagSide) return;
+      clockSide = agentKey;
+      clockTurnStarted = Date.now();
+      renderClocks();
+      clockTickTimer = setInterval(() => {
+        if (!playing || !clockSide || !clockTurnStarted) return;
+        const remaining = clockMs[clockSide] - (Date.now() - clockTurnStarted);
+        const display = Math.max(0, remaining);
+        if (clockSide === "raja") setText("clockRajaTime", formatClock(display));
+        else setText("clockNeroTime", formatClock(display));
+        const face = el(clockSide === "raja" ? "clockRaja" : "clockNero");
+        if (face) face.classList.toggle("flagged", display <= 0);
+        if (remaining <= 0) {
+          flagSide = clockSide;
+          clockMs[clockSide] = 0;
+          stopClockTick();
+          log(AGENTS[flagSide].name + " flagged — out of time");
+          setStatus(AGENTS[flagSide].name + " ran out of time", true);
+        }
+      }, 200);
+    }
+
+    /** How long Stockfish may think this move — never open blatantly; use clock budget. */
+    function thinkBudgetMs(agentKey) {
+      const left = clockMs[agentKey] || 0;
+      // Use a slice of remaining time; cap 8s, floor 1.2s so games stay watchable
+      const slice = Math.floor(left / 25);
+      return Math.max(1200, Math.min(8000, slice || 3000));
     }
 
     function log(msg) {
@@ -2097,11 +2289,12 @@
     }
 
     function activeSide() {
-      return game.turn() === "w" ? "raja" : "nero";
+      return game.turn() === "w" ? whiteAgent : blackAgent;
     }
     function highlightTurn() {
-      el("cardRaja").classList.toggle("active", game.turn() === "w" && playing);
-      el("cardNero").classList.toggle("active", game.turn() === "b" && playing);
+      const side = activeSide();
+      el("cardRaja").classList.toggle("active", side === "raja" && playing);
+      el("cardNero").classList.toggle("active", side === "nero" && playing);
     }
 
     function bookMove(agentKey) {
@@ -2161,15 +2354,16 @@
       return null;
     }
 
-    /* ── Local Stockfish (WASM) — long think, snappy board ──
-       5–10s per move for real strength; animate pieces fast (record then speed up). */
+    /* ── Local Stockfish (WASM) — pure engine first (no suicidal "style" moves) ──
+       Book is short identity only. LLM is optional spice after book fails SF path. */
     const GM = {
-      depth: 22, // search deep; movetime is the real limit
-      movetimeMs: 7500, // default 7.5s — range 5–10s via ?movetime=
-      bookPlies: 4, // less book, more engine
-      fastAnim: true, // snappy pieces even in Arena Live
+      depth: 24,
+      movetimeMs: 5000,
+      bookPlies: 2, // minimal repertoire; engine owns the game
+      preferStockfish: true, // stronger than LLM — no blatant free pieces
+      fastAnim: true,
       threads: 2,
-      hashMb: 64,
+      hashMb: 128,
     };
     let sfEngine = null; // { worker, ready, inflight }
     let sfInitPromise = null;
@@ -2452,22 +2646,16 @@
 
       const depth = GM.depth;
       const fen = game.fen();
+      const thinkMs = thinkBudgetMs(forSide);
 
-      // Per-agent free ASI:One / Gemini first (dedicated keys). Both agents eligible.
-      // Must obey FIDE rule book — server rejects illegal moves.
-      {
-        const llm = await llmMoveForAgent(forSide, fen);
-        if (llm) return llm;
-      }
-
-      // Local Stockfish WASM — full 5–10s think (fallback when no LLM key / fail)
+      // Stockfish first — risk/reward is in the eval, not hanging pieces for drama
       try {
         setText(
           "enginePill",
-          `${forSide} · ${shortAddr(AGENTS[forSide]?.wallet)} thinking… ${(GM.movetimeMs / 1000).toFixed(0)}s (SF)`
+          `${AGENTS[forSide].name} · SF · ${(thinkMs / 1000).toFixed(1)}s · clock ${formatClock(clockMs[forSide])}`
         );
         const t0 = performance.now();
-        const sf = await localStockfishGo(fen, { depth, movetime: GM.movetimeMs });
+        const sf = await localStockfishGo(fen, { depth, movetime: thinkMs });
         const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
         const parsed = uciToSan(fen, sf.uci);
         if (parsed) {
@@ -2479,7 +2667,7 @@
           }
           setText(
             "enginePill",
-            `SF d${sf.depth || "?"} · ${elapsed}s · ${forSide}`
+            `SF d${sf.depth || "?"} · ${elapsed}s · ${AGENTS[forSide].name}`
           );
           return {
             san: parsed.san,
@@ -2489,7 +2677,17 @@
           };
         }
       } catch (e) {
-        log("local SF: " + e.message + " — trying remote APIs");
+        log("local SF: " + e.message + " — LLM / remote fallback");
+      }
+
+      // Optional LLM only if Stockfish failed (keys amplify strategy, not replace strength)
+      if (!GM.preferStockfish) {
+        const llm = await llmMoveForAgent(forSide, fen);
+        if (llm) return llm;
+      } else {
+        // Still try LLM once SF path hard-failed
+        const llm = await llmMoveForAgent(forSide, fen);
+        if (llm) return llm;
       }
 
       // 2) chess-api.com max free tier (d18 / 100ms)
@@ -2593,6 +2791,7 @@
     async function runDemo() {
       if (playing) return;
       playing = true;
+      flagSide = null;
       if (el("btnPlay")) el("btnPlay").disabled = true;
       game = new Chess();
       lastFrom = lastTo = null;
@@ -2624,6 +2823,18 @@
       setText("lockB", "—");
       setText("log", "");
 
+      // Time control (max 10 min each) + coin flip for colors
+      const tc = resolveTcMs();
+      clockBaseMs = tc.ms;
+      clockMs = { raja: clockBaseMs, nero: clockBaseMs };
+      renderClocks();
+      log(`Time control · ${tc.minutes}+0 each (max 10) · official dual clocks`);
+      setStatus("Coin flip for colors…");
+      await sleep(500);
+      coinFlipColors();
+      renderClocks();
+      await sleep(700);
+
       const stake = matchStake;
       setStatus(
         uiView === "creator"
@@ -2653,7 +2864,7 @@
       setClass("escrowPill", "pill ok");
       renderMeta();
       setStatus(
-        `Match live · $${stake.toFixed(2)} each · pot cap $${matchCap.toFixed(0)}`,
+        `Match live · ${tc.minutes}+0 · White ${AGENTS[whiteAgent].name} · $${stake.toFixed(2)} each`,
         true
       );
       await sleep(700);
@@ -2663,14 +2874,17 @@
       let resignSide = null;
       crushStreak = { raja: 0, nero: 0 };
 
-      while (!game.game_over() && plies < maxPlies && !resignSide) {
+      while (!game.game_over() && plies < maxPlies && !resignSide && !flagSide) {
         const side = activeSide();
         highlightTurn();
-        setStatus(`${AGENTS[side].name} thinking…`);
+        startClockFor(side);
+        setStatus(
+          `${AGENTS[side].name} (${game.turn() === "w" ? "White" : "Black"}) · clock ${formatClock(clockMs[side])}`
+        );
 
         let choice = null;
         const bookSan = bookMove(side);
-        // Short book for identity only — then pure GM Stockfish (both sides equal depth)
+        // Very short book for identity — then pure Stockfish (no free-piece "style")
         if (bookSan && game.history().length < GM.bookPlies) {
           choice = { san: bookSan, source: "opening_book", eval: null };
           log(`${AGENTS[side].name} book → ${bookSan}`);
@@ -2682,6 +2896,10 @@
           );
         }
 
+        // Clock may have flagged during think
+        if (flagSide) break;
+        stopClockTick(); // pause after move (elapsed already deducted)
+
         // Track white-POV eval. Resign ONLY after sustained crush / mate score —
         // not a single soft eval (that left the board looking mid-game).
         if (typeof choice.eval === "number") {
@@ -2690,25 +2908,22 @@
           spectator.ply = game.history().length;
           renderMarket();
           // White-POV: negative = Black better; positive = White better
-          if (side === "raja") {
-            if (choice.eval <= -RESIGN_MATE_SCORE) crushStreak.raja += 1;
-            else crushStreak.raja = 0;
-            if (crushStreak.raja >= RESIGN_STREAK) {
-              resignSide = "raja";
-              setStatus(`Raja resigns — engine mate score (${choice.eval.toFixed(1)})`, true);
-              log("Raja resigns (forced mate score) — not checkmate on board yet");
-              break;
-            }
+          // Resign the agent who is getting crushed (by color seat this match)
+          if (side === whiteAgent) {
+            if (choice.eval <= -RESIGN_MATE_SCORE) crushStreak[side] += 1;
+            else crushStreak[side] = 0;
+          } else {
+            if (choice.eval >= RESIGN_MATE_SCORE) crushStreak[side] += 1;
+            else crushStreak[side] = 0;
           }
-          if (side === "nero") {
-            if (choice.eval >= RESIGN_MATE_SCORE) crushStreak.nero += 1;
-            else crushStreak.nero = 0;
-            if (crushStreak.nero >= RESIGN_STREAK) {
-              resignSide = "nero";
-              setStatus(`Nero resigns — engine mate score (+${choice.eval.toFixed(1)})`, true);
-              log("Nero resigns (forced mate score) — not checkmate on board yet");
-              break;
-            }
+          if (crushStreak[side] >= RESIGN_STREAK) {
+            resignSide = side;
+            setStatus(
+              `${AGENTS[side].name} resigns — engine mate score (${choice.eval.toFixed(1)})`,
+              true
+            );
+            log(AGENTS[side].name + " resigns (forced mate score)");
+            break;
           }
         }
 
@@ -2780,6 +2995,7 @@
         await sleep(viewMode === "arena" && !GM.fastAnim ? 200 : 80);
       }
 
+      stopClockTick();
       const result = resolveResult(resignSide);
       const winner = result.winner;
       const how = result.how;
@@ -2851,8 +3067,11 @@
           n: matchArchive.length + 1,
           started_at: matchStartedAt || new Date().toISOString(),
           ended_at: new Date().toISOString(),
-          white: "Raja",
-          black: "Nero",
+          white: AGENTS[whiteAgent].name,
+          black: AGENTS[blackAgent].name,
+          white_agent: whiteAgent,
+          black_agent: blackAgent,
+          time_control: (clockBaseMs / 60000) + "+0",
           wallets: {
             raja: AGENTS.raja.wallet,
             nero: AGENTS.nero.wallet,
@@ -2921,11 +3140,12 @@
     setAutoPlay(false);
     // Restore Telegram session + wallet + live Arc agent bankrolls on load
     (async () => {
-      log("arena build 2026-08-12c · bankrolls from Arc USDC when API ok");
+      log("arena build 2026-08-12d · clocks · coin-flip colors · SF-first");
       await loadAuthConfig();
       await Promise.all([refreshWallet(), loadOnchainBankrolls()]);
       renderAuth();
       renderMeta();
+      renderClocks();
       // Show live LLM config
       try {
         const r = await fetch("/api/agentic/asi-move");
@@ -2969,8 +3189,28 @@
     if (el("btnLpRaja")) el("btnLpRaja").onclick = () => addLp("raja", 20);
     if (el("btnLpNero")) el("btnLpNero").onclick = () => addLp("nero", 20);
     el("btnPlay").onclick = runDemo;
+    // Time control buttons (max 10 min each for this test)
+    document.querySelectorAll("#tcBar button[data-tc]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        if (playing) return;
+        const v = btn.getAttribute("data-tc");
+        tcPref = v === "random" ? "random" : Number(v);
+        document.querySelectorAll("#tcBar button[data-tc]").forEach((b) => b.classList.remove("on"));
+        btn.classList.add("on");
+        if (tcPref !== "random") {
+          clockBaseMs = TC_OPTIONS[tcPref] || 300_000;
+          clockMs = { raja: clockBaseMs, nero: clockBaseMs };
+          renderClocks();
+          setText("coinBanner", `Clock set · ${tcPref}+0 each (max 10) · coin flip on Play`);
+        } else {
+          setText("coinBanner", "Random 1 / 5 / 10 min each · coin flip on Play");
+        }
+      });
+    });
     el("btnReset").onclick = async () => {
       if (playing) return;
+      stopClockTick();
+      flagSide = null;
       game = new Chess();
       lastFrom = lastTo = null;
       fallen = [];
@@ -2979,6 +3219,13 @@
       await loadOnchainBankrolls();
       lpPool = { raja: 0, nero: 0 };
       resetSpectatorFromNegotiation();
+      const tc = resolveTcMs();
+      clockBaseMs = tc.ms;
+      clockMs = { raja: clockBaseMs, nero: clockBaseMs };
+      renderClocks();
+      setText("coinBanner", "Coin flip assigns White / Black each match");
+      setText("tagRaja", "Raja · agent");
+      setText("tagNero", "Nero · agent");
       clearFx();
       renderMeta();
       renderBoard();
