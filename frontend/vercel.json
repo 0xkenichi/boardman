@@ -1,4 +1,13 @@
 {
   "framework": "nextjs",
-  "regions": ["iad1"]
+  "regions": ["iad1"],
+  "headers": [
+    {
+      "source": "/agentic/(.*)\\.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
+        { "key": "CDN-Cache-Control", "value": "max-age=0, must-revalidate" }
+      ]
+    }
+  ]
 }

@@ -822,8 +822,10 @@
     let lastFrom = null, lastTo = null;
     let playing = false;
     let viewMode = "classic"; // classic | arena
-    // Unequal liquidity demo: Raja whale vs Nero lean
-    let bal = { raja: 1000, nero: 100 };
+    // Bankrolls: prefer live Arc testnet USDC on agent EOAs (see loadOnchainBankrolls).
+    // Fallback seeds only until RPC/API responds — not "on-chain truth".
+    let bal = { raja: 0, nero: 0 };
+    let balSource = "loading"; // arc_usdc | demo_fallback | client_sim
     let lpPool = { raja: 0, nero: 0 }; // LP claim on bankroll (subset of bal conceptually)
     let fallen = [];
     let evalHistory = []; // white-POV engine evals
@@ -1261,12 +1263,17 @@
         }
         if (loginBtn) loginBtn.style.display = "none";
         if (logoutBtn) logoutBtn.style.display = "";
-        setText("walletBal", `$${bal} USDC spendable`);
+        setText(
+          "walletBal",
+          `$${bal} USDC spendable` +
+            (tgUser.source ? ` · ${tgUser.source}` : "") +
+            (tgUser.demo ? " (demo)" : "")
+        );
         setText(
           "walletAddr",
           tgUser.address
             ? tgUser.address
-            : "Wallet loads after bot /start · same profile as Telegram"
+            : "No deposit address on profile — open bot Wallet / Get money"
         );
       } else {
         if (pill) pill.classList.remove("ok");
@@ -1299,16 +1306,72 @@
             balance: data.balance,
             address: data.address || "",
             demo: data.demo,
+            source: data.source || "",
           };
           renderAuth();
+          if (data.source) {
+            log(
+              `Your play wallet · $${Number(data.balance || 0).toFixed(2)} USDC` +
+                (data.address ? " · " + shortAddr(data.address) : "") +
+                " · source=" +
+                data.source +
+                (data.demo ? " (demo)" : "")
+            );
+          }
           return true;
         }
       } catch (e) {
-        /* ignore */
+        log("Wallet refresh failed: " + e.message);
       }
       tgUser = null;
       renderAuth();
       return false;
+    }
+
+    /** Load Raja/Nero Arc testnet USDC via server eth_call (real chain, not client sim). */
+    async function loadOnchainBankrolls() {
+      try {
+        const q = new URLSearchParams({
+          raja: AGENTS.raja.wallet,
+          nero: AGENTS.nero.wallet,
+        });
+        const res = await fetch("/api/agentic/onchain-balances?" + q.toString());
+        const data = await res.json();
+        if (!data || !data.ok || !data.balances) {
+          throw new Error((data && data.error) || "bad response");
+        }
+        const r = data.balances.raja;
+        const n = data.balances.nero;
+        if (r && r.ok) bal.raja = Number(r.balance_usdc) || 0;
+        if (n && n.ok) bal.nero = Number(n.balance_usdc) || 0;
+        if ((r && r.ok) || (n && n.ok)) {
+          balSource = "arc_usdc";
+          log(
+            `Arc testnet USDC · Raja $${bal.raja.toFixed(2)} · Nero $${bal.nero.toFixed(2)}` +
+              ` · rpc ${data.rpc || "arc"}`
+          );
+        } else {
+          throw new Error(
+            (r && r.error) || (n && n.error) || "both balanceOf failed"
+          );
+        }
+        renderMeta();
+        return true;
+      } catch (e) {
+        balSource = "demo_fallback";
+        // Keep whatever we have; only seed if both empty
+        if (bal.raja <= 0 && bal.nero <= 0) {
+          bal.raja = 100;
+          bal.nero = 100;
+        }
+        log(
+          "On-chain bankroll read failed (" +
+            e.message +
+            ") — showing fallback numbers, not chain truth"
+        );
+        renderMeta();
+        return false;
+      }
     }
 
     async function loadAuthConfig() {
@@ -1812,8 +1875,22 @@
       setText("neroWallet", "plays as " + AGENTS.nero.wallet);
       setText("rajaContract", "identity " + AGENTS.raja.contract);
       setText("neroContract", "identity " + AGENTS.nero.contract);
-      setText("balRaja", bal.raja.toFixed(2) + " USDC @ wallet");
-      setText("balNero", bal.nero.toFixed(2) + " USDC @ wallet");
+      const srcTag =
+        balSource === "arc_usdc"
+          ? "Arc USDC"
+          : balSource === "client_sim"
+            ? "sim"
+            : balSource === "loading"
+              ? "…"
+              : "fallback";
+      setText(
+        "balRaja",
+        bal.raja.toFixed(2) + " USDC · " + srcTag + " · " + shortAddr(AGENTS.raja.wallet)
+      );
+      setText(
+        "balNero",
+        bal.nero.toFixed(2) + " USDC · " + srcTag + " · " + shortAddr(AGENTS.nero.wallet)
+      );
       setText("stakeLabel", "$" + (matchStake || 0).toFixed(2));
       setText("potLabel", "$" + ((matchStake || 0) * 2).toFixed(2));
       setText("lpRaja", "$" + lpPool.raja.toFixed(2));
@@ -2523,9 +2600,10 @@
       evalHistory = [];
       matchMoveLog = [];
       matchStartedAt = new Date().toISOString();
-      // Keep current bankrolls/LPs (don't wipe LP top-ups mid-session)
-      if (bal.raja < 50) bal.raja = 1000;
-      if (bal.nero < 20) bal.nero = 100;
+      // Refresh Arc balances before stake (don't invent 1000/100 demo whales)
+      if (balSource !== "arc_usdc" || bal.raja <= 0 || bal.nero <= 0) {
+        await loadOnchainBankrolls();
+      }
       resetSpectatorFromNegotiation();
       if (!matchStake) {
         setStatus("No mutual stake — top up lean agent or lower reserve", true);
@@ -2841,11 +2919,13 @@
       };
     renderMatchLog();
     setAutoPlay(false);
-    // Restore Telegram session + wallet on load
+    // Restore Telegram session + wallet + live Arc agent bankrolls on load
     (async () => {
+      log("arena build 2026-08-12c · bankrolls from Arc USDC when API ok");
       await loadAuthConfig();
-      await refreshWallet();
+      await Promise.all([refreshWallet(), loadOnchainBankrolls()]);
       renderAuth();
+      renderMeta();
       // Show live LLM config
       try {
         const r = await fetch("/api/agentic/asi-move");
@@ -2889,13 +2969,14 @@
     if (el("btnLpRaja")) el("btnLpRaja").onclick = () => addLp("raja", 20);
     if (el("btnLpNero")) el("btnLpNero").onclick = () => addLp("nero", 20);
     el("btnPlay").onclick = runDemo;
-    el("btnReset").onclick = () => {
+    el("btnReset").onclick = async () => {
       if (playing) return;
       game = new Chess();
       lastFrom = lastTo = null;
       fallen = [];
       evalHistory = [];
-      bal = { raja: 1000, nero: 100 };
+      // Don't wipe live Arc balances on UI reset — re-fetch chain
+      await loadOnchainBankrolls();
       lpPool = { raja: 0, nero: 0 };
       resetSpectatorFromNegotiation();
       clearFx();

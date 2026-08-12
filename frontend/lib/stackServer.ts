@@ -1,16 +1,18 @@
 /**
- * Server-only client for the Rematch API (never ship keys to the browser).
+ * Server-only client for the Boardman gaming API (never ship keys to the browser).
  *
- * Preferred env (on-brand):
- *   REMATCH_API_URL
- *   REMATCH_API_KEY
+ * Preferred env (Boardman brand):
+ *   BOARDMAN_API_URL
+ *   BOARDMAN_API_KEY
  *
- * Legacy aliases (still work):
- *   STACK_API_URL
- *   STACK_API_KEY
+ * Still accepted (rename later when convenient):
+ *   REMATCH_API_URL / REMATCH_API_KEY
+ *   STACK_API_URL / STACK_API_KEY
+ *   REMATCH_API_BASE
  */
 
 const REMATCH_API_URL = (
+  process.env.BOARDMAN_API_URL ||
   process.env.REMATCH_API_URL ||
   process.env.STACK_API_URL ||
   process.env.REMATCH_API_BASE ||
@@ -18,10 +20,18 @@ const REMATCH_API_URL = (
 ).replace(/\/$/, '')
 
 const REMATCH_API_KEY =
-  process.env.REMATCH_API_KEY || process.env.STACK_API_KEY || ''
+  process.env.BOARDMAN_API_KEY ||
+  process.env.REMATCH_API_KEY ||
+  process.env.STACK_API_KEY ||
+  ''
 
 export function rematchApiConfigured(): boolean {
   return Boolean(REMATCH_API_URL && REMATCH_API_KEY)
+}
+
+/** Alias — same as rematchApiConfigured */
+export function boardmanApiConfigured(): boolean {
+  return rematchApiConfigured()
 }
 
 /** @deprecated use rematchApiConfigured */

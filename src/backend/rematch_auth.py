@@ -9,8 +9,8 @@ They call Stack HTTP APIs only with a key you issued.
 
 1. **Master key** (you / internal services):
    ```
-   REMATCH_API_KEY=sk_bm_...
-   # alias: STACK_API_KEY
+   BOARDMAN_API_KEY=sk_bm_...
+   # still work: REMATCH_API_KEY, STACK_API_KEY
    ```
 
 2. **Many builder keys** (recommended for third parties):
@@ -25,8 +25,8 @@ They call Stack HTTP APIs only with a key you issued.
    ```
 
 Headers (any one):
-  X-Rematch-Key: <key>
-  X-Boardman-Key: <key>
+  X-Boardman-Key: <key>       # preferred
+  X-Rematch-Key: <key>        # legacy product name
   X-Stack-Key: <key>          # legacy
   Authorization: Bearer <key>
 
@@ -53,10 +53,18 @@ class ApiKeyPrincipal:
 
 
 def rematch_api_key() -> str:
-    """Primary master key (empty if unset)."""
+    """Primary master key (empty if unset). Boardman name preferred."""
     return (
-        os.getenv("REMATCH_API_KEY") or os.getenv("STACK_API_KEY") or ""
+        os.getenv("BOARDMAN_API_KEY")
+        or os.getenv("REMATCH_API_KEY")
+        or os.getenv("STACK_API_KEY")
+        or ""
     ).strip()
+
+
+def boardman_api_key() -> str:
+    """Alias for rematch_api_key() — on-brand name."""
+    return rematch_api_key()
 
 
 def extract_api_key(
