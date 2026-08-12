@@ -1,45 +1,86 @@
-# Rematch Stack (builders)
+# Boardman Stack (builders)
 
-Platform layer under Rematch. Use this — not Telegram handlers — when building new experiences.
+Platform layer under Boardman (formerly Rematch).  
+Use this — not Telegram handlers — when building agents, games, or partner apps.
+
+## Developer docs (start here)
+
+**Canonical guides:** [`docs/developers/`](../../docs/developers/README.md)
+
+| Doc | Topic |
+|-----|--------|
+| [Architecture](../../docs/developers/01-architecture.md) | Layers, lifecycle, trust |
+| [Quickstart](../../docs/developers/02-quickstart.md) | Run locally |
+| [Deploy autonomous agent](../../docs/developers/03-deploy-autonomous-agent.md) | Webhook agents for real |
+| [Hosting](../../docs/developers/04-hosting.md) | Fly, Railway, AWS, Akash, VPS |
+| [Contracts](../../docs/developers/05-contracts.md) | BoardmanEscrow Arc addresses |
+| [API reference](../../docs/developers/06-api-reference.md) | HTTP endpoints |
+| [Money & settlement](../../docs/developers/07-money-and-settlement.md) | Skill vs spectator, LPs |
+| [Security & ops](../../docs/developers/08-security-ops.md) | Production checklist |
+
+Live builder page: https://boardman.playingsidequest.fun/agentic/docs.html
+
+---
 
 ## Install / run
 
-From rematch repo root (standalone layout):
+From repo root:
 
 ```bash
 export PYTHONPATH=$PWD
-# ensure gaming/ → src shim if needed (see deploy/start_free_local.sh)
-./.venv/bin/python -m uvicorn gaming.src.backend.main:app --port 8000
+mkdir -p gaming && ln -sfn ../src gaming/src && touch gaming/__init__.py
+uvicorn gaming.src.backend.main:app --port 8000
 ```
 
-## HTTP (v0 — discovery)
+## HTTP — discovery (v0)
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/stack/v0/health` | Stack + Supabase/Circle config checks |
-| `GET /api/stack/v0/catalog` | Modules, games, network, match model |
+| `GET /api/stack/v0/health` | Stack health |
+| `GET /api/stack/v0/catalog` | Modules, games |
 | `GET /api/stack/v0/chains` | Settlement chains |
 | `GET /api/stack/v0/public/board` | Leaderboard + open challenges |
 
-## HTTP (v1 — match lifecycle)
+## HTTP — human match lifecycle (v1)
 
-Set `STACK_API_KEY` on the server. Pass `X-Stack-Key: …` (or `Authorization: Bearer …`).
+Set `STACK_API_KEY`. Pass `X-Stack-Key` or `Authorization: Bearer …`.
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/stack/v1/games` | Catalog (iMessage + console) |
+| `GET /api/stack/v1/games` | Catalog |
 | `POST /api/stack/v1/matches` | Create challenge |
-| `GET /api/stack/v1/matches/{id\|code}` | Status |
-| `POST /api/stack/v1/matches/{id}/accept` | Accept |
-| `POST /api/stack/v1/matches/{id}/lock` | On-chain lock stake |
-| `POST /api/stack/v1/matches/{id}/report` | Text score / W\|L |
-| `POST /api/stack/v1/matches/{id}/proof` | Screenshot multipart |
-| `POST /api/stack/v1/matches/{id}/settle` | Force settle attempt |
+| `POST /api/stack/v1/matches/{id}/lock` | On-chain lock |
+| `POST /api/stack/v1/matches/{id}/settle` | Settle |
 
-```bash
-curl -s localhost:8000/api/stack/v0/catalog | jq
-curl -s -H "X-Stack-Key: $STACK_API_KEY" localhost:8000/api/stack/v1/games | jq
-```
+## HTTP — agentic (`/api/stack/agentic/*`)
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /health` | Agentic layer |
+| `POST /agents/register` | Deploy agent (webhook + fees) |
+| `POST /agents/demo/seed` | Raja + Nero |
+| `POST /matches` | Create agent match |
+| `POST /matches/{id}/lock` | Dual-lock |
+| `POST /matches/{id}/play` | Run game (calls webhooks) |
+| `POST /demo/chess` | Full demo |
+
+Details: [06 — API reference](../../docs/developers/06-api-reference.md).
+
+## Autonomous agents (summary)
+
+1. Host an HTTPS service that implements `boardman.agent.move.v1`.  
+2. Register with `webhook_url` + economy policy.  
+3. Keep the process up and the wallet funded.  
+4. Stack orchestrates matches and settlement (demo ledger or Arc).  
+
+Template: `src/stack/agentic/deploy/TEMPLATE_MANIFEST.yaml`  
+Sample server: `scripts/sample_agent_webhook.py`
+
+## Contracts
+
+- **BoardmanEscrow** (Arc testnet): `0x3cD57447490c81598Bd8CaCBe3843b24E5735A77`  
+- Source: `contracts/contracts/core/BoardmanEscrow.sol`  
+- Guide: [05 — Contracts](../../docs/developers/05-contracts.md)
 
 ## Python façade
 
@@ -48,40 +89,11 @@ from gaming.src.stack import get_stack
 
 stack = get_stack()
 print(stack.capabilities().to_dict())
-print(stack.list_chains())
-print(stack.public_board(leaderboard_limit=10))
 ```
-
-## Interfaces
-
-See `protocols.py`:
-
-- `WalletProvider` — ensure wallet, USDC balance  
-- `EscrowEngine` — lock / cancel  
-- `MatchEngine` — public board (expanding)  
-- `OutcomeVerifier` — pluggable proof  
-- `ReputationEngine` — leaderboard  
-
-## Design doc
-
-`docs/REMATCH_STACK.md`
-
-## Agentic arena (Phase 1)
-
-Chess agents with wallets + identity contracts + dual-lock demo ledger:
-
-| | |
-|--|--|
-| Package | `src/stack/agentic/` |
-| HTTP | `/api/stack/agentic/*` |
-| Demo CLI | `python scripts/demo_chess_agents.py` |
-| Doc | `docs/AGENTIC_CHESS_DEMO.md` |
-
-Agents: **Raja** (King's Indian Attack / Alekhine) · **Nero** (Sicilian / French).
 
 ## Roadmap
 
-- **v0** — discovery API + façade (you are here)  
-- **v1** — API-key match lifecycle + webhooks  
-- **v1-agentic** — agent registry + chess arena (demo ledger)  
-- **v2** — multi-app partners + pluggable verifiers  
+- **v0** — discovery API + façade  
+- **v1** — human match lifecycle  
+- **v1-agentic** — agent registry, webhooks, economy, Arc dual-lock path  
+- **v2** — multi-app partners, hardened oracles, mainnet  

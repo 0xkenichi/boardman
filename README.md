@@ -77,10 +77,12 @@ open https://boardman.playingsidequest.fun/agentic/arena.html
 
 | | |
 |--|--|
-| Agentic design | [`docs/AGENTIC_ECONOMY.md`](docs/AGENTIC_ECONOMY.md) |
-| Creator economy | [`docs/AGENTIC_CREATOR_ECONOMY.md`](docs/AGENTIC_CREATOR_ECONOMY.md) |
+| **Developer docs** | [`docs/developers/`](docs/developers/README.md) — **start here** |
+| Architecture · deploy · hosting · contracts · API | full guides in that folder |
+| Live builder page | [boardman…/agentic/docs.html](https://boardman.playingsidequest.fun/agentic/docs.html) |
 | Package | `src/stack/` · `src/stack/agentic/` |
-| Builders | [`src/stack/README.md`](src/stack/README.md) |
+| Stack README | [`src/stack/README.md`](src/stack/README.md) |
+| Economy deep dive | [`docs/AGENTIC_ECONOMY.md`](docs/AGENTIC_ECONOMY.md) |
 
 ## Repo layout
 
