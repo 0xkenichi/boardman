@@ -415,7 +415,7 @@
         <button type="button" id="viewAudience" class="on">Spectator</button>
         <button type="button" id="viewCreator">Creator desk</button>
       </div>
-      <div class="pill creator-only" id="enginePill">Stockfish via chess-api.com</div>
+      <div class="pill creator-only" id="enginePill">Stockfish GM · loading…</div>
     </div>
   </header>
 
@@ -1398,61 +1398,244 @@
       return null;
     }
 
+    function findMateIn2San() {
+      const moves = game.moves({ verbose: true });
+      for (const m of moves) {
+        game.move(m);
+        if (game.in_checkmate()) {
+          game.undo();
+          return m.san;
+        }
+        let forced = true;
+        const replies = game.moves({ verbose: true });
+        if (!replies.length) {
+          game.undo();
+          continue;
+        }
+        for (const r of replies) {
+          game.move(r);
+          let canMate = false;
+          for (const m2 of game.moves({ verbose: true })) {
+            game.move(m2);
+            if (game.in_checkmate()) canMate = true;
+            game.undo();
+            if (canMate) break;
+          }
+          game.undo();
+          if (!canMate) {
+            forced = false;
+            break;
+          }
+        }
+        game.undo();
+        if (forced) return m.san;
+      }
+      return null;
+    }
+
+    /* ── Local Stockfish (WASM) — real GM-strength in the browser ──
+       Free remote APIs top out ~depth 18 / 100ms. Local SF can go depth 18–22. */
+    const GM = {
+      // Both agents equal strength (GM band). Personality = openings only.
+      depth: 18,
+      movetimeMs: 1200, // real think time (not 70ms toy)
+      bookPlies: 6,
+    };
+    let sfEngine = null; // { worker, ready, inflight }
+    let sfInitPromise = null;
+
+    function uciToSan(fen, uci) {
+      const tmp = new Chess(fen);
+      const m = tmp.move(uci, { sloppy: true });
+      return m ? { san: m.san, uci } : null;
+    }
+
+    async function initLocalStockfish() {
+      if (sfEngine && sfEngine.ready) return sfEngine;
+      if (sfInitPromise) return sfInitPromise;
+      sfInitPromise = (async () => {
+        const sources = [
+          "https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js",
+          "https://cdn.jsdelivr.net/npm/stockfish.js@10.0.2/stockfish.js",
+        ];
+        let lastErr = null;
+        for (const src of sources) {
+          try {
+            // Fetch → blob Worker avoids CDN worker CORS issues
+            const res = await fetch(src, { mode: "cors" });
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            const code = await res.text();
+            const blob = new Blob([code], { type: "application/javascript" });
+            const url = URL.createObjectURL(blob);
+            const worker = new Worker(url);
+            const eng = {
+              worker,
+              ready: false,
+              listeners: [],
+            };
+            worker.onmessage = (e) => {
+              const line = String(e.data || "");
+              for (const fn of eng.listeners.slice()) fn(line);
+            };
+            const waitReady = () =>
+              new Promise((resolve, reject) => {
+                const t = setTimeout(() => reject(new Error("SF isready timeout")), 12000);
+                const onLine = (line) => {
+                  if (line === "readyok" || line.startsWith("uciok")) {
+                    clearTimeout(t);
+                    eng.listeners = eng.listeners.filter((f) => f !== onLine);
+                    resolve();
+                  }
+                };
+                eng.listeners.push(onLine);
+                worker.postMessage("uci");
+                worker.postMessage("isready");
+              });
+            await waitReady();
+            eng.ready = true;
+            sfEngine = eng;
+            setText("enginePill", "Stockfish local · GM d" + GM.depth);
+            log("Local Stockfish ready (grandmaster depth " + GM.depth + ")");
+            return eng;
+          } catch (err) {
+            lastErr = err;
+            log("SF load failed (" + src.split("/").pop() + "): " + err.message);
+          }
+        }
+        throw lastErr || new Error("no stockfish source");
+      })();
+      try {
+        return await sfInitPromise;
+      } catch (e) {
+        sfInitPromise = null;
+        throw e;
+      }
+    }
+
+    function localStockfishGo(fen, { depth = GM.depth, movetime = GM.movetimeMs } = {}) {
+      return new Promise(async (resolve, reject) => {
+        let eng;
+        try {
+          eng = await initLocalStockfish();
+        } catch (e) {
+          reject(e);
+          return;
+        }
+        let bestUci = null;
+        let evalPawns = null;
+        let mate = null;
+        const timeout = setTimeout(() => {
+          cleanup();
+          if (bestUci) resolve({ uci: bestUci, eval: evalPawns, mate, source: "stockfish_wasm" });
+          else reject(new Error("stockfish go timeout"));
+        }, Math.max(movetime + 4000, 8000));
+        const onLine = (line) => {
+          // info ... score cp 34 ... or score mate 3
+          if (line.startsWith("info ")) {
+            const mMate = line.match(/\bscore mate (-?\d+)/);
+            const mCp = line.match(/\bscore cp (-?\d+)/);
+            const mPv = line.match(/\bpv ([a-h][1-8][a-h][1-8][qrbn]?)/);
+            if (mMate) mate = parseInt(mMate[1], 10);
+            if (mCp) evalPawns = parseInt(mCp[1], 10) / 100;
+            if (mPv) bestUci = mPv[1];
+          }
+          if (line.startsWith("bestmove ")) {
+            const parts = line.split(/\s+/);
+            const uci = parts[1] && parts[1] !== "(none)" ? parts[1] : bestUci;
+            cleanup();
+            if (!uci) reject(new Error("no bestmove"));
+            else resolve({ uci, eval: evalPawns, mate, source: "stockfish_wasm" });
+          }
+        };
+        const cleanup = () => {
+          clearTimeout(timeout);
+          eng.listeners = eng.listeners.filter((f) => f !== onLine);
+        };
+        eng.listeners.push(onLine);
+        eng.worker.postMessage("ucinewgame");
+        eng.worker.postMessage("position fen " + fen);
+        // Prefer movetime for stable strength; depth as secondary
+        eng.worker.postMessage("go depth " + depth + " movetime " + movetime);
+      });
+    }
+
     async function stockfishMove(forSide) {
-      // Mate in 1 always — show real checkmates
+      // Always convert forced mates locally (instant + correct)
       const mate1 = findMateIn1();
       if (mate1) {
-        el("enginePill").textContent = "mate in 1";
+        setText("enginePill", "mate in 1");
         return {
           san: mate1,
           source: "mate_in_1",
           eval: forSide === "raja" ? 99 : -99,
         };
       }
-
-      // Raja = mate-hungry alpha depth; Nero solid but weaker (attack converts)
-      let depth = forSide === "raja" ? 15 : 9;
-      let thinkMs = forSide === "raja" ? 120 : 70;
-      const last = evalHistory[evalHistory.length - 1];
-      if (typeof last === "number") {
-        // Raja converts hard when ahead; still hunts when equal (attack = best defence)
-        if (forSide === "raja" && last >= 0.8) {
-          depth = 16;
-          thinkMs = 140;
-        }
-        if (forSide === "raja" && last >= -0.5 && last < 0.8) {
-          depth = 15;
-          thinkMs = 110;
-        }
-        // Nero only gets depth when clearly winning (rare vs Raja)
-        if (forSide === "nero" && last <= -1.8) depth = 12;
+      const mate2 = findMateIn2San();
+      if (mate2) {
+        setText("enginePill", "mate in 2");
+        return {
+          san: mate2,
+          source: "mate_in_2",
+          eval: forSide === "raja" ? 90 : -90,
+        };
       }
+
+      // Both agents = same GM strength. No Nero nerf. No capture-greed "style".
+      const depth = GM.depth;
       const fen = game.fen();
+
+      // 1) Local Stockfish WASM (strongest, no free-tier think-time cap)
+      try {
+        const sf = await localStockfishGo(fen, { depth, movetime: GM.movetimeMs });
+        const parsed = uciToSan(fen, sf.uci);
+        if (parsed) {
+          let ev = sf.eval;
+          if (sf.mate != null) {
+            // UCI mate score is side-to-move POV; convert-ish to white POV for UI
+            const stmWhite = fen.includes(" w ");
+            const abs = 20;
+            ev = (sf.mate > 0 ? abs : -abs) * (stmWhite ? 1 : -1);
+          }
+          setText("enginePill", `Stockfish GM · d${depth} · ${forSide}`);
+          return {
+            san: parsed.san,
+            uci: parsed.uci,
+            source: "stockfish_gm_wasm",
+            eval: ev,
+          };
+        }
+      } catch (e) {
+        log("local SF: " + e.message + " — trying remote APIs");
+      }
+
+      // 2) chess-api.com max free tier (d18 / 100ms)
       try {
         const res = await fetch("https://chess-api.com/v1", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fen, depth, maxThinkingTime: thinkMs, variants: 1 }),
+          body: JSON.stringify({
+            fen,
+            depth: 18,
+            maxThinkingTime: 100,
+            variants: 1,
+          }),
         });
         const data = await res.json();
         const body = Array.isArray(data)
           ? data.filter((x) => x && (x.type === "bestmove" || x.move)).slice(-1)[0]
           : data;
         if (body && (body.san || body.move)) {
-          el("enginePill").textContent = `chess-api.com · d${body.depth || depth} · ${forSide}`;
+          setText("enginePill", `chess-api GM · d${body.depth || 18} · ${forSide}`);
           let san = body.san;
           if (!san && body.move) {
-            const tmp = new Chess(fen);
-            const m = tmp.move(body.move, { sloppy: true });
-            san = m ? m.san : null;
+            const p = uciToSan(fen, body.move);
+            san = p ? p.san : null;
           }
-          // Prefer mate scores from API
           let ev = typeof body.eval === "number" ? body.eval : null;
           if (body.mate != null) {
             const mt = Number(body.mate);
             ev = mt > 0 ? 20 : -20;
             if (Math.abs(mt) === 1) {
-              // ensure we play the mate
               const m1 = findMateIn1();
               if (m1) san = m1;
             }
@@ -1469,22 +1652,22 @@
       } catch (e) {
         log("chess-api failed: " + e.message);
       }
+
+      // 3) stockfish.online depth 15
       try {
         const url =
           "https://stockfish.online/api/s/v2.php?fen=" +
           encodeURIComponent(fen) +
-          "&depth=" +
-          depth;
+          "&depth=15";
         const res = await fetch(url);
         const data = await res.json();
         if (data.success && data.bestmove) {
-          el("enginePill").textContent = `stockfish.online · d${depth} · ${forSide}`;
+          setText("enginePill", `stockfish.online · d15 · ${forSide}`);
           const uci = data.bestmove.replace(/^bestmove\s+/, "").split(/\s+/)[0];
-          const tmp = new Chess(fen);
-          const m = tmp.move(uci, { sloppy: true });
-          if (m) {
+          const p = uciToSan(fen, uci);
+          if (p) {
             return {
-              san: m.san,
+              san: p.san,
               uci,
               source: "stockfish.online",
               eval: typeof data.evaluation === "number" ? data.evaluation : null,
@@ -1494,19 +1677,20 @@
       } catch (e) {
         log("stockfish.online failed: " + e.message);
       }
-      // Raja local fallback: checks > captures > everything else
+
+      // 4) Absolute last resort — still prefer checks/mates, not random captures
       const verbose = game.moves({ verbose: true });
       verbose.sort((a, b) => {
         const score = (m) =>
-          (m.san.includes("#") ? 100 : 0) +
-          (m.san.includes("+") ? 20 : 0) +
-          (m.captured ? 10 : 0) +
-          (forSide === "raja" && m.san.includes("+") ? 15 : 0);
+          (m.san.includes("#") ? 1000 : 0) +
+          (m.san.includes("+") ? 50 : 0) +
+          (m.captured ? 5 : 0);
         return score(b) - score(a);
       });
+      log("WARNING: all engines failed — weak local fallback");
       return {
         san: verbose[0].san,
-        source: forSide === "raja" ? "raja_local_attack" : "local-aggressive",
+        source: "local_fallback_only",
         eval: null,
       };
     }
@@ -1599,8 +1783,8 @@
 
         let choice = null;
         const bookSan = bookMove(side);
-        // Short book — identity only, then Stockfish fights
-        if (bookSan && game.history().length < 10) {
+        // Short book for identity only — then pure GM Stockfish (both sides equal depth)
+        if (bookSan && game.history().length < GM.bookPlies) {
           choice = { san: bookSan, source: "opening_book", eval: null };
           log(`${AGENTS[side].name} book → ${bookSan}`);
         } else {
@@ -1802,11 +1986,17 @@
 
     // Prefer Classic for clean spectator first look; Arena Live via ?mode=arena
     const params = new URLSearchParams(location.search);
+    // Optional: ?depth=20&movetime=2000 for even stronger local SF
+    if (params.get("depth")) GM.depth = Math.max(12, Math.min(24, parseInt(params.get("depth"), 10) || 18));
+    if (params.get("movetime"))
+      GM.movetimeMs = Math.max(200, Math.min(10000, parseInt(params.get("movetime"), 10) || 1200));
     setUiView(params.get("view") === "creator" ? "creator" : "audience");
     setViewMode(params.get("mode") === "arena" ? "arena" : "classic");
     renderMeta();
     renderBoard();
     renderSpectator();
+    // Warm Stockfish WASM so first move isn't cold
+    initLocalStockfish().catch((e) => log("SF warmup: " + e.message));
   </script>
 </body>
 </html>

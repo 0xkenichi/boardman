@@ -43,23 +43,21 @@ class HybridEngine:
         self.mind = mind
         self.agent_id = agent_id
         self.rng = rng or random.Random()
-        base = depth if depth is not None else int(os.getenv("BOARDMAN_SF_DEPTH", "12"))
-        # Mate-hungry attackers get real depth advantage (Raja beats solid peers)
+        # GM mode: both sides use max free Stockfish. Personality is openings only —
+        # never nerf Nero or divert to worse "attacking" moves (that looked stupid).
+        base = depth if depth is not None else int(os.getenv("BOARDMAN_SF_DEPTH", "18"))
         base += int(getattr(mind, "depth_bonus", 0) or 0)
-        if getattr(mind, "mate_hunger", 1.0) >= 1.5:
-            base = max(base, 14)
-        if getattr(mind, "aggression", 1.0) >= 1.6:
-            base = max(base, 13)
-        # Defenders stay a step weaker so attack converts
-        if getattr(mind, "archetype", "") == "defender_counter" or (
-            getattr(mind, "counterpunch", 0) >= 1.3 and getattr(mind, "aggression", 1) < 1.1
-        ):
-            base = min(base, 10)
-        self.depth = min(base, 16)  # API free tier soft-cap
-        default_think = 110 if getattr(mind, "mate_hunger", 1.0) >= 1.5 else 80
+        max_depth = int(os.getenv("BOARDMAN_SF_MAX_DEPTH", "18"))
+        self.depth = max(12, min(base, max_depth))
         self.think_ms = think_ms if think_ms is not None else int(
-            os.getenv("BOARDMAN_SF_THINK_MS", str(default_think))
+            os.getenv("BOARDMAN_SF_THINK_MS", "100")
         )
+        self.gm_pure = os.getenv("BOARDMAN_GM_PURE", "1").strip().lower() not in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }
         self.local = StyledEngine(mind, rng=self.rng)
         self.last_source = "none"
         self.last_eval: Optional[float] = None
@@ -84,16 +82,16 @@ class HybridEngine:
             self.last_eval = 90.0 if board.turn == chess.WHITE else -90.0
             return m2
 
-        # 1) Opening book — short (identity only); SF fights the middlegame
+        # 1) Opening book — short identity only; engine plays the real game
         books = self._books_for(board)
-        book_plies = int(os.getenv("BOARDMAN_BOOK_PLIES", "8"))
+        book_plies = int(os.getenv("BOARDMAN_BOOK_PLIES", "6"))
         bm = book_move(board, books, ply_limit=book_plies)
         if bm is not None:
             self.last_source = "opening_book"
             self.last_eval = None
             return bm
 
-        # 2) Stockfish hybrid (aggressive conversion when winning)
+        # 2) Grandmaster path: pure Stockfish best move at max free depth
         if use_stockfish():
             try:
                 mv = self._stockfish_style_move(board)
@@ -101,9 +99,24 @@ class HybridEngine:
                     return mv
             except Exception as exc:
                 logger.warning("[%s] stockfish path failed: %s", self.agent_id, exc)
+            # One retry at full depth before local junk
+            try:
+                result = sf.analyze(
+                    board.fen(),
+                    depth=self.depth,
+                    think_ms=self.think_ms,
+                    variants=1,
+                )
+                retry = self._parse_legal(board, result.best.uci)
+                if retry is not None:
+                    self.last_source = result.source + "+retry"
+                    self.last_eval = result.best.eval_pawns
+                    return retry
+            except Exception as exc:
+                logger.warning("[%s] stockfish retry failed: %s", self.agent_id, exc)
 
-        # 3) Local fallback — aggression-biased
-        self.last_source = "local_styled"
+        # 3) Last resort only — never preferred
+        self.last_source = "local_styled_fallback"
         self.last_eval = None
         return self.local.choose_move(board)
 
@@ -122,16 +135,14 @@ class HybridEngine:
         from gaming.src.stack.agentic.chess.mate_search import prefer_forcing
 
         depth = self.depth
-        # Attack is best defence: when under pressure, still hunt counterplay with depth
         fen = board.fen()
-        think = max(self.think_ms, 120 if self.is_attacker else 90)
+        think = max(self.think_ms, 100)
         result = sf.analyze(fen, depth=depth, think_ms=think, variants=1)
         self.last_eval = result.best.eval_pawns
 
-        # API mate score
+        # API mate score — always play engine mate line
         if result.best.mate is not None:
             mate_n = int(result.best.mate)
-            # positive mate → side to move mates if white POV convention varies; trust move
             best_mv = self._parse_legal(board, result.best.uci)
             if best_mv is not None:
                 self.last_source = f"{result.source}+mate_{mate_n}"
@@ -147,23 +158,50 @@ class HybridEngine:
             return None
 
         ev = result.best.eval_pawns
+
+        # GM pure: trust Stockfish. No "style" checks that hang pieces for drama.
+        if self.gm_pure:
+            # Only soft anti-repetition when clearly better and engine move repeats
+            if ev is not None:
+                my_edge = ev if board.turn == chess.WHITE else -ev
+                if my_edge >= 0.8:
+                    board.push(best_mv)
+                    rep = board.is_repetition(2) or board.can_claim_threefold_repetition()
+                    board.pop()
+                    if rep:
+                        for mv in board.legal_moves:
+                            if mv == best_mv:
+                                continue
+                            board.push(mv)
+                            bad = board.is_repetition(2)
+                            board.pop()
+                            if not bad:
+                                alt = sf.analyze(
+                                    fen,
+                                    depth=max(12, depth - 2),
+                                    think_ms=think,
+                                    searchmoves=mv.uci(),
+                                )
+                                alt_mv = self._parse_legal(board, alt.best.uci)
+                                if alt_mv is not None:
+                                    self.last_source = f"{result.source}+anti_draw_gm"
+                                    self.last_eval = alt.best.eval_pawns
+                                    return alt_mv
+            self.last_source = f"{result.source}+gm_d{depth}"
+            return best_mv
+
+        # Legacy style path (BOARDMAN_GM_PURE=0 only)
         hunger = float(getattr(self.mind, "mate_hunger", 1.0) or 1.0)
         agg = float(getattr(self.mind, "aggression", 1.0) or 1.0)
-
-        # Raja / attackers: force checks & captures more often
-        # - when ahead: convert hard
-        # - when equal/slightly worse: still attack (best defence)
-        if self.is_attacker or agg >= 1.4:
+        if (self.is_attacker or agg >= 1.4) and not self.gm_pure:
             my_edge = 0.0
             if ev is not None:
                 my_edge = ev if board.turn == chess.WHITE else -ev
-            # threshold: attackers attack from -0.6 up; pure best when crushing
             if my_edge >= -0.6 or hunger >= 1.6:
                 forcing: list[chess.Move] = []
                 for mv in board.legal_moves:
                     if board.gives_check(mv) or board.is_capture(mv):
                         forcing.append(mv)
-                # rank checks first
                 forcing.sort(
                     key=lambda m: (2 if board.gives_check(m) else 0)
                     + (1 if board.is_capture(m) else 0),
@@ -171,49 +209,24 @@ class HybridEngine:
                 )
                 pick = prefer_forcing(board, forcing[:12]) if forcing else None
                 if pick is not None and pick != best_mv:
-                    tol = 1.15 if hunger >= 1.6 else 0.75  # how much eval to give for attack
                     try:
                         alt_res = sf.analyze(
                             fen,
-                            depth=max(9, depth - 1),
-                            think_ms=60,
+                            depth=max(12, depth - 1),
+                            think_ms=think,
                             searchmoves=pick.uci(),
                         )
                         alt_ev = alt_res.best.eval_pawns
                         if alt_ev is not None and ev is not None:
                             alt_edge = alt_ev if board.turn == chess.WHITE else -alt_ev
                             best_edge = ev if board.turn == chess.WHITE else -ev
-                            if alt_edge >= best_edge - tol:
-                                self.last_source = f"{result.source}+raja_attack"
+                            # Only allow alt if nearly equal (≤0.15 pawns) — no dumb sacrifices
+                            if alt_edge >= best_edge - 0.15:
+                                self.last_source = f"{result.source}+style"
                                 self.last_eval = alt_ev
                                 return pick
-                        # checks always get a second look for mate_hunger
-                        if board.gives_check(pick) and hunger >= 1.5:
-                            self.last_source = f"{result.source}+check_hunt"
-                            return pick
                     except Exception:
-                        if board.gives_check(pick):
-                            self.last_source = f"{result.source}+check"
-                            return pick
-
-        # Avoid repetition / soft draws when not losing
-        if ev is not None:
-            my_edge = ev if board.turn == chess.WHITE else -ev
-            if my_edge >= -0.3 or getattr(self.mind, "draw_aversion", 1.0) >= 1.4:
-                board.push(best_mv)
-                rep = board.is_repetition(2) or board.can_claim_threefold_repetition()
-                board.pop()
-                if rep:
-                    for mv in board.legal_moves:
-                        if mv == best_mv:
-                            continue
-                        board.push(mv)
-                        bad = board.is_repetition(2)
-                        chk = board.is_check()
-                        board.pop()
-                        if not bad and (chk or board.is_capture(mv)):
-                            self.last_source = f"{result.source}+anti_draw"
-                            return mv
+                        pass
 
         self.last_source = result.source
         return best_mv

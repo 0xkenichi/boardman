@@ -141,9 +141,10 @@ def play_match(
     rng_w = random.Random(rng_seed + 1)
     rng_b = random.Random(rng_seed + 2)
 
-    # Raja (attacker) gets higher base depth; Nero stays solid but lower
-    default_w = int(os.getenv("BOARDMAN_SF_DEPTH_WHITE", os.getenv("BOARDMAN_SF_DEPTH", "14")))
-    default_b = int(os.getenv("BOARDMAN_SF_DEPTH_BLACK", "9"))
+    # Both agents GM-strength (same max free SF depth). No intentional Nero nerf.
+    default_d = int(os.getenv("BOARDMAN_SF_DEPTH", "18"))
+    default_w = int(os.getenv("BOARDMAN_SF_DEPTH_WHITE", str(default_d)))
+    default_b = int(os.getenv("BOARDMAN_SF_DEPTH_BLACK", str(default_d)))
     w_mind = mind_from_agent(white_agent)
     b_mind = mind_from_agent(black_agent)
     w_depth = default_w + int(getattr(w_mind, "depth_bonus", 0) or 0)

@@ -53,7 +53,7 @@ MIND: dict[str, Any] = {
     "development": 1.2,
     "sacrifice_bias": 1.55,
     "draw_aversion": 1.7,
-    "depth_bonus": 3,  # +SF depth vs baseline
+    "depth_bonus": 0,  # both agents at GM max depth; personality = openings only
     "think_ms_min": 280,
     "think_ms_max": 1200,  # snappy attacker
     "randomness": 0.02,

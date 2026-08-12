@@ -40,8 +40,8 @@ MANIFEST = {
     },
     "runtime": {
         "engine": "hybrid_stockfish",
-        "providers": ["chess-api.com", "stockfish.online", "local"],
+        "providers": ["chess-api.com", "stockfish.online", "stockfish_wasm", "local"],
         "goal": "win",
-        "strength_tier": "alpha",  # stronger SF depth vs peers
+        "strength_tier": "grandmaster",  # pure SF best move @ max free depth
     },
 }

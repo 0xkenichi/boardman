@@ -23,10 +23,11 @@ STOCKFISH_ONLINE_URL = os.getenv(
     "BOARDMAN_STOCKFISH_ONLINE_URL",
     "https://stockfish.online/api/s/v2.php",
 )
-# Default depth ~ IM level on chess-api docs (depth 12 ≈ 2350)
-DEFAULT_DEPTH = int(os.getenv("BOARDMAN_SF_DEPTH", "12"))
-DEFAULT_THINK_MS = int(os.getenv("BOARDMAN_SF_THINK_MS", "80"))
-REQUEST_TIMEOUT = float(os.getenv("BOARDMAN_SF_TIMEOUT", "25"))
+# Free chess-api.com caps: depth 18 ≈ 2550–2750 (GM band), think ≤100ms.
+# Use max free tier by default so agents play near-grandmaster, not club player.
+DEFAULT_DEPTH = int(os.getenv("BOARDMAN_SF_DEPTH", "18"))
+DEFAULT_THINK_MS = int(os.getenv("BOARDMAN_SF_THINK_MS", "100"))
+REQUEST_TIMEOUT = float(os.getenv("BOARDMAN_SF_TIMEOUT", "45"))
 
 
 @dataclass
@@ -85,10 +86,13 @@ def analyze_chess_api(
     variants: int = 1,
     searchmoves: Optional[str] = None,
 ) -> EngineResult:
+    # Free tier hard caps (supporters can raise via env BOARDMAN_SF_* if API key allows)
+    max_depth = int(os.getenv("BOARDMAN_SF_MAX_DEPTH", "18"))
+    max_think = int(os.getenv("BOARDMAN_SF_MAX_THINK_MS", "100"))
     payload: dict[str, Any] = {
         "fen": fen,
-        "depth": max(1, min(int(depth), 18)),
-        "maxThinkingTime": max(10, min(int(think_ms), 100)),
+        "depth": max(1, min(int(depth), max_depth)),
+        "maxThinkingTime": max(10, min(int(think_ms), max_think)),
         "variants": max(1, min(int(variants), 5)),
     }
     if searchmoves:

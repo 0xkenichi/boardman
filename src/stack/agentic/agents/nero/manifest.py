@@ -39,7 +39,8 @@ MANIFEST = {
     },
     "runtime": {
         "engine": "hybrid_stockfish",
-        "providers": ["chess-api.com", "stockfish.online", "local"],
+        "providers": ["chess-api.com", "stockfish.online", "stockfish_wasm", "local"],
         "goal": "win",
+        "strength_tier": "grandmaster",  # same SF depth as Raja — no intentional nerf
     },
 }
