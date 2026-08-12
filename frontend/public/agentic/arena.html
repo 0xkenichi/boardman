@@ -368,6 +368,49 @@
     }
     .bet-card .payout-hint { font-size: 0.78rem; color: var(--muted); margin-bottom: 8px; }
     .bet-card button { width: 100%; padding: 10px 12px; font-size: 0.88rem; }
+    .bet-amount-box {
+      border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+      margin: 0 0 12px; background: #0a0a10;
+    }
+    .bet-amount-box .amt-head {
+      display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+      margin-bottom: 8px;
+    }
+    .bet-amount-box .amt-label {
+      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted);
+    }
+    .bet-amount-box .amt-value {
+      font-size: 1.25rem; font-weight: 800; color: #c4b5fd;
+    }
+    .bet-amount-box input[type="range"] {
+      width: 100%; accent-color: var(--accent); cursor: pointer; margin: 6px 0 10px;
+    }
+    .bet-amount-row {
+      display: flex; gap: 8px; align-items: center;
+    }
+    .bet-amount-row .currency {
+      color: var(--muted); font-weight: 700; font-size: 0.9rem;
+    }
+    .bet-amount-row input[type="number"] {
+      flex: 1; min-width: 0;
+      background: #12121a; border: 1px solid var(--line); border-radius: 8px;
+      color: var(--text); padding: 8px 10px; font-size: 0.95rem; font-weight: 600;
+    }
+    .bet-amount-row input[type="number"]:focus {
+      outline: none; border-color: var(--accent);
+    }
+    .bet-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .bet-presets button {
+      appearance: none; border: 1px solid var(--line); background: #18181b;
+      color: var(--muted); border-radius: 999px; padding: 5px 10px;
+      font-size: 0.75rem; font-weight: 600; cursor: pointer;
+    }
+    .bet-presets button:hover { border-color: var(--accent); color: #e4e4e7; }
+    .bet-presets button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .bet-room {
+      margin-top: 8px; font-size: 0.75rem; color: var(--muted);
+    }
+    .bet-room strong { color: #e4e4e7; }
     .pot-banner {
       background: linear-gradient(135deg, #1a1030 0%, #0a0a12 100%);
       border: 1px solid #3b2a55; border-radius: 12px; padding: 12px 14px; margin-bottom: 12px;
@@ -485,21 +528,41 @@
         </div>
 
         <p class="hint">
-          Pick a side. Odds move as money comes in and the position changes.
-          Fastest bets fill the pot — once full, wait for the result.
+          Set how much you want to stake, then pick a side.
+          You can’t bet more than room left in the pot.
         </p>
+
+        <div class="bet-amount-box">
+          <div class="amt-head">
+            <span class="amt-label">Your stake</span>
+            <span class="amt-value" id="betAmtLabel">$1.00</span>
+          </div>
+          <input type="range" id="betSlider" min="0.25" max="20" step="0.25" value="1" aria-label="Bet amount slider" />
+          <div class="bet-amount-row">
+            <span class="currency">$</span>
+            <input type="number" id="betInput" min="0.25" step="0.25" value="1" inputmode="decimal" aria-label="Custom bet amount" />
+          </div>
+          <div class="bet-presets" id="betPresets">
+            <button type="button" data-amt="1">$1</button>
+            <button type="button" data-amt="2">$2</button>
+            <button type="button" data-amt="5">$5</button>
+            <button type="button" data-amt="10">$10</button>
+            <button type="button" data-amt="max">Max</button>
+          </div>
+          <div class="bet-room">Room left in pot: <strong id="betRoomLabel">—</strong></div>
+        </div>
 
         <div class="bet-card">
           <div class="name">Raja <span id="wrA" style="color:var(--muted);font-weight:600">—</span></div>
           <div class="odds-big" id="decA">2.00×</div>
-          <div class="payout-hint">Win $1 → get <span id="netA">$2.00</span> back · chance <span id="probA">50%</span></div>
-          <button type="button" class="secondary" id="betA">Bet $1 on Raja</button>
+          <div class="payout-hint">If you win → get <span id="netA">$2.00</span> back · chance <span id="probA">50%</span></div>
+          <button type="button" class="secondary" id="betA">Bet on Raja</button>
         </div>
         <div class="bet-card">
           <div class="name">Nero <span id="wrB" style="color:var(--muted);font-weight:600">—</span></div>
           <div class="odds-big" id="decB">2.00×</div>
-          <div class="payout-hint">Win $1 → get <span id="netB">$2.00</span> back · chance <span id="probB">50%</span></div>
-          <button type="button" class="secondary" id="betB">Bet $1 on Nero</button>
+          <div class="payout-hint">If you win → get <span id="netB">$2.00</span> back · chance <span id="probB">50%</span></div>
+          <button type="button" class="secondary" id="betB">Bet on Nero</button>
         </div>
 
         <div class="row"><span>Your bets</span><span id="myBets">none yet</span></div>
@@ -694,6 +757,7 @@
     let matchSeeds = { a: 0, b: 0 };
     let matchCap = 20;
     let matchBinding = "—";
+    let betAmount = 1; // spectator stake (slider + custom input)
     // stats for prior odds
     let form = {
       raja: { wins: 12, losses: 8, draws: 2 },
@@ -911,9 +975,10 @@
       setText("probB", (pB * 100).toFixed(0) + "%");
       setText("decA", decA.toFixed(2) + "×");
       setText("decB", decB.toFixed(2) + "×");
-      // Audience: "get $X back" (stake included)
-      setText("netA", "$" + decA.toFixed(2));
-      setText("netB", "$" + decB.toFixed(2));
+      // Payout for current stake size (stake included)
+      const stakeAmt = Math.max(0.25, betAmount || 1);
+      setText("netA", "$" + (decA * stakeAmt).toFixed(2));
+      setText("netB", "$" + (decB * stakeAmt).toFixed(2));
       setText("edgeA", (edgeA >= 0 ? "+" : "") + (edgeA * 100).toFixed(1) + "% EV");
       setText("edgeB", (edgeB >= 0 ? "+" : "") + (edgeB * 100).toFixed(1) + "% EV");
       const ea = el("edgeA");
@@ -932,7 +997,7 @@
       setClass("potStatusC", stClass);
 
       const mine = spectator.bets
-        .map((b) => (b.side === "a" ? "Raja" : "Nero") + " $" + b.amount)
+        .map((b) => (b.side === "a" ? "Raja" : "Nero") + " $" + Number(b.amount).toFixed(2))
         .join(", ");
       setText("myBets", mine || "none yet");
 
@@ -943,12 +1008,115 @@
       else if (el("escrowPill") && el("escrowPill").textContent === "locked") matchLbl = "locked";
       setText("matchStateLabel", matchLbl);
 
-      // Disable bet buttons when market not open
-      const canBet = st === "open";
-      if (el("betA")) el("betA").disabled = !canBet;
-      if (el("betB")) el("betB").disabled = !canBet;
-      if (el("betA")) el("betA").textContent = canBet ? "Bet $1 on Raja" : "Bets closed";
-      if (el("betB")) el("betB").textContent = canBet ? "Bet $1 on Nero" : "Bets closed";
+      // Pot room + bet amount controls
+      const room = potRoom();
+      syncBetAmountUI(room);
+      const canBet = st === "open" && room >= 0.25 - 0.001;
+      const amt = clampBetAmount(betAmount, room);
+      if (el("betA")) {
+        el("betA").disabled = !canBet;
+        el("betA").textContent = canBet
+          ? `Bet $${amt.toFixed(2)} on Raja`
+          : st === "open"
+            ? "Pot full"
+            : "Bets closed";
+      }
+      if (el("betB")) {
+        el("betB").disabled = !canBet;
+        el("betB").textContent = canBet
+          ? `Bet $${amt.toFixed(2)} on Nero`
+          : st === "open"
+            ? "Pot full"
+            : "Bets closed";
+      }
+    }
+
+    function potRoom() {
+      return Math.max(0, matchCap - (spectator.a + spectator.b));
+    }
+
+    function clampBetAmount(v, room) {
+      const r = room != null ? room : potRoom();
+      let n = Number(v);
+      if (!Number.isFinite(n) || n <= 0) n = 0.25;
+      n = Math.round(n * 100) / 100;
+      const maxAllowed = Math.max(0, Math.floor(r * 100) / 100);
+      if (maxAllowed < 0.25) return 0;
+      n = Math.min(n, maxAllowed);
+      n = Math.max(0.25, n);
+      // Never exceed pot room
+      if (n > r + 0.0001) n = maxAllowed;
+      return Math.round(n * 100) / 100;
+    }
+
+    function syncBetAmountUI(room) {
+      const r = room != null ? room : potRoom();
+      const maxR = Math.max(0.25, Math.floor(r * 100) / 100);
+      const slider = el("betSlider");
+      const input = el("betInput");
+      if (slider) {
+        slider.max = String(Math.max(0.25, maxR));
+        // If pot is tiny, keep slider usable
+        if (r < 0.25) {
+          slider.disabled = true;
+          slider.value = "0.25";
+        } else {
+          slider.disabled = spectator.status !== "open";
+          const clamped = clampBetAmount(betAmount, r);
+          betAmount = clamped || 0.25;
+          slider.value = String(betAmount);
+        }
+      }
+      if (input) {
+        input.max = String(Math.max(0.25, maxR));
+        input.disabled = spectator.status !== "open" || r < 0.25;
+        if (r >= 0.25) {
+          betAmount = clampBetAmount(betAmount, r);
+          // Don't clobber while user is typing a custom amount
+          if (document.activeElement !== input) {
+            input.value = String(betAmount);
+          }
+        }
+      }
+      setText("betAmtLabel", r < 0.25 ? "$0.00" : "$" + (betAmount || 0).toFixed(2));
+      setText(
+        "betRoomLabel",
+        r < 0.01 ? "full" : "$" + r.toFixed(2) + " of $" + matchCap.toFixed(0) + " cap"
+      );
+      // Highlight preset chips
+      document.querySelectorAll("#betPresets button").forEach((btn) => {
+        const a = btn.getAttribute("data-amt");
+        if (a === "max") {
+          btn.classList.toggle("on", Math.abs(betAmount - maxR) < 0.02 && r >= 0.25);
+        } else {
+          btn.classList.toggle("on", Math.abs(betAmount - Number(a)) < 0.02);
+        }
+      });
+    }
+
+    function setBetAmount(v, { fromSlider } = {}) {
+      const room = potRoom();
+      if (room < 0.25) {
+        betAmount = 0;
+        syncBetAmountUI(room);
+        renderMarket();
+        return;
+      }
+      let n = Number(v);
+      if (!Number.isFinite(n)) n = betAmount;
+      betAmount = clampBetAmount(n, room);
+      if (!fromSlider && el("betSlider")) el("betSlider").value = String(betAmount);
+      if (el("betInput") && document.activeElement !== el("betInput")) {
+        el("betInput").value = String(betAmount);
+      }
+      setText("betAmtLabel", "$" + betAmount.toFixed(2));
+      // Update button labels without full market recompute when possible
+      const st = spectator.status;
+      const canBet = st === "open" && room >= 0.25;
+      if (el("betA") && canBet) el("betA").textContent = `Bet $${betAmount.toFixed(2)} on Raja`;
+      if (el("betB") && canBet) el("betB").textContent = `Bet $${betAmount.toFixed(2)} on Nero`;
+      // Refresh payout hints for new stake
+      renderMarket();
     }
 
     function renderSpectator() {
@@ -957,20 +1125,31 @@
 
     function placeBet(side) {
       if (spectator.status !== "open") return;
-      const amount = 1;
-      const room = matchCap - (spectator.a + spectator.b);
-      if (room < amount - 0.001) {
+      const room = potRoom();
+      if (room < 0.25 - 0.001) {
         spectator.status = "full";
         renderMarket();
         return;
       }
+      let amount = clampBetAmount(betAmount, room);
+      if (amount < 0.25 || amount > room + 0.0001) {
+        log(`Bet rejected — amount $${amount} exceeds room $${room.toFixed(2)}`);
+        setBetAmount(room);
+        return;
+      }
+      // Hard cap: never more than pot room
+      amount = Math.min(amount, room);
+      amount = Math.round(amount * 100) / 100;
       spectator.bets.push({ side, amount });
       if (side === "a") spectator.a += amount;
       else spectator.b += amount;
       maybeClosePot();
+      // Keep stake but clamp to new room
+      const newRoom = potRoom();
+      if (betAmount > newRoom) setBetAmount(newRoom > 0 ? newRoom : 0.25);
       renderMarket();
       const dec = side === "a" ? (el("decA") && el("decA").textContent) : (el("decB") && el("decB").textContent);
-      log(`Fan bet $${amount} on ${side === "a" ? "Raja" : "Nero"} @ ${dec || "?"}`);
+      log(`Fan bet $${amount.toFixed(2)} on ${side === "a" ? "Raja" : "Nero"} @ ${dec || "?"}`);
     }
 
     function addLp(side, amount) {
@@ -1956,6 +2135,34 @@
     el("viewCreator").onclick = () => setUiView("creator");
     el("betA").onclick = () => placeBet("a");
     el("betB").onclick = () => placeBet("b");
+    if (el("betSlider")) {
+      el("betSlider").addEventListener("input", (e) => {
+        setBetAmount(e.target.value, { fromSlider: true });
+        if (el("betInput")) el("betInput").value = String(betAmount);
+      });
+    }
+    if (el("betInput")) {
+      el("betInput").addEventListener("input", (e) => {
+        const raw = e.target.value;
+        if (raw === "" || raw === ".") return;
+        setBetAmount(raw);
+      });
+      el("betInput").addEventListener("change", (e) => {
+        setBetAmount(e.target.value);
+        e.target.value = String(betAmount);
+      });
+      el("betInput").addEventListener("blur", (e) => {
+        setBetAmount(e.target.value);
+        e.target.value = String(betAmount);
+      });
+    }
+    document.querySelectorAll("#betPresets button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const a = btn.getAttribute("data-amt");
+        if (a === "max") setBetAmount(potRoom());
+        else setBetAmount(a);
+      });
+    });
     if (el("btnLpRaja")) el("btnLpRaja").onclick = () => addLp("raja", 20);
     if (el("btnLpNero")) el("btnLpNero").onclick = () => addLp("nero", 20);
     el("btnPlay").onclick = runDemo;

@@ -11,7 +11,7 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, ".."); // project root
+const ROOT = "/Users/kenichi/.grok/worktrees/rematch-rematch/arc";
 const OUT_DIR = path.join(ROOT, "demos");
 const BASE = process.env.BASE_URL || "https://boardman.playingsidequest.fun";
 
@@ -74,16 +74,35 @@ async function main() {
     await sleep(800);
   }
 
-  // Place a few bets pre-game
+  // Stake controls: slider + custom amount + presets (not fixed $1)
   const betA = page.locator("#betA");
   const betB = page.locator("#betB");
+  const slider = page.locator("#betSlider");
+  const betInput = page.locator("#betInput");
+  if (await slider.count()) {
+    console.log("4b) Stake slider / custom amount…");
+    await slider.evaluate((el) => {
+      el.value = "3";
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await sleep(900);
+    if (await betInput.count()) {
+      await betInput.fill("5");
+      await betInput.dispatchEvent("change");
+      await sleep(800);
+    }
+    // preset chips
+    const p2 = page.locator('#betPresets button[data-amt="2"]');
+    if (await p2.count()) {
+      await p2.click();
+      await sleep(600);
+    }
+  }
   if (await betA.isVisible().catch(() => false)) {
     await betA.click();
-    await sleep(600);
+    await sleep(700);
     await betB.click();
-    await sleep(600);
-    await betA.click();
-    await sleep(800);
+    await sleep(700);
   }
 
   // Start match
@@ -92,17 +111,26 @@ async function main() {
   await play.click();
   await sleep(4000);
 
-  // More bets while live
-  for (let i = 0; i < 4; i++) {
-    if (await betA.isEnabled().catch(() => false)) {
+  // More bets while live — vary amounts, never over pot room
+  for (let i = 0; i < 5; i++) {
+    if (await slider.count()) {
+      const vals = ["1", "2", "4", "3", "1.5"];
+      await slider.evaluate((el, v) => {
+        const max = parseFloat(el.max) || 20;
+        const n = Math.min(parseFloat(v), max);
+        el.value = String(n);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      }, vals[i % vals.length]);
+      await sleep(400);
+    }
+    if (await betA.isEnabled().catch(() => false) && i % 2 === 0) {
       await betA.click().catch(() => {});
       await sleep(500);
-    }
-    if (await betB.isEnabled().catch(() => false)) {
+    } else if (await betB.isEnabled().catch(() => false)) {
       await betB.click().catch(() => {});
       await sleep(500);
     }
-    await sleep(2500);
+    await sleep(2200);
   }
 
   // Watch board for a stretch
