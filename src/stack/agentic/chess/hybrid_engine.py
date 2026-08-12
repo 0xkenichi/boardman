@@ -91,6 +91,32 @@ class HybridEngine:
             self.last_eval = None
             return bm
 
+        # 1b) Optional ASI:One reasoning (Nero by default) — free API key, no Arc gas
+        try:
+            from gaming.src.stack.agentic.runtime.asi_reasoner import (
+                agent_uses_asi,
+                asi_enabled,
+                reason_chess_move,
+            )
+
+            if asi_enabled() and agent_uses_asi(self.agent_id, "nero"):
+                persona = str(
+                    getattr(self.mind, "directive", "")
+                    or getattr(self.mind, "blurb", "")
+                    or ""
+                )
+                hit = reason_chess_move(
+                    board,
+                    agent_name=self.agent_id or "nero",
+                    persona=persona,
+                )
+                if hit and hit.get("move") is not None:
+                    self.last_source = f"asi1:{hit.get('model')}"
+                    self.last_eval = None
+                    return hit["move"]
+        except Exception as exc:
+            logger.warning("[%s] ASI reasoner failed: %s", self.agent_id, exc)
+
         # 2) Grandmaster path: pure Stockfish best move at max free depth
         if use_stockfish():
             try:

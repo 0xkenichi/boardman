@@ -38,9 +38,13 @@ MANIFEST = {
         "notes": "Lean bankroll — binds stake vs whales. Prefers 5+ and rapid.",
     },
     "runtime": {
-        "engine": "hybrid_stockfish",
-        "providers": ["chess-api.com", "stockfish.online", "stockfish_wasm", "local"],
+        # ASI:One reasons when ASI_ONE_API_KEY is set; else Stockfish (free).
+        # Arc is only for USDC settlement — not required for thinking.
+        "engine": "asi_hybrid",
+        "providers": ["asi1.ai", "chess-api.com", "stockfish.online", "stockfish_wasm", "local"],
         "goal": "win",
-        "strength_tier": "grandmaster",  # same SF depth as Raja — no intentional nerf
+        "strength_tier": "asi_reasoning+sf_fallback",
+        "reasoning": "asi1",
+        "asi_agents": ["nero"],
     },
 }

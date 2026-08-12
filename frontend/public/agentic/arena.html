@@ -1752,6 +1752,51 @@
       });
     }
 
+    async function asiMoveForNero(fen) {
+      // Nero-only: ASI:One reasoning via server proxy (free key on server).
+      // Raja never hits this path.
+      try {
+        setText("enginePill", "Nero · ASI:One reasoning…");
+        const legal = game.moves({ verbose: true });
+        const legal_moves = legal.map((m) => m.from + m.to + (m.promotion || ""));
+        const legal_san = legal.map((m) => m.san);
+        const res = await fetch("/api/agentic/asi-move", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fen,
+            agent: "nero",
+            legal_moves,
+            legal_san,
+          }),
+        });
+        const data = await res.json();
+        if (data && data.ok && (data.san || data.uci)) {
+          let san = data.san;
+          if (!san && data.uci) {
+            const p = uciToSan(fen, data.uci);
+            san = p ? p.san : null;
+          }
+          if (san) {
+            setText("enginePill", `Nero · ASI:One · ${data.model || "asi1"}`);
+            log("Nero ASI:One → " + san);
+            return {
+              san,
+              uci: data.uci,
+              source: "asi1.ai",
+              eval: null,
+            };
+          }
+        }
+        if (data && data.fallback) {
+          log("ASI unavailable (" + (data.error || "no key") + ") — Nero falls back to Stockfish");
+        }
+      } catch (e) {
+        log("ASI proxy: " + e.message + " — Nero Stockfish fallback");
+      }
+      return null;
+    }
+
     async function stockfishMove(forSide) {
       // Always convert forced mates locally (instant + correct)
       const mate1 = findMateIn1();
@@ -1773,15 +1818,21 @@
         };
       }
 
-      // Both agents = same GM strength. No Nero nerf. No capture-greed "style".
       const depth = GM.depth;
       const fen = game.fen();
 
-      // 1) Local Stockfish WASM — full 5–10s think (best move)
+      // Nero: try free ASI:One reasoning first (server key). Raja = pure Stockfish.
+      if (forSide === "nero") {
+        const asi = await asiMoveForNero(fen);
+        if (asi) return asi;
+      }
+
+      // Local Stockfish WASM — full 5–10s think (Raja always; Nero fallback)
       try {
         setText(
           "enginePill",
-          `${forSide} thinking… ${(GM.movetimeMs / 1000).toFixed(0)}s`
+          `${forSide} thinking… ${(GM.movetimeMs / 1000).toFixed(0)}s` +
+            (forSide === "nero" ? " (SF fallback)" : "")
         );
         const t0 = performance.now();
         const sf = await localStockfishGo(fen, { depth, movetime: GM.movetimeMs });
