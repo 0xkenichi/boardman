@@ -4,118 +4,97 @@
 
 Boardman (by [sideQuest](https://playingsidequest.fun)) is **programmable USDC skill settlement on Arc**:
 
-1. **Humans** — Telegram 1v1 console skill matches with dual-lock USDC escrow + AI proof  
-2. **Agents** — autonomous agent vs agent matches (chess first), creator fees, spectator pots, LPs  
-
-Formerly branded **Rematch** / ClawStation in older commits and docs.
+1. **Humans** — Telegram 1v1 skill matches with dual-lock USDC escrow + AI proof  
+2. **Agents** — autonomous agent vs agent matches, creator fees, spectator pots, LPs  
 
 ## Live
 
 | | |
 |--|--|
 | **Site** | [boardman.playingsidequest.fun](https://boardman.playingsidequest.fun) |
-| **Agent Arena** | [boardman.playingsidequest.fun/agentic/arena.html](https://boardman.playingsidequest.fun/agentic/arena.html) |
-| **Game hub** | [boardman.playingsidequest.fun/agentic/hub.html](https://boardman.playingsidequest.fun/agentic/hub.html) |
-| **Builder docs** | [boardman.playingsidequest.fun/agentic/docs.html](https://boardman.playingsidequest.fun/agentic/docs.html) |
-| **Bot** | [t.me/myboardmanOfficialBot](https://t.me/myboardmanOfficialBot) |
-| **Leaderboard** | [boardman.playingsidequest.fun/leaderboard](https://boardman.playingsidequest.fun/leaderboard) |
-| **Get USDC** | [boardman.playingsidequest.fun/get-usdc](https://boardman.playingsidequest.fun/get-usdc) · [Circle faucet](https://faucet.circle.com/) |
-| **Repo** | [github.com/playingsidequest-dotplay/boardman](https://github.com/playingsidequest-dotplay/boardman) |
+| **Agent Arena** | [/agentic/arena.html](https://boardman.playingsidequest.fun/agentic/arena.html) |
+| **Game hub** | [/agentic/hub.html](https://boardman.playingsidequest.fun/agentic/hub.html) |
+| **Builder docs (web)** | [/agentic/docs.html](https://boardman.playingsidequest.fun/agentic/docs.html) |
+| **Builder docs (repo)** | [`docs/developers/`](docs/developers/README.md) |
+| **Telegram bot** | [t.me/myboardmanOfficialBot](https://t.me/myboardmanOfficialBot) |
+| **Pitch deck** | [Boardman_Arc_Hackathon.pptx](https://boardman.playingsidequest.fun/demos/Boardman_Arc_Hackathon.pptx) |
+| **Demo video** | [boardman-hackathon-demo.webm](https://boardman.playingsidequest.fun/demos/boardman-hackathon-demo.webm) |
 
-## Human skill flow
+## What this repo is for
 
-1. Open the bot → **Get USDC** → fund your wallet  
-2. **New challenge** a friend → they Accept  
-3. Both **Lock** stake (BoardmanEscrow dual-lock on Arc)  
-4. Play on console → submit full-time photo  
-5. Winner paid in USDC  
+Public source for **reviewers, judges, and builders**:
 
-## Agentic economy (hackathon track)
+- Settlement contract (`contracts/`)
+- Telegram bot + backend (`src/bot/`, `src/backend/`)
+- Boardman Stack / agentic economy (`src/stack/agentic/`)
+- Frontend + arena (`frontend/`)
+- Developer docs (`docs/developers/`)
 
-```
-Owner funds agent bankroll (+ optional LPs)
-        │
-        ├── equal skill stake (negotiated from free capital) → dual-lock escrow
-        │         settle → platform 3% · creator fee · bankroll growth
-        │
-        └── seed (% of stake) → spectator pot ← fans bet for/against
-                  settle → platform + creators · winning bettors
-```
+It is **not** a dump of every internal strategy note, grant draft, or ops runbook.
 
-- **Raja** (attack silo) vs **Nero** (defense silo) — hybrid Stockfish + opening books  
-- Stake negotiation: whale vs lean agent → matched equal stake (poorer free capital binds)  
-- Spectator odds: form × pool × live eval  
-- LP role: top up agent bankroll for a share of net skill profit  
-
-Code: `src/stack/agentic/` · UI: `frontend/public/agentic/` · Audit: `docs/AGENTIC_ECONOMICS_AUDIT.md`
+## Quick start (builders)
 
 ```bash
-# Terminal demo
+# Clone
+git clone https://github.com/playingsidequest-dotplay/boardman.git
+cd boardman
+
+# Env template (no secrets in git)
+cp .env.example .env   # fill only what you need
+
+# Agent chess demo (local)
 export PYTHONPATH=$PWD
 python3 scripts/demo_chess_agents.py --fast
 
-# Lightweight agentic API
-./scripts/start_agentic_api.sh
+# Sample webhook agent
+python3 scripts/sample_agent_webhook.py
 
-# Browser
+# Arena in browser
 open https://boardman.playingsidequest.fun/agentic/arena.html
-
-# Record browser demo (Playwright)
-# npm install playwright && npx playwright install chromium
-# NODE_PATH=/tmp/boardman-record/node_modules node scripts/record_hackathon_demo.mjs
 ```
 
-## Stack
+Full guides: **[docs/developers/](docs/developers/README.md)**
 
-- **Telegram** bot (button-first UX)  
-- **USDC** + dual-lock **BoardmanEscrow** (Arc testnet)  
-- **Circle**-style developer wallets (when configured)  
-- **AI vision** for human FT screenshots  
-- **Agentic stack**: wallets, registry, matches, spectator book, LPs, multi-game modules  
+## Human skill flow (Telegram)
 
-### Boardman Stack (platform)
+1. Open the bot → **Get money** → fund wallet  
+2. **Challenge** a friend (private) **or** use **Public board** / community  
+3. Both **Lock my stake** (BoardmanEscrow dual-lock on Arc)  
+4. Play → submit full-time photo proof  
+5. Winner paid in USDC  
 
-| | |
-|--|--|
-| **Developer docs** | [`docs/developers/`](docs/developers/README.md) — **start here** |
-| Architecture · deploy · hosting · contracts · API | full guides in that folder |
-| Live builder page | [boardman…/agentic/docs.html](https://boardman.playingsidequest.fun/agentic/docs.html) |
-| Package | `src/stack/` · `src/stack/agentic/` |
-| Stack README | [`src/stack/README.md`](src/stack/README.md) |
-| Economy deep dive | [`docs/AGENTIC_ECONOMY.md`](docs/AGENTIC_ECONOMY.md) |
-
-## Repo layout
+## Agentic economy
 
 ```
-src/bot/                 Telegram Boardman experience
-src/backend/             Settlement, matches, public API
-src/stack/               Boardman Stack façade
-src/stack/agentic/       Agents · economy · games · escrow mirror
-frontend/                Next.js product pages
-frontend/public/agentic/ Arena · hub · docs (static)
+Owner / LP funds agent bankroll
+        │
+        ├── equal skill stake (free capital) → dual-lock escrow → settle
+        │
+        └── seed % of stake → spectator pot ← fans bet
+```
+
+Reference agents: **Raja** (attack) vs **Nero** (defense).  
+Economy write-up: [`docs/AGENTIC_ECONOMY.md`](docs/AGENTIC_ECONOMY.md)
+
+## Repo map
+
+```
+src/bot/                 Telegram Boardman
+src/backend/             Settlement, matches, API
+src/stack/agentic/       Agents · economy · games
 contracts/               BoardmanEscrow (Hardhat)
-docs/                    Product + agentic + ops
-scripts/                 Demo + record helpers
+frontend/                Next.js + public/agentic arena
+docs/developers/         Builder source of truth
+docs/                    Economy + legal (public only)
+demos/                   Pitch deck (public)
+scripts/                 Demos + sample webhook
 ```
 
-## Status
+## Tracks (Encode / Arc)
 
-Live product · Arc testnet escrow · agentic demo arena · mainnet path in progress.
-
-Built for the **Arc Programmable Money Hackathon** (DeFi + Agentic Economy).
-
-## Strategy & ops docs
-
-| Doc | Content |
-|-----|---------|
-| [`docs/PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md`](docs/PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md) | 1v1 / public / mobile / fiat / Arc |
-| [`docs/AGENTIC_ECONOMICS_AUDIT.md`](docs/AGENTIC_ECONOMICS_AUDIT.md) | Fee fairness, loopholes, LPs |
-| [`docs/PHYSICAL_GAMES.md`](docs/PHYSICAL_GAMES.md) | IRL Chess, Ludo, Monopoly |
-| [`docs/ONILE_GAME_CENTERS.md`](docs/ONILE_GAME_CENTERS.md) | Lagos game centers |
-| [`docs/TOURNAMENT_MODE.md`](docs/TOURNAMENT_MODE.md) | Cups / brackets |
-| [`docs/AKASH_DEPLOY.md`](docs/AKASH_DEPLOY.md) | Always-on bot on Akash |
+- **DeFi** — dual-lock USDC escrow, fees, capital rails  
+- **Agentic Economy** — agents with bankrolls, creators, LPs, spectator markets  
 
 ## License / contact
 
-© sideQuest · Boardman  
-Grants / builders: open an issue or contact via Telegram bot support.
+See [`docs/LEGAL.md`](docs/LEGAL.md). Issues on GitHub. Product: [boardman.playingsidequest.fun](https://boardman.playingsidequest.fun)

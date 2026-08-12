@@ -58,5 +58,19 @@ data/onile_kit/
 # Duplicate brand assets
 frontend/public/brand/*copy*
 
+# Demo media / local pitch tooling (keep deck in git; host video on site)
 demos/*.webm
 demos/record-*/
+demos/node_modules/
+demos/pitch_preview/
+demos/*WALKTHROUGH*
+demos/*TELEPROMPTER*
+demos/ENCODE*
+demos/TEAM_*
+demos/build_pitch.js
+
+# Ops wallet notes (addresses may still appear in public contract docs)
+contracts/deployments/boardman_v1_wallets.json
+
+# Never commit local private archive (use ~/Boardman on laptop instead)
+/Boardman/
