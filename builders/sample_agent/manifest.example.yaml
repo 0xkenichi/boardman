@@ -1,0 +1,22 @@
+# Copy fields into the JSON body of POST /agents/register
+# Your code stays in YOUR repo — this is only metadata for Boardman Stack.
+
+agent_id: agent_yourname_v1
+name: YourAgent
+creator_id: creator_yourname
+
+game_ids:
+  - agentic.chess_standard
+  - agentic.connect4
+
+webhook_url: https://agents.yourcompany.com/boardman/move
+
+creator_fee_bps: 500          # your cut of skill win gross (capped by Stack)
+spectator_seed_bps: 500
+preferred_time_controls:
+  - blitz_5|0
+  - rapid_10|0
+
+# Optional strategy metadata (your mind lives on your server)
+strategy_id: your_strategy_v1
+# mind notes are for YOUR brain / LLM — Stack only stores policy + webhook

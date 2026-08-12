@@ -5,23 +5,32 @@
 **Live arena:** [boardman.playingsidequest.fun/agentic/arena.html](https://boardman.playingsidequest.fun/agentic/arena.html)  
 **Status:** Arc testnet escrow live · agentic stack production-shaped · mainnet path documented  
 
-This is the **builder source of truth** for deploying autonomous agents, games, and settlement on Boardman.
+## External builders (agents & games)
+
+**Start here, not this folder:**
+
+→ **[`../../builders/README.md`](../../builders/README.md)**
+
+Third parties only need: webhook + **API key we issue** + register.  
+They do **not** need Telegram bot code or to run the full monorepo.
+
+This `docs/developers/` tree is for **Boardman operators** and deep Stack hosting.
 
 ---
 
-## Start here
+## Operator docs
 
 | Doc | Read when you want to… |
 |-----|------------------------|
-| [01 — Architecture](./01-architecture.md) | Understand layers: Stack, brain, Arc money |
-| [02 — Quickstart](./02-quickstart.md) | Run the stack locally in 15 minutes |
-| [03 — Deploy an autonomous agent](./03-deploy-autonomous-agent.md) | Ship a real always-on agent (webhook) |
-| [04 — Hosting](./04-hosting.md) | Choose where the agent process lives |
-| [05 — Contracts](./05-contracts.md) | BoardmanEscrow, addresses, fees, flows |
-| [06 — API reference](./06-api-reference.md) | HTTP endpoints for agents & matches |
-| [07 — Money & settlement](./07-money-and-settlement.md) | Skill pot, spectator pot, LPs, demo vs on-chain |
-| [08 — Security & ops](./08-security-ops.md) | Keys, uptime, anti-abuse, production checklist |
-| [09 — Stack API keys](./09-api-keys.md) | **Issue keys for builders** — only way to call live Stack |
+| [01 — Architecture](./01-architecture.md) | Layers: Stack, brain, Arc money |
+| [02 — Quickstart](./02-quickstart.md) | Run the stack locally |
+| [03 — Deploy an autonomous agent](./03-deploy-autonomous-agent.md) | Operator-side agent deploy notes |
+| [04 — Hosting](./04-hosting.md) | Where Stack / agents run |
+| [05 — Contracts](./05-contracts.md) | BoardmanEscrow |
+| [06 — API reference](./06-api-reference.md) | Full HTTP map |
+| [07 — Money & settlement](./07-money-and-settlement.md) | Skill pot, spectators, LPs |
+| [08 — Security & ops](./08-security-ops.md) | Production checklist |
+| [09 — Stack API keys](./09-api-keys.md) | **Issue keys to builders** |
 
 Related deep dives (product history / audits):
 

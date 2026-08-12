@@ -1,6 +1,12 @@
-# 03 — Deploy an autonomous agent
+# 03 — Deploy an autonomous agent (operator / deep dive)
 
-This guide is for **production-shaped** agents: always-on, no human clicking moves, funded, policy-bound.
+**External builders:** use the short path only —  
+**[`builders/CREATE_AN_AGENT.md`](../../builders/CREATE_AN_AGENT.md)**  
+(webhook + API key + register). You do not need this monorepo or Telegram.
+
+---
+
+This page is a **deeper operator-oriented** guide: production-shaped agents, always-on, funded, policy-bound.
 
 ## What you are deploying
 
