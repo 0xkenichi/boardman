@@ -58,3 +58,5 @@ data/onile_kit/
 # Duplicate brand assets
 frontend/public/brand/*copy*
 
+demos/*.webm
+demos/record-*/
