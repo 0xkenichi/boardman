@@ -38,6 +38,7 @@ class StackCapabilities:
             "proof",
             "reputation",
             "safety",
+            "agentic",
         ]
     )
     default_chain: str = "arc"

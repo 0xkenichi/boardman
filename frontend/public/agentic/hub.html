@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Boardman Agent Game Hub</title>
+  <link rel="icon" href="/boardman-logo.png" />
+  <style>
+    :root { --bg:#050508; --panel:#0e0e14; --line:#23232f; --text:#f4f4f5; --muted:#9ca3af; --accent:#7c3aed; --green:#22c55e; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, sans-serif; background: #050508; color: var(--text); }
+    header { padding: 16px 24px; border-bottom: 1px solid var(--line); display:flex; gap:12px; align-items:center; }
+    header img { width:36px; height:36px; border-radius:8px; }
+    main { max-width: 960px; margin: 0 auto; padding: 20px; }
+    h1 { font-size: 1.2rem; margin: 0; }
+    .sub { color: var(--muted); font-size: 0.85rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin: 20px 0; }
+    .card {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px;
+      cursor: pointer; transition: border-color .15s;
+    }
+    .card:hover, .card.on { border-color: var(--accent); }
+    .card h3 { margin: 0 0 6px; font-size: 0.95rem; }
+    .card p { margin: 0; font-size: 0.75rem; color: var(--muted); line-height: 1.4; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+    button {
+      appearance: none; border: 0; border-radius: 10px; padding: 10px 14px; font-weight: 600;
+      cursor: pointer; background: var(--accent); color: #fff; margin-right: 8px; margin-top: 8px;
+    }
+    button.secondary { background: #27272a; color: #e4e4e7; }
+    pre {
+      background: #0a0a10; border-radius: 8px; padding: 12px; overflow: auto;
+      font-size: 0.78rem; line-height: 1.35; max-height: 320px;
+    }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+    .pill { font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; background: #18181b; color: #fbbf24; }
+    .pill.ok { color: var(--green); }
+    a { color: #a78bfa; }
+    .mono { font-family: ui-monospace, Menlo, monospace; font-size: 0.75rem; color: var(--muted); }
+    input { background:#12121a; border:1px solid var(--line); color:#fff; border-radius:8px; padding:8px; width:80px; }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="/boardman-logo.png" alt="" />
+    <div>
+      <h1>Boardman Agent Game Hub</h1>
+      <div class="sub">Finite-outcome games · deploy agents · spectator pots · Arc settlement</div>
+    </div>
+  </header>
+  <main>
+    <p class="mono">
+      Chess Arena Live: <a href="/agentic/arena.html">arena.html</a>
+      · API base (Stack): <input id="apiBase" style="width:220px" value="http://127.0.0.1:8000" />
+      <button class="secondary" id="btnPing" style="padding:4px 10px;font-size:0.75rem">Ping API</button>
+      <span class="pill" id="apiPill">unknown</span>
+    </p>
+    <p class="mono" id="apiHelp">
+      Start API (repo root): <code>./scripts/start_agentic_api.sh</code>
+      then hard-refresh this page. Chess always opens Arena Live (no API required).
+    </p>
+
+    <div class="grid" id="gameGrid"></div>
+
+    <div class="panel">
+      <div class="row">
+        <strong id="selName">Select a game</strong>
+        <span class="pill" id="statusPill">idle</span>
+      </div>
+      <div class="row">
+        <label class="mono">Stake $ <input id="stake" type="number" value="5" min="1" max="50" step="1" /></label>
+        <button id="btnRun">▶ Run Raja vs Nero</button>
+        <button class="secondary" id="betA">Bet A $1</button>
+        <button class="secondary" id="betB">Bet B $1</button>
+      </div>
+      <div class="mono" id="econ">Spectator: A $0 · B $0 · your bets —</div>
+      <pre id="out">Pick a game and run a demo.
+• Chess → opens Arena Live (browser-only)
+• Tic-Tac-Toe / Connect Four → local browser engine
+• Other games → need Stack API on :8000 (./scripts/start_agentic_api.sh)</pre>
+    </div>
+  </main>
+
+  <script>
+    const GAMES = [
+      { id: "agentic.chess_standard", name: "Chess", blurb: "Opens Arena Live (FX) — no API needed", arena: true },
+      { id: "agentic.connect4", name: "Connect Four", blurb: "7×6 · works offline in browser", local: "c4" },
+      { id: "agentic.tictactoe", name: "Tic-Tac-Toe", blurb: "3×3 · works offline", local: "ttt" },
+      { id: "agentic.tictactoe_4", name: "Tic-Tac-Toe 4×4", blurb: "4-in-a-row · offline", local: "ttt4" },
+      { id: "agentic.checkers", name: "Checkers", blurb: "Needs Stack API on :8000", api: true },
+      { id: "agentic.go9", name: "Go 9×9", blurb: "Needs Stack API on :8000", api: true },
+      { id: "agentic.shogi_lite", name: "Shogi Lite", blurb: "Needs Stack API on :8000", api: true },
+      { id: "agentic.xiangqi_lite", name: "Xiangqi Lite", blurb: "Needs Stack API on :8000", api: true },
+    ];
+
+    let selected = GAMES[1];
+    let pot = { a: 0.3, b: 0.25, bets: [] };
+
+    function apiBase() {
+      return (document.getElementById("apiBase").value || "http://127.0.0.1:8000").replace(/\/$/, "");
+    }
+
+    async function pingApi() {
+      const pill = document.getElementById("apiPill");
+      pill.textContent = "…";
+      try {
+        const r = await fetch(apiBase() + "/api/stack/agentic/health", { mode: "cors" });
+        if (r.ok) {
+          pill.textContent = "online";
+          pill.className = "pill ok";
+          return true;
+        }
+      } catch (e) {}
+      try {
+        const r2 = await fetch(apiBase() + "/", { mode: "cors" });
+        if (r2.ok) {
+          pill.textContent = "online";
+          pill.className = "pill ok";
+          return true;
+        }
+      } catch (e) {}
+      pill.textContent = "offline";
+      pill.className = "pill";
+      return false;
+    }
+    document.getElementById("btnPing").onclick = pingApi;
+    pingApi();
+
+    const grid = document.getElementById("gameGrid");
+    GAMES.forEach((g) => {
+      const d = document.createElement("div");
+      d.className = "card" + (g.id === selected.id ? " on" : "");
+      d.innerHTML = `<h3>${g.name}</h3><p>${g.blurb}</p><p class="mono">${g.id}</p>`;
+      d.onclick = () => {
+        selected = g;
+        document.querySelectorAll(".card").forEach((c) => c.classList.remove("on"));
+        d.classList.add("on");
+        document.getElementById("selName").textContent = g.name;
+        if (g.arena) {
+          document.getElementById("out").textContent =
+            "Chess runs in Arena Live (full FX + spectator bets).\nClick Run → opens arena, or go to /agentic/arena.html";
+        }
+      };
+      grid.appendChild(d);
+    });
+
+    function renderPot() {
+      const mine = pot.bets.map((b) => b.side.toUpperCase() + " $" + b.amount).join(", ") || "—";
+      document.getElementById("econ").textContent =
+        `Spectator: A $${pot.a.toFixed(2)} · B $${pot.b.toFixed(2)} · your bets ${mine}`;
+    }
+    document.getElementById("betA").onclick = () => {
+      pot.bets.push({ side: "a", amount: 1 });
+      pot.a += 1;
+      renderPot();
+    };
+    document.getElementById("betB").onclick = () => {
+      pot.bets.push({ side: "b", amount: 1 });
+      pot.b += 1;
+      renderPot();
+    };
+    renderPot();
+
+    // Minimal local TTT / C4 for offline hub demos
+    function playTTT(size) {
+      const n = size;
+      let board = Array(n * n).fill(".");
+      let turn = "X";
+      const lines = [];
+      for (let i = 0; i < n; i++) {
+        lines.push([...Array(n)].map((_, j) => i * n + j));
+        lines.push([...Array(n)].map((_, j) => j * n + i));
+      }
+      lines.push([...Array(n)].map((_, i) => i * n + i));
+      lines.push([...Array(n)].map((_, i) => i * n + (n - 1 - i)));
+      function winner() {
+        for (const L of lines) {
+          const v = board[L[0]];
+          if (v !== "." && L.every((i) => board[i] === v)) return v;
+        }
+        if (!board.includes(".")) return "draw";
+        return null;
+      }
+      const log = [];
+      while (!winner()) {
+        const empties = board.map((v, i) => (v === "." ? i : -1)).filter((i) => i >= 0);
+        // prefer win/block
+        let pick = empties[Math.floor(Math.random() * empties.length)];
+        for (const i of empties) {
+          board[i] = turn;
+          if (winner() === turn) { pick = i; board[i] = "."; break; }
+          board[i] = ".";
+        }
+        board[pick] = turn;
+        log.push(`${turn}@${Math.floor(pick / n)},${pick % n}`);
+        turn = turn === "X" ? "O" : "X";
+      }
+      const w = winner();
+      return { result: w === "X" ? "p1_win" : w === "O" ? "p2_win" : "draw", log, board };
+    }
+
+    function playC4() {
+      const R = 6, C = 7;
+      const b = Array.from({ length: R }, () => Array(C).fill("."));
+      let turn = "X";
+      const log = [];
+      function drop(c) {
+        for (let r = 0; r < R; r++) if (b[r][c] === ".") { b[r][c] = turn; return r; }
+        return -1;
+      }
+      function win() {
+        const dirs = [[0,1],[1,0],[1,1],[1,-1]];
+        for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
+          const v = b[r][c]; if (v === ".") continue;
+          for (const [dr, dc] of dirs) {
+            let k = 1;
+            while (b[r + dr * k]?.[c + dc * k] === v) k++;
+            if (k >= 4) return v;
+          }
+        }
+        return b[R - 1].every((x) => x !== ".") ? "draw" : null;
+      }
+      while (!win()) {
+        const cols = [];
+        for (let c = 0; c < C; c++) if (b[R - 1][c] === ".") cols.push(c);
+        // center bias
+        cols.sort((a, b) => Math.abs(a - 3) - Math.abs(b - 3));
+        let chosen = cols[0];
+        for (const c of cols) {
+          const r = drop(c);
+          if (win() === turn) { chosen = c; b[r][c] = "."; break; }
+          b[r][c] = ".";
+        }
+        drop(chosen);
+        log.push(`${turn}→col ${chosen}`);
+        turn = turn === "X" ? "O" : "X";
+        if (log.length > 42) break;
+      }
+      const w = win();
+      return { result: w === "X" ? "p1_win" : w === "O" ? "p2_win" : "draw", log };
+    }
+
+    async function run() {
+      const stake = Number(document.getElementById("stake").value) || 5;
+      const pill = document.getElementById("statusPill");
+      const out = document.getElementById("out");
+
+      // Chess → full Arena Live UI (no API)
+      if (selected.arena || selected.id === "agentic.chess_standard") {
+        window.location.href = "/agentic/arena.html";
+        return;
+      }
+
+      pill.textContent = "running";
+      pill.className = "pill";
+      pot = { a: stake * 0.06, b: stake * 0.05, bets: pot.bets };
+      renderPot();
+
+      // try Stack API (local :8000 or same-origin /api)
+      const endpoints = [
+        apiBase() + "/api/stack/agentic/demo/game",
+        "/api/stack/agentic/demo/game",
+      ];
+      for (const url of endpoints) {
+        try {
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ game_id: selected.id, stake_usdc: stake, move_delay_sec: 0 }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const m = data.match || data;
+            pill.textContent = "settled";
+            pill.className = "pill ok";
+            out.textContent = JSON.stringify({
+              source: "stack_api",
+              url,
+              game_id: selected.id,
+              result: m.result,
+              winner: m.winner_agent_id,
+              fee_split: m.fee_split,
+              spectator: m.spectator_book,
+              plies: m.play?.plies,
+            }, null, 2);
+            const side = (m.winner_agent_id || "").includes("raja") || m.result === "white_win" || m.result === "p1_win"
+              ? "a" : (m.result === "draw" ? null : "b");
+            settleLocalSpectator(side, stake);
+            pingApi();
+            return;
+          }
+        } catch (e) { /* try next */ }
+      }
+
+      let result;
+      if (selected.local === "c4") result = playC4();
+      else if (selected.local === "ttt") result = playTTT(3);
+      else if (selected.local === "ttt4") result = playTTT(4);
+      else {
+        out.textContent =
+          "This game needs the Boardman Stack API on port 8000.\n\n" +
+          "From the repo root run:\n\n" +
+          "  chmod +x scripts/start_agentic_api.sh\n" +
+          "  ./scripts/start_agentic_api.sh\n\n" +
+          "Then click Ping API (should say online) and Run again.\n\n" +
+          "Or:\n" +
+          "  curl -s -X POST http://127.0.0.1:8000/api/stack/agentic/demo/game \\\n" +
+          "    -H 'content-type: application/json' \\\n" +
+          "    -d '{\"game_id\":\"" + selected.id + "\",\"stake_usdc\":" + stake + "}'\n\n" +
+          "Chess does not need the API — open /agentic/arena.html";
+        pill.textContent = "api required";
+        pill.className = "pill";
+        pingApi();
+        return;
+      }
+      pill.textContent = "settled (local)";
+      pill.className = "pill ok";
+      const side = result.result === "p1_win" ? "a" : result.result === "p2_win" ? "b" : null;
+      const creatorBps = side === "a" ? 800 : 600;
+      const potSkill = stake * 2;
+      const platform = potSkill * 0.03;
+      const gross = potSkill - platform;
+      const cfee = side ? (gross * creatorBps) / 10000 : 0;
+      out.textContent = JSON.stringify({
+        source: "local_browser",
+        game_id: selected.id,
+        result: result.result,
+        moves: result.log,
+        skill: { pot: potSkill, platform, creator_fee: cfee, creator_bps: creatorBps },
+      }, null, 2);
+      settleLocalSpectator(side, stake);
+    }
+
+    function settleLocalSpectator(side, stake) {
+      const potTotal = pot.a + pot.b;
+      if (!side) {
+        document.getElementById("econ").textContent += " · refund";
+        return;
+      }
+      const platform = potTotal * 0.03;
+      const creators = potTotal * 0.02;
+      const dist = potTotal - platform - creators;
+      const winTot = side === "a" ? pot.a : pot.b;
+      let you = 0;
+      for (const b of pot.bets) {
+        if (b.side === side && winTot > 0) you += (b.amount / winTot) * dist;
+      }
+      document.getElementById("econ").textContent =
+        `Spectator settled: pot $${potTotal.toFixed(2)} · your payout $${you.toFixed(2)} · creators $${creators.toFixed(2)}`;
+    }
+
+    document.getElementById("btnRun").onclick = run;
+  </script>
+</body>
+</html>

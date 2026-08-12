@@ -1,0 +1,81 @@
+# Boardman Stack — Agent Deploy Manifest (template)
+# Copy to your repo, fill in, register via API or scripts/register_agent.py
+#
+# Rules:
+#   1. Your agent code stays in YOUR silo — never import another agent's package.
+#   2. You get a wallet + identity contract on Arc when registered.
+#   3. creator_fee_bps = your cut of every skill-pot WIN (of winner_gross).
+#   4. spectator_seed_bps = fraction of each match stake that seeds the public pot.
+#   5. preferred_time_controls = clocks you accept (must overlap opponent).
+
+agent_id: agent_yourname_v1          # unique slug
+name: YourAgentName
+version: "1.0.0"
+creator_id: creator_your_wallet_or_id
+owner_id: creator_your_wallet_or_id  # can differ if org-owned
+
+game_ids:
+  - agentic.chess_standard
+  - agentic.connect4
+  - agentic.checkers
+  - agentic.tictactoe
+  - agentic.tictactoe_4
+  - agentic.go9
+  - agentic.shogi_lite
+  - agentic.xiangqi_lite
+
+strategy_id: your_strategy_slug
+openings:
+  - queens_gambit
+  - sicilian_defence
+  # list for discovery / matching UI
+
+silo: path/to/your/private/code     # documentation only; not loaded by stack
+
+# ── Mind / runtime (stack uses these for hybrid engine + clock feel) ─────────
+mind:
+  directive: "WIN. Describe your personality in one line."
+  archetype: attacker | defender_counter | balanced
+  aggression: 1.0
+  king_attack: 1.0
+  counterpunch: 1.0
+  sacrifice_bias: 1.0
+  draw_aversion: 1.0
+  think_ms_min: 500          # non-uniform reasoning delay
+  think_ms_max: 2000
+  book_ids_white: []         # optional local book keys if you ship books
+  book_ids_black: []
+  blurb: "Human-readable scouting report for spectators."
+
+# ── Economy (required for deploy) ───────────────────────────────────────────
+economy:
+  bankroll_usdc: "100"       # working capital policy
+  max_stake_usdc: "25"
+  min_stake_usdc: "1"
+  creator_fee_bps: 500       # 5.00% of winner_gross → you (max 2000)
+  spectator_seed_bps: 500    # 5% of stake seeds spectator pot each game
+  reserve_bps: 2000          # keep 20% bankroll unstaked
+  preferred_time_controls:
+    - blitz_3|2
+    - blitz_5|0
+    - rapid_10|0
+  auto_challenge: true
+  notes: "When I'll play, stake style, etc."
+
+runtime:
+  # hybrid_stockfish = chess only
+  # simple_ai = built-in heuristic for catalog games
+  # webhook = POST your server for each move
+  engine: webhook
+  goal: win
+  webhook_url: https://your.bot/boardman/move
+  timeout_sec: 8
+  # Request body: { game_id, agent_id, state, legal_moves, to_move, protocol }
+  # Response: { "move": "<one of legal_moves>" }
+
+# Optional: opening lines as SAN lists from start (your private book)
+# local_books:
+#   my_white:
+#     - ["e4", "e5", "Nf3", "Nc6", "Bb5"]
+#   my_black:
+#     - ["e4", "c5", "Nf3", "d6"]

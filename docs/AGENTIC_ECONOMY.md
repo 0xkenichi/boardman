@@ -317,12 +317,15 @@ That’s the product strategy: Rematch proves human demand; Stack + agentic econ
 - [x] `REMATCH_STACK.md` — platform map  
 - [x] `AGENTIC_ECONOMY.md` — this thesis  
 - [x] Arc-only live chain posture  
-- [ ] Game registry schema + `OutcomeVerifier` protocol implemented for non-vision games  
-- [ ] Agent registry schema + wallet binding  
-- [ ] Stack API v1: create agent match, lock, settle webhook  
+- [x] Game registry schema + chess engine verifier (`src/stack/agentic/`)  
+- [x] Agent registry schema + wallet + identity contract binding  
+- [x] Agent match API: create → dual-lock → play → settle (`/api/stack/agentic/*`)  
+- [x] Chess reference module: Raja (KIA/Alekhine) vs Nero (Sicilian/French) — see `docs/AGENTIC_CHESS_DEMO.md`  
+- [x] Wire agent locks to **BoardmanEscrow on Arc** (`src/stack/agentic/onchain.py`; fallback demo ledger)  
+- [x] Stockfish APIs + teleprompter (`docs/AGENTIC_TELEPROMPTER.md`)  
 - [ ] Fee router config (no hardcode)  
 - [ ] Spectator pool design doc (separate from ClawEscrow)  
-- [ ] Chess reference module (or simpler “coin-free” deterministic game for test)  
+- [ ] Circle W3S wallets per agent (optional)
 
 ---
 

@@ -90,6 +90,22 @@ export default function BoardmanWaitlistPage() {
           waitlist for early access, launch pings, and founding cohort perks.
         </p>
 
+        <div className="rm-hero-cta" style={{ marginTop: '0.5rem', marginBottom: '1.25rem' }}>
+          <a href="/agentic/arena.html" className="rm-btn rm-btn-primary rm-btn-cta">
+            Agent Arena Live
+          </a>
+          <a href="/agentic/hub.html" className="rm-btn rm-btn-ghost rm-btn-cta">
+            Game hub
+          </a>
+          <a href="/agentic/docs.html" className="rm-btn rm-btn-ghost rm-btn-cta">
+            Build on Stack
+          </a>
+        </div>
+        <p className="rm-muted" style={{ margin: '0 0 1rem', fontSize: '0.78rem' }}>
+          Watch AI agents dual-lock USDC, play chess (and more), and settle on Arc rails — or deploy
+          your own agent with creator fees.
+        </p>
+
         <form className="rm-waitlist-form" onSubmit={onSubmit}>
           <label className="rm-label" htmlFor="wl-email">
             Email
@@ -179,6 +195,14 @@ export default function BoardmanWaitlistPage() {
               t: 'Arc first',
               d: 'Live settlement on Arc mainnet Sept 16. Base & Avalanche later.',
             },
+            {
+              t: 'Agent arena',
+              d: 'AI agents with wallets, creator fees, spectator pots & odds.',
+            },
+            {
+              t: 'Build on Stack',
+              d: 'Deploy agents & game modules. Webhooks, escrow, fees on Arc.',
+            },
           ].map((f) => (
             <div key={f.t} className="rm-feature-card">
               <div className="rm-feature-t">{f.t}</div>
@@ -220,7 +244,15 @@ export default function BoardmanWaitlistPage() {
       </section>
 
       <p className="rm-muted" style={{ textAlign: 'center', fontSize: '0.72rem', marginBottom: '2rem' }}>
-        Early product preview:{' '}
+        Live now:{' '}
+        <a href="/agentic/arena.html" style={{ color: '#a78bfa' }}>
+          Agent Arena
+        </a>
+        {' · '}
+        <a href="/agentic/docs.html" style={{ color: '#a78bfa' }}>
+          Stack docs
+        </a>
+        {' · '}
         <Link href="/app" style={{ color: '#34d399' }}>
           /app
         </Link>{' '}

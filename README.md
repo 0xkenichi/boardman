@@ -1,94 +1,119 @@
-# Rematch
+# Boardman
 
-**Lock in. Play. Settle. Run it back.**
+**Lock in. Play. Settle. Agents too.**
 
-Rematch is a Telegram app for **1v1 console skill matches** with **USDC escrow**. Players challenge friends, lock stakes, play (EA FC first), and settle with **AI screenshot proof**.
+Boardman (by [sideQuest](https://playingsidequest.fun)) is **programmable USDC skill settlement on Arc**:
 
-Built by [sideQuest](https://playingsidequest.fun).
+1. **Humans** — Telegram 1v1 console skill matches with dual-lock USDC escrow + AI proof  
+2. **Agents** — autonomous agent vs agent matches (chess first), creator fees, spectator pots, LPs  
 
-## Play
+Formerly branded **Rematch** / ClawStation in older commits and docs.
+
+## Live
 
 | | |
 |--|--|
-| **Bot** | [t.me/myboardmanOfficialBot](https://t.me/myboardmanOfficialBot) |
 | **Site** | [boardman.playingsidequest.fun](https://boardman.playingsidequest.fun) |
+| **Agent Arena** | [boardman.playingsidequest.fun/agentic/arena.html](https://boardman.playingsidequest.fun/agentic/arena.html) |
+| **Game hub** | [boardman.playingsidequest.fun/agentic/hub.html](https://boardman.playingsidequest.fun/agentic/hub.html) |
+| **Builder docs** | [boardman.playingsidequest.fun/agentic/docs.html](https://boardman.playingsidequest.fun/agentic/docs.html) |
+| **Bot** | [t.me/myboardmanOfficialBot](https://t.me/myboardmanOfficialBot) |
 | **Leaderboard** | [boardman.playingsidequest.fun/leaderboard](https://boardman.playingsidequest.fun/leaderboard) |
 | **Get USDC** | [boardman.playingsidequest.fun/get-usdc](https://boardman.playingsidequest.fun/get-usdc) · [Circle faucet](https://faucet.circle.com/) |
+| **Repo** | [github.com/playingsidequest-dotplay/boardman](https://github.com/playingsidequest-dotplay/boardman) |
 
-## How it works
+## Human skill flow
 
 1. Open the bot → **Get USDC** → fund your wallet  
 2. **New challenge** a friend → they Accept  
-3. Both **Lock** stake  
-4. HOME / AWAY → play on console → submit full-time photo  
-5. Winner paid in USDC · both earn PLAY score  
+3. Both **Lock** stake (BoardmanEscrow dual-lock on Arc)  
+4. Play on console → submit full-time photo  
+5. Winner paid in USDC  
+
+## Agentic economy (hackathon track)
+
+```
+Owner funds agent bankroll (+ optional LPs)
+        │
+        ├── equal skill stake (negotiated from free capital) → dual-lock escrow
+        │         settle → platform 3% · creator fee · bankroll growth
+        │
+        └── seed (% of stake) → spectator pot ← fans bet for/against
+                  settle → platform + creators · winning bettors
+```
+
+- **Raja** (attack silo) vs **Nero** (defense silo) — hybrid Stockfish + opening books  
+- Stake negotiation: whale vs lean agent → matched equal stake (poorer free capital binds)  
+- Spectator odds: form × pool × live eval  
+- LP role: top up agent bankroll for a share of net skill profit  
+
+Code: `src/stack/agentic/` · UI: `frontend/public/agentic/` · Audit: `docs/AGENTIC_ECONOMICS_AUDIT.md`
+
+```bash
+# Terminal demo
+export PYTHONPATH=$PWD
+python3 scripts/demo_chess_agents.py --fast
+
+# Lightweight agentic API
+./scripts/start_agentic_api.sh
+
+# Browser
+open https://boardman.playingsidequest.fun/agentic/arena.html
+
+# Record browser demo (Playwright)
+# npm install playwright && npx playwright install chromium
+# NODE_PATH=/tmp/boardman-record/node_modules node scripts/record_hackathon_demo.mjs
+```
 
 ## Stack
 
 - **Telegram** bot (button-first UX)  
-- **Circle** developer-controlled wallets · USDC  
-- **ClawEscrow** dual-lock / resolve  
-- **AI vision** for scoreline from FT screenshots  
-- Chains: **Arc Testnet only** (live) · Avalanche Fuji next · Base Sepolia legacy  
+- **USDC** + dual-lock **BoardmanEscrow** (Arc testnet)  
+- **Circle**-style developer wallets (when configured)  
+- **AI vision** for human FT screenshots  
+- **Agentic stack**: wallets, registry, matches, spectator book, LPs, multi-game modules  
 
-### Rematch Stack (platform)
-
-Infrastructure under the bot so **other builders** can ship new experiences on the same rails (wallets, escrow, match lifecycle, proof, PLAY).
+### Boardman Stack (platform)
 
 | | |
 |--|--|
-| Design | [`docs/REMATCH_STACK.md`](docs/REMATCH_STACK.md) |
-| Package | `src/stack/` |
-| HTTP | `GET /api/stack/v0/health` · `/catalog` · `/chains` · `/public/board` |
+| Agentic design | [`docs/AGENTIC_ECONOMY.md`](docs/AGENTIC_ECONOMY.md) |
+| Creator economy | [`docs/AGENTIC_CREATOR_ECONOMY.md`](docs/AGENTIC_CREATOR_ECONOMY.md) |
+| Package | `src/stack/` · `src/stack/agentic/` |
 | Builders | [`src/stack/README.md`](src/stack/README.md) |
 
 ## Repo layout
 
-This repository is the **Rematch product codebase** (bot, gaming backend, escrow, public web, contracts) **and** the **Rematch Stack** platform layer.
-
 ```
-src/bot/                 Telegram Rematch experience
-src/backend/             Settlement, Circle, matches, public API
-src/stack/               Rematch Stack (builder-facing façade + API)
-frontend/                Next.js /rematch pages + public API route
-frontend/public/         rematch-logo assets
-contracts/               ClawEscrow (Hardhat) + deployments
-docs/                    Product, ops, REMATCH_STACK.md
-deploy/                  Hosting configs
+src/bot/                 Telegram Boardman experience
+src/backend/             Settlement, matches, public API
+src/stack/               Boardman Stack façade
+src/stack/agentic/       Agents · economy · games · escrow mirror
+frontend/                Next.js product pages
+frontend/public/agentic/ Arena · hub · docs (static)
+contracts/               BoardmanEscrow (Hardhat)
+docs/                    Product + agentic + ops
+scripts/                 Demo + record helpers
 ```
-
-
-On playingsidequest.fun, `/rematch` is a thin redirect to the Telegram bot.  
-Host the real docs/leaderboard from `frontend/` in this repo (see `frontend/README.md`).
 
 ## Status
 
-Live product · shipping weekly · multi-chain testnets · mainnet path in progress.
+Live product · Arc testnet escrow · agentic demo arena · mainnet path in progress.
 
-## Strategy & 24/7 deploy
+Built for the **Arc Programmable Money Hackathon** (DeFi + Agentic Economy).
+
+## Strategy & ops docs
 
 | Doc | Content |
 |-----|---------|
-| [`docs/PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md`](docs/PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md) | **Canonical** 1v1 / public / mobile / fiat / Arc decisions — do not forget |
-| [`docs/IMESSAGE_AND_CHANNELS.md`](docs/IMESSAGE_AND_CHANNELS.md) | iMessage games catalog · multi-channel · phone/API |
-| [`docs/MOBILE_GAMES.md`](docs/MOBILE_GAMES.md) | FC Mobile, Free Fire, COD, Valorant, PUBG, … |
-| [`docs/PHYSICAL_GAMES.md`](docs/PHYSICAL_GAMES.md) | IRL Chess, Ludo, Monopoly — lock → play table → settle |
-| [`docs/ONILE_GAME_CENTERS.md`](docs/ONILE_GAME_CENTERS.md) | Lagos onile / game centers — QR, cut, cups |
-| [`docs/TOURNAMENT_MODE.md`](docs/TOURNAMENT_MODE.md) | Cups / brackets (Model A entry pool) |
-| [`docs/onile_kit/ONE_PAGER.md`](docs/onile_kit/ONE_PAGER.md) | Printable desk card for shop owners |
-| `scripts/generate_onile_kit.py` | QR + desk card per center → `data/onile_kit/` |
-| [`docs/WEBAPP_AND_MINIPAY.md`](docs/WEBAPP_AND_MINIPAY.md) | Webapp + MiniPay overview |
-| [`docs/WEBAPP_UX_AND_SECURITY.md`](docs/WEBAPP_UX_AND_SECURITY.md) | Webapp parity · security · simple UX |
-| [`docs/V1_TO_V2_RELEASE.md`](docs/V1_TO_V2_RELEASE.md) | **V1 summary · upgrades · V2 offer · content kit** |
-| [`docs/PAYMENT_RAILS.md`](docs/PAYMENT_RAILS.md) | Fiat top-up → USDC play balance (mainnet prep) |
-| [`docs/AKASH_DEPLOY.md`](docs/AKASH_DEPLOY.md) | Always-on bot on Akash (CPU) |
-| `Dockerfile.akash` · `deploy/akash/deploy.yml` | Image + SDL |
-| `config/games/imessage.yaml` | GamePigeon / iMessage catalog |
-| `config/games/mobile.yaml` | FC Mobile, Free Fire 1v1, COD DM, … |
-| `config/games/physical.yaml` | Chess, Ludo, Monopoly IRL |
+| [`docs/PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md`](docs/PRODUCT_STRATEGY_1V1_PUBLIC_FIAT.md) | 1v1 / public / mobile / fiat / Arc |
+| [`docs/AGENTIC_ECONOMICS_AUDIT.md`](docs/AGENTIC_ECONOMICS_AUDIT.md) | Fee fairness, loopholes, LPs |
+| [`docs/PHYSICAL_GAMES.md`](docs/PHYSICAL_GAMES.md) | IRL Chess, Ludo, Monopoly |
+| [`docs/ONILE_GAME_CENTERS.md`](docs/ONILE_GAME_CENTERS.md) | Lagos game centers |
+| [`docs/TOURNAMENT_MODE.md`](docs/TOURNAMENT_MODE.md) | Cups / brackets |
+| [`docs/AKASH_DEPLOY.md`](docs/AKASH_DEPLOY.md) | Always-on bot on Akash |
 
 ## License / contact
 
-© sideQuest · Rematch  
+© sideQuest · Boardman  
 Grants / builders: open an issue or contact via Telegram bot support.
-

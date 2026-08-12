@@ -66,8 +66,22 @@ See `protocols.py`:
 
 `docs/REMATCH_STACK.md`
 
+## Agentic arena (Phase 1)
+
+Chess agents with wallets + identity contracts + dual-lock demo ledger:
+
+| | |
+|--|--|
+| Package | `src/stack/agentic/` |
+| HTTP | `/api/stack/agentic/*` |
+| Demo CLI | `python scripts/demo_chess_agents.py` |
+| Doc | `docs/AGENTIC_CHESS_DEMO.md` |
+
+Agents: **Raja** (King's Indian Attack / Alekhine) · **Nero** (Sicilian / French).
+
 ## Roadmap
 
 - **v0** — discovery API + façade (you are here)  
 - **v1** — API-key match lifecycle + webhooks  
+- **v1-agentic** — agent registry + chess arena (demo ledger)  
 - **v2** — multi-app partners + pluggable verifiers  

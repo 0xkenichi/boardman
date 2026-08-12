@@ -23,19 +23,27 @@ function isRematchStatic(path: string): boolean {
   return STATIC_PREFIXES.some((p) => path.startsWith(p) || path === p.replace(/\/$/, ''))
 }
 
-function securityHeaders(res: NextResponse) {
+function securityHeaders(res: NextResponse, opts?: { agentic?: boolean }) {
+  const agentic = Boolean(opts?.agentic)
   res.headers.set('X-Content-Type-Options', 'nosniff')
   res.headers.set('X-Frame-Options', 'SAMEORIGIN')
   res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
   res.headers.set('Permissions-Policy', 'camera=(self), microphone=()')
+  // Agentic arena needs chess.js CDN + remote Stockfish APIs for the recordable demo
+  const scriptSrc = agentic
+    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://telegram.org https://cdnjs.cloudflare.com"
+    : "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://telegram.org"
+  const connectSrc = agentic
+    ? "connect-src 'self' https://api.telegram.org https://chess-api.com https://stockfish.online"
+    : "connect-src 'self' https://api.telegram.org"
   res.headers.set(
     'Content-Security-Policy',
     [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://telegram.org",
+      scriptSrc,
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
-      "connect-src 'self' https://api.telegram.org",
+      connectSrc,
       "frame-src https://oauth.telegram.org https://telegram.org",
       "base-uri 'self'",
       "form-action 'self'",
@@ -64,6 +72,16 @@ function redirectTo(req: NextRequest, cleanPath: string) {
 
 export function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname
+
+  // Domain verification & ACME — plain files, no rewrites
+  if (path.startsWith('/.well-known/')) {
+    return NextResponse.next()
+  }
+
+  // Agent arena demo (Stockfish CDN + remote engine APIs)
+  if (path.startsWith('/agentic/')) {
+    return securityHeaders(NextResponse.next(), { agentic: true })
+  }
 
   // API stays as-is
   if (path.startsWith('/api/')) {
@@ -100,6 +118,17 @@ export function middleware(req: NextRequest) {
   }
   if (path === '/minipay' || path.startsWith('/minipay/')) {
     return rewriteTo(req, `/rematch${path}`)
+  }
+
+  // Clean builder / arena shortcuts
+  if (path === '/builders' || path === '/stack' || path === '/docs/stack') {
+    return redirectTo(req, '/agentic/docs.html')
+  }
+  if (path === '/arena') {
+    return redirectTo(req, '/agentic/arena.html')
+  }
+  if (path === '/hub') {
+    return redirectTo(req, '/agentic/hub.html')
   }
 
   // Public root assets: serve boardman SW/manifest at /

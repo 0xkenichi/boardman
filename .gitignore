@@ -6,6 +6,7 @@
 
 # Python
 .venv/
+.venv-*/
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -42,3 +43,18 @@ contracts/coverage.json
 # Waitlist local dumps
 data/waitlist.json
 data/boardman-waitlist.json
+
+# Boardman agentic demo state
+data/agentic/
+
+# Local ops dumps / kits / logs (not for public repo)
+logs/
+data/fiat_topups.json
+data/partner_attributions.json
+data/partner_ledger.json
+data/onile_kit/
+*.session
+
+# Duplicate brand assets
+frontend/public/brand/*copy*
+

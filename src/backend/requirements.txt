@@ -26,3 +26,5 @@ asyncpg>=0.29.0
 eval_type_backport>=0.2.0
 apscheduler>=3.10.0
 pyyaml>=6.0
+chess>=1.10.0
+eth-account>=0.10.0
