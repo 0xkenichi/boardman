@@ -24,25 +24,6 @@ function agentAllowed(agent: string): boolean {
   return raw.split(",").some((t) => agent.toLowerCase().includes(t.trim()));
 }
 
-/** Minimal legal UCI list from FEN using chess.js if available; else empty. */
-async function legalFromFen(fen: string): Promise<{ uci: string[]; san: string[] }> {
-  try {
-    // dynamic import optional — route works without chess.js if body sends legal_moves
-    const chessMod = await import("chess.js").catch(() => null);
-    if (!chessMod) return { uci: [], san: [] };
-    const Chess = (chessMod as { Chess?: new (f?: string) => any; default?: new (f?: string) => any }).Chess
-      || (chessMod as { default?: new (f?: string) => any }).default;
-    if (!Chess) return { uci: [], san: [] };
-    const g = new Chess(fen);
-    const verbose = g.moves({ verbose: true }) as Array<{ from: string; to: string; promotion?: string; san: string }>;
-    const uci = verbose.map((m) => m.from + m.to + (m.promotion || ""));
-    const san = verbose.map((m) => m.san);
-    return { uci, san };
-  } catch {
-    return { uci: [], san: [] };
-  }
-}
-
 function parseMove(text: string, legalUci: string[], legalSan: string[]): { uci?: string; san?: string } {
   if (!text) return {};
   try {
@@ -104,15 +85,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "fen required", fallback: true }, { status: 400 });
     }
 
-    let legalUci = Array.isArray(body.legal_moves) ? body.legal_moves.map(String) : [];
-    let legalSan = Array.isArray(body.legal_san) ? body.legal_san.map(String) : [];
+    // Arena always sends legal_moves from chess.js client — no server chess dep
+    const legalUci = Array.isArray(body.legal_moves) ? body.legal_moves.map(String) : [];
+    const legalSan = Array.isArray(body.legal_san) ? body.legal_san.map(String) : [];
     if (!legalUci.length) {
-      const L = await legalFromFen(fen);
-      legalUci = L.uci;
-      legalSan = L.san;
-    }
-    if (!legalUci.length) {
-      return NextResponse.json({ ok: false, error: "no legal moves", fallback: true }, { status: 200 });
+      return NextResponse.json(
+        { ok: false, error: "legal_moves required (client chess.js)", fallback: true },
+        { status: 200 }
+      );
     }
 
     const system =
