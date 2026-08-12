@@ -1,4 +1,4 @@
-# Arc money vs ASI:One reasoning (Nero)
+# LLM strategy layer (Gemini / ASI) — not a one-size bot
 
 ## Plain English
 
@@ -6,114 +6,127 @@
 |-------|-----|----------------|
 | **Boardman Stack** | Register agents, legal moves, matchmaking, pots, LPs | No (demo ledger) |
 | **Arc** | Dual-lock **USDC** when you settle on-chain | Yes — **testnet** USDC (+ gas if not USDC-gas) |
-| **ASI:One (asi1.ai)** | **Think** — pick Nero’s move with an LLM | No Arc money; free/dev **API key** only |
+| **Your strategy** | The mind *you* design (directive, openings, knobs) | No |
+| **ASI:One / Gemini** | **Amplify** that strategy when choosing a move | Free **API keys** only — no Arc gas |
 
-You can create and run agents **with Boardman alone** (Stockfish brains + demo ledger) without Arc or ASI.
+**Every builder will build their agents differently.**  
+Gemini and ASI are a **plus** on *your* strategy — they do not replace it with a shared “Nero chess bot.”  
+Nero is just the **reference silo** that demonstrates the pattern.
 
-You use **Arc alone** when you want agents (or humans) to **lock real testnet USDC** in BoardmanEscrow.
-
-You use **ASI as the reasoning layer** when you want Nero’s moves chosen by ASI:One instead of Stockfish. ASI does **not** spend USDC; Boardman still settles.
+You can create and run agents **with Boardman alone** (Stockfish + demo ledger) without Arc or LLM keys.
 
 ```
-                    ┌─────────────┐
-   create agent ──► │ Boardman    │◄── bankroll policy, fees, pots
-                    │  Stack      │
-                    └──────┬──────┘
-           play moves      │
-           ┌───────────────┼───────────────┐
-           ▼               ▼               ▼
-      ┌─────────┐    ┌──────────┐    ┌────────────┐
-      │ Raja    │    │ Nero     │    │ Arc escrow │
-      │Stockfish│    │ ASI:One  │    │ (optional) │
-      │ (free)  │    │ (API key)│    │ testnet $  │
-      └─────────┘    └──────────┘    └────────────┘
+   builder mind ──► strategy_id + strategy_notes + knobs
+                           │
+                           ▼
+                    ┌──────────────┐
+                    │ ASI / Gemini │  free keys (optional plus)
+                    └──────┬───────┘
+                           │ legal move only
+                           ▼
+                    ┌──────────────┐     optional
+                    │ Stockfish    │ ◄── fallback
+                    └──────┬───────┘
+                           ▼
+                    Boardman Stack ──► Arc escrow (money only)
 ```
 
-## Free setup (what you need)
+## What you ship vs what keys do
+
+| You ship (unique) | Keys amplify |
+|-------------------|--------------|
+| `strategy_id` | Prompt identity tag |
+| `mind.directive` / `strategy_notes` / `principles` / `avoid` | System prompt |
+| Style knobs (`aggression`, `counterpunch`, …) | Soft guidance |
+| Openings / books | Preferred ideas |
+| Webhook or hybrid runtime | When LLM is called |
+
+Stack still enforces: **response must be one of `legal_moves`.**
+
+## Free setup
 
 ### Always free / no wallet
-1. Run arena + demo ledger (already live).
-2. Raja: local Stockfish WASM (free).
-3. Nero: Stockfish fallback until ASI key is set.
+1. Run arena + demo ledger.
+2. Engines: local Stockfish WASM (free).
+3. Without LLM keys → pure Stockfish (openings/mind still apply on Python hybrid).
 
-### Nero + ASI reasoning (free API key, no Arc)
-1. Create/get API key at [ASI:One docs](https://docs.asi1.ai) / [asi1.ai](https://asi1.ai).
-2. Set on **Vercel** (frontend) and/or backend:
+### Strategy + ASI (free API key, no Arc)
+1. Key from [ASI:One](https://asi1.ai) / [docs](https://docs.asi1.ai).
+2. Env:
    ```
    ASI_ONE_API_KEY=sk-...
    ASI_ONE_MODEL=asi1-mini
+   BOARDMAN_ASI_AGENTS=nero   # or your agent slug substring, or * for all
+   ```
+
+### Strategy + free Gemini (also no Arc)
+1. Key from [Google AI Studio](https://aistudio.google.com/apikey).
+2. Env (any one of these names works):
+   ```
+   GEMINI_API_KEY_NERO=...   # preferred for Nero-scoped key
+   # or GEMINI_API_KEY=... / GOOGLE_API_KEY=...
+   GEMINI_MODEL=gemini-2.0-flash
+   BOARDMAN_NERO_REASONERS=asi,gemini   # or gemini,asi
    BOARDMAN_ASI_AGENTS=nero
    ```
-3. Redeploy. Arena calls `POST /api/agentic/asi-move` for Nero only.
-4. Python matches: `HybridEngine` calls ASI when agent id contains `nero`.
 
-### Real Arc testnet money (optional — only for on-chain dual-lock)
-You need these **only** if `BOARDMAN_AGENTIC_ONCHAIN=1` (or human bot main path on Arc):
+Set keys on **Vercel Production** (frontend proxy) and/or agent host; **redeploy**.
 
-| What | Why |
-|------|-----|
-| Arc testnet RPC | Talk to chain |
-| BoardmanEscrow address | Dual-lock contract |
-| Agent/player wallets with **testnet USDC** | Stake |
-| Optional: small native gas if chain requires it | Some Arc setups use USDC gas — check current Arc docs |
-| Resolver key (ops) | Settle match |
+### Arc testnet money (optional)
+Only for on-chain dual-lock — never required for thinking. See developer docs [05 — Contracts](./developers/05-contracts.md).
 
-**ASI key is never an Arc wallet.** No ETH from ASI is required for Nero to think.
+## Demo agents (reference only)
 
-Faucets (check current links):
-- Circle USDC faucet: https://faucet.circle.com/
-- Arc testnet docs / faucet from Circle Arc developer portal
+| Agent | Strategy (example) | Brain in live arena |
+|-------|--------------------|---------------------|
+| **Nero** | `nero_defense_v2` — solid, counterpunch | LLM chain (ASI → Gemini) using **Nero’s** strategy JSON → SF |
+| **Raja** | `raja_mate_hunter_v3` — attack / mate hunt | Stockfish (can enable LLM by listing Raja in `BOARDMAN_ASI_AGENTS` + sending strategy) |
 
-## Who thinks what (this product)
+Builders should **not** copy Nero’s mind for a different product — write your own `strategy_notes`.
 
-| Agent | Brain |
-|-------|--------|
-| **Raja** | Stockfish only (5–10s local) |
-| **Nero** | **ASI:One first** → if key missing/fail → Stockfish |
+## Call the proxy with *your* strategy
+
+```bash
+curl -s -X POST https://boardman.playingsidequest.fun/api/agentic/asi-move \
+  -H 'content-type: application/json' \
+  -d '{
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "agent": "my_bot",
+    "legal_moves": ["e2e4","d2d4","g1f3","c2c4"],
+    "legal_san": ["e4","d4","Nf3","c4"],
+    "strategy": {
+      "agent_name": "MyBot",
+      "strategy_id": "acme_squeeze_v1",
+      "directive": "WIN. Squeeze space, avoid early sacs.",
+      "archetype": "balanced",
+      "strategy_notes": "Prefer closed structures; trade into better endings.",
+      "openings": ["queens_gambit", "english"],
+      "aggression": 0.9,
+      "sacrifice_bias": 0.4
+    }
+  }'
+```
+
+If `fallback: true`, keys missing or model failed — fall back to Stockfish; **your strategy still lives in openings/webhook**.
 
 ## Code map
 
 | Piece | Path |
 |-------|------|
-| ASI reasoner (Python) | `src/stack/agentic/runtime/asi_reasoner.py` |
+| Strategy prompt builder | `src/stack/agentic/runtime/strategy_prompt.py` |
+| ASI reasoner | `src/stack/agentic/runtime/asi_reasoner.py` |
+| Gemini reasoner | `src/stack/agentic/runtime/gemini_reasoner.py` |
 | Hybrid engine hook | `src/stack/agentic/chess/hybrid_engine.py` |
-| Arena Nero path | `frontend/public/agentic/arena.html` → `/api/agentic/asi-move` |
+| Arena (sends Nero strategy) | `frontend/public/agentic/arena.html` |
 | Server proxy | `frontend/app/api/agentic/asi-move/route.ts` |
-| Nero manifest | `src/stack/agentic/agents/nero/manifest.py` |
+| Manifest template | `src/stack/agentic/deploy/TEMPLATE_MANIFEST.yaml` |
+| Nero / Raja silos | `src/stack/agentic/agents/{nero,raja}/` |
 
-## Test
+## Mental model (print this)
 
-```bash
-# Server has key
-curl -s https://boardman.playingsidequest.fun/api/agentic/asi-move
-
-curl -s -X POST https://boardman.playingsidequest.fun/api/agentic/asi-move \
-  -H 'content-type: application/json' \
-  -d '{"fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1","agent":"nero"}'
 ```
-
-If `fallback: true`, key is missing or ASI rejected — Nero still plays via Stockfish.
-
----
-
-## Free Gemini (also for Nero)
-
-Nero’s LLM chain (default order):
-
-1. **ASI:One** — `ASI_ONE_API_KEY`
-2. **Gemini** — `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) from [Google AI Studio](https://aistudio.google.com/apikey)
-3. **Stockfish** — always free fallback
-
-Env:
-
-```bash
-GEMINI_API_KEY=...
-GEMINI_MODEL=gemini-2.0-flash
-BOARDMAN_NERO_REASONERS=asi,gemini   # or gemini,asi to prefer Gemini
-BOARDMAN_ASI_AGENTS=nero
+Your strategy  →  free LLM keys amplify it  →  legal move
+                     (optional plus)
+Stockfish always available as free fallback
+Arc only if you want real USDC dual-lock
 ```
-
-Set on **Vercel Production** (and redeploy). Raja never uses Gemini/ASI.
-
-Python: `src/stack/agentic/runtime/gemini_reasoner.py`  
-Proxy: `frontend/app/api/agentic/asi-move` tries both providers.

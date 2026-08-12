@@ -36,6 +36,14 @@ OPENINGS_BLACK: list[list[str]] = [
 MIND: dict[str, Any] = {
     "directive": "WIN. Stay solid, absorb pressure, counterpunch when overextended.",
     "archetype": "defender_counter",
+    "strategy_id": "nero_defense_v2",
+    # Fed to ASI/Gemini as strategy_notes — your unique mind, not a global bot
+    "strategy_notes": (
+        "Solid structures; Sicilian/French/Caro ideas; punish overextension; "
+        "convert endgames carefully. Rarely sac without clear regain."
+    ),
+    "principles": "structure first, then counterpunch; patient not passive",
+    "avoid": "speculative sacs without regain; reckless king hunts from worse",
     "aggression": 0.85,
     "king_attack": 0.9,
     "fianchetto": 0.45,

@@ -5,10 +5,10 @@ Architecture (what we mean by "who does what"):
 
   Arc .............. money & settlement (USDC escrow, bankrolls) — not a brain
   Boardman Stack ... matchmaking, legal moves, stakes, spectators
-  ASI:One .......... optional LLM reasoning (pick a move / strategy text)
+  ASI:One .......... optional LLM reasoning — *applies the builder's strategy*
 
-Nero can use ASI to *think*; Arc is only needed if you dual-lock real testnet USDC.
-Demo ledger mode needs zero Arc ETH/USDC.
+Every builder ships a different mind. ASI does not invent a global chess persona;
+it amplifies the strategy declared in the agent manifest / mind / request payload.
 
 Env (free tier key from https://asi1.ai developer docs):
   ASI_ONE_API_KEY=...          required for live ASI calls
@@ -144,16 +144,29 @@ def _try_parse(board: chess.Board, cand: str) -> Optional[chess.Move]:
 def reason_chess_move(
     board: chess.Board,
     *,
-    agent_name: str = "Nero",
+    agent_name: str = "Agent",
     persona: str = "",
+    strategy: Optional[dict[str, Any]] = None,
+    mind: Any = None,
+    openings: Optional[list[str]] = None,
+    strategy_id: str = "",
     timeout_sec: Optional[float] = None,
 ) -> Optional[dict[str, Any]]:
     """
-    Ask ASI:One for one legal move. Returns {move, san, uci, source, raw} or None.
-    Free if you have an ASI_ONE_API_KEY (developer free tier). No Arc gas required.
+    Ask ASI:One for one legal move that fits *this agent's* strategy.
+
+    Builders pass different mind/strategy — ASI amplifies that style.
+    Returns {move, san, uci, source, raw, strategy_id} or None.
+    Free if you have an ASI_ONE_API_KEY. No Arc gas required.
     """
     if not asi_enabled():
         return None
+
+    from gaming.src.stack.agentic.runtime.strategy_prompt import (
+        build_system_prompt,
+        build_user_prompt,
+        strategy_from_mind,
+    )
 
     timeout = float(timeout_sec or os.getenv("BOARDMAN_ASI_TIMEOUT_SEC") or "25")
     legal = list(board.legal_moves)
@@ -168,23 +181,24 @@ def reason_chess_move(
         except Exception:
             legal_san.append(m.uci())
 
-    persona = persona or (
-        "You are Nero, a defensive chess grandmaster: solid structures, "
-        "Sicilian/French ideas, punish overextension, convert endgames carefully."
+    strat = strategy or strategy_from_mind(
+        mind,
+        agent_name=agent_name,
+        openings=openings,
+        strategy_id=strategy_id,
+        strategy_notes=persona,
     )
-    system = (
-        f"{persona}\n"
-        "You only play legal chess moves. Reply with JSON only: "
-        '{"move":"<UCI or SAN from the legal list>"}. '
-        "No commentary outside JSON."
-    )
-    user = (
-        f"FEN: {board.fen()}\n"
-        f"Side to move: {'white' if board.turn == chess.WHITE else 'black'}\n"
-        f"Legal UCI: {', '.join(legal_uci[:80])}"
-        + (f" (+{len(legal_uci)-80} more)" if len(legal_uci) > 80 else "")
-        + f"\nLegal SAN sample: {', '.join(legal_san[:40])}\n"
-        "Pick the strongest practical move for this position."
+    if persona and not strat.get("strategy_notes"):
+        strat["strategy_notes"] = persona
+    if persona and not strat.get("directive"):
+        strat["directive"] = persona
+
+    system = build_system_prompt(strat)
+    user = build_user_prompt(
+        fen=board.fen(),
+        side="white" if board.turn == chess.WHITE else "black",
+        legal_uci=legal_uci,
+        legal_san=legal_san,
     )
 
     try:
@@ -216,5 +230,6 @@ def reason_chess_move(
         "source": "asi1.ai",
         "raw": raw[:500],
         "model": os.getenv("ASI_ONE_MODEL") or DEFAULT_MODEL,
-        "agent": agent_name,
+        "agent": strat.get("agent_name") or agent_name,
+        "strategy_id": strat.get("strategy_id") or "",
     }

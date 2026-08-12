@@ -671,6 +671,8 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
   <script>
+    // Each agent ships its own mind. LLM keys (ASI/Gemini) amplify strategy —
+    // they do not replace it. Every builder will build agents differently.
     const AGENTS = {
       raja: {
         name: "Raja",
@@ -678,6 +680,22 @@
         contract: "0x21350246489599a2c2b47af53d4e6e609c8854c7",
         openings: "KIA storm · Yugoslav · Italian · Alekhine/KID · mate hunter",
         books: {},
+        strategy: {
+          agent_name: "Raja",
+          agent_id: "agent_raja_kia_alekhine",
+          directive: "WIN by attack. Attack is the best defence. Hunt the king, force mates.",
+          archetype: "attacker",
+          blurb: "Mate-hungry attacker. KIA storms, Open Sicilian Yugoslav, Italian pressure.",
+          strategy_id: "raja_mate_hunter_v3",
+          strategy_notes:
+            "Initiative first; king hunts; refuse quiet equality when an attack exists.",
+          openings: ["kings_indian_attack", "yugoslav_attack", "italian_fried_liver", "alekhines_defence"],
+          aggression: 1.85,
+          king_attack: 1.9,
+          counterpunch: 0.55,
+          sacrifice_bias: 1.55,
+          draw_aversion: 1.7,
+        },
       },
       nero: {
         name: "Nero",
@@ -685,6 +703,22 @@
         contract: "0x353e045106b19c4b6094a3c50f7122fd364cf341",
         openings: "Sicilian · French · Caro-Kann · defense mind",
         books: {},
+        strategy: {
+          agent_name: "Nero",
+          agent_id: "agent_nero_sicilian_french",
+          directive: "WIN. Stay solid, absorb pressure, counterpunch when overextended.",
+          archetype: "defender_counter",
+          blurb: "Defense-first silo. Sicilian, French, Caro-Kann. Provokes overextension, then converts.",
+          strategy_id: "nero_defense_v2",
+          strategy_notes:
+            "Solid structures; Sicilian/French/Caro ideas; punish overextension; convert endgames carefully. Rarely sac without clear regain.",
+          openings: ["sicilian_defence", "french_defence", "caro_kann", "queens_gambit_declined"],
+          aggression: 0.85,
+          king_attack: 0.9,
+          counterpunch: 1.55,
+          sacrifice_bias: 0.55,
+          draw_aversion: 0.9,
+        },
       },
     };
 
@@ -1755,12 +1789,14 @@
     }
 
     async function llmMoveForNero(fen) {
-      // Nero-only: ASI:One and/or free Gemini via server proxy. Raja never hits this.
+      // Nero demo: ASI/Gemini amplify *Nero's* strategy (not a global chess bot).
+      // Builders pass their own strategy JSON — every agent is built differently.
       try {
-        setText("enginePill", "Nero · LLM reasoning (ASI / Gemini)…");
+        setText("enginePill", "Nero · strategy + LLM (ASI / Gemini)…");
         const legal = game.moves({ verbose: true });
         const legal_moves = legal.map((m) => m.from + m.to + (m.promotion || ""));
         const legal_san = legal.map((m) => m.san);
+        const strategy = AGENTS.nero.strategy || null;
         const res = await fetch("/api/agentic/asi-move", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1769,6 +1805,7 @@
             agent: "nero",
             legal_moves,
             legal_san,
+            strategy,
           }),
         });
         const data = await res.json();
@@ -1780,8 +1817,12 @@
           }
           if (san) {
             const src = data.source === "gemini" ? "Gemini" : "ASI:One";
-            setText("enginePill", `Nero · ${src} · ${data.model || ""}`);
-            log(`Nero ${src} → ${san}`);
+            const sid = data.strategy_id || (strategy && strategy.strategy_id) || "";
+            setText(
+              "enginePill",
+              `Nero · ${src}${sid ? " · " + sid : ""} · ${data.model || ""}`
+            );
+            log(`Nero ${src}${sid ? " [" + sid + "]" : ""} → ${san}`);
             return {
               san,
               uci: data.uci,
@@ -1794,7 +1835,7 @@
           log(
             "LLM unavailable (" +
               (data.error || "no keys") +
-              ") — Nero falls back to Stockfish"
+              ") — Nero falls back to Stockfish (strategy still in openings/mind)"
           );
         }
       } catch (e) {

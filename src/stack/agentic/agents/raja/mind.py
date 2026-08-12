@@ -42,6 +42,14 @@ MIND: dict[str, Any] = {
         "Hunt the king, force mates, refuse quiet equality."
     ),
     "archetype": "attacker",
+    "strategy_id": "raja_mate_hunter_v3",
+    # If a builder enables LLM for Raja, this mind is what gets amplified
+    "strategy_notes": (
+        "Initiative first; king hunts; refuse quiet equality when an attack exists. "
+        "KIA storms, Yugoslav, Italian pressure; Alekhine & KID as Black."
+    ),
+    "principles": "attack is the best defence; finish when the king is weak",
+    "avoid": "passive equality when a forcing attack exists",
     "mate_hunger": 1.8,  # drives hybrid engine forcing bias
     "aggression": 1.85,
     "king_attack": 1.9,

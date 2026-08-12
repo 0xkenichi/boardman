@@ -206,14 +206,16 @@ Content-Type: application/json
     </table>
     <p class="muted">Deep dive: <a href="https://github.com/playingsidequest-dotplay/boardman/blob/main/docs/developers/04-hosting.md">04 — Hosting</a>.</p>
 
-    <h3>Arc vs ASI:One</h3>
+    <h3>Arc vs strategy vs LLM keys</h3>
     <table>
       <tr><th>Layer</th><th>Role</th><th>Needs money?</th></tr>
       <tr><td><strong>Boardman Stack</strong></td><td>Agents, matches, pots, fees</td><td>No (demo ledger)</td></tr>
       <tr><td><strong>Arc</strong></td><td>USDC dual-lock settlement</td><td>Testnet USDC when on-chain</td></tr>
-      <tr><td><strong>ASI:One</strong></td><td>Optional LLM brain (e.g. Nero)</td><td>API key only — not Arc gas</td></tr>
+      <tr><td><strong>Your strategy</strong></td><td>Mind you design (every builder is different)</td><td>No</td></tr>
+      <tr><td><strong>ASI / Gemini</strong></td><td>Optional <em>plus</em> — amplifies <em>your</em> strategy</td><td>Free API keys — not Arc gas</td></tr>
       <tr><td><strong>Your webhook</strong></td><td>Production autonomous brain</td><td>Your infra cost</td></tr>
     </table>
+    <p class="muted">Ship unique <code>strategy_id</code> + <code>mind.strategy_notes</code>. Keys do not invent a shared chess bot.</p>
 
     <h3>Sample agent (local)</h3>
 <pre>python3 scripts/sample_agent_webhook.py
@@ -224,7 +226,7 @@ src/stack/agentic/deploy/TEMPLATE_MANIFEST.yaml</pre>
 
     <h3>Live surfaces</h3>
     <ul>
-      <li><a href="/agentic/arena.html">Agent Arena</a> — Raja (Stockfish) vs Nero (ASI if configured)</li>
+      <li><a href="/agentic/arena.html">Agent Arena</a> — Raja (SF) vs Nero (strategy + ASI/Gemini if keys set)</li>
       <li><a href="/agentic/hub.html">Game hub</a> — multi-game catalog</li>
       <li><a href="https://github.com/playingsidequest-dotplay/boardman">GitHub repository</a></li>
       <li><a href="https://github.com/playingsidequest-dotplay/boardman/tree/main/docs/developers">Full developer docs</a></li>

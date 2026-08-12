@@ -1,11 +1,15 @@
 """
-Google Gemini as a free reasoning layer for Boardman agents (Nero by default).
+Google Gemini as a free *strategy amplifier* for Boardman agents.
+
+Every builder ships a different mind. Gemini does not replace strategy —
+it applies strategy_id / mind / strategy JSON you pass in.
 
 Env (free key from https://aistudio.google.com/apikey):
+  GEMINI_API_KEY_NERO=...            preferred Nero-scoped name
   GEMINI_API_KEY=...                 or GOOGLE_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY
   GEMINI_MODEL=gemini-2.0-flash      free-tier friendly
   BOARDMAN_NERO_REASONERS=asi,gemini order of LLM attempts (then Stockfish)
-  BOARDMAN_ASI_AGENTS=nero           which agents use LLM layers
+  BOARDMAN_ASI_AGENTS=nero           which agents use LLM layers (* or all = any)
   BOARDMAN_GEMINI_TIMEOUT_SEC=25
 """
 from __future__ import annotations
@@ -32,8 +36,10 @@ def gemini_enabled() -> bool:
 
 
 def _api_key() -> str:
+    # Prefer Nero-scoped key if set (builders often name keys per agent)
     return (
-        os.getenv("GEMINI_API_KEY")
+        os.getenv("GEMINI_API_KEY_NERO")
+        or os.getenv("GEMINI_API_KEY")
         or os.getenv("GOOGLE_API_KEY")
         or os.getenv("GOOGLE_GENERATIVE_AI_API_KEY")
         or ""
@@ -124,13 +130,26 @@ def _generate(prompt: str, *, timeout: float) -> str:
 def reason_chess_move(
     board: chess.Board,
     *,
-    agent_name: str = "Nero",
+    agent_name: str = "Agent",
     persona: str = "",
+    strategy: Optional[dict[str, Any]] = None,
+    mind: Any = None,
+    openings: Optional[list[str]] = None,
+    strategy_id: str = "",
     timeout_sec: Optional[float] = None,
 ) -> Optional[dict[str, Any]]:
-    """Ask Gemini for one legal move. Free API key; no Arc gas."""
+    """
+    Ask Gemini to pick a move that fits *this agent's* strategy.
+    Builders pass different mind/strategy — Gemini amplifies that style, not a global bot.
+    """
     if not gemini_enabled():
         return None
+
+    from gaming.src.stack.agentic.runtime.strategy_prompt import (
+        build_system_prompt,
+        build_user_prompt,
+        strategy_from_mind,
+    )
 
     timeout = float(timeout_sec or os.getenv("BOARDMAN_GEMINI_TIMEOUT_SEC") or "25")
     legal = list(board.legal_moves)
@@ -145,19 +164,26 @@ def reason_chess_move(
         except Exception:
             legal_san.append(m.uci())
 
-    persona = persona or (
-        "You are Nero, a defensive chess grandmaster: solid structures, "
-        "Sicilian/French ideas, punish overextension."
+    strat = strategy or strategy_from_mind(
+        mind,
+        agent_name=agent_name,
+        openings=openings,
+        strategy_id=strategy_id,
+        strategy_notes=persona,
     )
-    prompt = (
-        f"{persona}\n"
-        'Reply with JSON only: {"move":"<UCI or SAN from the legal list>"}. No other text.\n\n'
-        f"FEN: {board.fen()}\n"
-        f"Side to move: {'white' if board.turn == chess.WHITE else 'black'}\n"
-        f"Legal UCI: {', '.join(legal_uci[:80])}\n"
-        f"Legal SAN sample: {', '.join(legal_san[:40])}\n"
-        "Pick the strongest practical defensive/counterpunching move."
+    if persona and not strat.get("strategy_notes"):
+        strat["strategy_notes"] = persona
+    if persona and not strat.get("directive"):
+        strat["directive"] = persona
+
+    system = build_system_prompt(strat)
+    user = build_user_prompt(
+        fen=board.fen(),
+        side="white" if board.turn == chess.WHITE else "black",
+        legal_uci=legal_uci,
+        legal_san=legal_san,
     )
+    prompt = system + "\n\n" + user
 
     try:
         raw = _generate(prompt, timeout=timeout)
@@ -182,5 +208,6 @@ def reason_chess_move(
         "source": "gemini",
         "raw": raw[:500],
         "model": os.getenv("GEMINI_MODEL") or DEFAULT_MODEL,
-        "agent": agent_name,
+        "agent": strat.get("agent_name") or agent_name,
+        "strategy_id": strat.get("strategy_id") or "",
     }

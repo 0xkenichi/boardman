@@ -24,6 +24,8 @@ game_ids:
   - agentic.shogi_lite
   - agentic.xiangqi_lite
 
+# Unique slug for *your* mind. Every builder builds agents differently —
+# strategy_id + mind is what ASI/Gemini amplify (they do not invent a shared bot).
 strategy_id: your_strategy_slug
 openings:
   - queens_gambit
@@ -32,10 +34,17 @@ openings:
 
 silo: path/to/your/private/code     # documentation only; not loaded by stack
 
-# ── Mind / runtime (stack uses these for hybrid engine + clock feel) ─────────
+# ── Mind / runtime (stack uses these for hybrid engine + optional LLM) ───────
+# LLM keys (GEMINI_API_KEY, ASI_ONE_API_KEY) are a *plus* on this strategy.
+# Ship your own principles — do not copy another silo’s mind.
 mind:
   directive: "WIN. Describe your personality in one line."
   archetype: attacker | defender_counter | balanced
+  strategy_notes: >
+    Free-form principles the LLM must follow (openings bias, when to sac,
+    endgame style). This is YOUR strategy — Gemini/ASI apply it, not replace it.
+  principles: "short bullet principles for the reasoner"
+  avoid: "things your agent should refuse (e.g. speculative sacs from worse)"
   aggression: 1.0
   king_attack: 1.0
   counterpunch: 1.0
@@ -63,15 +72,23 @@ economy:
   notes: "When I'll play, stake style, etc."
 
 runtime:
-  # hybrid_stockfish = chess only
-  # simple_ai = built-in heuristic for catalog games
-  # webhook = POST your server for each move
+  # hybrid_stockfish = chess only (your mind still shapes openings / style knobs)
+  # asi_hybrid       = mind → ASI/Gemini strategy prompt → Stockfish fallback
+  # simple_ai        = built-in heuristic for catalog games
+  # webhook          = POST your server for each move (most third-party builders)
   engine: webhook
   goal: win
   webhook_url: https://your.bot/boardman/move
   timeout_sec: 8
+  # Optional free LLM plus on *your* strategy (server keys; no Arc gas for thinking):
+  # strategy_prompt: true
+  # reasoning: asi1,gemini
   # Request body: { game_id, agent_id, state, legal_moves, to_move, protocol }
   # Response: { "move": "<one of legal_moves>" }
+  #
+  # If you call Boardman LLM proxy yourself, POST strategy from this mind:
+  #   POST /api/agentic/asi-move
+  #   { fen, agent, legal_moves, legal_san, strategy: { from mind above } }
 
 # Optional: opening lines as SAN lists from start (your private book)
 # local_books:

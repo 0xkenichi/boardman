@@ -91,8 +91,9 @@ class HybridEngine:
             self.last_eval = None
             return bm
 
-        # 1b) LLM reasoning layers for Nero (ASI → Gemini → then Stockfish)
+        # 1b) LLM reasoning layers (ASI → Gemini → then Stockfish)
         # Free API keys only; no Arc gas. Order: BOARDMAN_NERO_REASONERS=asi,gemini
+        # Each builder's mind/strategy is the prompt — LLMs amplify it, not replace it.
         try:
             from gaming.src.stack.agentic.runtime.asi_reasoner import (
                 agent_uses_asi,
@@ -103,12 +104,20 @@ class HybridEngine:
                 gemini_enabled,
                 reason_chess_move as gemini_reason,
             )
+            from gaming.src.stack.agentic.runtime.strategy_prompt import strategy_from_mind
 
-            if agent_uses_asi(self.agent_id, "nero"):
-                persona = str(
-                    getattr(self.mind, "directive", "")
-                    or getattr(self.mind, "blurb", "")
-                    or ""
+            if agent_uses_asi(self.agent_id, getattr(self.mind, "name", "") or ""):
+                openings = list(
+                    getattr(self.mind, "openings", None)
+                    or getattr(self.mind, "book_ids_white", None)
+                    or []
+                )
+                strategy = strategy_from_mind(
+                    self.mind,
+                    agent_name=self.agent_id or "agent",
+                    agent_id=self.agent_id or "",
+                    openings=openings if isinstance(openings, list) else [],
+                    strategy_id=str(getattr(self.mind, "strategy_id", "") or ""),
                 )
                 order = (
                     os.getenv("BOARDMAN_NERO_REASONERS") or "asi,gemini"
@@ -119,21 +128,27 @@ class HybridEngine:
                         if name in {"asi", "asi1", "asi-one"} and asi_enabled():
                             hit = asi_reason(
                                 board,
-                                agent_name=self.agent_id or "nero",
-                                persona=persona,
+                                agent_name=strategy.get("agent_name") or self.agent_id,
+                                strategy=strategy,
+                                mind=self.mind,
                             )
                         elif name in {"gemini", "google"} and gemini_enabled():
                             hit = gemini_reason(
                                 board,
-                                agent_name=self.agent_id or "nero",
-                                persona=persona,
+                                agent_name=strategy.get("agent_name") or self.agent_id,
+                                strategy=strategy,
+                                mind=self.mind,
                             )
                     except Exception as exc:
                         logger.warning("[%s] %s reasoner failed: %s", self.agent_id, name, exc)
                         hit = None
                     if hit and hit.get("move") is not None:
                         src = hit.get("source") or name
-                        self.last_source = f"{src}:{hit.get('model')}"
+                        sid = hit.get("strategy_id") or strategy.get("strategy_id") or ""
+                        tag = f"{src}:{hit.get('model')}"
+                        if sid:
+                            tag = f"{tag}:{sid}"
+                        self.last_source = tag
                         self.last_eval = None
                         return hit["move"]
         except Exception as exc:
@@ -417,4 +432,12 @@ class HybridEngine:
 
 
 def mind_from_agent(agent: dict[str, Any]) -> Mind:
-    return Mind.from_dict(agent.get("mind") or {})
+    """Build Mind from agent record; merge root strategy_id so LLM prompt is unique per builder."""
+    raw = dict(agent.get("mind") or {})
+    if agent.get("strategy_id") and not raw.get("strategy_id"):
+        raw["strategy_id"] = agent["strategy_id"]
+    if agent.get("name") and not raw.get("name"):
+        raw["name"] = agent["name"]
+    if agent.get("openings") and not raw.get("openings"):
+        raw["openings"] = agent["openings"]
+    return Mind.from_dict(raw)

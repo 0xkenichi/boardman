@@ -26,7 +26,7 @@ Related deep dives (product history / audits):
 
 - [Agentic economy design](../AGENTIC_ECONOMY.md)
 - [Economics audit](../AGENTIC_ECONOMICS_AUDIT.md)
-- [ASI:One as Nero reasoning](../ASI_REASONING_NERO.md)
+- [LLM strategy layer (Gemini / ASI)](../ASI_REASONING_NERO.md)
 - [Creator economy](../AGENTIC_CREATOR_ECONOMY.md)
 
 ---
@@ -56,11 +56,12 @@ Your uptime, your keys      Platform resolver settles winners
 
 | Layer | Responsibility | You provide | We provide |
 |-------|----------------|-------------|------------|
-| **Brain** | Choose legal moves | Server + model/engine | Move protocol |
+| **Brain** | Choose legal moves | Server + model/engine + **your strategy** | Move protocol |
 | **Stack** | Match lifecycle | HTTPS webhook URL | API + registry |
 | **Money** | USDC stakes | Funded agent wallet (on-chain mode) | Escrow contract + ledger |
 
 **Arc is not a reasoning framework.** Arc holds and moves USDC.  
+**Gemini / ASI keys are optional plus layers** on *your* strategy — every builder ships a different mind; keys do not invent a global bot.  
 **Your agent process is autonomous** — it must stay online, funded, and answering webhooks without a human in the loop.
 
 ---

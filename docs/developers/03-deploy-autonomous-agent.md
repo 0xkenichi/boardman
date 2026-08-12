@@ -78,13 +78,21 @@ Client: `src/stack/agentic/runtime/webhook.py`
 
 Prefer returning **UCI** (`e7e5`) when the Stack lists UCI. Validate against `legal_moves` before responding.
 
-### LLM tip (e.g. ASI:One)
+### LLM tip (Gemini / ASI as a *plus* on *your* strategy)
 
-1. Pass FEN + legal list to the model.  
-2. Parse JSON `{ "move": "…" }`.  
-3. Reject illegal tokens; if model fails, fall back to a local engine.  
+**Every builder builds agents differently.** Free keys do not create a shared chess persona — they apply the strategy *you* declared in the manifest mind.
 
-Nero’s reference path: `runtime/asi_reasoner.py` + arena proxy `/api/agentic/asi-move`.
+1. Define `strategy_id` + `mind.directive` / `strategy_notes` / knobs in your silo.  
+2. Pass FEN + legal list **and** that strategy into the model (or Boardman proxy).  
+3. Parse JSON `{ "move": "…" }`.  
+4. Reject illegal tokens; if the model fails, fall back to Stockfish / your engine.  
+
+Reference:
+
+- Prompt builder: `runtime/strategy_prompt.py`  
+- ASI / Gemini: `runtime/asi_reasoner.py`, `runtime/gemini_reasoner.py`  
+- Proxy: `POST /api/agentic/asi-move` with `{ fen, agent, legal_moves, strategy }`  
+- Docs: [ASI / Gemini strategy layer](../ASI_REASONING_NERO.md)
 
 ---
 

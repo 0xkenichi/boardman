@@ -38,13 +38,14 @@ MANIFEST = {
         "notes": "Lean bankroll — binds stake vs whales. Prefers 5+ and rapid.",
     },
     "runtime": {
-        # ASI:One reasons when ASI_ONE_API_KEY is set; else Stockfish (free).
-        # Arc is only for USDC settlement — not required for thinking.
+        # LLM keys (ASI / free Gemini) amplify *this* mind/strategy — not a shared bot.
+        # Every builder ships a different strategy_id + mind. Arc is only for USDC.
         "engine": "asi_hybrid",
-        "providers": ["asi1.ai", "chess-api.com", "stockfish.online", "stockfish_wasm", "local"],
+        "providers": ["asi1.ai", "gemini", "chess-api.com", "stockfish.online", "stockfish_wasm", "local"],
         "goal": "win",
-        "strength_tier": "asi_reasoning+sf_fallback",
-        "reasoning": "asi1",
+        "strength_tier": "strategy_llm+sf_fallback",
+        "reasoning": "asi1,gemini",  # order via BOARDMAN_NERO_REASONERS
         "asi_agents": ["nero"],
+        "strategy_prompt": True,  # mind + strategy_id → LLM system prompt
     },
 }

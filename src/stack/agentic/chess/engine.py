@@ -116,6 +116,14 @@ class Mind:
     book_ids_black: list[str] | None = None
     black_book_primary: Optional[str] = None
     black_book_secondary: Optional[str] = None
+    # Builder strategy — LLM layers (ASI/Gemini) amplify these; unique per agent
+    directive: str = ""
+    archetype: str = ""
+    blurb: str = ""
+    strategy_id: str = ""
+    strategy_notes: str = ""
+    principles: str = ""
+    avoid: str = ""
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Mind":
@@ -138,6 +146,13 @@ class Mind:
             book_ids_black=list(d.get("book_ids_black") or []),
             black_book_primary=d.get("black_book_primary"),
             black_book_secondary=d.get("black_book_secondary"),
+            directive=str(d.get("directive") or ""),
+            archetype=str(d.get("archetype") or ""),
+            blurb=str(d.get("blurb") or ""),
+            strategy_id=str(d.get("strategy_id") or ""),
+            strategy_notes=str(d.get("strategy_notes") or d.get("principles") or ""),
+            principles=str(d.get("principles") or ""),
+            avoid=str(d.get("avoid") or ""),
         )
 
 
