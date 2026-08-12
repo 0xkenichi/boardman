@@ -1,12 +1,49 @@
 [
-  { "id": "p001", "name": "Top Andre", "rating": 92, "ranking": 1, "price": 12000, "wage": 700, "stars": 5, "stats": {"goals": 12, "assists": 8, "appearances": 15} },
-  { "id": "p002", "name": "M. Mbappé (sample)", "rating": 91, "ranking": 2, "price": 11500, "wage": 680, "stars": 5, "stats": {"goals": 10, "assists": 7, "appearances": 14} },
-  { "id": "p003", "name": "La Min (sample)", "rating": 90, "ranking": 3, "price": 11000, "wage": 650, "stars": 5, "stats": {"goals": 9, "assists": 10, "appearances": 16} },
-  { "id": "p004", "name": "Player Four", "rating": 88, "ranking": 4, "price": 8000, "wage": 500, "stars": 4, "stats": {"goals": 7, "assists": 6, "appearances": 13} },
-  { "id": "p005", "name": "Player Five", "rating": 86, "ranking": 5, "price": 7000, "wage": 450, "stars": 4, "stats": {"goals": 6, "assists": 5, "appearances": 12} },
-  { "id": "p006", "name": "Player Six", "rating": 85, "ranking": 6, "price": 6800, "wage": 430, "stars": 4, "stats": {"goals": 5, "assists": 7, "appearances": 14} },
-  { "id": "p007", "name": "Player Seven", "rating": 83, "ranking": 7, "price": 5000, "wage": 350, "stars": 3, "stats": {"goals": 4, "assists": 3, "appearances": 11} },
-  { "id": "p008", "name": "Player Eight", "rating": 81, "ranking": 8, "price": 4800, "wage": 320, "stars": 3, "stats": {"goals": 3, "assists": 4, "appearances": 10} },
-  { "id": "p009", "name": "Player Nine", "rating": 79, "ranking": 9, "price": 3000, "wage": 200, "stars": 2, "stats": {"goals": 2, "assists": 2, "appearances": 9} },
-  { "id": "p010", "name": "Player Ten", "rating": 76, "ranking": 10, "price": 2500, "wage": 180, "stars": 2, "stats": {"goals": 1, "assists": 1, "appearances": 8} }
+  /* Goalkeepers */
+  { "id": "gk01", "name": "GK One", "position": "GK", "rating": 95, "price": 15000, "wage": 800, "stars": 5 },
+  { "id": "gk02", "name": "GK Two", "position": "GK", "rating": 92, "price": 13000, "wage": 720, "stars": 5 },
+  { "id": "gk03", "name": "GK Three", "position": "GK", "rating": 90, "price": 11000, "wage": 680, "stars": 5 },
+  { "id": "gk04", "name": "GK Four", "position": "GK", "rating": 88, "price": 9000, "wage": 600, "stars": 4 },
+  { "id": "gk05", "name": "GK Five", "position": "GK", "rating": 86, "price": 8000, "wage": 560, "stars": 4 },
+  { "id": "gk06", "name": "GK Six", "position": "GK", "rating": 84, "price": 7600, "wage": 520, "stars": 4 },
+  { "id": "gk07", "name": "GK Seven", "position": "GK", "rating": 82, "price": 6400, "wage": 460, "stars": 3 },
+  { "id": "gk08", "name": "GK Eight", "position": "GK", "rating": 80, "price": 5200, "wage": 420, "stars": 3 },
+  { "id": "gk09", "name": "GK Nine", "position": "GK", "rating": 78, "price": 4000, "wage": 360, "stars": 3 },
+  { "id": "gk10", "name": "GK Ten", "position": "GK", "rating": 76, "price": 3000, "wage": 320, "stars": 2 },
+
+  /* Defenders */
+  { "id": "df01", "name": "DEF One", "position": "DEF", "rating": 94, "price": 14500, "wage": 760, "stars": 5 },
+  { "id": "df02", "name": "DEF Two", "position": "DEF", "rating": 91, "price": 12500, "wage": 700, "stars": 5 },
+  { "id": "df03", "name": "DEF Three", "position": "DEF", "rating": 89, "price": 10500, "wage": 640, "stars": 4 },
+  { "id": "df04", "name": "DEF Four", "position": "DEF", "rating": 87, "price": 8800, "wage": 580, "stars": 4 },
+  { "id": "df05", "name": "DEF Five", "position": "DEF", "rating": 85, "price": 7600, "wage": 540, "stars": 4 },
+  { "id": "df06", "name": "DEF Six", "position": "DEF", "rating": 83, "price": 6400, "wage": 480, "stars": 3 },
+  { "id": "df07", "name": "DEF Seven", "position": "DEF", "rating": 81, "price": 5200, "wage": 420, "stars": 3 },
+  { "id": "df08", "name": "DEF Eight", "position": "DEF", "rating": 79, "price": 4200, "wage": 380, "stars": 3 },
+  { "id": "df09", "name": "DEF Nine", "position": "DEF", "rating": 77, "price": 3200, "wage": 340, "stars": 2 },
+  { "id": "df10", "name": "DEF Ten", "position": "DEF", "rating": 75, "price": 2600, "wage": 300, "stars": 2 },
+
+  /* Midfielders */
+  { "id": "md01", "name": "MID One", "position": "MID", "rating": 93, "price": 14000, "wage": 740, "stars": 5 },
+  { "id": "md02", "name": "MID Two", "position": "MID", "rating": 90, "price": 12000, "wage": 680, "stars": 5 },
+  { "id": "md03", "name": "MID Three", "position": "MID", "rating": 88, "price": 10000, "wage": 620, "stars": 4 },
+  { "id": "md04", "name": "MID Four", "position": "MID", "rating": 86, "price": 8600, "wage": 560, "stars": 4 },
+  { "id": "md05", "name": "MID Five", "position": "MID", "rating": 84, "price": 7600, "wage": 520, "stars": 4 },
+  { "id": "md06", "name": "MID Six", "position": "MID", "rating": 82, "price": 6200, "wage": 460, "stars": 3 },
+  { "id": "md07", "name": "MID Seven", "position": "MID", "rating": 80, "price": 5200, "wage": 420, "stars": 3 },
+  { "id": "md08", "name": "MID Eight", "position": "MID", "rating": 78, "price": 4200, "wage": 380, "stars": 3 },
+  { "id": "md09", "name": "MID Nine", "position": "MID", "rating": 76, "price": 3200, "wage": 340, "stars": 2 },
+  { "id": "md10", "name": "MID Ten", "position": "MID", "rating": 74, "price": 2600, "wage": 300, "stars": 2 },
+
+  /* Forwards */
+  { "id": "fw01", "name": "FWD One", "position": "FWD", "rating": 96, "price": 16000, "wage": 840, "stars": 5 },
+  { "id": "fw02", "name": "FWD Two", "position": "FWD", "rating": 94, "price": 15000, "wage": 800, "stars": 5 },
+  { "id": "fw03", "name": "FWD Three", "position": "FWD", "rating": 92, "price": 13000, "wage": 740, "stars": 5 },
+  { "id": "fw04", "name": "FWD Four", "position": "FWD", "rating": 90, "price": 11000, "wage": 680, "stars": 4 },
+  { "id": "fw05", "name": "FWD Five", "position": "FWD", "rating": 88, "price": 9300, "wage": 620, "stars": 4 },
+  { "id": "fw06", "name": "FWD Six", "position": "FWD", "rating": 86, "price": 7600, "wage": 560, "stars": 4 },
+  { "id": "fw07", "name": "FWD Seven", "position": "FWD", "rating": 84, "price": 6400, "wage": 500, "stars": 3 },
+  { "id": "fw08", "name": "FWD Eight", "position": "FWD", "rating": 82, "price": 5200, "wage": 440, "stars": 3 },
+  { "id": "fw09", "name": "FWD Nine", "position": "FWD", "rating": 80, "price": 4200, "wage": 380, "stars": 3 },
+  { "id": "fw10", "name": "FWD Ten", "position": "FWD", "rating": 78, "price": 3200, "wage": 340, "stars": 2 }
 ]
