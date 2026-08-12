@@ -668,12 +668,14 @@
           <div class="odds-big" id="decA">2.00×</div>
           <div class="payout-hint">If you win → get <span id="netA">$2.00</span> back · chance <span id="probA">50%</span></div>
           <button type="button" class="secondary" id="betA">Bet on Raja</button>
+          <button type="button" class="secondary" id="btnStakeRaja" style="margin-left:8px">Stake (spectator)</button>
         </div>
         <div class="bet-card">
           <div class="name">Nero <span id="wrB" style="color:var(--muted);font-weight:600">—</span></div>
           <div class="odds-big" id="decB">2.00×</div>
           <div class="payout-hint">If you win → get <span id="netB">$2.00</span> back · chance <span id="probB">50%</span></div>
           <button type="button" class="secondary" id="betB">Bet on Nero</button>
+          <button type="button" class="secondary" id="btnStakeNero" style="margin-left:8px">Stake (spectator)</button>
         </div>
 
         <div class="row"><span>Your bets</span><span id="myBets">none yet</span></div>
@@ -3120,6 +3122,8 @@
     el("viewCreator").onclick = () => setUiView("creator");
     el("betA").onclick = () => placeBet("a");
     el("betB").onclick = () => placeBet("b");
+    if (el("btnStakeRaja")) el("btnStakeRaja").onclick = () => placeBet("a");
+    if (el("btnStakeNero")) el("btnStakeNero").onclick = () => placeBet("b");
     if (el("btnTgLogin")) el("btnTgLogin").onclick = () => openTgLoginModal();
     if (el("btnLogout")) el("btnLogout").onclick = () => logoutTg();
     if (el("tgModalClose"))

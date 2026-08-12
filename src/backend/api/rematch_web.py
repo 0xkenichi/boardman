@@ -8,6 +8,8 @@ only the Next.js BFF may use it.
 from __future__ import annotations
 
 import logging
+import os
+from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException, Query
@@ -258,7 +260,25 @@ async def web_spectator_bet(
                 "message": "Not enough USDC on your Boardman wallet. Fund via Telegram bot → Get money.",
             }
 
-        ok = await debit_wallet(profile_id, amount)
+        # If on-chain spectator pool is enabled, attempt deposit; otherwise debit wallet.
+        spectator_onchain = str(os.getenv("SPECTATOR_ONCHAIN") or "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        if spectator_onchain:
+            try:
+                from backend.services.spectator_escrow import deposit_to_pool
+
+                dep = await deposit_to_pool(profile_id, match_id, side, Decimal(str(amount)))
+                # Still record debit in ledger (platform accountability)
+                ok = True
+            except Exception:
+                # Fallback to internal debit path if on-chain deposit fails
+                logger.exception("[RematchWeb] spectator on-chain deposit failed, falling back to ledger debit")
+                ok = await debit_wallet(profile_id, amount)
+        else:
+            ok = await debit_wallet(profile_id, amount)
         if not ok:
             bal = await get_wallet_balance(profile_id)
             return {

@@ -90,7 +90,7 @@ def main():
         # write to Supabase if available
         if sb:
             try:
-                # upsert by id
+                # upsert by id (use Supabase upsert when available)
                 row = {
                     "id": p.get("id"),
                     "name": p.get("name"),
@@ -103,8 +103,12 @@ def main():
                 }
                 if p.get("api_meta"):
                     row["api_meta"] = p["api_meta"]
-                # Use upsert via insert with on_conflict if supported by client
-                sb.table("football_players").insert(row).execute()
+                # Prefer upsert if available to merge enriched fields safely
+                try:
+                    sb.table("football_players").upsert(row).execute()
+                except Exception:
+                    # Fall back to insert (idempotent scripts should avoid duplicates)
+                    sb.table("football_players").insert(row).execute()
             except Exception:
                 logger.exception("failed to write player %s to supabase", p.get("id"))
 
