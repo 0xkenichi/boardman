@@ -89,6 +89,7 @@
       </p>
       <div class="btns">
         <a class="btn btn-primary" href="/agentic/football-catalog.html" style="font-size:1.05rem;padding:12px 18px;">Open Catalog</a>
+        <button id="openCatalogBtn" class="btn btn-primary" style="font-size:1.05rem;padding:12px 18px;border:none;cursor:pointer;">Open Catalog (button)</button>
         <a class="btn btn-ghost" href="/agentic/hub.html">Game hub</a>
         <a class="btn btn-ghost" href="/agentic/arena.html">Chess arena (live)</a>
         <a class="btn btn-ghost" href="/agentic/docs.html">Builder docs</a>
@@ -186,5 +187,11 @@
     </footer>
   </main>
   <script src="/boardman-nav.js"></script>
+  <script>
+    (function(){
+      var btn = document.getElementById('openCatalogBtn');
+      if(btn) btn.addEventListener('click', function(){ window.location.href = '/agentic/football-catalog.html'; });
+    })();
+  </script>
 </body>
 </html>
