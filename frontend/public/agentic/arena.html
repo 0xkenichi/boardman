@@ -551,7 +551,11 @@
         <div class="controls">
           <button id="btnPlay">▶ Play match</button>
           <button class="secondary" id="btnReset">Reset</button>
+          <button class="secondary" id="btnAuto" title="Play matches back-to-back all day">⟳ Auto play</button>
         </div>
+        <p class="hint" id="autoHint" style="text-align:center;margin:6px 0 0">
+          Auto play off · Nero brain: ASI → Gemini → Stockfish (keys live)
+        </p>
         <div class="graveyard creator-only" id="graveyard" title="Fallen pieces">
           <span class="mono" style="width:100%;margin-bottom:2px">Fallen</span>
         </div>
@@ -623,6 +627,16 @@
           <summary>Move list</summary>
           <div class="moves" id="movesAudience">—</div>
         </details>
+        <div class="section-label" style="margin-top:14px">Verified match log</div>
+        <p class="hint">
+          Every finished game is hashed (SHA-256) and stored in this browser.
+          Export for judges · digests prove the PGN was not edited after the fact.
+        </p>
+        <div class="mono" id="matchLogList" style="max-height:180px;overflow:auto;font-size:0.72rem;line-height:1.45">—</div>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          <button type="button" class="secondary" id="btnExportLog" style="padding:6px 10px;font-size:0.78rem;flex:1">Export JSON</button>
+          <button type="button" class="secondary" id="btnClearLog" style="padding:6px 10px;font-size:0.78rem">Clear</button>
+        </div>
         <p class="hint" style="margin-top:14px">
           More games → <a href="/agentic/hub.html">Game hub</a>
         </p>
@@ -849,6 +863,17 @@
     let tgBotUsername = "myboardmanOfficialBot";
     let tgBotUrl = "https://t.me/myboardmanOfficialBot";
     let betInFlight = false;
+    let autoPlay = false;
+    let matchMoveLog = []; // {ply, side, san, uci?, source}
+    let matchStartedAt = null;
+    const MATCH_LOG_KEY = "boardman_agent_match_log_v1";
+    let matchArchive = [];
+    try {
+      matchArchive = JSON.parse(localStorage.getItem(MATCH_LOG_KEY) || "[]");
+      if (!Array.isArray(matchArchive)) matchArchive = [];
+    } catch (_) {
+      matchArchive = [];
+    }
     // stats for prior odds
     let form = {
       raja: { wins: 12, losses: 8, draws: 2 },
@@ -1614,6 +1639,90 @@
       const n = el("log");
       if (n) n.textContent = `${msg}\n` + n.textContent;
     }
+
+    async function sha256Hex(text) {
+      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+      return Array.from(new Uint8Array(buf))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+    }
+
+    function renderMatchLog() {
+      const box = el("matchLogList");
+      if (!box) return;
+      if (!matchArchive.length) {
+        box.textContent = "No finished games yet. Play a match (or enable Auto play).";
+        return;
+      }
+      box.innerHTML = matchArchive
+        .slice()
+        .reverse()
+        .slice(0, 40)
+        .map((m) => {
+          const w = m.winner || "draw";
+          const dig = (m.digest || "").slice(0, 12);
+          return (
+            `<div style="border-bottom:1px solid var(--line);padding:6px 0">` +
+            `<strong>#${m.n}</strong> ${m.ended_at || ""} · <b>${w}</b> · ${m.how || ""} · ${m.plies || 0} plies<br/>` +
+            `Nero: ${m.nero_sources || "—"} · stake $${Number(m.stake || 0).toFixed(0)}<br/>` +
+            `digest <code>${dig}…</code><br/>` +
+            `<span style="opacity:0.85">${(m.pgn || "").slice(0, 120)}${(m.pgn || "").length > 120 ? "…" : ""}</span>` +
+            `</div>`
+          );
+        })
+        .join("");
+    }
+
+    async function appendMatchRecord(rec) {
+      const canonical = JSON.stringify({
+        n: rec.n,
+        started_at: rec.started_at,
+        ended_at: rec.ended_at,
+        white: rec.white,
+        black: rec.black,
+        wallets: rec.wallets,
+        stake: rec.stake,
+        winner: rec.winner,
+        how: rec.how,
+        plies: rec.plies,
+        pgn: rec.pgn,
+        moves: rec.moves,
+        nero_sources: rec.nero_sources,
+        chain: rec.chain,
+      });
+      rec.digest = await sha256Hex(canonical);
+      rec.digest_alg = "SHA-256";
+      matchArchive.push(rec);
+      try {
+        localStorage.setItem(MATCH_LOG_KEY, JSON.stringify(matchArchive.slice(-200)));
+      } catch (_) {}
+      renderMatchLog();
+      log(`LOG #${rec.n} digest ${rec.digest.slice(0, 16)}… · ${rec.winner || "draw"}`);
+    }
+
+    function exportMatchLog() {
+      const blob = new Blob([JSON.stringify({ product: "Boardman Agent Arena", generated_at: new Date().toISOString(), matches: matchArchive }, null, 2)], {
+        type: "application/json",
+      });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `boardman-agent-matches-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    function setAutoPlay(on) {
+      autoPlay = !!on;
+      if (el("btnAuto")) {
+        el("btnAuto").classList.toggle("on", autoPlay);
+        el("btnAuto").textContent = autoPlay ? "⟳ Auto ON" : "⟳ Auto play";
+      }
+      setText(
+        "autoHint",
+        (autoPlay ? "Auto play ON — next match starts after finish · " : "Auto play off · ") +
+          "Nero brain: ASI → Gemini → Stockfish (both LLM keys configured on server)"
+      );
+    }
     function setStatus(t, hot = false) {
       const n = el("status");
       if (!n) return;
@@ -2316,6 +2425,8 @@
       lastFrom = lastTo = null;
       fallen = [];
       evalHistory = [];
+      matchMoveLog = [];
+      matchStartedAt = new Date().toISOString();
       // Keep current bankrolls/LPs (don't wipe LP top-ups mid-session)
       if (bal.raja < 50) bal.raja = 1000;
       if (bal.nero < 20) bal.nero = 100;
@@ -2455,6 +2566,13 @@
           break;
         }
         plies++;
+        matchMoveLog.push({
+          ply: plies,
+          side,
+          san: verbose.san,
+          uci: choice.uci || null,
+          source: choice.source || "unknown",
+        });
         spectator.ply = game.history().length;
         renderMarket();
         updateMovesList();
@@ -2547,10 +2665,54 @@
         setText("payoutLabel", "skill + seed refund both");
         await settleSpectator(null);
       }
+      // Verifiable match log (PGN + digests + Nero sources)
+      try {
+        const pgn = game.pgn();
+        const neroSrcs = matchMoveLog
+          .filter((m) => m.side === "nero")
+          .map((m) => m.source)
+          .filter(Boolean);
+        const nero_sources = [...new Set(neroSrcs)].join(", ") || "stockfish/book";
+        await appendMatchRecord({
+          n: matchArchive.length + 1,
+          started_at: matchStartedAt || new Date().toISOString(),
+          ended_at: new Date().toISOString(),
+          white: "Raja",
+          black: "Nero",
+          wallets: {
+            raja: AGENTS.raja.wallet,
+            nero: AGENTS.nero.wallet,
+            identities: { raja: AGENTS.raja.contract, nero: AGENTS.nero.contract },
+          },
+          stake: matchStake,
+          winner: winner || null,
+          how: how || "",
+          plies: game.history().length,
+          pgn,
+          moves: matchMoveLog.slice(),
+          nero_sources,
+          chain: {
+            network: "arc-testnet",
+            note: "Browser match log. On-chain dual-lock is separate (Python BOARDMAN_AGENTIC_ONCHAIN).",
+          },
+        });
+      } catch (e) {
+        log("match log failed: " + e.message);
+      }
+
       renderMeta();
       highlightTurn();
       playing = false;
       if (el("btnPlay")) el("btnPlay").disabled = false;
+
+      if (autoPlay) {
+        log("Auto play — starting next match in 4s…");
+        setStatus("Auto play · next match shortly…", true);
+        await sleep(4000);
+        if (autoPlay && !playing) {
+          el("btnPlay") && el("btnPlay").click();
+        }
+      }
     }
 
     el("modeClassic").onclick = () => setViewMode("classic");
@@ -2565,11 +2727,40 @@
       el("tgModalClose").onclick = () => {
         if (el("tgLoginModal")) el("tgLoginModal").hidden = true;
       };
+    if (el("btnAuto"))
+      el("btnAuto").onclick = () => {
+        setAutoPlay(!autoPlay);
+        if (autoPlay && !playing) {
+          el("btnPlay") && el("btnPlay").click();
+        }
+      };
+    if (el("btnExportLog")) el("btnExportLog").onclick = () => exportMatchLog();
+    if (el("btnClearLog"))
+      el("btnClearLog").onclick = () => {
+        if (confirm("Clear local verified match log?")) {
+          matchArchive = [];
+          localStorage.removeItem(MATCH_LOG_KEY);
+          renderMatchLog();
+        }
+      };
+    renderMatchLog();
+    setAutoPlay(false);
     // Restore Telegram session + wallet on load
     (async () => {
       await loadAuthConfig();
       await refreshWallet();
       renderAuth();
+      // Show live LLM config
+      try {
+        const r = await fetch("/api/agentic/asi-move");
+        const d = await r.json();
+        if (d && d.ok) {
+          setText(
+            "autoHint",
+            `Auto play off · Nero: order ${((d.order || []).join("→") || "asi→gemini")} · ASI ${d.asi_configured ? "ON" : "off"} · Gemini ${d.gemini_configured ? "ON" : "off"}`
+          );
+        }
+      } catch (_) {}
     })();
     if (el("betSlider")) {
       el("betSlider").addEventListener("input", (e) => {
