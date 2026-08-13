@@ -45,7 +45,7 @@ sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plug
 
 ```bash
 cd /path/to/sideQuest/.worktrees/clawstation-foundation
-docker compose -f gaming/docker-compose.yml up -d --build
+docker compose -f docker-compose.yml up -d --build
 ```
 
 4. Verify the API is healthy:
@@ -65,7 +65,7 @@ sudo apt install -y caddy
 Copy the example Caddyfile, edit the domain, and reload:
 
 ```bash
-sudo cp gaming/deploy/Caddyfile /etc/caddy/Caddyfile
+sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
 # Replace clawstation.example with your real domain.
 sudo sed -i 's/clawstation.example/your-domain.example/g' /etc/caddy/Caddyfile
 sudo systemctl reload caddy
@@ -91,17 +91,17 @@ Docker Compose already configures the `json-file` log driver with
 `max-size: 10m` and `max-file: 3` per service. View logs with:
 
 ```bash
-docker compose -f gaming/docker-compose.yml logs -f --tail 100 clawstation-api
-docker compose -f gaming/docker-compose.yml logs -f --tail 100 clawstation-bot
+docker compose -f docker-compose.yml logs -f --tail 100 clawstation-api
+docker compose -f docker-compose.yml logs -f --tail 100 clawstation-bot
 ```
 
 ## 7. Host-level health check
 
-Run `gaming/deploy/healthcheck.sh` from the VPS to verify the local API and
+Run `deploy/healthcheck.sh` from the VPS to verify the local API and
 Supabase connectivity:
 
 ```bash
-bash gaming/deploy/healthcheck.sh
+bash deploy/healthcheck.sh
 ```
 
 ## 8. Environment backup note
@@ -110,7 +110,7 @@ bash gaming/deploy/healthcheck.sh
 do not commit it. After rotating any secret, run:
 
 ```bash
-docker compose -f gaming/docker-compose.yml up -d --force-recreate
+docker compose -f docker-compose.yml up -d --force-recreate
 ```
 
 ## 9. CI/CD deployments

@@ -1,9 +1,13 @@
 # syntax=docker/dockerfile:1
-# Multi-stage, production-ready image for the ClawStation gaming backend and bot.
+# Production image for the ClawStation gaming backend and bot.
 #
-# Build context must be the repository root so that both backend/ and gaming/
-# are available. The default command starts the FastAPI API; override the
-# command in docker-compose.yml to start the Telegram bot.
+# The runtime imports gaming.src.backend.* (and backend.* via the codebase's
+# backend.X convention), which normally requires the gitignored gaming/ and
+# backend/ shim dirs in the build context. This image materializes those shims
+# from the tracked src/ tree, so it builds cleanly from a fresh checkout.
+#
+# The default command starts the FastAPI API; override the command in
+# docker-compose.yml to start the Telegram bot.
 FROM python:3.12-slim
 
 # Install system build dependencies and curl for the Dockerfile HEALTHCHECK.
@@ -17,20 +21,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy requirement files first to leverage Docker layer caching.
-COPY backend/requirements.txt ./backend/requirements.txt
-COPY gaming/src/backend/requirements.txt ./gaming/src/backend/requirements.txt
+# Copy requirement file first to leverage Docker layer caching.
+COPY src/backend/requirements.txt /app/requirements.txt
 
 # Create the shared Python virtual environment and install all dependencies.
 RUN python -m venv /app/.venv && \
     /app/.venv/bin/pip install --no-cache-dir --upgrade pip && \
-    /app/.venv/bin/pip install --no-cache-dir \
-        -r ./backend/requirements.txt \
-        -r ./gaming/src/backend/requirements.txt
+    /app/.venv/bin/pip install --no-cache-dir -r /app/requirements.txt
 
-# Copy the full repository into the image so imports from backend/ and gaming/
-# resolve correctly.
-COPY . /app
+# Copy the tracked source tree and config (brand assets are optional for the bot).
+COPY src /app/src
+COPY config /app/config
+COPY frontend/public /app/frontend/public
+
+# Materialize the gaming/ and backend/ import shims from the tracked tree:
+#   gaming.src.*  ->  src/*
+#   backend.*     ->  src/backend/*
+RUN mkdir -p /app/gaming \
+    && ln -sfn /app/src /app/gaming/src \
+    && touch /app/gaming/__init__.py \
+    && ln -sfn /app/config /app/gaming/config \
+    && ln -sfn /app/src/backend /app/backend \
+    && test -f /app/backend/supabase_client.py \
+    && test -f /app/gaming/src/bot/main.py
 
 # Create a non-root user and ensure it owns the application directory.
 RUN groupadd -r clawstation && useradd -r -g clawstation -d /app clawstation && \
@@ -42,6 +55,7 @@ USER clawstation
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONPATH=/app
 
 # Expose the FastAPI port. The bot service does not need an exposed port but
 # shares this image.
