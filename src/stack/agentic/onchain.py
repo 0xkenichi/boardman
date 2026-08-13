@@ -131,6 +131,13 @@ ESCROW_ABI = [
         "inputs": [],
         "outputs": [{"name": "", "type": "uint256"}],
     },
+    {
+        "name": "resolver",
+        "type": "function",
+        "stateMutability": "view",
+        "inputs": [],
+        "outputs": [{"name": "", "type": "address"}],
+    },
 ]
 
 
@@ -175,6 +182,15 @@ def onchain_enabled() -> bool:
     if not resolver_pk:
         resolver_pk = os.getenv("ADMIN_PRIVATE_KEY", "") or os.getenv("OWNER_PRIVATE_KEY", "") or os.getenv("BOARDMAN_FUNDER_KEY", "")
     if not resolver_pk:
+        return False
+    # A configured key that isn't a valid 32-byte private key (e.g. an address)
+    # would let matches lock on-chain but never settle — refuse to enable.
+    if not resolver_pk.startswith("0x"):
+        resolver_pk = "0x" + resolver_pk
+    try:
+        if len(resolver_pk) != 66 or int(resolver_pk[2:], 16) <= 0:
+            return False
+    except ValueError:
         return False
     # Quick RPC check
     try:
@@ -336,6 +352,215 @@ def usdc_balance(address: str, chain_id: str = "arc") -> Decimal:
     return Decimal(raw) / Decimal(10**USDC_DECIMALS)
 
 
+# ── On-chain transfer volume (eth_getLogs over the USDC contract) ──────────
+
+TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+VOLUME_CACHE_FILE = "onchain_volume_cache.json"
+VOLUME_CACHE_TTL_SEC = 300  # re-scan only when a newer block is requested
+VOLUME_SCAN_CHUNK = 5000
+
+
+def _rpc_call(cfg: dict[str, Any], method: str, params: list) -> Any:
+    """Raw JSON-RPC call (same shape as scripts/compute_agent_onchain_volume.py)."""
+    import requests
+
+    payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+    r = requests.post(cfg["rpc_url"], json=payload, timeout=30)
+    r.raise_for_status()
+    j = r.json()
+    if "error" in j:
+        raise RuntimeError(j["error"])
+    return j.get("result")
+
+
+def latest_block(cfg: dict[str, Any]) -> int:
+    return int(_rpc_call(cfg, "eth_blockNumber", []), 16)
+
+
+def _get_logs_paged(
+    cfg: dict[str, Any],
+    usdc_addr: str,
+    topics: list,
+    start_block: int,
+    end_block: int,
+    chunk: int = VOLUME_SCAN_CHUNK,
+) -> list:
+    """eth_getLogs in bounded chunks with retry/backoff (respects RPC limits)."""
+    import time
+
+    out: list = []
+    b = start_block
+    while b <= end_block:
+        hi = min(b + chunk - 1, end_block)
+        params = [
+            {
+                "address": usdc_addr,
+                "topics": topics,
+                "fromBlock": hex(b),
+                "toBlock": hex(hi),
+            }
+        ]
+        attempts = 0
+        while True:
+            try:
+                res = _rpc_call(cfg, "eth_getLogs", params)
+                if res:
+                    out.extend(res)
+                break
+            except Exception as exc:
+                attempts += 1
+                if attempts >= 6:
+                    raise RuntimeError(
+                        f"logs failed for {hex(b)}->{hex(hi)}: {exc}"
+                    )
+                time.sleep(0.5 * (2 ** (attempts - 1)))
+        time.sleep(0.05)
+        b = hi + 1
+    return out
+
+
+def _load_volume_cache() -> dict[str, Any]:
+    from gaming.src.stack.agentic.store import load_json
+
+    return load_json(VOLUME_CACHE_FILE, {})
+
+
+def _save_volume_cache(payload: dict[str, Any]) -> None:
+    from gaming.src.stack.agentic.store import save_json
+
+    save_json(VOLUME_CACHE_FILE, payload)
+
+
+def block_timestamp(cfg: dict[str, Any], block_number: int) -> int:
+    """Unix timestamp of a block (for resolving day windows)."""
+    res = _rpc_call(cfg, "eth_getBlockByNumber", [hex(block_number), False])
+    if not res:
+        raise RuntimeError(f"block {block_number} not found")
+    return int(res.get("timestamp") or 0, 16)
+
+
+def from_block_for_days(cfg: dict[str, Any], days: int) -> int:
+    """Estimate the block height `days` days ago from block timestamps.
+
+    Samples the latest block and a block ~10k back to derive avg block time,
+    then walks back `days` days. Clamped at block 0.
+    """
+    latest = latest_block(cfg)
+    if days <= 0:
+        return latest
+    now_ts = block_timestamp(cfg, latest)
+    back = min(latest, 10_000)
+    old_ts = block_timestamp(cfg, latest - back)
+    span = max(now_ts - old_ts, 1)
+    avg_sec = span / back
+    want_sec = days * 86400
+    est = latest - int(want_sec / avg_sec)
+    return max(est, 0)
+
+
+def usdc_transfer_volume(
+    address: str,
+    chain_id: str = "arc",
+    *,
+    from_block: Optional[int] = None,
+    to_block: Optional[int] = None,
+    days: Optional[int] = None,
+    use_cache: bool = True,
+) -> dict[str, Any]:
+    """
+    Real USDC transfer volume (in/out) for an address via eth_getLogs.
+
+    Scans Transfer events on the chain's USDC contract where the address is
+    sender or recipient and sums values (6 decimals). Results are cached per
+    address in data/agentic/onchain_volume_cache.json; a later call that asks
+    for a newer `to_block` only scans the delta, so repeated reads stay fast.
+
+    Pass `days=N` for a rolling N-day window (resolved from block timestamps);
+    otherwise the full history from block 0 is scanned.
+
+    Returns {in_usdc, out_usdc, count_in, count_out, scanned_from, scanned_to,
+             cached, chain_id, address, window_days}.
+    """
+    cfg = _chain_config(chain_id)
+    addr_l = address.lower()
+    if not addr_l.startswith("0x"):
+        addr_l = "0x" + addr_l
+    addr_topic = "0x" + addr_l.replace("0x", "").rjust(64, "0")
+
+    if to_block is None:
+        to_block = latest_block(cfg)
+    if days is not None and from_block is None:
+        from_block = from_block_for_days(cfg, days)
+    if from_block is None:
+        from_block = 0
+
+    # Rolling windows are keyed separately from the full-history cache so a
+    # 30-day read never mixes with the lifetime entry.
+    cache_key = (
+        f"{chain_id}:{addr_l}:d{days}"
+        if days is not None
+        else f"{chain_id}:{addr_l}"
+    )
+
+    cache = _load_volume_cache()
+    entry = cache.get(cache_key) or {}
+    cached_to = int(entry.get("scanned_to") or -1)
+
+    # Full-history incremental scan (the common path: from block 0 upward).
+    incremental = from_block == 0
+    if use_cache and entry and incremental and cached_to >= to_block:
+        age = time.time() - float(entry.get("scanned_at") or 0)
+        if age < VOLUME_CACHE_TTL_SEC:
+            return {
+                **entry,
+                "cached": True,
+                "scanned_from": from_block,
+                "scanned_to": to_block,
+                "chain_id": chain_id,
+                "address": address,
+                "window_days": days,
+            }
+
+    if use_cache and entry and incremental and cached_to >= from_block:
+        start = cached_to + 1
+        base_in = float(entry.get("in_usdc") or 0)
+        base_out = float(entry.get("out_usdc") or 0)
+        base_count_in = int(entry.get("count_in") or 0)
+        base_count_out = int(entry.get("count_out") or 0)
+    else:
+        start = from_block
+        base_in = base_out = 0.0
+        base_count_in = base_count_out = 0
+
+    logs_from = _get_logs_paged(
+        cfg, cfg["usdc"], [TRANSFER_TOPIC, addr_topic, None], start, to_block
+    )
+    logs_to = _get_logs_paged(
+        cfg, cfg["usdc"], [TRANSFER_TOPIC, None, addr_topic], start, to_block
+    )
+
+    add_in = sum(int(l.get("data", "0x0"), 16) for l in logs_to or []) / 10**6
+    add_out = sum(int(l.get("data", "0x0"), 16) for l in logs_from or []) / 10**6
+
+    result = {
+        "chain_id": chain_id,
+        "address": address,
+        "in_usdc": round(base_in + add_in, 6),
+        "out_usdc": round(base_out + add_out, 6),
+        "count_in": base_count_in + len(logs_to or []),
+        "count_out": base_count_out + len(logs_from or []),
+        "scanned_from": from_block,
+        "scanned_to": to_block,
+        "scanned_at": time.time(),
+        "cached": False,
+        "window_days": days,
+    }
+    if use_cache:
+        cache[cache_key] = result
+        _save_volume_cache(cache)
+    return result
+
+
 def dual_lock_onchain(
     match_id: str,
     *,
@@ -471,6 +696,88 @@ def dual_lock_onchain(
     }
 
 
+def load_resolver_key() -> str:
+    """Return the resolver private key (32-byte), raising on missing/invalid.
+
+    Looks in process env first, then local .env for developer convenience.
+    Rejects values that are addresses (20-byte) rather than private keys — a
+    common misconfiguration that otherwise surfaces as a confusing revert.
+    """
+    candidates = [
+        "BOARDMAN_RESOLVER_KEY",
+        "CLAW_RESOLVER_PRIVATE_KEY",
+        "RESOLVER_PRIVATE_KEY",
+        "ADMIN_PRIVATE_KEY",
+        "OWNER_PRIVATE_KEY",
+        "BOARDMAN_FUNDER_KEY",
+    ]
+    resolver_pk = ""
+    for name in candidates:
+        v = (os.getenv(name) or "").strip()
+        if v:
+            resolver_pk = v
+            break
+    if not resolver_pk:
+        try:
+            from pathlib import Path
+
+            envf = Path.cwd() / ".env"
+            if envf.exists():
+                for line in envf.read_text(encoding="utf-8").splitlines():
+                    if not line or line.strip().startswith("#"):
+                        continue
+                    if "=" not in line:
+                        continue
+                    k, v = line.split("=", 1)
+                    k = k.strip()
+                    v = v.strip().strip('"').strip("'")
+                    if k in candidates and v:
+                        resolver_pk = v
+                        break
+        except Exception:
+            pass
+    if not resolver_pk:
+        raise RuntimeError(
+            "Set BOARDMAN_RESOLVER_KEY (BoardmanEscrow resolver) to settle on-chain"
+        )
+    if not resolver_pk.startswith("0x"):
+        resolver_pk = "0x" + resolver_pk
+    # A 20-byte value is an address, not a private key — catch this early.
+    try:
+        hex_body = resolver_pk[2:]
+        if len(hex_body) != 64:
+            raise ValueError(f"private key must be 32 bytes, got {len(hex_body) // 2} bytes")
+        int(hex_body, 16)
+    except ValueError as exc:
+        raise RuntimeError(
+            f"BOARDMAN_RESOLVER_KEY is not a valid 32-byte private key ({exc}). "
+            "It looks like an address — set it to the private key whose address "
+            "matches the contract resolver (see contracts/deployments/*)."
+        ) from exc
+    return resolver_pk
+
+
+def _verify_resolver(escrow, signer_address: str, cfg: dict[str, Any]) -> None:
+    """Fail fast if the signer is not the contract resolver (or owner).
+
+    The contract's `onlyResolver` modifier accepts either the configured
+    `resolver` or the `owner`. We check `resolver()` directly; when that
+    differs from the signer we raise before broadcasting a doomed tx.
+    """
+    try:
+        onchain_resolver = escrow.functions.resolver().call()
+    except Exception:
+        return  # contract ABI lacks resolver() — let the tx attempt happen
+    signer = signer_address.lower()
+    if onchain_resolver.lower() != signer:
+        raise RuntimeError(
+            f"Resolver key address {signer} does not match contract resolver "
+            f"{onchain_resolver} on {cfg.get('chain_id')}. "
+            "Set BOARDMAN_RESOLVER_KEY to the private key of the contract resolver "
+            "(see contracts/deployments/boardman_v1_arcTestnet.json)."
+        )
+
+
 def resolve_onchain(
     match_id: str,
     winner_address: str,
@@ -509,16 +816,12 @@ def resolve_onchain(
                         break
         except Exception:
             pass
-    if not resolver_pk:
-        raise RuntimeError(
-            "Set BOARDMAN_RESOLVER_KEY (BoardmanEscrow resolver) to settle on-chain"
-        )
-    if not resolver_pk.startswith("0x"):
-        resolver_pk = "0x" + resolver_pk
+    resolver_pk = load_resolver_key()
+    acct = _account(resolver_pk)
 
     w3 = _w3(cfg)
     _, escrow = _contracts(w3, cfg)
-    acct = _account(resolver_pk)
+    _verify_resolver(escrow, acct.address, cfg)
     mid = match_id_to_bytes32(match_id)
     mid_hex = match_id_hex(match_id)
 

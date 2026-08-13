@@ -260,6 +260,33 @@ async def web_spectator_bet(
                 "message": "Not enough USDC on your Boardman wallet. Fund via Telegram bot → Get money.",
             }
 
+        # Telegram-mediated approval: ask the user to approve the spend (unless
+        # they've pre-approved bets with 'always'). Declined/expired → no debit.
+        try:
+            from gaming.src.backend.services.tx_approval import request_approval
+
+            decision = await request_approval(
+                profile_id,
+                "spectator_bet",
+                {"amount": amount, "side": side, "match_id": match_id},
+            )
+        except Exception as exc:
+            logger.exception("[RematchWeb] approval gate failed")
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        if decision.get("status") in ("denied", "expired"):
+            return {
+                "success": False,
+                "error": f"approval_{decision['status']}",
+                "approval_id": decision.get("approval_id"),
+                "message": (
+                    "You didn't approve this spend in Telegram. Nothing was charged."
+                    if decision.get("status") == "denied"
+                    else "The approval request expired (2 min). Nothing was charged — try again."
+                ),
+            }
+        if decision.get("mode") == "always":
+            logger.info("[RematchWeb] spectator bet auto-approved (always) profile=%s", profile_id)
+
         # If on-chain spectator pool is enabled, attempt deposit; otherwise debit wallet.
         spectator_onchain = str(os.getenv("SPECTATOR_ONCHAIN") or "").strip().lower() in (
             "1",
@@ -351,6 +378,132 @@ async def web_spectator_payout(
         return {"success": True, "profile_id": profile_id, "amount": amount, "balance": float(bal)}
     except Exception as exc:
         logger.exception("[RematchWeb] spectator payout failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+_AGENT_ID_ALIASES = {
+    "raja": "agent_raja_kia_alekhine",
+    "nero": "agent_nero_sicilian_french",
+}
+
+
+@router.post("/spectator/lp")
+async def web_spectator_lp(
+    body: dict,
+    x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
+    x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
+    authorization: Optional[str] = Header(default=None),
+):
+    """
+    Real LP deposit: debit the human's wallet, credit the agent's LP pool.
+    Gate: Telegram-mediated approval (bets vs LP have separate always-approve).
+
+    body: { profile_id, agent_id, amount, agent_name? }
+    """
+    _require_key(x_rematch_key, x_stack_key, authorization)
+    profile_id = str(body.get("profile_id") or "").strip()
+    try:
+        amount = float(body.get("amount") or 0)
+    except (TypeError, ValueError):
+        amount = 0.0
+    agent_id = str(body.get("agent_id") or "").strip().lower()
+    agent_name = str(body.get("agent_name") or "").strip()
+    agent_id = _AGENT_ID_ALIASES.get(agent_id, agent_id)
+
+    if not profile_id:
+        raise HTTPException(status_code=400, detail="profile_id required")
+    if not agent_id:
+        raise HTTPException(status_code=400, detail="agent_id required")
+    if amount < 0.25:
+        raise HTTPException(status_code=400, detail="amount must be >= 0.25")
+
+    try:
+        from decimal import Decimal
+
+        from gaming.src.backend.services.safety import is_paused
+        from gaming.src.backend.services.clawstation_circle import get_balance_summary
+        from gaming.src.backend.db_layer_blockchain import debit_wallet, get_wallet_balance
+
+        if is_paused():
+            raise HTTPException(status_code=503, detail="platform_paused")
+
+        summary = await get_balance_summary(profile_id)
+        ledger = float(summary.get("ledger_usdc") or 0)
+        spendable = float(summary.get("spendable_usdc") or 0)
+        available = max(ledger, spendable)
+        if available + 1e-9 < amount:
+            return {
+                "success": False,
+                "error": "insufficient_balance",
+                "balance": available,
+                "address": summary.get("address") or "",
+                "message": "Not enough USDC on your Boardman wallet.",
+            }
+
+        from gaming.src.backend.services.tx_approval import request_approval
+
+        decision = await request_approval(
+            profile_id,
+            "lp_deposit",
+            {"amount": amount, "agent_id": agent_id, "agent_name": agent_name},
+        )
+        if decision.get("status") in ("denied", "expired"):
+            return {
+                "success": False,
+                "error": f"approval_{decision['status']}",
+                "approval_id": decision.get("approval_id"),
+                "message": (
+                    "You didn't approve this LP deposit in Telegram. Nothing was charged."
+                    if decision.get("status") == "denied"
+                    else "The approval request expired (2 min). Nothing was charged — try again."
+                ),
+            }
+
+        ok = await debit_wallet(profile_id, amount)
+        if not ok:
+            bal = await get_wallet_balance(profile_id)
+            return {
+                "success": False,
+                "error": "insufficient_balance",
+                "balance": float(bal),
+                "address": summary.get("address") or "",
+            }
+
+        from gaming.src.stack.agentic.economy.lp import AgentLPPool
+
+        pool = AgentLPPool().deposit(
+            agent_id,
+            lp_id=profile_id,
+            amount_usdc=Decimal(str(amount)),
+        )
+
+        new_bal = await get_wallet_balance(profile_id)
+        try:
+            from gaming.src.backend.services.wallet_activity import log_debit
+
+            log_debit(
+                profile_id,
+                Decimal(str(amount)),
+                str(summary.get("chain_id") or "arc"),
+                status="spectator_lp",
+                source=f"lp:{agent_id}",
+            )
+        except Exception:
+            pass
+
+        return {
+            "success": True,
+            "profile_id": profile_id,
+            "amount": amount,
+            "agent_id": agent_id,
+            "balance": float(new_bal),
+            "address": summary.get("address") or "",
+            "lp_total_usdc": pool.get("total_lp_usdc"),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("[RematchWeb] spectator LP failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 

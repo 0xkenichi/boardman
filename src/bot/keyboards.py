@@ -477,6 +477,46 @@ def after_report_menu(match_id: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def approval_menu(approval_id: str) -> InlineKeyboardMarkup:
+    """Yes / No / Always approve for a pending transaction."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="✅ Yes", callback_data=f"approve:yes:{approval_id}"),
+        InlineKeyboardButton(text="❌ No", callback_data=f"approve:no:{approval_id}"),
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="🔁 Always approve",
+            callback_data=f"approve:always:{approval_id}",
+        )
+    )
+    return builder.as_markup()
+
+
+def approval_settings_menu(
+    bet_mode: str = "ask",
+    lp_mode: str = "ask",
+) -> InlineKeyboardMarkup:
+    """Per-action always-approve toggles (bets vs LP)."""
+    builder = InlineKeyboardBuilder()
+    bet_label = f"🎯 Bets: {'Always ✓' if bet_mode == 'always' else 'Ask each time'}"
+    lp_label = f"💧 LP deposits: {'Always ✓' if lp_mode == 'always' else 'Ask each time'}"
+    builder.row(
+        InlineKeyboardButton(
+            text=bet_label[:64],
+            callback_data=f"approve:mode:spectator_bet:{'ask' if bet_mode == 'always' else 'always'}",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=lp_label[:64],
+            callback_data=f"approve:mode:lp_deposit:{'ask' if lp_mode == 'always' else 'always'}",
+        )
+    )
+    builder.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))
+    return builder.as_markup()
+
+
 def back_to_main() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🏠 Main menu", callback_data="menu:main"))

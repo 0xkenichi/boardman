@@ -710,6 +710,8 @@
         <div class="section-label">Agent bankrolls</div>
         <div class="row"><span>Raja bankroll</span><strong id="balRaja">1000 USDC</strong></div>
         <div class="row"><span>Nero bankroll</span><strong id="balNero">100 USDC</strong></div>
+        <div class="row"><span>Raja 30-day on-chain vol</span><strong id="volRaja">—</strong></div>
+        <div class="row"><span>Nero 30-day on-chain vol</span><strong id="volNero">—</strong></div>
         <div class="row"><span>Raja free / max stake</span><span id="freeRaja">—</span></div>
         <div class="row"><span>Nero free / max stake</span><span id="freeNero">—</span></div>
         <div class="row"><span>Binding side</span><span id="bindLabel">poorer agent</span></div>
@@ -883,6 +885,7 @@
     // Bankrolls: prefer live Arc testnet USDC on agent EOAs (see loadOnchainBankrolls).
     // Fallback seeds only until RPC/API responds — not "on-chain truth".
     let bal = { raja: 0, nero: 0 };
+    let vol = { raja: null, nero: null }; // lifetime on-chain transfer volume {in, out} | null
     let balSource = "loading"; // arc_usdc | demo_fallback | client_sim
     let lpPool = { raja: 0, nero: 0 }; // LP claim on bankroll (subset of bal conceptually)
     let fallen = [];
@@ -1427,6 +1430,16 @@
             (r && r.error) || (n && n.error) || "both balanceOf failed"
           );
         }
+        // Lifetime on-chain transfer volume per agent wallet (best-effort)
+        const onchain = (data.volume && data.volume.onchain) || {};
+        const rajaId = AGENTS.raja.strategy.agent_id;
+        const neroId = AGENTS.nero.strategy.agent_id;
+        const setVol = (side, key) => {
+          const v = onchain[key];
+          if (v && !v.error) vol[side] = { in: Number(v.in_usdc) || 0, out: Number(v.out_usdc) || 0 };
+        };
+        setVol("raja", rajaId);
+        setVol("nero", neroId);
         renderMeta();
         return true;
       } catch (e) {
@@ -1594,6 +1607,7 @@
       if (el("betA")) el("betA").disabled = true;
       if (el("betB")) el("betB").disabled = true;
       try {
+        setStatus("Sent — check your Telegram to approve", false);
         const res = await fetch("/api/agentic/spectator-bet", {
           method: "POST",
           credentials: "include",
@@ -1617,6 +1631,12 @@
           } else if (data && data.error === "stack_not_configured") {
             log("Wallet API offline — " + (data.message || "try again after refresh"));
             setStatus("Wallet backend offline — can't debit yet", true);
+          } else if (data && data.error === "approval_denied") {
+            log("Bet declined in Telegram — nothing charged");
+            setStatus("Declined in Telegram — nothing charged", true);
+          } else if (data && data.error === "approval_expired") {
+            log("Bet approval expired (2 min) — nothing charged");
+            setStatus("Approval timed out — try again", true);
           } else {
             log(
               "Bet failed: " +
@@ -1655,20 +1675,70 @@
       }
     }
 
-    function addLp(side, amount) {
-      if (playing) return;
-      lpPool[side] += amount;
-      bal[side] += amount; // tops up agent bankroll
-      setText(
-        "lpEvent",
-        `+$${amount} LP on ${side === "raja" ? "Raja" : "Nero"} → bankroll $${bal[side].toFixed(0)}`
-      );
-      resetSpectatorFromNegotiation();
-      renderMeta();
-      renderMarket();
-      log(
-        `LP deposited $${amount} into ${side} bankroll (profit share 40% of net skill wins)`
-      );
+    let lpInFlight = false;
+
+    /** Real LP deposit: debit wallet via gaming API, behind Telegram approval. */
+    async function addLp(side, amount) {
+      if (playing || lpInFlight) return;
+      if (!tgUser || !tgUser.authenticated) {
+        openTgLoginModal();
+        setStatus("Log in with Telegram to provide liquidity", true);
+        return;
+      }
+      lpInFlight = true;
+      if (el("btnLpRaja")) el("btnLpRaja").disabled = true;
+      if (el("btnLpNero")) el("btnLpNero").disabled = true;
+      const agentId = side === "raja" ? AGENTS.raja.strategy.agent_id : AGENTS.nero.strategy.agent_id;
+      const agentName = side === "raja" ? "Raja" : "Nero";
+      try {
+        setStatus("LP — check your Telegram to approve", false);
+        const res = await fetch("/api/agentic/spectator-lp", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ amount, agent_id: agentId, agent_name: agentName }),
+        });
+        const data = await res.json();
+        if (!data || !data.ok) {
+          const err = data && data.error;
+          if (err === "unauthorized") openTgLoginModal();
+          else if (err === "approval_denied") {
+            log("LP declined in Telegram — nothing charged");
+            setStatus("LP declined in Telegram — nothing charged", true);
+          } else if (err === "approval_expired") {
+            log("LP approval expired (2 min) — nothing charged");
+            setStatus("LP approval timed out — try again", true);
+          } else if (err === "insufficient_balance") {
+            log("Insufficient balance for LP deposit");
+            setStatus("Not enough USDC for LP deposit", true);
+          } else {
+            log("LP failed: " + ((data && (data.message || data.error)) || res.status));
+            setStatus("LP deposit failed", true);
+          }
+          return;
+        }
+        lpPool[side] += amount;
+        bal[side] += amount; // tops up agent bankroll
+        setText(
+          "lpEvent",
+          `+$${amount} LP on ${agentName} → bankroll $${bal[side].toFixed(0)} · approved in Telegram`
+        );
+        resetSpectatorFromNegotiation();
+        renderMeta();
+        renderMarket();
+        if (data.balance != null) tgUser.balance = data.balance;
+        renderAuth();
+        log(
+          `LP $${amount} into ${agentName} bankroll (approved in Telegram, 40% profit share)`
+        );
+        setStatus(`LP $${amount} approved in Telegram`, true);
+      } catch (e) {
+        log("LP network error: " + e.message);
+      } finally {
+        lpInFlight = false;
+        if (el("btnLpRaja")) el("btnLpRaja").disabled = false;
+        if (el("btnLpNero")) el("btnLpNero").disabled = false;
+      }
     }
 
     async function creditWallet(amount, reason) {
@@ -2091,6 +2161,12 @@
         "balNero",
         bal.nero.toFixed(2) + " USDC · " + srcTag + " · " + shortAddr(AGENTS.nero.wallet)
       );
+      const fmtVol = (v) =>
+        v === null
+          ? "—"
+          : "$ " + (v.in + v.out).toFixed(2) + " · in " + v.in.toFixed(2) + " / out " + v.out.toFixed(2);
+      setText("volRaja", fmtVol(vol.raja));
+      setText("volNero", fmtVol(vol.nero));
       setText("stakeLabel", "$" + (matchStake || 0).toFixed(2));
       setText("potLabel", "$" + ((matchStake || 0) * 2).toFixed(2));
       setText("lpRaja", "$" + lpPool.raja.toFixed(2));

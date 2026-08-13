@@ -31,6 +31,7 @@ from gaming.src.bot.handlers import simple_ui  # noqa: E402
 from gaming.src.bot.handlers import fiat_topup  # noqa: E402
 from gaming.src.bot.handlers import admin_safety  # noqa: E402
 from gaming.src.bot.handlers import tournament  # noqa: E402
+from gaming.src.bot.handlers import approvals  # noqa: E402
 from gaming.src.bot.handlers import fallback  # noqa: E402
 from gaming.src.bot.jobs.expiry import start_expiry_scheduler  # noqa: E402
 from gaming.src.bot.utils.notify import set_bot  # noqa: E402
@@ -61,6 +62,7 @@ def _build_dispatcher() -> Dispatcher:
     dp.include_router(dispute.router)
     dp.include_router(admin_safety.router)
     dp.include_router(tournament.router)
+    dp.include_router(approvals.router)
     # Last: catch anything unmatched so Telegram never gets silence
     dp.include_router(fallback.router)
     return dp
@@ -81,6 +83,7 @@ async def _set_bot_commands(bot: Bot) -> None:
         BotCommand(command="leaderboard", description="Leaderboard"),
         BotCommand(command="board", description="Public board"),
         BotCommand(command="tlist", description="Tournament cups"),
+        BotCommand(command="approvals", description="Approvals: always / ask each time"),
         # /metrics and ops /tcreate are operator-only — not listed
     ]
     await bot.set_my_commands(commands)

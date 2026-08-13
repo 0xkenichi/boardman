@@ -170,6 +170,120 @@ async def seed_demo_agents(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     return {"success": True, "agents": agents}
 
 
+@router.get("/agents/onchain_volume")
+async def agents_onchain_volume(
+    chain: int = 0,
+    days: Optional[int] = None,
+    _: ApiKeyPrincipal = Depends(require_stack_api_key),
+):
+    """
+    Aggregate volumes per agent.
+
+    - `totals` — locked/settled volumes derived from matches records (fast, local).
+    - `onchain` — real USDC transfer volume per agent wallet (eth_getLogs scan,
+      cached in data/agentic/). Only computed when `chain=1` is passed so the
+      default call stays fast. Pass `days=N` for a rolling N-day window.
+    """
+    from gaming.src.stack.agentic.store import load_json
+
+    try:
+        data = load_json("matches.json", {"matches": {}})
+    except Exception:
+        raise HTTPException(500, "matches data not available")
+    matches = list(data.get("matches", {}).values())
+    totals: dict[str, dict[str, float]] = {}
+    for m in matches:
+        stake = float(m.get("stake_usdc") or 0)
+        # if settlement_mode indicates onchain, count as locked
+        mode = m.get("settlement_mode") or "demo_ledger"
+        for aid in (m.get("agent_a_id"), m.get("agent_b_id")):
+            if not aid:
+                continue
+            t = totals.setdefault(
+                aid,
+                {"locked_count": 0, "locked_usdc": 0.0, "settled_count": 0, "settled_usdc": 0.0},
+            )
+            if mode == "onchain":
+                t["locked_count"] += 1
+                t["locked_usdc"] += stake
+            # settled onchain if onchain_settle present
+            if m.get("onchain_settle"):
+                t["settled_count"] += 1
+                # winner gets owner_payout in fee_split, but stake is a reasonable proxy
+                t["settled_usdc"] += stake
+
+    out: dict[str, Any] = {"success": True, "totals": totals}
+    if chain:
+        out["onchain"] = _agents_onchain_transfer_volume(days=days)
+        out["window_days"] = days
+    return out
+
+
+def _agents_onchain_transfer_volume(days: Optional[int] = None) -> dict[str, Any]:
+    """Best-effort real on-chain transfer volume per registered agent wallet."""
+    from gaming.src.stack.agentic.registry import get_registry
+    from gaming.src.stack.agentic.onchain import usdc_transfer_volume
+
+    res: dict[str, Any] = {}
+    try:
+        for a in get_registry().list_agents():
+            wid = a.get("wallet_address") or ""
+            if not wid:
+                continue
+            try:
+                vol = usdc_transfer_volume(
+                    wid, chain_id=a.get("chain_id") or "arc", days=days
+                )
+                res[a["agent_id"]] = {
+                    "wallet": wid,
+                    "in_usdc": vol["in_usdc"],
+                    "out_usdc": vol["out_usdc"],
+                    "count_in": vol["count_in"],
+                    "count_out": vol["count_out"],
+                    "scanned_from": vol["scanned_from"],
+                    "scanned_to": vol["scanned_to"],
+                    "window_days": vol.get("window_days"),
+                    "cached": vol.get("cached", False),
+                }
+            except Exception as exc:
+                res[a["agent_id"]] = {"wallet": wid, "error": str(exc)}
+    except Exception as exc:
+        res["_error"] = str(exc)
+    return res
+
+
+@router.get("/agents/{agent_id}/onchain_volume")
+async def agent_onchain_volume(
+    agent_id: str,
+    days: Optional[int] = None,
+    _: ApiKeyPrincipal = Depends(require_stack_api_key),
+):
+    """Real on-chain USDC transfer volume (in/out) for a single agent's wallet."""
+    from gaming.src.stack.agentic.registry import get_registry
+    from gaming.src.stack.agentic.onchain import usdc_transfer_volume
+
+    a = get_registry().get_agent(agent_id)
+    if not a:
+        raise HTTPException(404, "agent not found")
+    wid = a.get("wallet_address") or ""
+    if not wid:
+        raise HTTPException(400, "agent has no wallet_address")
+    try:
+        vol = usdc_transfer_volume(
+            wid, chain_id=a.get("chain_id") or "arc", days=days
+        )
+    except Exception as exc:
+        raise HTTPException(502, f"on-chain volume read failed: {exc}") from exc
+    return {
+        "success": True,
+        "agent_id": agent_id,
+        "wallet": wid,
+        "chain_id": a.get("chain_id") or "arc",
+        "window_days": days,
+        "volume": vol,
+    }
+
+
 @router.get("/agents/{agent_id}")
 async def get_agent(
     agent_id: str,
@@ -214,37 +328,6 @@ async def get_agent(
         a["wallet"]["onchain_error"] = str(exc)
     a["llm"] = key_status(a.get("agent_id") or agent_id, a.get("name") or "")
     return {"success": True, "agent": a}
-
-
-@router.get("/agents/onchain_volume")
-async def agents_onchain_volume(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
-    """Aggregate on-chain locked/settled volumes per agent from matches records."""
-    from gaming.src.stack.agentic.store import load_json
-
-    try:
-        data = load_json("matches.json", {"matches": {}})
-    except Exception:
-        raise HTTPException(500, "matches data not available")
-    matches = list(data.get("matches", {}).values())
-    totals: dict[str, dict[str, float]] = {}
-    for m in matches:
-        stake = float(m.get("stake_usdc") or 0)
-        # if settlement_mode indicates onchain, count as locked
-        mode = m.get("settlement_mode") or "demo_ledger"
-        for aid in (m.get("agent_a_id"), m.get("agent_b_id")):
-            if not aid:
-                continue
-            t = totals.setdefault(aid, {"locked_count": 0, "locked_usdc": 0.0, "settled_count": 0, "settled_usdc": 0.0})
-            if mode == "onchain":
-                t["locked_count"] += 1
-                t["locked_usdc"] += stake
-            # settled onchain if onchain_settle present
-            if m.get("onchain_settle"):
-                t["settled_count"] += 1
-                # winner gets owner_payout in fee_split, but stake is a reasonable proxy
-                t["settled_usdc"] += stake
-
-    return {"success": True, "totals": totals}
 
 
 @router.get("/agents/{agent_id}/wallet")

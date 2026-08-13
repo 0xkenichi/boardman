@@ -7,6 +7,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { usdcBalanceOf, arcRpcUrl, arcUsdcAddress } from '@/lib/arcUsdc'
+import { rematchApiFetch } from '@/lib/stackServer'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -52,6 +53,26 @@ export async function GET(req: NextRequest) {
     })
   )
 
+  // Real on-chain transfer volume per address (via authenticated stack API).
+  // `days` defaults to 30 — a rolling 30-day window, per product decision.
+  const days = Number(sp.get('days') || 30)
+  const volume = await (async () => {
+    try {
+      const r = await rematchApiFetch(
+        `/api/stack/agentic/agents/onchain_volume?chain=1&days=${days}`
+      )
+      if (!r.ok) return {}
+      const j = r.data || {}
+      return {
+        totals: j.totals || {},
+        onchain: j.onchain || {},
+        window_days: j.window_days ?? days,
+      }
+    } catch (e) {
+      return {}
+    }
+  })()
+
   return NextResponse.json({
     ok: true,
     chain: 'arc',
@@ -60,18 +81,7 @@ export async function GET(req: NextRequest) {
     rpc: arcRpcUrl(),
     usdc: arcUsdcAddress(),
     balances: results,
-    // augment with on-chain volume if backend exposes it
-    volume: await (async () => {
-      try {
-        const base = process.env.STACK_API_URL || 'http://localhost:8000'
-        const r = await fetch(`${base}/api/stack/agentic/agents/onchain_volume`, { cache: 'no-store' })
-        if (!r.ok) return {}
-        const j = await r.json()
-        return j.totals || {}
-      } catch (e) {
-        return {}
-      }
-    })(),
+    volume,
     note: 'Agent bankrolls on creator desk should match these Arc testnet USDC balances when on-chain mode is live.',
   })
 }

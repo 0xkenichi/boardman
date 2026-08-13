@@ -177,18 +177,20 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // If API returned a clear business error (insufficient, etc.), surface it
+    // If API returned a clear business error (insufficient, approval, etc.), surface it
     const err = res.data?.error || res.data?.detail;
-    if (res.ok && err === "insufficient_balance") {
+    if (res.ok && (err === "insufficient_balance" || err?.startsWith("approval_"))) {
+      const status = err === "insufficient_balance" ? 400 : 403;
       return NextResponse.json(
         {
           ok: false,
-          error: "insufficient_balance",
+          error: err,
           message: res.data?.message || "Not enough USDC",
           balance: res.data?.balance,
           address: res.data?.address,
+          approval_id: res.data?.approval_id,
         },
-        { status: 400 }
+        { status }
       );
     }
     // else fall through to Supabase (404 / wrong host / 502)
