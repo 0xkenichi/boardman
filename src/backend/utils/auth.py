@@ -8,7 +8,7 @@ import jwt
 import logging
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from supabase_client import get_supabase
+from backend.supabase_client import get_supabase
 
 logger = logging.getLogger(__name__)
 

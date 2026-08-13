@@ -22,7 +22,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 from uuid import UUID
 
-from supabase_client import get_supabase
+from backend.supabase_client import get_supabase
 import openai
 from openai import OpenAI
 

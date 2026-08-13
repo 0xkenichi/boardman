@@ -8,11 +8,11 @@ import json
 import logging
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
-from supabase_client import get_supabase
+from backend.supabase_client import get_supabase
 from dotenv import load_dotenv
 
 # Import event bus for fan-out
-from realtime_server import publish_event
+from backend.realtime_server import publish_event
 
 load_dotenv()
 

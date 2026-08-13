@@ -10,7 +10,7 @@ from transaction_manager.py.
 
 import logging
 from typing import Optional
-from supabase_client import get_supabase
+from backend.supabase_client import get_supabase
 import os
 
 logger = logging.getLogger(__name__)

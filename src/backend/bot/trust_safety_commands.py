@@ -3,7 +3,7 @@ import logging
 from aiogram import types
 
 from gaming.src.backend.app_controller import get_controller
-from services.trust_safety_service import (
+from backend.services.trust_safety_service import (
     submit_report, block_user, unblock_user,
     trigger_sos, accept_tos, verify_age,
     add_emergency_contact, report_no_show,

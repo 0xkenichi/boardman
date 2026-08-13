@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 import logging
-from utils.auth import get_current_user, get_current_admin_user
+from backend.utils.auth import get_current_user, get_current_admin_user
 
 logger = logging.getLogger(__name__)
 

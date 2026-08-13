@@ -8,7 +8,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional
-from supabase_client import get_supabase
+from backend.supabase_client import get_supabase
 from dotenv import load_dotenv
 import json
 

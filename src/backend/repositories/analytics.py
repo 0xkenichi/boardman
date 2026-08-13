@@ -7,7 +7,7 @@ import uuid
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from supabase_client import get_supabase
+from backend.supabase_client import get_supabase
 
 logger = logging.getLogger(__name__)
 

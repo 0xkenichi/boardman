@@ -10,8 +10,8 @@ The escrow wallet is a shared platform wallet controlled by sideQuest.
 
 import os
 from datetime import datetime
-from db_layer import DBLayer
-from circle_wallet_service import CircleWalletService
+from backend.db_layer import DBLayer
+from backend.circle_wallet_service import CircleWalletService
 
 
 class EscrowManager:

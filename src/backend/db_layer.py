@@ -17,11 +17,11 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from supabase_client import get_supabase
+from backend.supabase_client import get_supabase
 from dotenv import load_dotenv
 
 # ─── Import all repository functions as private names ─────────────────────────
-from repositories.profiles import (
+from backend.repositories.profiles import (
     get_profile_by_platform as _get_profile_by_platform,
     get_profile_by_email as _get_profile_by_email,
     get_profile_by_circle_wallet as _get_profile_by_circle_wallet,
@@ -44,7 +44,7 @@ from repositories.profiles import (
     get_user_count as _get_user_count,
     get_early_adopter_count as _get_early_adopter_count,
 )
-from repositories.quests import (
+from backend.repositories.quests import (
     create_friend_circle as _create_friend_circle,
     get_user_circles as _get_user_circles,
     get_circle_by_id as _get_circle_by_id,
@@ -79,7 +79,7 @@ from repositories.quests import (
     add_user_tag as _add_user_tag,
     remove_user_tag as _remove_user_tag,
 )
-from repositories.escrow import (
+from backend.repositories.escrow import (
     get_match_reports as _get_match_reports,
     create_report as _create_report,
     get_reports_for_bet as _get_reports_for_bet,
@@ -91,7 +91,7 @@ from repositories.escrow import (
     lock_funds as _lock_funds,
     unlock_funds as _unlock_funds,
 )
-from repositories.wallet import (
+from backend.repositories.wallet import (
     update_balance as _update_balance,
     award_play_points as _award_play_points,
     get_available_balance as _get_available_balance,
@@ -109,7 +109,7 @@ from repositories.wallet import (
     update_bet_on_chain_tx as _update_bet_on_chain_tx,
     set_bet_on_chain_pool_id as _set_bet_on_chain_pool_id,
 )
-from repositories.analytics import (
+from backend.repositories.analytics import (
     get_top10_qualified as _get_top10_qualified,
     is_top10_player as _is_top10_player,
     get_player_reputation as _get_player_reputation,

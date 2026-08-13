@@ -5,7 +5,7 @@ All moved from db_layer.py.
 import re
 import uuid
 import logging
-from supabase_client import get_supabase
+from backend.supabase_client import get_supabase
 
 logger = logging.getLogger(__name__)
 
