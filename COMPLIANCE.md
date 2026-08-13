@@ -18,18 +18,19 @@ The region is determined from the incoming request in this order:
 
 ### Blocked regions
 
-| Country code | Country | Status |
-|--------------|---------|--------|
-| `NG` | Nigeria | Blocked at launch (extensible list) |
-
 The canonical list lives in `gaming/config/blocked_regions.json`:
 
 ```json
 {
-  "blocked": ["NG"],
-  "version": 1
+  "blocked": [],
+  "version": 3
 }
 ```
+
+No jurisdiction is currently blocked at launch; the list is extensible and will
+be expanded based on legal counsel.  Nigeria was previously blocked and was
+removed — review the current list in `gaming/config/blocked_regions.json` for
+the live set.
 
 ### Behavior when blocked
 
@@ -61,12 +62,12 @@ for monitoring.
 
 ## Blocked jurisdictions
 
-The following jurisdictions are explicitly blocked from using ClawStation:
+The current blocked-jurisdiction set is defined entirely by
+`gaming/config/blocked_regions.json` and is enforced by the geo-fence.  As of
+this writing no jurisdiction is blocked; Nigeria (`NG`) was previously blocked
+and has been removed.
 
-- Nigeria (`NG`)
-
-The list is intentionally small for launch and will be expanded based on legal
-counsel.  Expansion requires:
+The list will be expanded based on legal counsel.  Any change requires:
 
 1. An update to `gaming/config/blocked_regions.json`.
 2. A new migration or configuration change log entry.

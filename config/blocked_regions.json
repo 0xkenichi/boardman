@@ -18,7 +18,6 @@
     "MY",
     "MX",
     "NL",
-    "NG",
     "KP",
     "PK",
     "QA",
@@ -36,5 +35,5 @@
     "VN",
     "YE"
   ],
-  "version": 2
+  "version": 3
 }

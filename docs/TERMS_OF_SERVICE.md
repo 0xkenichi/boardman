@@ -42,8 +42,7 @@ geo-fence and updated from time to time.
 Access is currently blocked from, among others: the United States, China,
 India, Russia, Indonesia, Pakistan, Iran, Saudi Arabia, UAE, North Korea,
 Syria, Yemen, Australia, Singapore, Thailand, Vietnam, the United Kingdom,
-the Netherlands, Germany, France, Italy, Spain, Japan, South Korea, and
-Nigeria.
+the Netherlands, Germany, France, Italy, Spain, Japan, and South Korea.
 
 We reserve the right to modify this list at any time.
 

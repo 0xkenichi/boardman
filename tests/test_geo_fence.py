@@ -61,7 +61,7 @@ def _clear_caches(tmp_path, monkeypatch):
     """Reset module-level caches and force the on-disk config path for every test."""
     reset_blocked_cache()
     cfg = tmp_path / "blocked_regions.json"
-    cfg.write_text('{"blocked": ["NG"], "version": 1}')
+    cfg.write_text('{"blocked": ["RU"], "version": 1}')
     monkeypatch.setenv("BLOCKED_REGIONS_FILE", str(cfg))
     monkeypatch.setenv("MAXMIND_DB_PATH", str(tmp_path / "no-such-db.mmdb"))
     yield
@@ -71,10 +71,10 @@ def _clear_caches(tmp_path, monkeypatch):
 # ── check_region unit tests ────────────────────────────────────────────────
 class TestCheckRegion:
     def test_cloudflare_header_blocked_raises(self):
-        req = _FakeRequest(headers={"cf-ipcountry": "NG"})
+        req = _FakeRequest(headers={"cf-ipcountry": "RU"})
         with pytest.raises(BlockedRegionError) as exc_info:
             check_region(req)
-        assert exc_info.value.country_code == "NG"
+        assert exc_info.value.country_code == "RU"
 
     def test_cloudflare_header_allowed_returns_country(self):
         req = _FakeRequest(headers={"cf-ipcountry": "us"})
@@ -82,12 +82,12 @@ class TestCheckRegion:
 
     def test_cloudflare_header_case_insensitive(self):
         # Different capitalisation of the header name should still be detected.
-        req = _FakeRequest(headers={"CF-IPCountry": "ng"})
+        req = _FakeRequest(headers={"CF-IPCountry": "ru"})
         with pytest.raises(BlockedRegionError):
             check_region(req)
 
     def test_vercel_header_blocked(self):
-        req = _FakeRequest(headers={"x-vercel-ip-country": "NG"})
+        req = _FakeRequest(headers={"x-vercel-ip-country": "RU"})
         with pytest.raises(BlockedRegionError):
             check_region(req)
 
@@ -98,7 +98,7 @@ class TestCheckRegion:
     def test_cloudflare_takes_priority_over_vercel(self):
         req = _FakeRequest(headers={
             "cf-ipcountry": "US",
-            "x-vercel-ip-country": "NG",
+            "x-vercel-ip-country": "RU",
         })
         assert check_region(req) == "US"
 
@@ -128,19 +128,19 @@ class TestCheckRegion:
         assert detect_country(_NoHeaders()) is None
 
     def test_blocked_cache_is_reloaded_when_path_changes(self, tmp_path, monkeypatch):
-        # First load with NG blocked
+        # First load with RU blocked
         cfg_a = tmp_path / "a.json"
-        cfg_a.write_text('{"blocked": ["NG"], "version": 1}')
+        cfg_a.write_text('{"blocked": ["RU"], "version": 1}')
         monkeypatch.setenv("BLOCKED_REGIONS_FILE", str(cfg_a))
-        assert "NG" in _load_blocked_regions()
+        assert "RU" in _load_blocked_regions()
 
-        # Swap config to a different path with NG no longer blocked
+        # Swap config to a different path with RU no longer blocked
         cfg_b = tmp_path / "b.json"
-        cfg_b.write_text('{"blocked": ["RU"], "version": 1}')
+        cfg_b.write_text('{"blocked": ["IN"], "version": 1}')
         monkeypatch.setenv("BLOCKED_REGIONS_FILE", str(cfg_b))
         blocked = _load_blocked_regions()
-        assert "NG" not in blocked
-        assert "RU" in blocked
+        assert "RU" not in blocked
+        assert "IN" in blocked
 
 
 # ── FastAPI integration via TestClient ─────────────────────────────────────
@@ -178,8 +178,8 @@ def client():
 
 
 class TestFastAPIIntegration:
-    def test_cf_ng_returns_451(self, client):
-        resp = client.get("/", headers={"cf-ipcountry": "NG"})
+    def test_cf_ru_returns_451(self, client):
+        resp = client.get("/", headers={"cf-ipcountry": "RU"})
         assert resp.status_code == 451
         assert resp.json() == {"error": "service_unavailable_in_region"}
 
@@ -188,8 +188,8 @@ class TestFastAPIIntegration:
         assert resp.status_code == 200
         assert resp.json() == {"status": "ok"}
 
-    def test_vercel_ng_returns_451(self, client):
-        resp = client.get("/", headers={"x-vercel-ip-country": "NG"})
+    def test_vercel_ru_returns_451(self, client):
+        resp = client.get("/", headers={"x-vercel-ip-country": "RU"})
         assert resp.status_code == 451
         assert resp.json() == {"error": "service_unavailable_in_region"}
 
@@ -206,10 +206,10 @@ class TestFastAPIIntegration:
         assert resp.status_code == 200
         assert resp.json() == {"status": "ok"}
 
-    def test_real_main_app_blocks_ng(self):
+    def test_real_main_app_blocks_ru(self):
         from gaming.src.backend.main import app
         c = TestClient(app)
-        resp = c.get("/", headers={"cf-ipcountry": "NG"})
+        resp = c.get("/", headers={"cf-ipcountry": "RU"})
         assert resp.status_code == 451
         assert resp.json() == {"error": "service_unavailable_in_region"}
 
@@ -263,7 +263,7 @@ class TestBotStartHandler:
         globals()["_send"] = _send
         globals()["_clear_state"] = _clear_state
 
-        result = asyncio.run(self._run_start({"cf-ipcountry": "NG"}, sent, side_effects={}))
+        result = asyncio.run(self._run_start({"cf-ipcountry": "RU"}, sent, side_effects={}))
         assert result == "blocked"
         assert sent == [(99, "ClawStation isn't available in your region yet.")]
 

@@ -46,7 +46,7 @@ many.
 
 The following countries are blocked by the geo-fence (`gaming/config/blocked_regions.json`):
 
-AU, BD, CN, EG, FR, DE, IN, ID, IR, IQ, IT, JP, KW, LY, MY, MX, NL, NG, KP,
+AU, BD, CN, EG, FR, DE, IN, ID, IR, IQ, IT, JP, KW, LY, MY, MX, NL, KP,
 PK, QA, RU, SA, SG, KR, ES, SY, TH, TR, AE, GB, US, VN, YE
 
 **Rationale:**
@@ -60,7 +60,6 @@ PK, QA, RU, SA, SG, KR, ES, SY, TH, TR, AE, GB, US, VN, YE
   local gambling or gaming licenses for real-money services.
 - **Australia, Singapore, Thailand, Vietnam, Japan, South Korea:** restrictive
   or licensing-heavy regimes.
-- **Nigeria (NG):** existing sideQuest geo-block; retained for consistency.
 
 ## Safer initial markets (still not zero risk)
 
@@ -69,7 +68,7 @@ to local counsel confirmation:
 
 - Most of Latin America outside Mexico (e.g., Brazil, Argentina, Colombia —
   check locally)
-- Parts of Africa outside Nigeria (e.g., Kenya, Ghana — evolving regulation)
+- Parts of Africa (e.g., Kenya, Ghana, Nigeria — evolving regulation)
 - Parts of Eastern Europe and Southeast Asia not listed above
 - Caribbean / certain offshore-friendly jurisdictions
 
