@@ -940,43 +940,31 @@ async def public_metrics(limit: int = 100):
 
 
 @router.get("/football/catalog")
-async def football_catalog(q: Optional[str] = None, limit: int = 50, offset: int = 0):
-    """Public player catalog for Agentic Football Managers.
+async def football_catalog(
+    q: Optional[str] = None,
+    slot: Optional[str] = None,
+    pos: Optional[str] = None,
+    limit: int = 200,
+    offset: int = 0,
+):
+    """Public AFM catalog — real seed names, slots, ratings, in-game price."""
+    from gaming.src.stack.agentic.games.football_managers.catalog import (
+        SLOTS,
+        catalog_meta,
+        list_players,
+    )
 
-    - `q` optional name filter
-    - `limit` number of items
-    - `offset` paging offset
-    """
-    import json
-    from pathlib import Path
-
-    data_file = Path(__file__).parent / "data" / "players_top100.json"
-
-    # If seed generator exists but JSON missing, attempt to generate it.
-    if not data_file.exists():
-        gen = Path(__file__).parent / "data" / "generate_players_seed.py"
-        if gen.exists():
-            try:
-                # Attempt to run generator without blocking import system.
-                import runpy
-
-                runpy.run_path(str(gen), run_name="__main__")
-            except Exception:
-                pass
-
-    try:
-        players = []
-        if data_file.exists():
-            players = json.loads(data_file.read_text())
-        else:
-            players = []
-    except Exception:
-        players = []
-
+    players = list_players(pos=pos, slot=slot)
     if q:
         ql = q.lower()
         players = [p for p in players if ql in (p.get("name") or "").lower()]
-
     total = len(players)
-    sliced = players[offset : offset + limit]
-    return {"success": True, "total": total, "players": sliced}
+    cap = max(1, min(int(limit or 200), 500))
+    off = max(0, int(offset or 0))
+    return {
+        "success": True,
+        "total": total,
+        "slots": list(SLOTS),
+        "meta": catalog_meta(),
+        "players": players[off : off + cap],
+    }

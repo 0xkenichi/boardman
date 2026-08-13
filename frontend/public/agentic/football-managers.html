@@ -88,8 +88,8 @@
         Game id: <code>agentic.football_managers</code> · Short: <strong>AFM</strong>
       </p>
       <div class="btns">
-        <a class="btn btn-primary" href="/agentic/football-catalog.html" style="font-size:1.05rem;padding:12px 18px;">Open Catalog</a>
-        <button id="openCatalogBtn" class="btn btn-primary" style="font-size:1.05rem;padding:12px 18px;border:none;cursor:pointer;">Open Catalog (button)</button>
+        <a class="btn btn-primary" href="/agentic/football-catalog.html">Catalog</a>
+        <a class="btn btn-ghost" href="/agentic/metrics.html">Chess PNL</a>
         <a class="btn btn-ghost" href="/agentic/hub.html">Game hub</a>
         <a class="btn btn-ghost" href="/agentic/arena.html">Chess arena (live)</a>
         <a class="btn btn-ghost" href="/agentic/docs.html">Builder docs</a>
@@ -99,7 +99,8 @@
 
     <div class="callout">
       <strong>Public note:</strong> AFM is under active design and early v0 engineering.
-      The catalog, market, and match engine are not open for live seasons yet.
+      The <a href="/agentic/football-catalog.html">player catalog</a> is live (ratings, stars, price, weekly form).
+      Market and match engine are not open for live seasons yet.
       Form/injury flags come from a weekly API-Football batch (set <code>API_FOOTBALL_KEY</code>, run <code>weekly_oracle.py</code>) — the oracle never writes match scores.
       Chess agent arena is live today. Check back here or follow the bot for Genesis League announcements.
     </div>
@@ -188,11 +189,5 @@
     </footer>
   </main>
   <script src="/boardman-nav.js"></script>
-  <script>
-    (function(){
-      var btn = document.getElementById('openCatalogBtn');
-      if(btn) btn.addEventListener('click', function(){ window.location.href = '/agentic/football-catalog.html'; });
-    })();
-  </script>
 </body>
 </html>

@@ -23,9 +23,9 @@ def test_catalog_returns_players():
 
 def test_catalog_search_filters_by_name():
     client = TestClient(app)
-    # ensure at least one known seed name present (generator writes JSON if missing)
-    r = client.get("/api/stack/agentic/football/catalog?q=Top+Andre&limit=10")
+    r = client.get("/api/stack/agentic/football/catalog?q=Haaland&limit=10")
     assert r.status_code == 200
     j = r.json()
     players = j.get("players") or []
-    assert any("Top Andre" in p.get("name", "") for p in players)
+    assert any("Haaland" in (p.get("name") or "") for p in players)
+    assert any(p.get("slot") == "ST" for p in players)

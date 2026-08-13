@@ -108,6 +108,41 @@ def apply_injuries(
     return {"patched": patched, "unmatched": unmatched, "reports": len(reports)}
 
 
+def apply_weekly_stats(
+    catalog: list[dict[str, Any]],
+    stats: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Attach weekly goals / assists / rating. Bumps in-game price slightly on form."""
+    by_full = {_norm(p.get("name") or ""): p for p in catalog}
+    patched = 0
+    for row in stats:
+        name = row.get("name") or ""
+        rec = by_full.get(_norm(name))
+        if not rec:
+            continue
+        goals = int(row.get("goals") or 0)
+        assists = int(row.get("assists") or 0)
+        rating = row.get("rating")
+        apps = int(row.get("appearances") or row.get("apps") or 0)
+        rec["weekly_goals"] = goals
+        rec["weekly_assists"] = assists
+        rec["weekly_apps"] = apps
+        if rating is not None:
+            rec["weekly_rating"] = float(rating)
+            rec["form"] = max(3.0, min(10.0, float(rating)))
+        # Context only: 0.05 USDC per goal+assist this week, capped.
+        bump = min(0.50, 0.05 * (goals + assists))
+        try:
+            price = float(rec.get("game_price_usdc") or 0)
+            rec["game_price_usdc"] = f"{price + bump:.2f}"
+        except (TypeError, ValueError):
+            pass
+        rec["oracle_updated_at"] = _now()
+        rec["oracle_source"] = rec.get("oracle_source") or "api-football"
+        patched += 1
+    return {"patched": patched, "rows": len(stats)}
+
+
 def run(
     *,
     season: int | None = None,

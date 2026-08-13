@@ -1,113 +1,169 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>AFM Catalog</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AFM Catalog — Boardman</title>
+  <link rel="icon" href="/boardman-logo.png" />
   <link rel="stylesheet" href="/boardman-nav.css" />
   <style>
-    body{font-family:system-ui,Segoe UI,Roboto,Arial;background:#050508;color:#f4f4f5;padding:20px}
-    .panel{background:#0e0e14;padding:16px;border:1px solid #23232f;border-radius:12px}
-    table{width:100%;border-collapse:collapse;margin-top:12px}
-    th,td{border:1px solid #23232f;padding:8px;text-align:left}
-    th{background:#0a0a10;color:#c4b5fd}
-    input{padding:8px;border-radius:8px;border:1px solid #23232f;background:#12121a;color:#fff}
-    a.btn{display:inline-block;padding:8px 12px;border-radius:10px;background:#7c3aed;color:#fff;text-decoration:none;margin-left:8px}
+    :root {
+      --bg: #050508; --panel: #0e0e14; --line: #23232f; --text: #f4f4f5;
+      --muted: #9ca3af; --accent: #7c3aed; --green: #22c55e; --amber: #fbbf24;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, Segoe UI, Robots, sans-serif;
+      background: var(--bg); color: var(--text); line-height: 1.45;
+    }
+    main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 80px; }
+    h1 { font-size: 1.45rem; margin: 0 0 6px; }
+    .sub { color: var(--muted); font-size: 0.88rem; margin: 0 0 18px; max-width: 46rem; }
+    .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px; }
+    input, select {
+      padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line);
+      background: #12121a; color: #fff; font-size: 0.88rem;
+    }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+    .chip {
+      border: 1px solid var(--line); background: #12121a; color: #e4e4e7;
+      border-radius: 999px; padding: 5px 10px; font-size: 0.75rem; font-weight: 600;
+      cursor: pointer;
+    }
+    .chip.on { background: #2e1065; border-color: var(--accent); color: #fff; }
+    .slot { margin-bottom: 22px; }
+    .slot h2 { font-size: 0.95rem; margin: 0 0 8px; letter-spacing: 0.04em; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    th { text-align: left; color: #c4b5fd; font-size: 0.7rem; text-transform: uppercase;
+         letter-spacing: 0.04em; padding: 8px 8px; border-bottom: 1px solid var(--line); background: #0a0a10; }
+    td { padding: 8px; border-bottom: 1px solid var(--line); color: #d4d4d8; }
+    .stars { color: var(--amber); letter-spacing: 1px; }
+    .inj { color: #f87171; font-size: 0.72rem; }
+    .mono { font-family: ui-monospace, Menlo, monospace; font-size: 0.75rem; color: var(--muted); }
+    a.btn {
+      display: inline-block; padding: 8px 12px; border-radius: 10px;
+      background: var(--accent); color: #fff; text-decoration: none; font-weight: 600; font-size: 0.85rem;
+    }
+    a.ghost { background: #1c1c24; border: 1px solid var(--line); color: #e4e4e7; }
   </style>
 </head>
 <body data-bm-nav>
   <div id="bm-nav-root"></div>
-  <h1>Agentic Football Managers — Catalog</h1>
-  <p>Public catalog: lists available players (name, rating, stars, price, wage).</p>
-  <div class="panel">
-    <label>Search: <input id="q" placeholder="name contains" /></label>
-    <label style="margin-left:12px">Position: 
-      <select id="pos">
-        <option value="">All</option>
-        <option value="GK">GK</option>
-        <option value="DEF">DEF</option>
-        <option value="MID">MID</option>
-        <option value="FWD">FWD</option>
-      </select>
-    </label>
-    <label style="margin-left:12px">Limit: <input id="limit" value="25" style="width:80px" /></label>
-    <button id="btnSearch" class="btn">Search</button>
-    <a href="/agentic/football-managers.html" class="btn" style="background:#27272a">Back</a>
-    <a href="#" id="btnTop10All" class="btn" style="background:#1f2937">Show Top 10 per position</a>
-    <div id="result" style="margin-top:12px"></div>
-  </div>
-  <script>
-    function apiBase(){return window.location.origin}
-    async function fetchCatalog(){
-      const q=document.getElementById('q').value.trim();
-      const limit=Number(document.getElementById('limit').value)||25;
-      const apiUrl = `${apiBase()}/api/stack/agentic/football/catalog?limit=${limit}&q=${encodeURIComponent(q)}`;
-      const staticUrl = `/agentic/players_top100.json`;
-      const el=document.getElementById('result');
-      el.textContent='Loading…';
-
-      // Try server API first; fall back to static JSON in the frontend public folder.
-      try{
-        const r=await fetch(apiUrl);
-        if(r.ok){
-          const j=await r.json();
-          renderPlayers(j.players || []);
-          return;
-        }
-      }catch(e){
-        // ignore and fall back to static file
-      }
-
-      try{
-        const r2 = await fetch(staticUrl);
-        if(!r2.ok) throw new Error('HTTP '+r2.status);
-        const players = await r2.json();
-        // apply simple name / position filter & limit
-        const ql = q.toLowerCase();
-        const pos = (document.getElementById('pos').value || '').trim();
-        let filtered = players.filter(p => (!ql || (p.name || '').toLowerCase().includes(ql)));
-        if(pos) filtered = filtered.filter(p => (p.position || '') === pos);
-        filtered = filtered.slice(0, limit);
-        renderPlayers(filtered);
-      }catch(e){ el.textContent='Error: '+e.message }
-    }
-
-    // Show top 10 players for each main position (GK/DEF/MID/FWD)
-    async function showTop10PerPosition(){
-      const staticUrl = `/agentic/players_top100.json`;
-      const el=document.getElementById('result');
-      el.textContent = 'Loading…';
-      try{
-        const r = await fetch(staticUrl);
-        if(!r.ok) throw new Error('HTTP '+r.status);
-        const players = await r.json();
-        const positions = ['GK','DEF','MID','FWD'];
-        let html = '';
-        for(const pos of positions){
-          const list = (players.filter(p => (p.position||'')===pos).sort((a,b)=> (b.rating||0)-(a.rating||0))).slice(0,10);
-          html += `<h3 style="margin-top:14px">Top 10 ${pos}</h3>`;
-          if(list.length===0){ html += '<div class="mono">No players for '+pos+'</div>'; continue }
-          html += '<table><thead><tr><th>Name</th><th>Rating</th><th>Stars</th><th>Price</th><th>Wage</th></tr></thead><tbody>';
-          for(const p of list){ html += `<tr><td>${p.name}</td><td>${p.rating}</td><td>${p.stars||''}</td><td>${p.price}</td><td>${p.wage}</td></tr>` }
-          html += '</tbody></table>';
-        }
-        el.innerHTML = html;
-      }catch(e){ el.textContent='Error: '+e.message }
-    }
-
-    function renderPlayers(players){
-      const el=document.getElementById('result');
-      if(!players || players.length===0){ el.innerHTML='<div class="mono">No players found</div>'; return }
-      let html='<table><thead><tr><th>Name</th><th>Stars</th><th>Rating</th><th>Price</th><th>Wage</th></tr></thead><tbody>';
-      for(const p of players){ html += `<tr><td>${p.name}</td><td>${p.stars}</td><td>${p.rating}</td><td>${p.price}</td><td>${p.wage}</td></tr>` }
-      html += '</tbody></table>';
-      el.innerHTML=html;
-    }
-    document.getElementById('btnSearch').onclick=fetchCatalog;
-    document.getElementById('btnTop10All').onclick = (e) => { e.preventDefault(); showTop10PerPosition(); };
-    // initial
-    fetchCatalog();
-  </script>
+  <main>
+    <h1>AFM player catalog</h1>
+    <p class="sub">
+      Top players by pitch slot. Ratings and in-game USDC price are the AFM market.
+      Weekly goals / assists / form come from the API-Football oracle when the laptop hub
+      refreshes — they do not rewrite match scores.
+    </p>
+    <div class="bar">
+      <input id="q" placeholder="Search name" />
+      <a class="btn ghost" href="/agentic/football-managers.html">Back to AFM</a>
+      <a class="btn ghost" href="/agentic/metrics.html">Chess PNL</a>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div id="result" class="mono">Loading…</div>
+  </main>
   <script src="/boardman-nav.js"></script>
+  <script>
+    const SLOTS = ["GK","RB","CB","LB","CDM","CM","CAM","RW","ST","LW"];
+    const LABELS = {
+      GK: "Goalkeepers", RB: "Right backs", CB: "Centre backs", LB: "Left backs",
+      CDM: "Defensive midfield", CM: "Central midfield", CAM: "Attacking midfield",
+      RW: "Right wing", ST: "Strikers", LW: "Left wing"
+    };
+    let all = [];
+    let slotFilter = "";
+
+    function stars(n) {
+      n = Number(n) || 0;
+      return "★★★★★".slice(0, n) + "☆☆☆☆☆".slice(0, 5 - n);
+    }
+    function usd(v) {
+      const n = Number(v);
+      return Number.isFinite(n) ? "$" + n.toFixed(2) : "—";
+    }
+
+    function row(p) {
+      const inj = p.injury ? '<div class="inj">' + p.injury + "</div>" : "";
+      return (
+        "<tr>" +
+          "<td><strong>" + (p.name || "") + "</strong> <span class='mono'>" + (p.nation || "") + "</span>" + inj + "</td>" +
+          "<td>" + (p.slot || p.primary_pos || "") + "</td>" +
+          "<td>" + (p.base_rating || p.rating || "—") + "</td>" +
+          "<td class='stars'>" + stars(p.stars) + "</td>" +
+          "<td>" + usd(p.game_price_usdc || p.price) + "</td>" +
+          "<td>" + usd(p.wage_per_matchday_usdc || p.wage) + "</td>" +
+          "<td>" + (p.form != null ? Number(p.form).toFixed(1) : "—") + "</td>" +
+          "<td>" + (p.weekly_goals || 0) + " / " + (p.weekly_assists || 0) + "</td>" +
+          "<td>" + (p.weekly_rating != null ? Number(p.weekly_rating).toFixed(2) : "—") + "</td>" +
+        "</tr>"
+      );
+    }
+
+    function table(list) {
+      if (!list.length) return '<div class="mono">No players in this slot yet.</div>';
+      return (
+        "<table><thead><tr>" +
+          "<th>Name</th><th>Slot</th><th>Rating</th><th>Stars</th><th>Price</th><th>Wage</th><th>Form</th><th>G / A</th><th>Wk rating</th>" +
+        "</tr></thead><tbody>" +
+        list.map(row).join("") +
+        "</tbody></table>"
+      );
+    }
+
+    function render() {
+      const q = (document.getElementById("q").value || "").trim().toLowerCase();
+      let rows = all.slice();
+      if (q) rows = rows.filter((p) => (p.name || "").toLowerCase().includes(q));
+      if (slotFilter) rows = rows.filter((p) => (p.slot || "") === slotFilter);
+      const el = document.getElementById("result");
+      if (slotFilter) {
+        el.innerHTML = '<div class="slot"><h2>' + (LABELS[slotFilter] || slotFilter) + " · top " + Math.min(10, rows.length) + '</h2>' +
+          table(rows.slice(0, 10)) + "</div>";
+        return;
+      }
+      el.innerHTML = SLOTS.map((s) => {
+        const list = rows.filter((p) => (p.slot || "") === s).slice(0, 10);
+        return '<div class="slot"><h2>' + (LABELS[s] || s) + " · " + list.length + "</h2>" + table(list) + "</div>";
+      }).join("");
+    }
+
+    function setChip(slot) {
+      slotFilter = slot;
+      document.querySelectorAll(".chip").forEach((c) => {
+        c.classList.toggle("on", c.getAttribute("data-slot") === slot);
+      });
+      render();
+    }
+
+    async function load() {
+      const el = document.getElementById("result");
+      const urls = [
+        "/api/stack/agentic/football/catalog?limit=400",
+        "/agentic/afm-catalog.json",
+      ];
+      for (const url of urls) {
+        try {
+          const r = await fetch(url, { cache: "no-store" });
+          if (!r.ok) continue;
+          const j = await r.json();
+          all = j.players || [];
+          if (all.length) { render(); return; }
+        } catch (e) { /* next */ }
+      }
+      el.textContent = "Catalog unavailable. Start the Stack API or ship afm-catalog.json.";
+    }
+
+    document.getElementById("chips").innerHTML =
+      '<button class="chip on" data-slot="">All slots</button>' +
+      SLOTS.map((s) => '<button class="chip" data-slot="' + s + '">' + s + "</button>").join("");
+    document.getElementById("chips").onclick = (e) => {
+      const b = e.target.closest(".chip");
+      if (b) setChip(b.getAttribute("data-slot") || "");
+    };
+    document.getElementById("q").oninput = render;
+    load();
+  </script>
 </body>
 </html>
