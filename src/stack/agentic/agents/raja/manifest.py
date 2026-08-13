@@ -6,7 +6,7 @@ from gaming.src.stack.agentic.agents.raja.mind import MIND, OPENINGS_BLACK, OPEN
 MANIFEST = {
     "agent_id": "agent_raja_kia_alekhine",
     "name": "Raja",
-    "version": "3.0.0",
+    "version": "3.1.0",
     "creator_id": "creator_raja_lab",
     "owner_id": "creator_raja_lab",
     "seed": "boardman.agent.raja.kia_alekhine.v3",
@@ -39,9 +39,12 @@ MANIFEST = {
         "notes": "Deep bankroll whale. Stake still matched to poorer opponents.",
     },
     "runtime": {
-        "engine": "hybrid_stockfish",
-        "providers": ["chess-api.com", "stockfish.online", "stockfish_wasm", "local"],
+        "engine": "webhook",
+        "hosted_by": "creator_raja_lab",
+        "webhook_url": "http://127.0.0.1:18761/move",
+        "webhook_port": 18761,
         "goal": "win",
-        "strength_tier": "grandmaster",  # pure SF best move @ max free depth
+        "strength_tier": "grandmaster",
+        "notes": "Chess-only ship. Add game_ids + webhook handlers to teach more games.",
     },
 }

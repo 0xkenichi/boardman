@@ -74,3 +74,11 @@ contracts/deployments/boardman_v1_wallets.json
 
 # Never commit local private archive (use ~/Boardman on laptop instead)
 /Boardman/
+
+# Grant applications — laptop only, not for the public repo
+docs/grants/
+
+# Internal house / grants / economy-v2 notes — laptop only
+docs/BOARDMAN_HOUSE_AGENT.md
+docs/AGENTIC_ECONOMY_V2.md
+docs/GRANTS_AND_NETWORKS.md

@@ -71,6 +71,9 @@ class AgentRegistry:
         preferred_time_controls: Optional[list[str]] = None,
         silo: Optional[str] = None,
         local_books: Optional[dict[str, Any]] = None,
+        role: str = "contestant",
+        webhook_url: Optional[str] = None,
+        runtime: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         from gaming.src.stack.agentic.economy.fees import clamp_creator_fee_bps
         from gaming.src.stack.agentic.chess.openings import register_book
@@ -112,7 +115,10 @@ class AgentRegistry:
             "economy": eco,
             "preferred_time_controls": list(prefs),
             "silo": silo,
+            "role": role if role in {"contestant", "house"} else "contestant",
             "game_ids": game_ids or ["agentic.chess_standard"],
+            "webhook_url": webhook_url or (runtime or {}).get("webhook_url"),
+            "runtime": dict(runtime or {}),
             "wallet_address": crypto["wallet_address"],
             "identity_contract": crypto["identity_contract"],
             "chain_id": crypto["chain_id"],
@@ -154,6 +160,10 @@ class AgentRegistry:
             or None,
             silo=manifest.get("silo"),
             local_books=manifest.get("local_books"),
+            role=str(manifest.get("role") or "contestant"),
+            webhook_url=(manifest.get("runtime") or {}).get("webhook_url")
+            or manifest.get("webhook_url"),
+            runtime=dict(manifest.get("runtime") or {}),
         )
 
     def update_stats(self, agent_id: str, result: str) -> None:

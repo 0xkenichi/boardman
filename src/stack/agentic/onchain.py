@@ -142,65 +142,13 @@ ESCROW_ABI = [
 
 
 def onchain_enabled() -> bool:
+    """True only when BOARDMAN_AGENTIC_ONCHAIN is explicitly on.
+
+    No auto-enable from a hanging resolver/admin key — that used to flip
+    live USDC locks on by accident. Demo ledger is the default.
+    """
     v = os.getenv("BOARDMAN_AGENTIC_ONCHAIN", "").strip().lower()
-    if v in {"1", "true", "yes", "on"}:
-        return True
-    # Auto-enable on-chain in developer/test environments when a resolver key
-    # and an RPC are configured. This keeps behavior safe for production
-    # (explicit opt-in) while making local demos lock on-chain by default
-    # when the necessary pieces are present.
-    resolver_pk = (
-        os.getenv("BOARDMAN_RESOLVER_KEY")
-        or os.getenv("CLAW_RESOLVER_PRIVATE_KEY")
-        or os.getenv("RESOLVER_PRIVATE_KEY")
-        or os.getenv("ADMIN_PRIVATE_KEY")
-        or os.getenv("OWNER_PRIVATE_KEY")
-        or os.getenv("BOARDMAN_FUNDER_KEY")
-        or ""
-    ).strip()
-    # If not set in process env, try reading local .env in cwd (makes local dev easier)
-    if not resolver_pk:
-        try:
-            from pathlib import Path
-
-            envf = Path.cwd() / ".env"
-            if envf.exists():
-                for line in envf.read_text(encoding="utf-8").splitlines():
-                    if not line or line.strip().startswith("#"):
-                        continue
-                    if "=" not in line:
-                        continue
-                    k, v = line.split("=", 1)
-                    k = k.strip()
-                    v = v.strip().strip('"').strip("'")
-                    if k in {"BOARDMAN_RESOLVER_KEY", "CLAW_RESOLVER_PRIVATE_KEY", "RESOLVER_PRIVATE_KEY", "ADMIN_PRIVATE_KEY", "OWNER_PRIVATE_KEY", "BOARDMAN_FUNDER_KEY"}:
-                        resolver_pk = v
-                        break
-        except Exception:
-            resolver_pk = resolver_pk
-    # Accept common local dev fallbacks so testbeds can settle without extra setup
-    if not resolver_pk:
-        resolver_pk = os.getenv("ADMIN_PRIVATE_KEY", "") or os.getenv("OWNER_PRIVATE_KEY", "") or os.getenv("BOARDMAN_FUNDER_KEY", "")
-    if not resolver_pk:
-        return False
-    # A configured key that isn't a valid 32-byte private key (e.g. an address)
-    # would let matches lock on-chain but never settle — refuse to enable.
-    if not resolver_pk.startswith("0x"):
-        resolver_pk = "0x" + resolver_pk
-    try:
-        if len(resolver_pk) != 66 or int(resolver_pk[2:], 16) <= 0:
-            return False
-    except ValueError:
-        return False
-    # Quick RPC check
-    try:
-        cfg = _chain_config("arc")
-        from web3 import Web3
-
-        w3 = Web3(Web3.HTTPProvider(cfg["rpc_url"], request_kwargs={"timeout": 5}))
-        return bool(w3.is_connected())
-    except Exception:
-        return False
+    return v in {"1", "true", "yes", "on"}
 
 
 def _chain_config(chain_id: str = "arc") -> dict[str, Any]:
@@ -251,10 +199,17 @@ def usdc_to_raw(amount: Decimal) -> int:
 
 
 def load_agent_private_key(agent_id: str) -> str:
-    from gaming.src.stack.agentic.store import data_dir, load_json
+    from gaming.src.stack.agentic.store import load_json
     from gaming.src.stack.agentic.wallets import seed_to_private_key
+    from gaming.src.stack.agentic.agents.boardman.manifest import HOUSE_ID
 
+    if agent_id == HOUSE_ID:
+        raise RuntimeError(
+            "House has no spend key — resolver signs BoardmanEscrow only"
+        )
     secrets = load_json(f"secrets_{agent_id}.json", {})
+    if secrets.get("sealed"):
+        raise RuntimeError(f"agent {agent_id} secrets are sealed — no spend key")
     pk = secrets.get("private_key")
     if pk:
         return pk if str(pk).startswith("0x") else "0x" + str(pk)
@@ -302,6 +257,10 @@ def _explorer(cfg: dict[str, Any], tx_hash: str) -> str:
     return f"{base}{tx_hash}" if tx_hash else ""
 
 
+ONCHAIN_STATUS = {0: "OPEN", 1: "LOCKED", 2: "DISPUTED", 3: "RESOLVED", 4: "CANCELLED"}
+HOUSE_TX_LABELS = frozenset({"resolveMatch", "cancelMatch", "flagDispute"})
+
+
 def _send(w3, acct, tx: dict[str, Any], label: str) -> str:
     """Sign + send + wait. Returns tx hash hex."""
     from web3 import Web3
@@ -342,6 +301,44 @@ def _send(w3, acct, tx: dict[str, Any], label: str) -> str:
     if receipt.status != 1:
         raise RuntimeError(f"{label} reverted tx={h}")
     return h if h.startswith("0x") else "0x" + h
+
+
+def _send_house(w3, acct, tx: dict[str, Any], label: str, escrow_address: str) -> str:
+    """Resolver broadcast — escrow resolve/cancel only. Never ERC-20 transfer."""
+    from gaming.src.stack.agentic.disbursement import assert_house_escrow_call
+
+    if label not in HOUSE_TX_LABELS:
+        raise RuntimeError(f"House signer cannot broadcast {label}")
+    assert_house_escrow_call(tx, escrow_address, label)
+    return _send(w3, acct, tx, label)
+
+
+def read_onchain_match(match_id: str, chain_id: str = "arc") -> dict[str, Any]:
+    """Read BoardmanEscrow.matches(matchId). Raises if the slot is empty."""
+    cfg = _chain_config(chain_id)
+    w3 = _w3(cfg)
+    _, escrow = _contracts(w3, cfg)
+    mid = match_id_to_bytes32(match_id)
+    raw = escrow.functions.matches(mid).call()
+    player1, player2, stake_raw, status, created_at, locked_at = raw
+    zero = "0x0000000000000000000000000000000000000000"
+    p1 = str(player1)
+    if p1.lower() in {zero, "0x0", ""}:
+        raise RuntimeError(f"no on-chain escrow for {match_id}")
+    return {
+        "match_id": match_id,
+        "match_id_bytes32": match_id_hex(match_id),
+        "player1": p1,
+        "player2": str(player2),
+        "stake_raw": int(stake_raw),
+        "stake_usdc": str(Decimal(int(stake_raw)) / Decimal(10**USDC_DECIMALS)),
+        "status": int(status),
+        "status_name": ONCHAIN_STATUS.get(int(status), str(status)),
+        "created_at": int(created_at),
+        "locked_at": int(locked_at),
+        "escrow": cfg["escrow"],
+        "chain_id": chain_id,
+    }
 
 
 def usdc_balance(address: str, chain_id: str = "arc") -> Decimal:
@@ -707,9 +704,9 @@ def load_resolver_key() -> str:
         "BOARDMAN_RESOLVER_KEY",
         "CLAW_RESOLVER_PRIVATE_KEY",
         "RESOLVER_PRIVATE_KEY",
+        # Last-resort ops aliases — never BOARDMAN_FUNDER_KEY (faucet ≠ resolver).
         "ADMIN_PRIVATE_KEY",
         "OWNER_PRIVATE_KEY",
-        "BOARDMAN_FUNDER_KEY",
     ]
     resolver_pk = ""
     for name in candidates:
@@ -784,38 +781,29 @@ def resolve_onchain(
     *,
     chain_id: str = "arc",
     draw: bool = False,
+    authorization: Any = None,
 ) -> dict[str, Any]:
-    """Resolver settles winner (or cancelMatch for draw)."""
-    cfg = _chain_config(chain_id)
-    resolver_pk = (
-        os.getenv("BOARDMAN_RESOLVER_KEY")
-        or os.getenv("CLAW_RESOLVER_PRIVATE_KEY")
-        or os.getenv("RESOLVER_PRIVATE_KEY")
-        or os.getenv("ADMIN_PRIVATE_KEY")
-        or os.getenv("OWNER_PRIVATE_KEY")
-        or os.getenv("BOARDMAN_FUNDER_KEY")
-        or ""
-    ).strip()
-    # If still not set, try reading local .env for developer convenience
-    if not resolver_pk:
-        try:
-            from pathlib import Path
+    """Resolver settles winner (or cancelMatch for draw).
 
-            envf = Path.cwd() / ".env"
-            if envf.exists():
-                for line in envf.read_text(encoding="utf-8").splitlines():
-                    if not line or line.strip().startswith("#"):
-                        continue
-                    if "=" not in line:
-                        continue
-                    k, v = line.split("=", 1)
-                    k = k.strip()
-                    v = v.strip().strip('"').strip("'")
-                    if k in {"BOARDMAN_RESOLVER_KEY", "CLAW_RESOLVER_PRIVATE_KEY", "RESOLVER_PRIVATE_KEY", "ADMIN_PRIVATE_KEY", "OWNER_PRIVATE_KEY", "BOARDMAN_FUNDER_KEY"}:
-                        resolver_pk = v
-                        break
-        except Exception:
-            pass
+    Requires an AuthorizedDisbursement from disbursement.py. The House
+    cannot pick a winner or an amount — the contract pays 2*stake-fee to
+    a locked player, or refunds both on cancel.
+    """
+    from gaming.src.stack.agentic.disbursement import (
+        AuthorizedDisbursement,
+        DisbursementDenied,
+    )
+
+    if authorization is None:
+        raise DisbursementDenied(
+            "resolve_onchain requires an AuthorizedDisbursement — "
+            "Boardman will not sign a fund movement without a contract trigger"
+        )
+    if not isinstance(authorization, AuthorizedDisbursement):
+        raise DisbursementDenied("authorization is not an AuthorizedDisbursement")
+    authorization.assert_for_resolve(match_id, winner_address, draw)
+
+    cfg = _chain_config(chain_id)
     resolver_pk = load_resolver_key()
     acct = _account(resolver_pk)
 
@@ -825,9 +813,39 @@ def resolve_onchain(
     mid = match_id_to_bytes32(match_id)
     mid_hex = match_id_hex(match_id)
 
+    on = read_onchain_match(match_id, chain_id=chain_id)
+    status = int(on["status"])
+    if status in {3, 4}:  # already RESOLVED / CANCELLED — idempotent success
+        return {
+            "success": True,
+            "mode": "onchain",
+            "already_settled": True,
+            "result": "draw" if status == 4 or draw else "win",
+            "winner": on["player1"] if not draw else None,
+            "tx_hash": None,
+            "match_id_bytes32": mid_hex,
+            "chain_id": chain_id,
+            "onchain_status": on["status_name"],
+        }
+    if status not in {1, 2} and not (draw and status == 0):
+        raise DisbursementDenied(
+            f"on-chain match {match_id} is {on['status_name']} — cannot settle"
+        )
+
+    players = {on["player1"].lower(), str(on["player2"]).lower()}
+    players.discard("0x0000000000000000000000000000000000000000")
+    auth_players = {w.lower() for w in authorization.player_wallets}
+    if players and not players.issubset(auth_players) and not auth_players.issubset(players):
+        # Allow if the authorized players are exactly the on-chain pair
+        if players != auth_players:
+            raise DisbursementDenied(
+                f"on-chain players {sorted(players)} do not match authorization "
+                f"{sorted(auth_players)}"
+            )
+
     if draw:
         tx = escrow.functions.cancelMatch(mid).build_transaction({"from": acct.address})
-        h = _send(w3, acct, tx, "cancelMatch")
+        h = _send_house(w3, acct, tx, "cancelMatch", cfg["escrow"])
         return {
             "success": True,
             "mode": "onchain",
@@ -836,13 +854,18 @@ def resolve_onchain(
             "explorer": _explorer(cfg, h),
             "match_id_bytes32": mid_hex,
             "chain_id": chain_id,
+            "authorization": authorization.fingerprint,
         }
 
-    winner = w3.to_checksum_address(winner_address)
+    winner = w3.to_checksum_address(authorization.winner_wallet or winner_address)
+    if winner.lower() not in players:
+        raise DisbursementDenied(
+            f"winner {winner} is not player1/player2 on BoardmanEscrow"
+        )
     tx = escrow.functions.resolveMatch(mid, winner).build_transaction(
         {"from": acct.address}
     )
-    h = _send(w3, acct, tx, "resolveMatch")
+    h = _send_house(w3, acct, tx, "resolveMatch", cfg["escrow"])
     return {
         "success": True,
         "mode": "onchain",
@@ -852,6 +875,7 @@ def resolve_onchain(
         "explorer": _explorer(cfg, h),
         "match_id_bytes32": mid_hex,
         "chain_id": chain_id,
+        "authorization": authorization.fingerprint,
     }
 
 
@@ -862,17 +886,25 @@ def fund_agent_from_key(
     funder_key: Optional[str] = None,
     chain_id: str = "arc",
 ) -> dict[str, Any]:
-    """Transfer USDC to an agent wallet from a funder key (ops / faucet wallet)."""
-    pk = (
-        funder_key
-        or os.getenv("BOARDMAN_FUNDER_KEY")
-        or os.getenv("BOARDMAN_RESOLVER_KEY")
-        or ""
-    ).strip()
+    """Ops faucet: USDC to a registered contestant. Never the House resolver key."""
+    from gaming.src.stack.agentic.disbursement import (
+        DisbursementDenied,
+        assert_faucet_destination,
+        assert_not_resolver_funder,
+    )
+
+    pk = (funder_key or os.getenv("BOARDMAN_FUNDER_KEY") or "").strip()
     if not pk:
-        raise RuntimeError("Set BOARDMAN_FUNDER_KEY or BOARDMAN_RESOLVER_KEY to fund agents")
+        raise DisbursementDenied(
+            "Set BOARDMAN_FUNDER_KEY to fund contestants. "
+            "The House resolver key cannot ERC-20 transfer."
+        )
     if not pk.startswith("0x"):
         pk = "0x" + pk
+    assert_not_resolver_funder(pk)
+    if amount_usdc <= 0:
+        raise DisbursementDenied("faucet amount must be positive")
+    assert_faucet_destination(to_address)
 
     cfg = _chain_config(chain_id)
     w3 = _w3(cfg)

@@ -30,6 +30,10 @@ if _env_path.exists():
             os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
 
 from gaming.src.stack.agentic.store import load_json  # noqa: E402
+from gaming.src.stack.agentic.disbursement import (  # noqa: E402
+    authorize_replay_settlement,
+    winner_wallet_for_match,
+)
 from gaming.src.stack.agentic.onchain import (  # noqa: E402
     _chain_config,
     _contracts,
@@ -104,23 +108,24 @@ def main() -> int:
 
     errors = 0
     for mid, m, _, p1, p2 in stuck:
-        draw = str(m.get("result") or "").lower() in {"draw", "1/2-1/2"}
         try:
+            auth = authorize_replay_settlement(m)
+            draw = auth.action == "cancel"
             if draw:
                 res = resolve_onchain(
-                    mid, p1, chain_id=args.chain, draw=True
+                    mid, p1, chain_id=args.chain, draw=True, authorization=auth
                 )
                 print(f"✓ {mid}: cancelMatch (draw refund) tx={res.get('tx_hash')}")
             else:
-                wid = m.get("winner_agent_id")
-                # winner wallet = p1 if winner is agent_a else p2
-                winner_side = m.get("agent_a_id")
-                winner_addr = p1 if wid == winner_side else p2
+                winner_addr = auth.winner_wallet or winner_wallet_for_match(m)
                 if not winner_addr:
-                    print(f"✗ {mid}: cannot determine winner address")
+                    print(f"✗ {mid}: cannot determine winner address from match record")
                     errors += 1
                     continue
-                res = resolve_onchain(mid, winner_addr, chain_id=args.chain)
+                # Never assume player1 == agent_a (white creates the match).
+                res = resolve_onchain(
+                    mid, winner_addr, chain_id=args.chain, authorization=auth
+                )
                 print(f"✓ {mid}: resolveMatch -> {winner_addr} tx={res.get('tx_hash')}")
         except Exception as exc:
             print(f"✗ {mid}: settlement failed: {exc}")

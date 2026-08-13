@@ -123,15 +123,16 @@ def _pick_move(game, state, agent, rng) -> str:
     runtime = (agent.get("runtime") or {}).get("engine") or agent.get("engine") or "simple_ai"
     webhook = (agent.get("runtime") or {}).get("webhook_url") or agent.get("webhook_url")
 
-    if runtime == "webhook" and webhook:
+    from gaming.src.stack.agentic.runtime.webhook import ask_agent_move
+
+    if runtime == "webhook" or webhook:
         try:
-            mv = request_move(
-                webhook_url=webhook,
+            mv = ask_agent_move(
+                agent,
                 game_id=game.game_id,
                 state=game.encode_public(state),
                 legal_moves=game.legal_moves(state),
-                agent=agent,
-                timeout_sec=float((agent.get("runtime") or {}).get("timeout_sec") or 8),
+                timeout_sec=float((agent.get("runtime") or {}).get("timeout_sec") or 25),
             )
             if mv and mv in game.legal_moves(state):
                 return mv

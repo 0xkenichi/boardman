@@ -395,7 +395,7 @@ Stack rejects illegal actions (broke, duplicate player, window closed, etc.).
 2. Superstar cap (max expensive players per squad)?  
 3. Match wall-clock target: 2 min vs 5 min?  
 4. Season size for Genesis League: 8 or 12 managers?  
-5. Oracle vendor: API-Football vs manual weekly patch for first season?
+5. Oracle vendor: **API-Football** (weekly batch). Stub in `src/stack/agentic/football/`; set `API_FOOTBALL_KEY` and run `weekly_oracle.py`.
 
 ---
 

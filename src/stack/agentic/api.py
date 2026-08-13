@@ -155,6 +155,146 @@ async def list_agents(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     return {"success": True, "agents": agents}
 
 
+@router.get("/house")
+async def house_snapshot(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
+    """Boardman House cashier — does not play. Telegram remains human-vs-human."""
+    from gaming.src.stack.agentic.house import get_house
+
+    snap = get_house().snapshot()
+    return {"success": True, "house": snap}
+
+
+@router.get("/house/floor")
+async def house_floor(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
+    """Live tables (cap 5 playing) + queued + waiting."""
+    from gaming.src.stack.agentic.house import get_house
+
+    return {"success": True, "floor": get_house().floor()}
+
+
+class HouseOpenBody(BaseModel):
+    agent_a_id: str
+    agent_b_id: str
+    stake_usdc: Optional[float] = Field(None, gt=0, le=1000)
+    white_agent_id: Optional[str] = None
+    chain_id: str = "arc"
+    game_id: str = "agentic.chess_standard"
+
+
+@router.post("/house/matches")
+async def house_open_match(body: HouseOpenBody, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+    from gaming.src.stack.agentic.house import get_house
+
+    try:
+        m = get_house().open_match(
+            agent_a_id=body.agent_a_id,
+            agent_b_id=body.agent_b_id,
+            stake_usdc=body.stake_usdc,
+            white_agent_id=body.white_agent_id,
+            chain_id=body.chain_id,
+            game_id=body.game_id,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return {"success": True, "match": m, "clerk": "agent_boardman_house"}
+
+
+@router.post("/house/matches/{match_id}/lock")
+async def house_lock(match_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+    from gaming.src.stack.agentic.house import get_house
+
+    try:
+        m = get_house().lock(match_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return {"success": True, "match": m, "clerk": "agent_boardman_house"}
+
+
+class HouseBetBody(BaseModel):
+    bettor_id: str
+    side: str = Field(..., description="a|b or agent name/id or white|black")
+    amount_usdc: float = Field(..., gt=0, le=10_000)
+
+
+@router.post("/house/matches/{match_id}/bets")
+async def house_take_bet(match_id: str, body: HouseBetBody, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+    from decimal import Decimal
+    from gaming.src.stack.agentic.house import get_house
+
+    try:
+        out = get_house().take_bet(
+            match_id,
+            bettor_id=body.bettor_id,
+            side=body.side,
+            amount_usdc=Decimal(str(body.amount_usdc)),
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return {"success": True, **out}
+
+
+class HousePlayBody(RunBody):
+    wait: bool = Field(
+        False,
+        description="True = block until settle. False = seat on the 5-table floor (or queue).",
+    )
+
+
+class HouseRematchBody(BaseModel):
+    stake_usdc: Optional[float] = Field(1.0, gt=0, le=1000)
+    white: str = Field("raja", description="raja | nero")
+    wait: bool = Field(False, description="False = return immediately; lock+play in worker")
+    move_delay_sec: float = Field(0.05, ge=0, le=5)
+    seed: Optional[int] = None
+    game_id: str = "agentic.chess_standard"
+
+
+@router.post("/house/rematch")
+async def house_rematch(body: HouseRematchBody = HouseRematchBody(), _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+    """Raja vs Nero via House — same path as scripts/run_house_session.py."""
+    from gaming.src.stack.agentic.house import get_house
+    from gaming.src.stack.agentic.disbursement import DisbursementDenied
+
+    house = get_house()
+    raja = "agent_raja_kia_alekhine"
+    nero = "agent_nero_sicilian_french"
+    white_id = nero if str(body.white).lower().startswith("n") else raja
+    try:
+        out = house.rematch(
+            agent_a_id=raja,
+            agent_b_id=nero,
+            stake_usdc=body.stake_usdc,
+            game_id=body.game_id,
+            white_agent_id=white_id,
+            move_delay_sec=body.move_delay_sec,
+            seed=body.seed,
+            wait=body.wait,
+        )
+    except DisbursementDenied as e:
+        raise HTTPException(400, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return {"success": True, "clerk": "agent_boardman_house", **out}
+
+
+@router.post("/house/matches/{match_id}/play")
+async def house_play(match_id: str, body: HousePlayBody = HousePlayBody(), _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+    from gaming.src.stack.agentic.house import get_house
+
+    try:
+        out = get_house().play(
+            match_id,
+            move_delay_sec=body.move_delay_sec,
+            seed=body.seed,
+            wait=body.wait,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    if body.wait:
+        return {"success": True, "match": out, "clerk": "agent_boardman_house"}
+    return {"success": True, "clerk": "agent_boardman_house", **out}
+
+
 @router.post("/agents/demo/seed")
 async def seed_demo_agents(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.registry import get_registry
@@ -785,6 +925,18 @@ async def match_odds(match_id: str, eval_pawns: Optional[float] = None, ply: int
     except Exception:
         pass
     return {"success": True, "market": d}
+
+
+@router.get("/public/metrics")
+async def public_metrics(limit: int = 100):
+    """Unauthenticated Raja vs Nero PNL + match proofs.
+
+    Sanitized: no private keys, no full move lists, no spectator bettor ids.
+    """
+    from gaming.src.stack.agentic.metrics import public_metrics as _metrics
+
+    cap = max(1, min(int(limit or 100), 200))
+    return _metrics(limit=cap)
 
 
 @router.get("/football/catalog")

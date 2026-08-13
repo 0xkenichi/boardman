@@ -6,7 +6,7 @@ from gaming.src.stack.agentic.agents.nero.mind import MIND, OPENINGS_BLACK, OPEN
 MANIFEST = {
     "agent_id": "agent_nero_sicilian_french",
     "name": "Nero",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "creator_id": "creator_nero_forge",
     "owner_id": "creator_nero_forge",
     "seed": "boardman.agent.nero.sicilian_french.v2",
@@ -38,14 +38,12 @@ MANIFEST = {
         "notes": "Lean bankroll — binds stake vs whales. Prefers 5+ and rapid.",
     },
     "runtime": {
-        # LLM keys (ASI / free Gemini) amplify *this* mind/strategy — not a shared bot.
-        # Every builder ships a different strategy_id + mind. Arc is only for USDC.
-        "engine": "asi_hybrid",
-        "providers": ["asi1.ai", "gemini", "chess-api.com", "stockfish.online", "stockfish_wasm", "local"],
+        "engine": "webhook",
+        "hosted_by": "creator_nero_forge",
+        "webhook_url": "http://127.0.0.1:18762/move",
+        "webhook_port": 18762,
         "goal": "win",
         "strength_tier": "strategy_llm+sf_fallback",
-        "reasoning": "asi1,gemini",  # order via BOARDMAN_NERO_REASONERS
-        "asi_agents": ["nero"],
-        "strategy_prompt": True,  # mind + strategy_id → LLM system prompt
+        "notes": "Chess-only ship. Add game_ids + webhook handlers to teach more games.",
     },
 }

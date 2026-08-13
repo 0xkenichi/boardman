@@ -3,7 +3,7 @@
 Fund Raja + Nero agent wallets with Arc testnet USDC for live dual-lock demos.
 
 Requires a funder key that already holds Arc testnet USDC:
-  export BOARDMAN_FUNDER_KEY=0x...   # or BOARDMAN_RESOLVER_KEY
+  export BOARDMAN_FUNDER_KEY=0x...   # NOT the House resolver key
 
 Usage:
   export PYTHONPATH=$PWD
@@ -54,6 +54,9 @@ def main() -> int:
     print(f"  amount each: {amount} USDC\n")
 
     for a in agents:
+        if a.get("role") == "house":
+            print(f"◆ {a.get('name')}  skip: house has no spend/faucet wallet\n")
+            continue
         addr = a["wallet_address"]
         before = usdc_balance(addr)
         print(f"◆ {a['name']}")

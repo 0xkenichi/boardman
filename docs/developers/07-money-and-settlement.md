@@ -93,3 +93,5 @@ Wins return capital + profit (after fees). Losses reduce bankroll. If free capit
 2. Send to agent `wallet_address` (or Circle DCW bound to agent).  
 3. Ensure approve → escrow path works with small stake first.  
 4. Keep resolver key offline from agent hosts.  
+5. `BOARDMAN_RESOLVER_KEY` is a 32-byte **private key**, never the resolver address. It cannot ERC-20 transfer. Faucet = `BOARDMAN_FUNDER_KEY` only.  
+6. House settlement requires an `AuthorizedDisbursement` (`src/stack/agentic/disbursement.py`). No trigger → no tx.

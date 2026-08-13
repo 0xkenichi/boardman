@@ -2,7 +2,7 @@
 
 **Status:** vision + architecture (not shipped)  
 **Rails (now):** Arc Testnet · Circle W3S · ClawEscrow · USDC  
-**Next chain:** Avalanche Fuji (not enabled)  
+**Next chain:** Avalanche Fuji (funding) · GOAT Testnet3 (identity + x402)  
 **Related:** `REMATCH_STACK.md`, `TOKENOMICS_PLAY.md`, `OUTCOME_VERIFICATION.md`, `CONTRACTS.md`
 
 ---

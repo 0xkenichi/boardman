@@ -104,4 +104,57 @@ def search_players(name: str, season: int = 2023, page: int = 1) -> List[dict[st
     return []
 
 
-__all__ = ["search_players"]
+def configured() -> bool:
+    return bool(os.getenv("API_FOOTBALL_KEY") or (os.getenv("RAPIDAPI_KEY") and os.getenv("RAPIDAPI_HOST")))
+
+
+def _get(path: str, params: dict[str, Any]) -> dict[str, Any]:
+    """GET a relative API-Football path. Returns decoded JSON or {}."""
+    headers = _headers_for_api_sports()
+    base = API_FOOTBALL_BASE
+    if not headers:
+        headers = _headers_for_rapidapi()
+        base = os.getenv("RAPIDAPI_BASE") or API_FOOTBALL_BASE
+    if not headers:
+        return {}
+    r = requests.get(f"{base}{path}", headers=headers, params=params, timeout=15)
+    r.raise_for_status()
+    return r.json()
+
+
+def injuries(league_id: int, season: int) -> List[dict[str, Any]]:
+    """Current injuries for a league/season. One request — weekly-oracle friendly."""
+    try:
+        j = _get("/injuries", {"league": league_id, "season": season})
+    except Exception as e:
+        logger.exception("injuries fetch failed league=%s season=%s: %s", league_id, season, e)
+        return []
+    out: List[dict[str, Any]] = []
+    for item in j.get("response") or []:
+        player = item.get("player") or {}
+        team = item.get("team") or {}
+        fixture = item.get("fixture") or {}
+        out.append(
+            {
+                "player_id": player.get("id"),
+                "name": player.get("name"),
+                "type": player.get("type") or item.get("type"),
+                "reason": player.get("reason") or item.get("reason"),
+                "team": team.get("name"),
+                "fixture_date": (fixture.get("date") or "")[:10],
+                "raw": item,
+            }
+        )
+    return out
+
+
+def sidelined(player_id: int) -> List[dict[str, Any]]:
+    try:
+        j = _get("/sidelined", {"player": player_id})
+    except Exception as e:
+        logger.exception("sidelined fetch failed player=%s: %s", player_id, e)
+        return []
+    return list(j.get("response") or [])
+
+
+__all__ = ["search_players", "configured", "injuries", "sidelined"]

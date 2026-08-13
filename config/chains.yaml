@@ -3,7 +3,8 @@
 # Product posture (now):
 #   - NETWORK: testnet
 #   - LIVE for users: Arc only
-#   - NEXT: Avalanche Fuji (config kept, not enabled)
+#   - NEXT: Avalanche Fuji (funding; Team1 grant path)
+#   - PLANNED: GOAT Testnet3 (ERC-8004 identity + x402; not settlement)
 #   - Base Sepolia: legacy / internal, not offered in product UI
 #
 # enabled: false chains stay in this file for deploy prep but are hidden from
@@ -116,6 +117,83 @@ chains:
     escrow_address: ""
     notes: "MiniPay / Proof-of-Ship. Host shell live; dual-lock escrow on Celo optional later."
 
+  # GOAT Network — Bitcoin-secured EVM L2. Supplier rail for agent identity (ERC-8004)
+  # and x402 pay-to-challenge / pay-to-watch. Skill escrow stays on Arc until we
+  # deploy BoardmanEscrow here.
+  goat:
+    id: goat
+    label: GOAT Network
+    enabled: false
+    recommended: false
+    status: planned
+    circle_blockchain: ""
+    chain_id: 2345
+    rpc_url: https://rpc.goat.network
+    explorer_tx: https://explorer.goat.network/tx/
+    usdc_address: ""
+    circle_usdc_token_id: ""
+    gas_token: BTC
+    gas_mode: native_btc
+    gas_tank_required: true
+    escrow_address: ""
+    notes: "Supplier: ERC-8004 + x402. Do not stake here until escrow is deployed."
+
+  # 0G Chain — AI L1. WaveHack / Agentic ID (ERC-7857) + match proofs.
+  # Skill pots stay on Arc.
+  "0g":
+    id: "0g"
+    label: 0G Mainnet
+    enabled: false
+    recommended: false
+    status: planned
+    circle_blockchain: ""
+    chain_id: 16661
+    rpc_url: https://evmrpc.0g.ai
+    explorer_tx: https://chainscan.0g.ai/tx/
+    usdc_address: ""
+    circle_usdc_token_id: ""
+    gas_token: 0G
+    gas_mode: native_0g
+    gas_tank_required: true
+    escrow_address: ""
+    notes: "AKINDO Wave 3: MatchProof + ERC-7857. Not settlement."
+
+  "0g_testnet":
+    id: "0g_testnet"
+    label: 0G Testnet
+    enabled: false
+    recommended: false
+    status: planned
+    circle_blockchain: ""
+    chain_id: 16602
+    rpc_url: https://evmrpc-testnet.0g.ai
+    explorer_tx: https://chainscan-galileo.0g.ai/tx/
+    usdc_address: ""
+    circle_usdc_token_id: ""
+    gas_token: 0G
+    gas_mode: native_0g
+    gas_tank_required: true
+    escrow_address: ""
+    notes: "Galileo-style testnet (chainId 16602 in 0G Hardhat docs). Wave 3 still wants mainnet proof."
+
+  goat_testnet:
+    id: goat_testnet
+    label: GOAT Testnet3
+    enabled: false
+    recommended: false
+    status: planned
+    circle_blockchain: ""
+    chain_id: 48816
+    rpc_url: https://rpc.testnet3.goat.network
+    explorer_tx: https://explorer.testnet3.goat.network/tx/
+    usdc_address: ""
+    circle_usdc_token_id: ""
+    gas_token: BTC
+    gas_mode: native_btc
+    gas_tank_required: true
+    escrow_address: ""
+    notes: "Grant qualify rail. Register agents + x402 here first."
+
   celo_alfajores:
     id: celo_alfajores
     label: Celo Alfajores
@@ -146,5 +224,5 @@ settlement:
 bridge:
   enabled: false
   extra_fee_bps: 50   # +0.5% on top of platform 7% when we bridge for them
-  supported_sources: [stellar, avalanche, base, arc]
+  supported_sources: [stellar, avalanche, base, arc, goat, goat_testnet]
   target: arc

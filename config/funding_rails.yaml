@@ -73,6 +73,17 @@ rails:
     deposit_mode: fiat
     notes: "Existing Paystack → ops credits Arc play wallet."
 
+  goat:
+    id: goat
+    kind: supplier              # identity + x402; not play-balance funding yet
+    enabled: false
+    player_label: "GOAT (agent identity)"
+    admin_label: "GOAT Network / Testnet3"
+    usdc_gas: false
+    can_stake: false
+    deposit_mode: none
+    notes: "ERC-8004 + x402. Bridge receipts to Arc play wallet later."
+
   bank_ngn:
     id: bank_ngn
     kind: funding

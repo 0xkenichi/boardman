@@ -56,6 +56,16 @@ class AgentMatchService:
             raise ValueError("both agents must be registered")
         if agent_a_id == agent_b_id:
             raise ValueError("agents must be different")
+        if a.get("role") == "house" or b.get("role") == "house":
+            raise ValueError("Boardman House clerks matches — it cannot play")
+        from gaming.src.stack.agentic.house import live_match_for_agent
+
+        for aid, label in ((agent_a_id, "A"), (agent_b_id, "B")):
+            busy = live_match_for_agent(aid)
+            if busy:
+                raise ValueError(
+                    f"agent {label} ({aid}) already live on {busy.get('match_id')}"
+                )
         if not a.get("wallet_address") or not b.get("wallet_address"):
             raise ValueError("both agents must have wallet_address bound to play")
 
@@ -63,6 +73,13 @@ class AgentMatchService:
 
         if game_id != "agentic.chess_standard" and not get_game_meta(game_id):
             raise ValueError(f"unknown game_id: {game_id}")
+        for ag, label in ((a, "A"), (b, "B")):
+            gids = list(ag.get("game_ids") or [])
+            if "*" not in gids and game_id not in gids:
+                raise ValueError(
+                    f"agent {label} ({ag.get('agent_id')}) does not play {game_id} "
+                    "— the builder has not shipped that game yet"
+                )
 
         match_id = f"agm_{uuid.uuid4().hex[:12]}"
         # white_agent_id == p1 (first mover) for all games
@@ -212,6 +229,10 @@ class AgentMatchService:
             },
             "escrow": esc,
             "onchain": None,
+            "onchain_player1": None,
+            "onchain_player2": None,
+            "house_agent_id": "agent_boardman_house",
+            "clerk": "boardman_house",
             "fee_split": None,
             "result": None,
             "winner_agent_id": None,
@@ -229,11 +250,26 @@ class AgentMatchService:
 
     def lock_both(self, match_id: str) -> dict[str, Any]:
         from gaming.src.stack.agentic.onchain import dual_lock_onchain, onchain_enabled
+        from gaming.src.stack.agentic.disbursement import (
+            DisbursementDenied,
+            allow_ledger_fallback,
+            authorize_skill_lock,
+        )
 
         data = self._load()
         m = data["matches"].get(match_id)
         if not m:
             raise ValueError("match not found")
+        existing = ledger.get_escrow(match_id)
+        if existing and existing.get("status") == "locked":
+            m["escrow"] = existing
+            if m.get("status") in {"open", "partial_lock", "queued"}:
+                m["status"] = "locked"
+                m["updated_at"] = _now()
+                data["matches"][match_id] = m
+                self._save(data)
+            return m
+        authorize_skill_lock(m)
 
         onchain_result = None
         if onchain_enabled():
@@ -252,6 +288,17 @@ class AgentMatchService:
                 )
                 m["onchain"] = onchain_result
                 m["settlement_mode"] = "onchain"
+                p1 = onchain_result.get("player1")
+                p2 = onchain_result.get("player2")
+                if p1 and p2:
+                    m["onchain_player1"] = p1
+                    m["onchain_player2"] = p2
+                    if white_is_a:
+                        m["agent_a_wallet"] = p1
+                        m["agent_b_wallet"] = p2
+                    else:
+                        m["agent_a_wallet"] = p2
+                        m["agent_b_wallet"] = p1
                 logger.info(
                     "[agentic] on-chain dual-lock ok match=%s create=%s join=%s",
                     match_id,
@@ -259,8 +306,16 @@ class AgentMatchService:
                     onchain_result.get("join_tx_hash"),
                 )
             except Exception as exc:
-                logger.exception("[agentic] on-chain lock failed, falling back to demo ledger: %s", exc)
+                logger.exception("[agentic] on-chain lock failed: %s", exc)
                 m["onchain_error"] = str(exc)
+                if not allow_ledger_fallback():
+                    m["status"] = "lock_failed"
+                    m["updated_at"] = _now()
+                    data["matches"][match_id] = m
+                    self._save(data)
+                    raise DisbursementDenied(
+                        f"on-chain lock failed and ledger fallback is off: {exc}"
+                    ) from exc
                 m["settlement_mode"] = "demo_ledger_fallback"
                 onchain_result = None
 
@@ -312,6 +367,12 @@ class AgentMatchService:
         from gaming.src.stack.agentic.economy.fees import FeeRouter
         from gaming.src.stack.agentic.economy.spectator import SpectatorBook
         from gaming.src.stack.agentic.chess.personas import get_persona
+        from gaming.src.stack.agentic.disbursement import (
+            DisbursementDenied,
+            allow_ledger_fallback,
+            authorize_skill_settlement,
+            require_onchain_settlement,
+        )
 
         reg = get_registry()
         # Attach economy from silo if missing
@@ -322,22 +383,43 @@ class AgentMatchService:
                 ag.setdefault("creator_fee_bps", p.get("creator_fee_bps"))
                 ag.setdefault("economy", p.get("economy"))
 
-        # Normalize results: white_win/black_win (chess) or p1_win/p2_win (generic)
-        rcode = result.get("result") or ""
-        draw = rcode in {"draw", "1/2-1/2"}
+        try:
+            auth = authorize_skill_settlement(m, result, white=white, black=black)
+        except DisbursementDenied:
+            m["status"] = "settle_failed"
+            m["settle_error"] = "disbursement denied — result is not a contract trigger"
+            m["updated_at"] = _now()
+            data = self._load()
+            data["matches"][match_id] = m
+            self._save(data)
+            raise
+
+        draw = auth.action == "cancel"
         winner = loser = None
         if not draw:
-            winner_id = result.get("winner_agent_id")
+            winner_id = result.get("winner_agent_id") or (
+                white["agent_id"]
+                if auth.winner_wallet
+                and auth.winner_wallet.lower()
+                == (white.get("wallet_address") or "").lower()
+                else None
+            )
             if not winner_id:
+                rcode = str(result.get("result") or "")
                 if rcode in {"white_win", "p1_win"}:
                     winner_id = white["agent_id"]
                 elif rcode in {"black_win", "p2_win"}:
                     winner_id = black["agent_id"]
-            if not winner_id:
-                draw = True
+            if winner_id == white["agent_id"]:
+                winner, loser = white, black
+            elif winner_id == black["agent_id"]:
+                winner, loser = black, white
             else:
-                winner = white if winner_id == white["agent_id"] else black
-                loser = black if winner is white else white
+                raise DisbursementDenied("authorized win but winner agent is missing")
+            # Pay the authorized (on-chain) wallet, not a stale registry copy.
+            winner = {**winner, "wallet_address": auth.winner_wallet}
+
+        m["disbursement"] = auth.to_dict()
 
         fee_split = FeeRouter().split_skill_pot(
             stake_usdc=Decimal(str(m["stake_usdc"])),
@@ -348,20 +430,26 @@ class AgentMatchService:
         m["fee_split"] = fee_split.to_dict()
 
         onchain_settle = None
-        if m.get("settlement_mode") == "onchain" or (
+        onchain_needed = require_onchain_settlement(m) or (
             onchain_enabled() and m.get("onchain") and not m.get("onchain_error")
-        ):
+        )
+        if onchain_needed:
             try:
                 if draw:
                     onchain_settle = resolve_onchain(
-                        match_id, white["wallet_address"], chain_id=m.get("chain_id") or "arc", draw=True
+                        match_id,
+                        white["wallet_address"],
+                        chain_id=m.get("chain_id") or "arc",
+                        draw=True,
+                        authorization=auth,
                     )
                 else:
                     onchain_settle = resolve_onchain(
                         match_id,
-                        winner["wallet_address"],
+                        auth.winner_wallet,
                         chain_id=m.get("chain_id") or "arc",
                         draw=False,
+                        authorization=auth,
                     )
                 m["onchain_settle"] = onchain_settle
                 logger.info(
@@ -370,8 +458,17 @@ class AgentMatchService:
                     onchain_settle.get("tx_hash"),
                 )
             except Exception as exc:
-                logger.exception("[agentic] on-chain settle failed, demo ledger only: %s", exc)
+                logger.exception("[agentic] on-chain settle failed: %s", exc)
                 m["onchain_settle_error"] = str(exc)
+                if not allow_ledger_fallback():
+                    m["status"] = "settle_failed"
+                    m["updated_at"] = _now()
+                    data = self._load()
+                    data["matches"][match_id] = m
+                    self._save(data)
+                    raise DisbursementDenied(
+                        f"on-chain settle failed and ledger fallback is off: {exc}"
+                    ) from exc
 
         from gaming.src.stack.agentic.economy.lp import AgentLPPool
         from gaming.src.stack.agentic.economy.budget import budget_from_manifest
@@ -502,10 +599,10 @@ class AgentMatchService:
         m = data["matches"].get(match_id)
         if not m:
             raise ValueError("match not found")
-        if m["status"] not in {"open", "partial_lock", "locked"}:
+        if m["status"] not in {"open", "partial_lock", "locked", "playing", "queued"}:
             raise ValueError(f"cannot play from status {m['status']}")
 
-        if m["status"] != "locked":
+        if m["status"] in {"open", "partial_lock", "queued"}:
             m = self.lock_both(match_id)
 
         reg = get_registry()
@@ -534,6 +631,33 @@ class AgentMatchService:
         self._save(data)
 
         game_id = m.get("game_id") or "agentic.chess_standard"
+
+        def _persist_live(ev) -> None:
+            payload = ev.__dict__ if hasattr(ev, "__dict__") else dict(ev)
+            live = self._load()
+            rec = live["matches"].get(match_id)
+            if not rec:
+                return
+            moves = list(rec.get("moves") or [])
+            moves.append(
+                {
+                    "ply": payload.get("ply"),
+                    "san": payload.get("san"),
+                    "uci": payload.get("uci"),
+                    "fen": payload.get("fen"),
+                    "side": payload.get("side"),
+                    "agent_id": payload.get("agent_id"),
+                    "source": payload.get("engine_source"),
+                }
+            )
+            rec["moves"] = moves
+            rec["status"] = "playing"
+            rec["updated_at"] = _now()
+            live["matches"][match_id] = rec
+            self._save(live)
+            if on_move:
+                on_move(ev)
+
         if game_id == "agentic.chess_standard":
             from gaming.src.stack.agentic.chess.arena import play_match
 
@@ -544,7 +668,7 @@ class AgentMatchService:
                 seed=seed,
                 time_control_id=m.get("time_control_id"),
                 use_agent_think_delay=move_delay_sec <= 0.05,
-                on_move=on_move,
+                on_move=_persist_live,
             )
         else:
             from gaming.src.stack.agentic.games.runner import play_generic_match

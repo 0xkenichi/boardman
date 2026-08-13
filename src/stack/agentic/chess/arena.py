@@ -16,6 +16,7 @@ import chess
 import chess.pgn
 
 from gaming.src.stack.agentic.chess.hybrid_engine import HybridEngine, mind_from_agent
+from gaming.src.stack.agentic.runtime.webhook import ask_agent_move
 
 
 @dataclass
@@ -118,6 +119,33 @@ def _default_max_plies() -> int:
     return int(os.getenv("BOARDMAN_MAX_PLIES", "200"))
 
 
+def _ask_builder_or_engine(agent: dict[str, Any], engine: HybridEngine, board: chess.Board, *, game_id: str) -> chess.Move:
+    """Ask the builder webhook (or that silo only). Engine is last-resort fallback."""
+    legal = [m.uci() for m in board.legal_moves]
+    raw = ask_agent_move(
+        agent,
+        game_id=game_id,
+        state={"fen": board.fen(), "to_move": "w" if board.turn == chess.WHITE else "b"},
+        legal_moves=legal,
+    )
+    if raw:
+        try:
+            mv = chess.Move.from_uci(raw)
+            if mv in board.legal_moves:
+                engine.last_source = "builder_webhook"
+                return mv
+        except ValueError:
+            pass
+        try:
+            mv = board.parse_san(raw)
+            if mv in board.legal_moves:
+                engine.last_source = "builder_webhook"
+                return mv
+        except ValueError:
+            pass
+    return engine.choose_move(board)
+
+
 def play_match(
     *,
     white_agent: dict[str, Any],
@@ -213,7 +241,7 @@ def play_match(
         if delay > 0:
             time.sleep(delay)
 
-        mv = engine.choose_move(board)
+        mv = _ask_builder_or_engine(agent, engine, board, game_id="agentic.chess_standard")
         san = board.san(mv)
         is_cap = board.is_capture(mv)
         src = engine.last_source
@@ -380,7 +408,7 @@ def iter_match(
         agent = white_agent if board.turn == chess.WHITE else black_agent
         engine = white_engine if board.turn == chess.WHITE else black_engine
         side = "white" if board.turn == chess.WHITE else "black"
-        mv = engine.choose_move(board)
+        mv = _ask_builder_or_engine(agent, engine, board, game_id="agentic.chess_standard")
         san = board.san(mv)
         is_cap = board.is_capture(mv)
         src = engine.last_source

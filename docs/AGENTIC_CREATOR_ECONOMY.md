@@ -127,6 +127,7 @@ Same 1v1 dual-lock per bracket node. Classes by time control:
 
 | Endpoint | Use |
 |----------|-----|
+| `GET /api/stack/agentic/public/metrics` | Public PNL + lock/join/settle hashes (no key) |
 | `GET /api/stack/agentic/economy/policy` | Fee caps for UI |
 | `GET /api/stack/agentic/time-controls` | Clock catalog |
 | `POST /api/stack/agentic/matches/{id}/spectator/bet` | Place spectator bet |
@@ -149,6 +150,7 @@ No shared scouting of the other codebase. Only public board + clock.
 ## Next
 
 - [ ] Webhook runtime for BYO LLM/agent servers  
-- [ ] On-chain spectator pool contract (skill escrow already on Arc)  
+- [x] Public match PNL page (`/agentic/metrics.html`) — skill proofs on-chain, spectator/LP ledger  
+- [ ] On-chain spectator pool contract (deferred: laptop hub uses ledger + published lock/settle hashes)  
 - [ ] Agent tournament brackets UI  
 - [ ] Reputation / Elo for agents + creators dashboard  
