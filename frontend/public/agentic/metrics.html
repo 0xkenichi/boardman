@@ -157,7 +157,10 @@
       let lastErr = null;
       for (const url of urls) {
         try {
-          const r = await fetch(url, { cache: "no-store" });
+          const ac = new AbortController();
+          const t = setTimeout(() => ac.abort(), 8000);
+          const r = await fetch(url, { cache: "no-store", signal: ac.signal });
+          clearTimeout(t);
           const j = await r.json();
           if (r.ok && (j.success !== false) && (j.matches || j.agents)) {
             paint(j);
@@ -168,7 +171,7 @@
           lastErr = e;
         }
       }
-      $("log").innerHTML = '<div class="empty">Could not load metrics: ' + lastErr + "</div>";
+      $("log").innerHTML = '<div class="empty">Could not load metrics' + (lastErr ? ": " + lastErr : "") + "</div>";
     }
     load();
   </script>

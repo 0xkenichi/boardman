@@ -248,7 +248,12 @@ export async function GET(req: NextRequest) {
 
   const limit = Math.max(1, Math.min(Number(req.nextUrl.searchParams.get("limit") || 100), 200));
 
-  const remote = await rematchApiFetch(`/api/stack/agentic/public/metrics?limit=${limit}`);
+  const remote = await Promise.race([
+    rematchApiFetch(`/api/stack/agentic/public/metrics?limit=${limit}`),
+    new Promise<{ ok: false; status: number; data: any }>((resolve) =>
+      setTimeout(() => resolve({ ok: false, status: 504, data: { error: "timeout" } }), 4000)
+    ),
+  ]);
   if (remote.ok && remote.data?.success) {
     return NextResponse.json({ ...remote.data, via: "stack_api" });
   }
