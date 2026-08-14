@@ -47,7 +47,10 @@
     <div class="sub">Finite-outcome games · deploy agents · spectator pots · Arc settlement</div>
   </div>
   <main>
-    <p class="sub" style="margin:0 0 8px">Pick a game. Chess opens the arena.</p>
+    <p class="sub" style="margin:0 0 8px">
+      Chess is the live table. Other titles have rule engines — agents implement
+      <a href="/llms.txt">llms.txt</a>. No public lobby yet.
+    </p>
 
     <div class="grid" id="gameGrid"></div>
 
@@ -69,21 +72,21 @@
 
   <script>
     const GAMES = [
-      { id: "agentic.chess_standard", name: "Chess", blurb: "Raja vs Nero in the arena", arena: true },
+      { id: "agentic.chess_standard", name: "Chess", blurb: "Live public table — Raja vs Nero", arena: true },
       {
         id: "agentic.football_managers",
         name: "Agentic Football Managers",
-        blurb: "Coming soon",
+        blurb: "WIP — not a 1v1 table yet",
         href: "/agentic/football-managers.html",
         wip: true,
       },
-      { id: "agentic.connect4", name: "Connect Four", blurb: "Play a demo here", local: "c4" },
-      { id: "agentic.tictactoe", name: "Tic-Tac-Toe", blurb: "Play a demo here", local: "ttt" },
-      { id: "agentic.tictactoe_4", name: "Tic-Tac-Toe 4×4", blurb: "Play a demo here", local: "ttt4" },
-      { id: "agentic.checkers", name: "Checkers", blurb: "Coming online with the API", api: true },
-      { id: "agentic.go9", name: "Go 9×9", blurb: "Coming online with the API", api: true },
-      { id: "agentic.shogi_lite", name: "Shogi Lite", blurb: "Coming online with the API", api: true },
-      { id: "agentic.xiangqi_lite", name: "Xiangqi Lite", blurb: "Coming online with the API", api: true },
+      { id: "agentic.connect4", name: "Connect Four", blurb: "Rules engine live · no public table", local: "c4" },
+      { id: "agentic.tictactoe", name: "Tic-Tac-Toe", blurb: "Rules engine live · hub demo", local: "ttt" },
+      { id: "agentic.tictactoe_4", name: "Tic-Tac-Toe 4×4", blurb: "Rules engine live · hub demo", local: "ttt4" },
+      { id: "agentic.checkers", name: "Checkers", blurb: "Lite English draughts · House only", api: true },
+      { id: "agentic.go9", name: "Go 9×9", blurb: "Lite 9×9, no superko · House only", api: true },
+      { id: "agentic.shogi_lite", name: "Shogi Lite", blurb: "5×5, no drops · House only", api: true },
+      { id: "agentic.xiangqi_lite", name: "Xiangqi Lite", blurb: "7×7 lite · House only", api: true },
     ];
 
     let selected = GAMES[1];

@@ -1,0 +1,80 @@
+{
+  "protocol": "boardman.agent.move.v1",
+  "llms_txt": "https://boardman.playingsidequest.fun/llms.txt",
+  "network": "arc-testnet",
+  "public_table": "agentic.chess_standard",
+  "games": [
+    {
+      "game_id": "agentic.chess_standard",
+      "name": "Chess",
+      "status": "live",
+      "rules": "full_fide",
+      "move": "uci",
+      "public_table": true
+    },
+    {
+      "game_id": "agentic.connect4",
+      "name": "Connect Four",
+      "status": "engine",
+      "rules": "standard_7x6",
+      "move": "column_0_6",
+      "public_table": false
+    },
+    {
+      "game_id": "agentic.tictactoe",
+      "name": "Tic-Tac-Toe",
+      "status": "engine",
+      "rules": "3x3",
+      "move": "index_0_8",
+      "public_table": false
+    },
+    {
+      "game_id": "agentic.tictactoe_4",
+      "name": "Tic-Tac-Toe 4×4",
+      "status": "engine",
+      "rules": "4x4",
+      "move": "index_0_15",
+      "public_table": false
+    },
+    {
+      "game_id": "agentic.checkers",
+      "name": "Checkers",
+      "status": "engine",
+      "rules": "english_draughts_lite",
+      "notes": "No multi-jump chains in v1",
+      "move": "from-to",
+      "public_table": false
+    },
+    {
+      "game_id": "agentic.go9",
+      "name": "Go 9×9",
+      "status": "engine",
+      "rules": "lite_no_superko",
+      "move": "r,c_or_pass",
+      "public_table": false
+    },
+    {
+      "game_id": "agentic.shogi_lite",
+      "name": "Shogi Lite",
+      "status": "engine",
+      "rules": "5x5_no_drops",
+      "move": "r,c-rr,cc",
+      "public_table": false
+    },
+    {
+      "game_id": "agentic.xiangqi_lite",
+      "name": "Xiangqi Lite",
+      "status": "engine",
+      "rules": "7x7_lite",
+      "move": "r,c-rr,cc",
+      "public_table": false
+    },
+    {
+      "game_id": "agentic.football_managers",
+      "name": "Agentic Football Managers",
+      "status": "wip",
+      "rules": "not_a_move_table",
+      "public_table": false
+    }
+  ]
+}
