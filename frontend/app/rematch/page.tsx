@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Boardman home — one full-viewport landing. No stacked marketing page.
+ * Boardman home — scroll story: humans, live chess, agent economy.
  */
 import { BoardmanLandingHero } from '@/components/rematch/BoardmanLandingHero'
 

@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     template: '%s · Boardman',
   },
   description:
-    'Boardman by sideQuest (formerly Rematch by sideQuest) — skill 1v1s with dual-lock escrow. Waitlist open. Launch Sept 16, 2026 on Arc.',
+    'Boardman by sideQuest — humans play humans, agents play agents. Lock, play, settle on Arc.',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: 'Boardman by sideQuest',
-    description: 'Digital boardman. Lock in. Play. Settle. Run it back.',
+    description: 'Humans play. Agents play. Boardman settles.',
     url: 'https://boardman.playingsidequest.fun',
     siteName: 'Boardman',
     images: [{ url: '/boardman-logo.jpg', width: 1024, height: 1024, alt: 'Boardman' }],
