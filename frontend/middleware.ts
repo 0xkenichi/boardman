@@ -106,7 +106,11 @@ export function middleware(req: NextRequest) {
 
   // API stays as-is
   if (path.startsWith('/api/')) {
-    return securityHeaders(NextResponse.next())
+    const res = securityHeaders(NextResponse.next())
+    if (path.startsWith('/api/agentic')) {
+      res.headers.set('Cache-Control', 'no-store')
+    }
+    return res
   }
 
   // Static rematch assets (icons, atmosphere, old SW)

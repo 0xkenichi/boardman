@@ -1,5 +1,5 @@
 /* Boardman service worker — scope / */
-const CACHE = 'boardman-v2-clean'
+const CACHE = 'boardman-v3-purge'
 const PRECACHE = [
   '/manifest.webmanifest',
   '/rematch/manifest.webmanifest',
@@ -40,6 +40,15 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(req.url)
   if (url.origin !== self.location.origin) return
+  if (
+    url.pathname.startsWith('/admin') ||
+    url.pathname.startsWith('/api/agentic') ||
+    url.pathname.indexOf('metrics') !== -1 ||
+    url.pathname.indexOf('match-proofs') !== -1
+  ) {
+    event.respondWith(fetch(req, { cache: 'no-store' }))
+    return
+  }
 
   const isDoc =
     req.mode === 'navigate' ||
