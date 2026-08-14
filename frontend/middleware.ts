@@ -127,6 +127,12 @@ export function middleware(req: NextRequest) {
   if (path === '/arena') {
     return redirectTo(req, '/agentic/arena.html')
   }
+  if (path === '/metrics' || path === '/agentic/metrics') {
+    return redirectTo(req, '/agentic/metrics.html')
+  }
+  if (path === '/catalog' || path === '/agentic/catalog') {
+    return redirectTo(req, '/agentic/football-catalog.html')
+  }
   if (path === '/hub') {
     return redirectTo(req, '/agentic/hub.html')
   }

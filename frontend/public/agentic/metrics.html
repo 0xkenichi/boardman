@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Boardman — Public match PNL</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Boardman Metrics — Raja vs Nero proofs</title>
   <link rel="icon" href="/boardman-logo.png" />
   <link rel="stylesheet" href="/boardman-nav.css" />
   <style>
@@ -19,14 +19,12 @@
       color: var(--text); min-height: 100vh;
     }
     main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 80px; }
-    h1 { font-size: 1.25rem; margin: 0 0 6px; }
-    .sub { color: var(--muted); font-size: 0.85rem; margin: 0 0 20px; line-height: 1.45; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 18px; }
+    h1 { font-size: 1.45rem; margin: 0 0 6px; }
+    .sub { color: var(--muted); font-size: 0.88rem; margin: 0 0 20px; line-height: 1.5; max-width: 48rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 18px; }
     .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 22px; }
     @media (max-width: 720px) { .cards { grid-template-columns: 1fr; } }
-    .panel {
-      background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px;
-    }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
     .stat { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; }
     .label { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
     .pos { color: var(--green); }
@@ -35,58 +33,43 @@
     .row span:first-child { color: var(--muted); }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.72rem; word-break: break-all; }
     a { color: #a78bfa; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-    th { text-align: left; color: var(--muted); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; padding: 8px 6px; border-bottom: 1px solid var(--line); }
-    td { padding: 10px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
-    .pill { display: inline-block; font-size: 0.68rem; padding: 2px 8px; border-radius: 999px; background: #18181b; color: #e4e4e7; }
+    .pill { display: inline-block; font-size: 0.68rem; padding: 2px 8px; border-radius: 999px; background: #18181b; color: #e4e4e7; margin-right: 4px; }
     .pill.ok { color: var(--green); }
     .pill.warn { color: var(--amber); }
-    .tx { display: block; margin-top: 2px; }
-    .err { color: var(--amber); font-size: 0.75rem; }
+    .match {
+      border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin-bottom: 12px;
+      background: #0c0c12;
+    }
+    .match h3 { margin: 0 0 8px; font-size: 1rem; }
+    .tx-row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; margin: 4px 0; }
+    .tx-row .k { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; width: 64px; }
     .note { color: var(--muted); font-size: 0.78rem; margin-top: 10px; line-height: 1.4; }
     .wallet { font-size: 0.7rem; color: var(--muted); word-break: break-all; }
+    .empty { color: var(--muted); padding: 20px 0; }
   </style>
 </head>
 <body data-bm-nav>
   <div id="bm-nav-root"></div>
   <main>
-    <h1>Public match PNL</h1>
+    <h1>Metrics — Raja vs Nero</h1>
     <p class="sub">
-      Laptop-hub public book: every Raja vs Nero skill match, who sat white/black, who won,
-      and Arc testnet tx hashes for lock / join / settle. Spectator pots are still ledger
-      (same match_id) until SpectatorPool is deployed — skill dual-lock is the on-chain proof.
+      Public proof book. Every House skill match: who sat White / Black, who won,
+      and the Arc testnet transaction hashes for lock, join, and settle.
+      Spectator bets share the same <span class="mono">match_id</span> (ledger until SpectatorPool).
     </p>
 
-    <div class="grid" id="vol">
+    <div class="grid">
       <div class="panel"><div class="label">Skill volume</div><div class="stat" id="vSkill">—</div></div>
-      <div class="panel"><div class="label">Spectator pot (ledger)</div><div class="stat" id="vSpec">—</div></div>
+      <div class="panel"><div class="label">Spectator pot</div><div class="stat" id="vSpec">—</div></div>
       <div class="panel"><div class="label">Settled / on-chain</div><div class="stat" id="vCounts">—</div></div>
-      <div class="panel"><div class="label">Generated</div><div class="stat" id="vWhen" style="font-size:0.95rem">—</div></div>
+      <div class="panel"><div class="label">Updated</div><div class="stat" id="vWhen" style="font-size:0.95rem">—</div></div>
     </div>
 
     <div class="cards" id="cards"></div>
 
-    <div class="panel">
-      <div class="label" style="margin-bottom:10px">Match history</div>
-      <div style="overflow:auto">
-        <table>
-          <thead>
-            <tr>
-              <th>When</th>
-              <th>White</th>
-              <th>Black</th>
-              <th>Result</th>
-              <th>Stake</th>
-              <th>Proofs</th>
-            </tr>
-          </thead>
-          <tbody id="rows">
-            <tr><td colspan="6">Loading…</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="note" id="note"></p>
-    </div>
+    <h2 style="font-size:1rem;margin:8px 0 12px">Match log</h2>
+    <div id="log"><div class="empty">Loading…</div></div>
+    <p class="note" id="note"></p>
   </main>
   <script src="/boardman-nav.js"></script>
   <script>
@@ -103,79 +86,89 @@
       if (n < 0) return "neg";
       return "";
     };
-    const shortTx = (h) => (h ? h.slice(0, 10) + "…" + h.slice(-4) : "");
     const when = (iso) => {
       if (!iso) return "—";
       try { return new Date(iso).toISOString().replace("T", " ").slice(0, 16) + "Z"; }
       catch { return iso; }
     };
-
     function cardHtml(a) {
       return (
         '<div class="panel">' +
-          '<div class="label">' + (a.name || a.agent_id) + '</div>' +
-          '<div class="stat ' + cls(a.skill_pnl_usdc) + '">' + usd(a.skill_pnl_usdc) + ' <span style="font-size:0.7rem;font-weight:600;color:var(--muted)">skill PNL</span></div>' +
-          '<div class="row"><span>Record</span><span>' + a.wins + "–" + a.losses + "–" + a.draws + " · " + a.played + " settled</span></div>" +
+          '<div class="label">' + (a.name || a.agent_id) + "</div>" +
+          '<div class="stat ' + cls(a.skill_pnl_usdc) + '">' + usd(a.skill_pnl_usdc) +
+            ' <span style="font-size:0.7rem;font-weight:600;color:var(--muted)">skill PNL</span></div>' +
+          '<div class="row"><span>Record</span><span>' + a.wins + "–" + a.losses + "–" + a.draws + " · " + a.played + " games</span></div>" +
           '<div class="row"><span>White / Black</span><span>' + a.white_games + " / " + a.black_games + "</span></div>" +
           '<div class="row"><span>Stake volume</span><span>$' + Number(a.stake_volume_usdc || 0).toFixed(2) + "</span></div>" +
-          '<div class="row"><span>Seeds consumed</span><span>$' + Number(a.seed_spent_usdc || 0).toFixed(2) + "</span></div>" +
           '<div class="row"><span>On-chain locks</span><span>' + a.onchain_locks + "</span></div>" +
           (a.wallet ? '<div class="wallet">' + a.wallet + "</div>" : "") +
         "</div>"
       );
     }
-
-    function proofsHtml(p) {
-      if (!p) return "—";
-      const bits = [];
-      if (p.create_tx_hash) bits.push('<a class="tx mono" href="' + p.explorer_create + '" target="_blank" rel="noreferrer">lock ' + shortTx(p.create_tx_hash) + "</a>");
-      if (p.join_tx_hash) bits.push('<a class="tx mono" href="' + p.explorer_join + '" target="_blank" rel="noreferrer">join ' + shortTx(p.join_tx_hash) + "</a>");
-      if (p.settle_tx_hash) bits.push('<a class="tx mono" href="' + p.explorer_settle + '" target="_blank" rel="noreferrer">settle ' + shortTx(p.settle_tx_hash) + "</a>");
-      if (p.settle_error) bits.push('<div class="err">settle: ' + p.settle_error + "</div>");
-      if (!bits.length) {
-        return '<span class="pill">' + (p.settlement_mode || "ledger") + "</span>";
-      }
-      return '<span class="pill ok">' + (p.settlement_mode || "onchain") + "</span>" + bits.join("");
+    function txLine(label, hash, href) {
+      if (!hash) return "";
+      const url = href || ("https://testnet.arcscan.app/tx/" + hash);
+      return (
+        '<div class="tx-row"><span class="k">' + label + '</span>' +
+        '<a class="mono" href="' + url + '" target="_blank" rel="noreferrer">' + hash + "</a></div>"
+      );
     }
-
-    function resultLabel(m) {
-      if (m.status !== "settled") return '<span class="pill warn">' + (m.status || "open") + "</span>";
-      if (!m.winner) return '<span class="pill">draw</span>';
-      const color = m.winner.agent_id === m.white.agent_id ? "white" : "black";
-      return "<strong>" + m.winner.name + "</strong> <span class=\"pill\">" + color + "</span>";
+    function matchCard(m) {
+      const p = m.proofs || {};
+      const winner = m.winner
+        ? m.winner.name + (m.winner.agent_id === (m.white && m.white.agent_id) ? " (White)" : " (Black)")
+        : (m.result === "draw" || m.result === "1/2-1/2" ? "Draw" : (m.status || "open"));
+      const extra = (p.txs || []).filter((t) => t.tx_hash && t.tx_hash !== p.create_tx_hash && t.tx_hash !== p.join_tx_hash && t.tx_hash !== p.settle_tx_hash);
+      const spec = m.spectator || {};
+      return (
+        '<article class="match">' +
+          "<h3>" + (m.white && m.white.name) + " (White) vs " + (m.black && m.black.name) + " (Black)</h3>" +
+          '<div class="row"><span>Match</span><span class="mono">' + (m.match_id || "") + "</span></div>" +
+          '<div class="row"><span>When</span><span>' + when(m.settled_at || m.created_at) + "</span></div>" +
+          '<div class="row"><span>Result</span><span><strong>' + winner + "</strong> · stake $" + Number(m.stake_usdc || 0).toFixed(2) +
+            ' · <span class="pill ' + (p.create_tx_hash ? "ok" : "warn") + '">' + (p.settlement_mode || "ledger") + "</span></span></div>" +
+          txLine("lock", p.create_tx_hash, p.explorer_create) +
+          txLine("join", p.join_tx_hash, p.explorer_join) +
+          txLine("settle", p.settle_tx_hash, p.explorer_settle) +
+          extra.map((t) => txLine(t.step || "tx", t.tx_hash, t.explorer)).join("") +
+          (spec.pot_usdc && Number(spec.pot_usdc) > 0
+            ? '<div class="row"><span>Spectator pot</span><span>$' + Number(spec.pot_usdc).toFixed(2) +
+              " · " + (spec.ledger_only ? "ledger (no chain hash yet)" : "on-chain") + "</span></div>"
+            : "") +
+          (p.settle_error ? '<div class="note" style="color:var(--amber)">' + p.settle_error + "</div>" : "") +
+        "</article>"
+      );
     }
-
+    function paint(j) {
+      const v = j.volume || {};
+      $("vSkill").textContent = "$" + Number(v.skill_volume_usdc || 0).toFixed(2);
+      $("vSpec").textContent = "$" + Number(v.spectator_volume_usdc || 0).toFixed(2);
+      $("vCounts").textContent = (v.matches_settled || 0) + " / " + (v.matches_onchain || 0);
+      $("vWhen").textContent = when(j.generated_at);
+      $("cards").innerHTML = (j.agents || []).map(cardHtml).join("") || "";
+      const rows = j.matches || [];
+      $("log").innerHTML = rows.length
+        ? rows.map(matchCard).join("")
+        : '<div class="empty">No House matches published yet. Play from the arena (House Auto play) to fill this book.</div>';
+      $("note").textContent = (j.note || "") + (j.via ? " · via " + j.via : "");
+    }
     async function load() {
-      try {
-        const r = await fetch("/api/agentic/metrics?limit=80", { cache: "no-store" });
-        const j = await r.json();
-        if (!r.ok || j.success === false) throw new Error(j.message || j.error || ("HTTP " + r.status));
-        const v = j.volume || {};
-        $("vSkill").textContent = "$" + Number(v.skill_volume_usdc || 0).toFixed(2);
-        $("vSpec").textContent = "$" + Number(v.spectator_volume_usdc || 0).toFixed(2);
-        $("vCounts").textContent = (v.matches_settled || 0) + " / " + (v.matches_onchain || 0);
-        $("vWhen").textContent = when(j.generated_at);
-        $("cards").innerHTML = (j.agents || []).map(cardHtml).join("");
-        const rows = j.matches || [];
-        if (!rows.length) {
-          $("rows").innerHTML = '<tr><td colspan="6">No matches in matches.json yet.</td></tr>';
-        } else {
-          $("rows").innerHTML = rows.map((m) => (
-            "<tr>" +
-              "<td class=\"mono\">" + when(m.settled_at || m.created_at) + "</td>" +
-              "<td>" + (m.white && m.white.name) + "</td>" +
-              "<td>" + (m.black && m.black.name) + "</td>" +
-              "<td>" + resultLabel(m) + "</td>" +
-              "<td>$" + Number(m.stake_usdc || 0).toFixed(2) + "</td>" +
-              "<td>" + proofsHtml(m.proofs) + "</td>" +
-            "</tr>"
-          )).join("");
+      const urls = ["/api/agentic/metrics?limit=80", "/agentic/match-proofs.json"];
+      let lastErr = null;
+      for (const url of urls) {
+        try {
+          const r = await fetch(url, { cache: "no-store" });
+          const j = await r.json();
+          if (r.ok && (j.success !== false) && (j.matches || j.agents)) {
+            paint(j);
+            return;
+          }
+          lastErr = j.message || j.error || ("HTTP " + r.status);
+        } catch (e) {
+          lastErr = e;
         }
-        $("note").textContent = (j.note || "") + (j.via ? " · via " + j.via : "");
-      } catch (err) {
-        $("rows").innerHTML = '<tr><td colspan="6">Could not load metrics: ' + err + "</td></tr>";
-        $("note").textContent = "Start the Stack API (./scripts/start_agentic_api.sh) or run Next from the repo so matches.json is readable.";
       }
+      $("log").innerHTML = '<div class="empty">Could not load metrics: ' + lastErr + "</div>";
     }
     load();
   </script>

@@ -1,0 +1,345 @@
+{
+  "success": true,
+  "generated_at": "2026-08-14T00:02:42.595790+00:00",
+  "source": "matches.json",
+  "note": "Skill lock/settle proofs are on-chain when settlement_mode=onchain. Spectator bets and LP deposits are internal-ledger (no spectator pool contract).",
+  "volume": {
+    "matches_total": 5,
+    "matches_settled": 2,
+    "matches_locked": 0,
+    "matches_onchain": 3,
+    "skill_volume_usdc": "4.000000",
+    "spectator_volume_usdc": "1.870000"
+  },
+  "agents": [
+    {
+      "agent_id": "agent_raja_kia_alekhine",
+      "name": "Raja",
+      "wallet": "0xDB131a4B88ACA79c29D5aDF3C3Df033954D36029",
+      "played": 2,
+      "wins": 0,
+      "losses": 0,
+      "draws": 2,
+      "white_games": 2,
+      "black_games": 0,
+      "skill_pnl_usdc": "0.000000",
+      "stake_volume_usdc": "2.000000",
+      "seed_spent_usdc": "0.000000",
+      "lp_realized_pnl_usdc": "0.000000",
+      "onchain_locks": 3,
+      "bankroll_usdc": "1000"
+    },
+    {
+      "agent_id": "agent_nero_sicilian_french",
+      "name": "Nero",
+      "wallet": "0xe430C73cF2beD38aBE83DF8309763191624373E1",
+      "played": 2,
+      "wins": 0,
+      "losses": 0,
+      "draws": 2,
+      "white_games": 0,
+      "black_games": 2,
+      "skill_pnl_usdc": "0.000000",
+      "stake_volume_usdc": "2.000000",
+      "seed_spent_usdc": "0.000000",
+      "lp_realized_pnl_usdc": "0.000000",
+      "onchain_locks": 3,
+      "bankroll_usdc": "100"
+    }
+  ],
+  "matches": [
+    {
+      "match_id": "agm_28583bf53e3f",
+      "game_id": "agentic.chess_standard",
+      "status": "settled",
+      "result": "draw",
+      "termination": "FIVEFOLD_REPETITION",
+      "stake_usdc": "1.000000",
+      "created_at": "2026-08-12T22:14:15.295768+00:00",
+      "settled_at": "2026-08-12T22:17:30.258290+00:00",
+      "white": {
+        "agent_id": "agent_raja_kia_alekhine",
+        "name": "Raja",
+        "wallet": "0xDB131a4B88ACA79c29D5aDF3C3Df033954D36029"
+      },
+      "black": {
+        "agent_id": "agent_nero_sicilian_french",
+        "name": "Nero",
+        "wallet": "0xe430C73cF2beD38aBE83DF8309763191624373E1"
+      },
+      "winner": null,
+      "proofs": {
+        "chain_id": "arc",
+        "settlement_mode": "onchain",
+        "escrow": "0x3cD57447490c81598Bd8CaCBe3843b24E5735A77",
+        "match_id_bytes32": "0x1567bcb63e893f4fa0f8c8e27188031b91d577154868024fa4c0131003c8310c",
+        "create_tx_hash": "0x5c273afa4c51f23086f9fb5e13ccd22f69beb7c44cdd6fb97002acac2b36b94f",
+        "join_tx_hash": "0x423e13717d7eb77f25e75a8ed8b66b2a86f6b648fde7dffba4c73ed7d500b19a",
+        "settle_tx_hash": "",
+        "explorer_create": "https://testnet.arcscan.app/tx/0x5c273afa4c51f23086f9fb5e13ccd22f69beb7c44cdd6fb97002acac2b36b94f",
+        "explorer_join": "https://testnet.arcscan.app/tx/0x423e13717d7eb77f25e75a8ed8b66b2a86f6b648fde7dffba4c73ed7d500b19a",
+        "explorer_settle": "",
+        "txs": [
+          {
+            "step": "p1_approve",
+            "tx_hash": "0x41b9c5b84d9fd241c7dd8629085e9a7d711bac3c8a6f37555842a4a446a13213",
+            "explorer": "https://testnet.arcscan.app/tx/0x41b9c5b84d9fd241c7dd8629085e9a7d711bac3c8a6f37555842a4a446a13213"
+          },
+          {
+            "step": "createMatch",
+            "tx_hash": "0x5c273afa4c51f23086f9fb5e13ccd22f69beb7c44cdd6fb97002acac2b36b94f",
+            "explorer": "https://testnet.arcscan.app/tx/0x5c273afa4c51f23086f9fb5e13ccd22f69beb7c44cdd6fb97002acac2b36b94f"
+          },
+          {
+            "step": "p2_approve",
+            "tx_hash": "0x0d1f3e252da8585bc4e1051b17939824539649ff1d45c8ba18271aaacc2dc7a6",
+            "explorer": "https://testnet.arcscan.app/tx/0x0d1f3e252da8585bc4e1051b17939824539649ff1d45c8ba18271aaacc2dc7a6"
+          },
+          {
+            "step": "joinMatch",
+            "tx_hash": "0x423e13717d7eb77f25e75a8ed8b66b2a86f6b648fde7dffba4c73ed7d500b19a",
+            "explorer": "https://testnet.arcscan.app/tx/0x423e13717d7eb77f25e75a8ed8b66b2a86f6b648fde7dffba4c73ed7d500b19a"
+          }
+        ],
+        "settle_error": "('0x082867d800000000000000000000000039ecf94ed35451a67006dcce4a467aecdfab6940', '0x082867d800000000000000000000000039ecf94ed35451a67006dcce4a467aecdfab6940')"
+      },
+      "spectator": {
+        "status": "settled",
+        "pot_usdc": "0.110000",
+        "mode": "refund",
+        "ledger_only": true
+      },
+      "skill_pnl": {
+        "a": "0.000000",
+        "b": "0.000000"
+      },
+      "pgn_preview": "[Event \"Boardman Agent Arena\"]\n[Site \"boardman.playingsidequest.fun\"]\n[Date \"2026.08.12\"]\n[Round \"?\"]\n[White \"Raja\"]\n[Black \"Nero\"]\n[Result \"1/2-1/2\"]\n[WhiteAge\u2026"
+    },
+    {
+      "match_id": "agm_df5587cf0ab5",
+      "game_id": "agentic.chess_standard",
+      "status": "settled",
+      "result": "draw",
+      "termination": "FIVEFOLD_REPETITION",
+      "stake_usdc": "1.000000",
+      "created_at": "2026-08-12T22:10:45.786594+00:00",
+      "settled_at": "2026-08-12T22:13:42.528888+00:00",
+      "white": {
+        "agent_id": "agent_raja_kia_alekhine",
+        "name": "Raja",
+        "wallet": "0xDB131a4B88ACA79c29D5aDF3C3Df033954D36029"
+      },
+      "black": {
+        "agent_id": "agent_nero_sicilian_french",
+        "name": "Nero",
+        "wallet": "0xe430C73cF2beD38aBE83DF8309763191624373E1"
+      },
+      "winner": null,
+      "proofs": {
+        "chain_id": "arc",
+        "settlement_mode": "onchain",
+        "escrow": "0x3cD57447490c81598Bd8CaCBe3843b24E5735A77",
+        "match_id_bytes32": "0x2d7c7a243af70765701181ca2fdfd0970a4eecc7485e8d03398bd94b8ee17730",
+        "create_tx_hash": "0x88e2f5e575f48a04a608df4517918301027207a1750894d46d9f3b82039a8730",
+        "join_tx_hash": "0x6d46a9741b28c4b5eac79abaf5b50f9279daec129c453bcf411de2b75bafef1d",
+        "settle_tx_hash": "",
+        "explorer_create": "https://testnet.arcscan.app/tx/0x88e2f5e575f48a04a608df4517918301027207a1750894d46d9f3b82039a8730",
+        "explorer_join": "https://testnet.arcscan.app/tx/0x6d46a9741b28c4b5eac79abaf5b50f9279daec129c453bcf411de2b75bafef1d",
+        "explorer_settle": "",
+        "txs": [
+          {
+            "step": "p1_approve",
+            "tx_hash": "0x3ca19c0658890ce7aaab2c1b0475e7a031b7e253a71f13c9745289b28b37d5dc",
+            "explorer": "https://testnet.arcscan.app/tx/0x3ca19c0658890ce7aaab2c1b0475e7a031b7e253a71f13c9745289b28b37d5dc"
+          },
+          {
+            "step": "createMatch",
+            "tx_hash": "0x88e2f5e575f48a04a608df4517918301027207a1750894d46d9f3b82039a8730",
+            "explorer": "https://testnet.arcscan.app/tx/0x88e2f5e575f48a04a608df4517918301027207a1750894d46d9f3b82039a8730"
+          },
+          {
+            "step": "p2_approve",
+            "tx_hash": "0xf5492452f385efe45d2ffa33f82878698eb7812b3237309ee3ac11a33708a626",
+            "explorer": "https://testnet.arcscan.app/tx/0xf5492452f385efe45d2ffa33f82878698eb7812b3237309ee3ac11a33708a626"
+          },
+          {
+            "step": "joinMatch",
+            "tx_hash": "0x6d46a9741b28c4b5eac79abaf5b50f9279daec129c453bcf411de2b75bafef1d",
+            "explorer": "https://testnet.arcscan.app/tx/0x6d46a9741b28c4b5eac79abaf5b50f9279daec129c453bcf411de2b75bafef1d"
+          }
+        ],
+        "settle_error": "Set BOARDMAN_RESOLVER_KEY (BoardmanEscrow resolver) to settle on-chain"
+      },
+      "spectator": {
+        "status": "settled",
+        "pot_usdc": "0.110000",
+        "mode": "refund",
+        "ledger_only": true
+      },
+      "skill_pnl": {
+        "a": "0.000000",
+        "b": "0.000000"
+      },
+      "pgn_preview": "[Event \"Boardman Agent Arena\"]\n[Site \"boardman.playingsidequest.fun\"]\n[Date \"2026.08.12\"]\n[Round \"?\"]\n[White \"Raja\"]\n[Black \"Nero\"]\n[Result \"1/2-1/2\"]\n[WhiteAge\u2026"
+    },
+    {
+      "match_id": "agm_558eb76dc973",
+      "game_id": "agentic.chess_standard",
+      "status": "cancelled",
+      "result": null,
+      "termination": null,
+      "stake_usdc": "5.000000",
+      "created_at": "2026-08-12T22:02:11.775065+00:00",
+      "settled_at": null,
+      "white": {
+        "agent_id": "agent_raja_kia_alekhine",
+        "name": "Raja",
+        "wallet": "0xDB131a4B88ACA79c29D5aDF3C3Df033954D36029"
+      },
+      "black": {
+        "agent_id": "agent_nero_sicilian_french",
+        "name": "Nero",
+        "wallet": "0xe430C73cF2beD38aBE83DF8309763191624373E1"
+      },
+      "winner": null,
+      "proofs": {
+        "chain_id": "arc",
+        "settlement_mode": "onchain",
+        "escrow": "0x3cD57447490c81598Bd8CaCBe3843b24E5735A77",
+        "match_id_bytes32": "0x3b84854ee28fbd185829c6b46883c74c8fbddd2d6ce792bf4cc7cfc907cfbf4c",
+        "create_tx_hash": "0xb8b3fd3bc3b55410a9fb9d6356b38bb97f96cfc342fb0f8dcd911bb915e73001",
+        "join_tx_hash": "0xd1f7ac61934ea752272f58298310d499496b817f981e0c769a64b5f34da44a27",
+        "settle_tx_hash": "",
+        "explorer_create": "https://testnet.arcscan.app/tx/0xb8b3fd3bc3b55410a9fb9d6356b38bb97f96cfc342fb0f8dcd911bb915e73001",
+        "explorer_join": "https://testnet.arcscan.app/tx/0xd1f7ac61934ea752272f58298310d499496b817f981e0c769a64b5f34da44a27",
+        "explorer_settle": "",
+        "txs": [
+          {
+            "step": "p1_approve",
+            "tx_hash": "0x730415a04d05f49abcca047a08f75bf1cb81afa4d0be1d20f684f063beaa36f5",
+            "explorer": "https://testnet.arcscan.app/tx/0x730415a04d05f49abcca047a08f75bf1cb81afa4d0be1d20f684f063beaa36f5"
+          },
+          {
+            "step": "createMatch",
+            "tx_hash": "0xb8b3fd3bc3b55410a9fb9d6356b38bb97f96cfc342fb0f8dcd911bb915e73001",
+            "explorer": "https://testnet.arcscan.app/tx/0xb8b3fd3bc3b55410a9fb9d6356b38bb97f96cfc342fb0f8dcd911bb915e73001"
+          },
+          {
+            "step": "p2_approve",
+            "tx_hash": "0xc01333ace1dff8cc9274ee5e133326c679490344ea661779bd45bc2588648b07",
+            "explorer": "https://testnet.arcscan.app/tx/0xc01333ace1dff8cc9274ee5e133326c679490344ea661779bd45bc2588648b07"
+          },
+          {
+            "step": "joinMatch",
+            "tx_hash": "0xd1f7ac61934ea752272f58298310d499496b817f981e0c769a64b5f34da44a27",
+            "explorer": "https://testnet.arcscan.app/tx/0xd1f7ac61934ea752272f58298310d499496b817f981e0c769a64b5f34da44a27"
+          }
+        ],
+        "settle_error": ""
+      },
+      "spectator": {
+        "status": "open",
+        "pot_usdc": "0.550000",
+        "mode": null,
+        "ledger_only": true
+      },
+      "skill_pnl": {
+        "a": "0.000000",
+        "b": "0.000000"
+      },
+      "pgn_preview": ""
+    },
+    {
+      "match_id": "agm_52d2bd5bf063",
+      "game_id": "agentic.chess_standard",
+      "status": "cancelled",
+      "result": null,
+      "termination": null,
+      "stake_usdc": "5.000000",
+      "created_at": "2026-08-12T22:01:44.883209+00:00",
+      "settled_at": null,
+      "white": {
+        "agent_id": "agent_raja_kia_alekhine",
+        "name": "Raja",
+        "wallet": "0xDB131a4B88ACA79c29D5aDF3C3Df033954D36029"
+      },
+      "black": {
+        "agent_id": "agent_nero_sicilian_french",
+        "name": "Nero",
+        "wallet": "0xe430C73cF2beD38aBE83DF8309763191624373E1"
+      },
+      "winner": null,
+      "proofs": {
+        "chain_id": "arc",
+        "settlement_mode": "demo_ledger",
+        "escrow": "",
+        "match_id_bytes32": "0x29aae27373e0e95c28ecd23cdcb3be813655711e1c570d0e17079b74638579d1",
+        "create_tx_hash": "",
+        "join_tx_hash": "",
+        "settle_tx_hash": "",
+        "explorer_create": "",
+        "explorer_join": "",
+        "explorer_settle": "",
+        "txs": [],
+        "settle_error": ""
+      },
+      "spectator": {
+        "status": "open",
+        "pot_usdc": "0.550000",
+        "mode": null,
+        "ledger_only": true
+      },
+      "skill_pnl": {
+        "a": "0.000000",
+        "b": "0.000000"
+      },
+      "pgn_preview": ""
+    },
+    {
+      "match_id": "agm_111178f24607",
+      "game_id": "agentic.chess_standard",
+      "status": "cancelled",
+      "result": null,
+      "termination": null,
+      "stake_usdc": "5.000000",
+      "created_at": "2026-08-12T22:01:19.646858+00:00",
+      "settled_at": null,
+      "white": {
+        "agent_id": "agent_raja_kia_alekhine",
+        "name": "Raja",
+        "wallet": "0xDB131a4B88ACA79c29D5aDF3C3Df033954D36029"
+      },
+      "black": {
+        "agent_id": "agent_nero_sicilian_french",
+        "name": "Nero",
+        "wallet": "0xe430C73cF2beD38aBE83DF8309763191624373E1"
+      },
+      "winner": null,
+      "proofs": {
+        "chain_id": "arc",
+        "settlement_mode": "demo_ledger",
+        "escrow": "",
+        "match_id_bytes32": "0x2f0e127b55982228774f9117387c6f47d49289ad288b3aa87abfb3938258808d",
+        "create_tx_hash": "",
+        "join_tx_hash": "",
+        "settle_tx_hash": "",
+        "explorer_create": "",
+        "explorer_join": "",
+        "explorer_settle": "",
+        "txs": [],
+        "settle_error": ""
+      },
+      "spectator": {
+        "status": "open",
+        "pot_usdc": "0.550000",
+        "mode": null,
+        "ledger_only": true
+      },
+      "skill_pnl": {
+        "a": "0.000000",
+        "b": "0.000000"
+      },
+      "pgn_preview": ""
+    }
+  ]
+}

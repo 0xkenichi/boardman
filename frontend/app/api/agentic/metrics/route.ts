@@ -258,12 +258,33 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ...local, via: "local_matches_json" });
   }
 
+  // Vercel / laptop-without-stack: static proof snapshot shipped in public/
+  try {
+    const snap = path.resolve(process.cwd(), "public/agentic/match-proofs.json");
+    if (fs.existsSync(snap)) {
+      const j = JSON.parse(fs.readFileSync(snap, "utf8"));
+      return NextResponse.json({ ...j, via: "static_snapshot" });
+    }
+  } catch {
+    /* ignore */
+  }
+
   return NextResponse.json(
     {
-      ok: false,
-      error: "metrics_unavailable",
-      message: remote.data?.error || "Stack API not configured and matches.json not on this host.",
-    },
-    { status: 503 }
+      success: true,
+      generated_at: new Date().toISOString(),
+      via: "empty",
+      note: "No matches published on this host yet. Play a House game on the laptop hub to fill the book.",
+      volume: {
+        matches_total: 0,
+        matches_settled: 0,
+        matches_locked: 0,
+        matches_onchain: 0,
+        skill_volume_usdc: "0",
+        spectator_volume_usdc: "0",
+      },
+      agents: [],
+      matches: [],
+    }
   );
 }
