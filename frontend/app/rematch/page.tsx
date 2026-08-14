@@ -9,6 +9,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { BRAND } from '@/lib/brand'
 import { REMATCH_BOT_URL, REMATCH_GROUP_URL } from '@/lib/rematchLinks'
+import { BoardmanLandingHero } from '@/components/rematch/BoardmanLandingHero'
 
 const LAUNCH = 'September 16, 2026'
 const LAUNCH_ISO = '2026-09-16'
@@ -53,7 +54,9 @@ export default function BoardmanWaitlistPage() {
   }
 
   return (
-    <div className="rm-marketing rm-waitlist-page rm-home-v2">
+    <>
+    <BoardmanLandingHero />
+    <div className="rm-marketing rm-waitlist-page rm-home-v2 rm-after-landing">
       {/* ── 1. WAITLIST FIRST (human ↔ human) ── */}
       <section className="rm-hero-card rm-waitlist-hero rm-panel-solid">
         <div className="rm-hero-top">
@@ -299,5 +302,6 @@ export default function BoardmanWaitlistPage() {
         Full open {LAUNCH}
       </p>
     </div>
+    </>
   )
 }

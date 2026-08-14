@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { usePathname } from 'next/navigation'
 
 const MANIFEST_HREF = '/manifest.webmanifest'
 const SW_PATH = '/sw.js'
@@ -18,6 +19,8 @@ type BeforeInstallPromptEvent = Event & {
  * - Optional install banner when browser fires beforeinstallprompt
  */
 export function RematchPwa() {
+  const path = usePathname() || ''
+  const isHome = path === '/' || path === '/rematch' || path === '/rematch/'
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null)
   const [show, setShow] = useState(false)
   const [isIos, setIsIos] = useState(false)
@@ -93,7 +96,7 @@ export function RematchPwa() {
     localStorage.setItem(DISMISS_KEY, '1')
   }, [])
 
-  if (standalone || !show) return null
+  if (standalone || !show || isHome) return null
 
   return (
     <div

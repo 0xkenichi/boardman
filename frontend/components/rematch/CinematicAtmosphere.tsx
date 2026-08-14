@@ -139,13 +139,17 @@ export function CinematicAtmosphere() {
   const [scene, setScene] = useState(0)
   // Dimmer on mini-app so UI stays readable; full intensity on marketing pages
   const isApp = path === '/app' || path.startsWith('/app/')
+  const isHome = path === '/' || path === '/rematch' || path === '/rematch/'
 
   useEffect(() => {
+    if (isHome) return
     const id = window.setInterval(() => {
       setScene((s) => (s + 1) % SCENES.length)
     }, 5200)
     return () => window.clearInterval(id)
-  }, [])
+  }, [isHome])
+
+  if (isHome) return null
 
   const leftCards = SIDE_CARDS.filter((_, i) => i % 2 === 0)
   const rightCards = SIDE_CARDS.filter((_, i) => i % 2 === 1)
