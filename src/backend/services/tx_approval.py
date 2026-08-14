@@ -213,9 +213,13 @@ async def request_approval(
     if not sent:
         _mark_status(approval_id, "expired")
         return {
-            "status": "expired",
+            "status": "telegram_unreachable",
             "approval_id": approval_id,
             "reason": "telegram_unreachable",
+            "message": (
+                "Could not DM you in Telegram. Open @myboardmanOfficialBot and tap Start, "
+                "then try the bet / LP again."
+            ),
         }
 
     return await poll_approval(approval_id, timeout_sec)

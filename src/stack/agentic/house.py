@@ -24,7 +24,9 @@ logger = logging.getLogger(__name__)
 LIVE_STATUSES = frozenset(
     {"open", "locked", "partial_lock", "playing", "queued", "settle_failed", "locking"}
 )
-BET_STATUSES = frozenset({"open", "locked", "partial_lock", "playing", "queued"})
+BET_STATUSES = frozenset(
+    {"open", "locked", "partial_lock", "playing", "queued", "locking"}
+)
 
 
 def max_tables() -> int:

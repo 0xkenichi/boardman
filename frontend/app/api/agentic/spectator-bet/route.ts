@@ -170,6 +170,7 @@ export async function POST(req: NextRequest) {
         side,
         balance: res.data.balance,
         address: res.data.address || res.data.wallet || "",
+        match_id: res.data.match_id || body.match_id,
         profileId: session.profileId,
         tag: session.tag,
         name: session.name,
@@ -177,9 +178,9 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // If API returned a clear business error (insufficient, approval, etc.), surface it
-    const err = res.data?.error || res.data?.detail;
-    if (res.ok && (err === "insufficient_balance" || err?.startsWith("approval_"))) {
+    // Never silent-debit. Spectator lock requires Telegram Yes.
+    const err = String(res.data?.error || res.data?.detail || "");
+    if (err === "insufficient_balance" || err.startsWith("approval_")) {
       const status = err === "insufficient_balance" ? 400 : 403;
       return NextResponse.json(
         {
@@ -193,41 +194,25 @@ export async function POST(req: NextRequest) {
         { status }
       );
     }
-    // else fall through to Supabase (404 / wrong host / 502)
-    console.warn(
-      "[spectator-bet] stack path failed status=%s err=%s — trying supabase",
-      res.status,
-      err
-    );
-  }
-
-  // 2) Supabase + Arc balance fallback
-  const local = await debitViaSupabase(session.profileId, amount);
-  if (!local.ok) {
     return NextResponse.json(
       {
         ok: false,
-        error: local.error || "bet_failed",
+        error: err || "stack_unavailable",
         message:
-          local.error === "insufficient_balance"
-            ? "Not enough USDC on your Boardman wallet. Fund via Telegram → Get money."
-            : "Could not place bet from wallet",
-        balance: local.balance,
-        address: local.address,
+          res.data?.message ||
+          "Could not reach the House wallet API to ping Telegram. Start the Stack API and bot, then try again.",
       },
-      { status: 400 }
+      { status: res.status >= 400 && res.status < 600 ? res.status : 502 }
     );
   }
 
-  return NextResponse.json({
-    ok: true,
-    amount,
-    side,
-    balance: local.balance,
-    address: local.address || "",
-    profileId: session.profileId,
-    tag: session.tag,
-    name: session.name,
-    source: local.source || "supabase_ledger",
-  });
+  return NextResponse.json(
+    {
+      ok: false,
+      error: "stack_not_configured",
+      message:
+        "Wallet backend offline — spectator lock needs the gaming API + Telegram bot.",
+    },
+    { status: 503 }
+  );
 }

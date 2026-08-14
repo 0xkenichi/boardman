@@ -273,16 +273,19 @@ async def web_spectator_bet(
         except Exception as exc:
             logger.exception("[RematchWeb] approval gate failed")
             raise HTTPException(status_code=500, detail=str(exc)) from exc
-        if decision.get("status") in ("denied", "expired"):
+        if decision.get("status") in ("denied", "expired", "telegram_unreachable"):
+            msg = {
+                "denied": "You didn't approve this spend in Telegram. Nothing was charged.",
+                "expired": "The approval request expired (2 min). Nothing was charged — try again.",
+                "telegram_unreachable": (
+                    "Could not ping Telegram. Open @myboardmanOfficialBot, tap Start, then try again."
+                ),
+            }.get(decision.get("status") or "", "Approval failed. Nothing was charged.")
             return {
                 "success": False,
                 "error": f"approval_{decision['status']}",
                 "approval_id": decision.get("approval_id"),
-                "message": (
-                    "You didn't approve this spend in Telegram. Nothing was charged."
-                    if decision.get("status") == "denied"
-                    else "The approval request expired (2 min). Nothing was charged — try again."
-                ),
+                "message": decision.get("message") or msg,
             }
         if decision.get("mode") == "always":
             logger.info("[RematchWeb] spectator bet auto-approved (always) profile=%s", profile_id)
@@ -331,15 +334,41 @@ async def web_spectator_bet(
         except Exception:
             pass
 
+        book = None
+        try:
+            from gaming.src.stack.agentic.house import get_house, LIVE_STATUSES
+            from gaming.src.stack.agentic.matches import get_match_service
+
+            mid = match_id
+            if not mid or mid in {"arena", "live"}:
+                pair = {"agent_raja_kia_alekhine", "agent_nero_sicilian_french"}
+                for m in get_match_service().list_matches(50):
+                    if m.get("status") in LIVE_STATUSES and {
+                        m.get("agent_a_id"),
+                        m.get("agent_b_id"),
+                    } == pair:
+                        mid = m.get("match_id")
+                        break
+            if mid and mid not in {"arena", "live"}:
+                book = get_house().take_bet(
+                    mid,
+                    bettor_id=profile_id,
+                    side=side,
+                    amount_usdc=Decimal(str(amount)),
+                )
+        except Exception:
+            logger.exception("[RematchWeb] house take_bet failed match=%s", match_id)
+
         return {
             "success": True,
             "profile_id": profile_id,
             "amount": amount,
             "side": side,
-            "match_id": match_id,
+            "match_id": (book or {}).get("match_id") or match_id,
             "balance": float(new_bal),
             "address": summary.get("address") or "",
             "wallet": summary.get("address") or "",
+            "house_book": bool(book),
         }
     except HTTPException:
         raise
@@ -447,16 +476,19 @@ async def web_spectator_lp(
             "lp_deposit",
             {"amount": amount, "agent_id": agent_id, "agent_name": agent_name},
         )
-        if decision.get("status") in ("denied", "expired"):
+        if decision.get("status") in ("denied", "expired", "telegram_unreachable"):
+            msg = {
+                "denied": "You didn't approve this LP deposit in Telegram. Nothing was charged.",
+                "expired": "The approval request expired (2 min). Nothing was charged — try again.",
+                "telegram_unreachable": (
+                    "Could not ping Telegram. Open @myboardmanOfficialBot, tap Start, then try again."
+                ),
+            }.get(decision.get("status") or "", "Approval failed. Nothing was charged.")
             return {
                 "success": False,
                 "error": f"approval_{decision['status']}",
                 "approval_id": decision.get("approval_id"),
-                "message": (
-                    "You didn't approve this LP deposit in Telegram. Nothing was charged."
-                    if decision.get("status") == "denied"
-                    else "The approval request expired (2 min). Nothing was charged — try again."
-                ),
+                "message": decision.get("message") or msg,
             }
 
         ok = await debit_wallet(profile_id, amount)

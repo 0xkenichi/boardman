@@ -680,6 +680,12 @@
 
         <div class="row"><span>Your bets</span><span id="myBets">none yet</span></div>
         <div class="row"><span>Match</span><span id="matchStateLabel">waiting</span></div>
+        <div class="section-label" style="margin-top:12px">Provide LP</div>
+        <p class="hint">Top up an agent's bankroll. Telegram will ask you to approve the debit.</p>
+        <div style="display:flex;gap:6px;margin:8px 0;flex-wrap:wrap">
+          <button type="button" class="secondary" id="btnLpRajaAud" style="padding:6px 10px;font-size:0.78rem;flex:1">LP +$20 Raja</button>
+          <button type="button" class="secondary" id="btnLpNeroAud" style="padding:6px 10px;font-size:0.78rem;flex:1">LP +$20 Nero</button>
+        </div>
 
         <details class="moves-box">
           <summary>Move list</summary>
@@ -1613,7 +1619,7 @@
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ amount, side, match_id: "arena" }),
+          body: JSON.stringify({ amount, side, match_id: houseMatchId || "arena" }),
         });
         const data = await res.json();
         if (!data || !data.ok) {
@@ -1635,9 +1641,9 @@
           } else if (data && data.error === "approval_denied") {
             log("Bet declined in Telegram — nothing charged");
             setStatus("Declined in Telegram — nothing charged", true);
-          } else if (data && data.error === "approval_expired") {
-            log("Bet approval expired (2 min) — nothing charged");
-            setStatus("Approval timed out — try again", true);
+          } else if (data && (data.error === "approval_telegram_unreachable" || data.error === "approval_expired")) {
+            log((data.message || "Telegram did not get the approve ping") + " — open the bot and tap Start");
+            setStatus("Open @myboardmanOfficialBot → Start, then bet again", true);
           } else {
             log(
               "Bet failed: " +
@@ -1680,7 +1686,7 @@
 
     /** Real LP deposit: debit wallet via gaming API, behind Telegram approval. */
     async function addLp(side, amount) {
-      if (playing || lpInFlight) return;
+      if (lpInFlight) return;
       if (!tgUser || !tgUser.authenticated) {
         openTgLoginModal();
         setStatus("Log in with Telegram to provide liquidity", true);
@@ -1706,9 +1712,9 @@
           else if (err === "approval_denied") {
             log("LP declined in Telegram — nothing charged");
             setStatus("LP declined in Telegram — nothing charged", true);
-          } else if (err === "approval_expired") {
-            log("LP approval expired (2 min) — nothing charged");
-            setStatus("LP approval timed out — try again", true);
+          } else if (err === "approval_expired" || err === "approval_telegram_unreachable") {
+            log((data && data.message) || "Telegram did not get the LP ping — open the bot and tap Start");
+            setStatus("Open @myboardmanOfficialBot → Start, then LP again", true);
           } else if (err === "insufficient_balance") {
             log("Insufficient balance for LP deposit");
             setStatus("Not enough USDC for LP deposit", true);
@@ -2096,6 +2102,7 @@
 
     let houseWhite = "raja";
     let houseApplied = 0;
+    let houseMatchId = null;
 
     function applyHouseMove(mv) {
       const uci = mv.uci || "";
@@ -2169,6 +2176,7 @@
           throw new Error(data.error || "House did not start a match");
         }
         mid = data.match_id;
+        houseMatchId = mid;
         log("table " + mid);
         setText("escrowPill", data.status || "locking");
 
@@ -3423,6 +3431,8 @@
     });
     if (el("btnLpRaja")) el("btnLpRaja").onclick = () => addLp("raja", 20);
     if (el("btnLpNero")) el("btnLpNero").onclick = () => addLp("nero", 20);
+    if (el("btnLpRajaAud")) el("btnLpRajaAud").onclick = () => addLp("raja", 20);
+    if (el("btnLpNeroAud")) el("btnLpNeroAud").onclick = () => addLp("nero", 20);
     el("btnPlay").onclick = runHouseMatch;
     // Time control buttons (max 10 min each for this test)
     document.querySelectorAll("#tcBar button[data-tc]").forEach((btn) => {

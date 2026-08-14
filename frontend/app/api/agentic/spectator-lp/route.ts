@@ -74,12 +74,13 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  if (res.ok && (err === "insufficient_balance" || err?.startsWith("approval_"))) {
-    const status = err === "insufficient_balance" ? 400 : 403;
+  const errStr = String(err || "");
+  if (errStr === "insufficient_balance" || errStr.startsWith("approval_")) {
+    const status = errStr === "insufficient_balance" ? 400 : 403;
     return NextResponse.json(
       {
         ok: false,
-        error: err,
+        error: errStr,
         message: res.data?.message || "Could not deposit",
         balance: res.data?.balance,
         address: res.data?.address,

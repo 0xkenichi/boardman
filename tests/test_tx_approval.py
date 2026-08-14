@@ -175,7 +175,7 @@ def test_request_approval_denied_when_tg_unreachable(fake_sb, monkeypatch):
     res = asyncio.run(
         ta.request_approval("p1", "spectator_bet", {"amount": 5}, timeout_sec=2)
     )
-    assert res["status"] == "expired"
+    assert res["status"] == "telegram_unreachable"
     assert res.get("reason") == "telegram_unreachable"
 
 

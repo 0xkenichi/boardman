@@ -137,7 +137,7 @@ async def notify_user(
     try:
         result = (
             sb.table("profiles")
-            .select("gaming_telegram_chat_id")
+            .select("gaming_telegram_chat_id, telegram_id")
             .eq("id", user_id)
             .limit(1)
             .execute()
@@ -150,12 +150,19 @@ async def notify_user(
     row = None
     if result is not None and result.data:
         row = result.data[0] if isinstance(result.data, list) else result.data
-    if not row or not row.get("gaming_telegram_chat_id"):
+    chat_id = (row or {}).get("gaming_telegram_chat_id") or (row or {}).get("telegram_id")
+    if not chat_id:
         logger.warning("[Notify] No Telegram chat id for user %s", user_id)
         _log_notification_failure(user_id, text, "missing_telegram_chat_id")
         return False
-
-    chat_id = row["gaming_telegram_chat_id"]
+    # Website login may have telegram_id but never /start — try user-id as DM chat.
+    if not row.get("gaming_telegram_chat_id") and row.get("telegram_id"):
+        try:
+            sb.table("profiles").update(
+                {"gaming_telegram_chat_id": int(row["telegram_id"])}
+            ).eq("id", user_id).execute()
+        except Exception:
+            pass
     attempt = 0
     last_error = ""
     while attempt < max_retries:
