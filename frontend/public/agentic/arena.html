@@ -2111,7 +2111,6 @@
       );
     }
 
-    let houseWhite = "raja";
     let houseApplied = 0;
     let houseMatchId = null;
 
@@ -2159,6 +2158,7 @@
         await loadOnchainBankrolls();
       }
       resetSpectatorFromNegotiation();
+      coinFlipColors();
       const stake = matchStake > 0 ? matchStake : 1;
       clearFx();
       renderMeta();
@@ -2180,7 +2180,7 @@
         const start = await fetch("/api/agentic/house-play", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ stake_usdc: stake, white: houseWhite }),
+          body: JSON.stringify({ stake_usdc: stake, white: whiteAgent }),
         });
         const data = await start.json();
         if (!start.ok || !data.match_id) {
@@ -2207,8 +2207,17 @@
             }
           }
           if (m.white_agent_id) {
-            whiteAgent = (m.white_agent_id || "").includes("nero") ? "nero" : "raja";
-            blackAgent = whiteAgent === "raja" ? "nero" : "raja";
+            const w = (m.white_agent_id || "").includes("nero") ? "nero" : "raja";
+            if (w !== whiteAgent) {
+              whiteAgent = w;
+              blackAgent = w === "raja" ? "nero" : "raja";
+              setText(
+                "coinBanner",
+                "White: " + AGENTS[whiteAgent].name + " · Black: " + AGENTS[blackAgent].name
+              );
+              setText("clockRajaColor", whiteAgent === "raja" ? "White" : "Black");
+              setText("clockNeroColor", whiteAgent === "nero" ? "White" : "Black");
+            }
           }
           const moves = m.moves || [];
           for (; houseApplied < moves.length; houseApplied++) {
@@ -2256,7 +2265,6 @@
         setText("escrowPill", "error");
       }
 
-      houseWhite = houseWhite === "raja" ? "nero" : "raja";
       playing = false;
       if (el("btnPlay")) el("btnPlay").disabled = false;
       if (autoPlay) {
