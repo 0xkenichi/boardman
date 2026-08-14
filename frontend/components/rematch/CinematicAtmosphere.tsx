@@ -138,7 +138,11 @@ export function CinematicAtmosphere() {
   const path = usePathname() || ''
   const [scene, setScene] = useState(0)
   // Dimmer on mini-app so UI stays readable; full intensity on marketing pages
-  const isApp = path === '/app' || path.startsWith('/app/')
+  const isApp =
+    path === '/app' ||
+    path.startsWith('/app/') ||
+    path === '/rematch/app' ||
+    path.startsWith('/rematch/app/')
   const isHome = path === '/' || path === '/rematch' || path === '/rematch/'
 
   useEffect(() => {
