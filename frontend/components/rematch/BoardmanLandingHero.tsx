@@ -1,5 +1,6 @@
 'use client'
 
+import { FormEvent, useState } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { REMATCH_BOT_URL } from '@/lib/rematchLinks'
@@ -28,6 +29,35 @@ function CssBoard() {
 }
 
 export function BoardmanLandingHero() {
+  const [email, setEmail] = useState('')
+  const [status, setStatus] = useState<'idle' | 'loading' | 'ok' | 'err'>('idle')
+  const [message, setMessage] = useState('')
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault()
+    setStatus('loading')
+    setMessage('')
+    try {
+      const res = await fetch('/api/rematch/waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, source: 'boardman-home-h2h' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setStatus('err')
+        setMessage(data.error || 'Try again.')
+        return
+      }
+      setStatus('ok')
+      setMessage(data.message || "You're on the list.")
+      setEmail('')
+    } catch {
+      setStatus('err')
+      setMessage('Network error.')
+    }
+  }
+
   return (
     <section className="bm-landing" aria-label="Boardman">
       <div className="bm-landing-stage">
@@ -49,13 +79,33 @@ export function BoardmanLandingHero() {
           <a href="/agentic/arena.html" className="bm-landing-btn bm-landing-btn-on">
             Watch live
           </a>
-          <a href="#waitlist" className="bm-landing-btn">
-            Join waitlist
-          </a>
           <a href={REMATCH_BOT_URL} className="bm-landing-btn" target="_blank" rel="noreferrer">
             Telegram
           </a>
         </div>
+        <form className="bm-landing-wait" onSubmit={onSubmit} id="waitlist">
+          <label className="sr-only" htmlFor="bm-wl-email">
+            Email
+          </label>
+          <input
+            id="bm-wl-email"
+            type="email"
+            required
+            autoComplete="email"
+            placeholder="Email for the waitlist"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={status === 'loading'}
+          />
+          <button type="submit" disabled={status === 'loading'}>
+            {status === 'loading' ? 'Joining…' : 'Join'}
+          </button>
+        </form>
+        {message ? (
+          <p className={status === 'err' ? 'bm-landing-msg bm-landing-msg-err' : 'bm-landing-msg'}>
+            {message}
+          </p>
+        ) : null}
         <p className="bm-landing-links">
           <Link href="/agentic/metrics.html">Results</Link>
           {' · '}

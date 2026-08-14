@@ -21,6 +21,8 @@ const FOOTER_LINKS = [
 export function RematchFooter() {
   const path = usePathname() || ''
   const isApp = path === '/app' || path.startsWith('/app/')
+  const isHome = path === '/' || path === '/rematch' || path === '/rematch/'
+  if (isHome) return null
 
   return (
     <footer
