@@ -62,11 +62,15 @@ export async function POST(req: NextRequest) {
   if (res.ok && res.data?.success !== false) {
     return NextResponse.json({
       ok: true,
+      pending: Boolean(res.data.pending),
+      approval_id: res.data.approval_id || "",
       amount,
       agent_id: agentId,
+      agent_name: agentName,
       balance: res.data.balance,
       address: res.data.address || "",
       lp_total_usdc: res.data.lp_total_usdc,
+      message: res.data.message || "",
       profileId: session.profileId,
       tag: session.tag,
       name: session.name,

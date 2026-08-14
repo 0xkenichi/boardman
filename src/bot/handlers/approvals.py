@@ -29,6 +29,47 @@ _ACTION_LABEL = {
 }
 
 
+async def _lock_after_yes(approval_id: str) -> dict:
+    try:
+        from gaming.src.backend.services.tx_approval import apply_approved_spend
+
+        return await apply_approved_spend(approval_id)
+    except Exception:
+        logger.exception("[approvals] apply after Yes failed id=%s", approval_id)
+        return {"success": False, "pending": False, "error": "apply_failed"}
+
+
+def _locked_text(applied: dict, *, always: bool) -> str:
+    extra = ""
+    if always:
+        extra = (
+            "\n\nFuture spends of this type will go through without asking. "
+            "Change that anytime with /approvals."
+        )
+    if applied.get("success") and not applied.get("pending"):
+        amt = applied.get("amount")
+        kind = applied.get("kind") or applied.get("action") or ""
+        if kind == "lp" or applied.get("agent_id"):
+            who = applied.get("agent_name") or applied.get("agent_id") or "the agent"
+            return (
+                f"✅ <b>Locked ${float(amt or 0):,.2f} LP into {who}.</b>\n\n"
+                f"The website ticket updates now.{extra}"
+            )
+        side = str(applied.get("side") or "")
+        who = "Raja" if side == "a" else "Nero" if side == "b" else "the book"
+        return (
+            f"✅ <b>Locked ${float(amt or 0):,.2f} on {who}.</b>\n\n"
+            f"The website ticket updates now.{extra}"
+        )
+    if applied.get("pending"):
+        return "✅ <b>Approved.</b>\n\nLocking the funds now — the website will catch up."
+    err = applied.get("message") or applied.get("error") or "could not lock"
+    return (
+        f"✅ <b>Approved in Telegram</b> but the lock did not finish: {err}\n\n"
+        "Stay on the website — it will retry."
+    )
+
+
 def _callback_data_parts(callback: types.CallbackQuery) -> list[str]:
     return (callback.data or "").split(":")
 
@@ -49,6 +90,19 @@ async def cb_approval(callback: types.CallbackQuery) -> None:
     res = resolve_approval(approval_id, action, always=always)
     if not res.get("ok"):
         reason = res.get("reason") or "unknown"
+        # Already Yes — still try to lock so the website sees applied.
+        if reason == "already_decided" and res.get("status") in {"approved", "applied"}:
+            applied = await _lock_after_yes(approval_id)
+            if applied.get("success") and not applied.get("pending"):
+                await callback.answer("Already locked")
+                try:
+                    await callback.message.edit_text(
+                        _locked_text(applied, always=False),
+                        parse_mode=ParseMode.HTML,
+                    )
+                except Exception:
+                    pass
+                return
         await callback.answer(
             "This request is no longer pending." if reason == "already_decided"
             else "Request not found.",
@@ -64,25 +118,19 @@ async def cb_approval(callback: types.CallbackQuery) -> None:
         return
 
     status = res["status"]
-    label = _ACTION_LABEL.get(res.get("action") or "", "transaction")
     if status == "approved":
-        if always:
-            text = (
-                "✅ <b>Approved — and bets/LP are now auto-approved.</b>\n\n"
-                f"Future {label} will spend from your wallet without asking. "
-                f"Change this anytime with /approvals."
-            )
-        else:
-            text = "✅ <b>Approved.</b>\n\nThis spend is confirmed. Change the default anytime with /approvals."
+        await callback.answer("Approved — locking now")
+        applied = await _lock_after_yes(approval_id)
+        text = _locked_text(applied, always=always)
     else:
         text = "❌ <b>Declined.</b>\n\nNothing was spent. Change the default anytime with /approvals."
+        try:
+            await callback.answer("Declined")
+        except Exception:
+            pass
 
     try:
         await callback.message.edit_text(text, parse_mode=ParseMode.HTML)
-    except Exception:
-        pass
-    try:
-        await callback.answer("Done")
     except Exception:
         pass
 

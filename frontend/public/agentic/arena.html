@@ -1770,10 +1770,11 @@
       renderAuth();
     }
 
-    async function waitForApproval(approvalId, amount, side) {
+    async function waitForApproval(approvalId, onDone) {
       const deadline = Date.now() + 130000;
+      let lastNote = "";
       while (Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 2000));
+        await new Promise((r) => setTimeout(r, 1000));
         try {
           const res = await fetch(
             "/api/agentic/spectator-bet?approval_id=" + encodeURIComponent(approvalId),
@@ -1781,36 +1782,39 @@
           );
           const data = await res.json();
           if (data && data.pending) {
-            setStatus("Waiting for Telegram Yes…", false);
+            const note =
+              data.status === "approved"
+                ? "Telegram Yes received — locking now…"
+                : "Waiting for Telegram Yes…";
+            if (note !== lastNote) {
+              setStatus(note, false);
+              lastNote = note;
+            }
             continue;
           }
           if (data && data.ok && !data.pending) {
-            log(
-              `@${tgUser.tag} bet $${Number(amount).toFixed(2)} on ${
-                side === "draw" ? "draw" : side === "a" ? "Raja" : "Nero"
-              }` + (data.tx_hash ? " · " + data.tx_hash : "")
-            );
-            setStatus(`Bet placed · $${Number(amount).toFixed(2)}`, true);
-            if (data.balance != null) tgUser.balance = data.balance;
-            renderAuth();
-            await refreshSpectatorBook();
-            return true;
+            if (data.balance != null && tgUser) {
+              tgUser.balance = data.balance;
+              renderAuth();
+            }
+            if (typeof onDone === "function") await onDone(data);
+            return data;
           }
           const err = (data && (data.message || data.error)) || res.status;
-          if (String(data && data.error || "").startsWith("approval_")) {
+          if (String((data && data.error) || "").startsWith("approval_")) {
             setStatus(data.message || "Not approved in Telegram — nothing charged", true);
-            log("Bet not charged: " + err);
-            return false;
+            log("Not charged: " + err);
+            return null;
           }
-          setStatus("Bet failed after approve — " + err, true);
-          log("Bet apply failed: " + err);
-          return false;
+          setStatus("Lock failed after Telegram Yes — " + err, true);
+          log("Apply failed: " + err);
+          return null;
         } catch (e) {
           log("Approval poll error: " + e.message);
         }
       }
-      setStatus("Still waiting on Telegram — tap Yes, then refresh", true);
-      return false;
+      setStatus("Still waiting on Telegram — tap Yes on the latest ping", true);
+      return null;
     }
 
     async function placeBet(side) {
@@ -1903,12 +1907,20 @@
           return;
         }
         if (data.pending && data.approval_id) {
-          setStatus("Check Telegram — tap Yes. This page updates after you approve.", true);
+          setStatus("Check Telegram — tap Yes. This page updates the moment you do.", true);
           log("Bet sent · waiting for Telegram Yes");
-          const done = await waitForApproval(data.approval_id, amount, side);
+          const done = await waitForApproval(data.approval_id, async (applied) => {
+            log(
+              `@${tgUser.tag} bet $${Number(amount).toFixed(2)} on ${
+                side === "draw" ? "draw" : side === "a" ? "Raja" : "Nero"
+              }` + (applied && applied.tx_hash ? " · " + applied.tx_hash : "")
+            );
+            setStatus(`Bet locked · $${Number(amount).toFixed(2)}`, true);
+            await refreshSpectatorBook();
+          });
           if (done) await refreshWallet();
         } else if (data.pending) {
-          setStatus("Check Telegram — tap Yes. Refresh if the pot does not move.", true);
+          setStatus("Check Telegram — tap Yes. This page updates the moment you do.", true);
           log("Bet sent · waiting for Telegram Yes");
         } else {
           log(
@@ -1929,6 +1941,22 @@
 
     let lpInFlight = false;
 
+    async function _lpBooked(side, amount, agentName, data) {
+      lpPool[side] += amount;
+      bal[side] += amount;
+      setText(
+        "lpEvent",
+        `+$${amount} LP on ${agentName} → bankroll $${bal[side].toFixed(0)} · locked`
+      );
+      resetSpectatorFromNegotiation();
+      renderMeta();
+      renderMarket();
+      if (data && data.balance != null && tgUser) tgUser.balance = data.balance;
+      renderAuth();
+      log(`LP $${amount} into ${agentName} bankroll (40% of net skill profit)`);
+      setStatus(`LP $${amount} locked into ${agentName}`, true);
+    }
+
     /** Real LP deposit: debit wallet via gaming API, behind Telegram approval. */
     async function addLp(side, amount) {
       if (lpInFlight) return;
@@ -1943,7 +1971,7 @@
       const agentId = side === "raja" ? AGENTS.raja.strategy.agent_id : AGENTS.nero.strategy.agent_id;
       const agentName = side === "raja" ? "Raja" : "Nero";
       try {
-        setStatus("LP — check your Telegram to approve", false);
+        setStatus("LP sent — tap Yes in Telegram. This page updates the moment you do.", false);
         const res = await fetch("/api/agentic/spectator-lp", {
           method: "POST",
           credentials: "include",
@@ -1951,6 +1979,13 @@
           body: JSON.stringify({ amount, agent_id: agentId, agent_name: agentName }),
         });
         const data = await res.json();
+        if (data && data.ok && data.pending && data.approval_id) {
+          const done = await waitForApproval(data.approval_id, async (applied) => {
+            await _lpBooked(side, amount, agentName, applied);
+          });
+          if (done) await refreshWallet();
+          return;
+        }
         if (!data || !data.ok) {
           const err = data && data.error;
           if (err === "unauthorized") openTgLoginModal();
@@ -1969,21 +2004,7 @@
           }
           return;
         }
-        lpPool[side] += amount;
-        bal[side] += amount; // tops up agent bankroll
-        setText(
-          "lpEvent",
-          `+$${amount} LP on ${agentName} → bankroll $${bal[side].toFixed(0)} · approved in Telegram`
-        );
-        resetSpectatorFromNegotiation();
-        renderMeta();
-        renderMarket();
-        if (data.balance != null) tgUser.balance = data.balance;
-        renderAuth();
-        log(
-          `LP $${amount} into ${agentName} bankroll (approved in Telegram, 40% profit share)`
-        );
-        setStatus(`LP $${amount} approved in Telegram`, true);
+        await _lpBooked(side, amount, agentName, data);
       } catch (e) {
         log("LP network error: " + e.message);
       } finally {

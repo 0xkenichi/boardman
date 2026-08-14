@@ -308,34 +308,101 @@ async def _apply_approved_spectator_bet(
     return result
 
 
-async def _finish_spectator_after_approval(
+async def _apply_approved_lp(
     *,
     approval_id: str,
     profile_id: str,
-    match_id: str,
-    side: str,
+    agent_id: str,
+    agent_name: str,
     amount: float,
     summary: dict,
-) -> None:
-    """Runs after the HTTP response so Vercel timeout cannot drop a Yes tap."""
-    from gaming.src.backend.services.tx_approval import poll_approval
+) -> dict:
+    """Debit + credit LP pool once. Idempotent across bot Yes and website poll."""
+    from gaming.src.backend.services.tx_approval import (
+        claim_apply,
+        get_approval_row,
+        store_apply_result,
+    )
+    from gaming.src.backend.db_layer_blockchain import debit_wallet
+
+    row = get_approval_row(approval_id) or {} if approval_id else {}
+    payload = dict(row.get("payload") or {})
+    if row.get("status") == "applied" or payload.get("_applied"):
+        return {"success": True, "pending": False, **(payload.get("_result") or {})}
+
+    if approval_id:
+        claimed = claim_apply(approval_id)
+        if claimed is None:
+            fresh = get_approval_row(approval_id) or {}
+            prev = dict((fresh.get("payload") or {}).get("_result") or {})
+            if fresh.get("status") == "applied" or prev:
+                return {"success": True, "pending": False, **prev}
+            return {"success": False, "pending": True, "error": "not_approved_yet"}
+
+    agent_id = str(agent_id or payload.get("agent_id") or "").strip()
+    agent_id = _AGENT_ID_ALIASES.get(agent_id.lower(), agent_id)
+    try:
+        from gaming.src.stack.agentic.economy.lp import AgentLPPool
+
+        ledger = float((summary or {}).get("ledger_usdc") or 0)
+        spendable = float((summary or {}).get("spendable_usdc") or 0)
+        if max(ledger, spendable) + 1e-9 < amount:
+            return {
+                "success": False,
+                "pending": False,
+                "error": "insufficient_balance",
+                "message": "Not enough USDC on your Boardman wallet.",
+            }
+        if ledger + 1e-9 >= amount:
+            await debit_wallet(profile_id, amount)
+        pool = AgentLPPool().deposit(
+            agent_id,
+            lp_id=profile_id,
+            amount_usdc=Decimal(str(amount)),
+        )
+    except Exception as exc:
+        logger.exception("[RematchWeb] LP apply failed")
+        return {
+            "success": False,
+            "pending": False,
+            "error": "lp_apply_failed",
+            "message": str(exc),
+        }
+
+    from gaming.src.backend.services.clawstation_circle import get_usdc_balance
+
+    new_bal = float(await get_usdc_balance(profile_id))
+    result = {
+        "success": True,
+        "pending": False,
+        "profile_id": profile_id,
+        "amount": amount,
+        "agent_id": agent_id,
+        "agent_name": agent_name or payload.get("agent_name") or "",
+        "balance": new_bal,
+        "address": (summary or {}).get("address") or "",
+        "lp_total_usdc": pool.get("total_lp_usdc"),
+        "kind": "lp",
+    }
+    if approval_id:
+        store_apply_result(approval_id, result)
+    logger.info("[RematchWeb] LP applied agent=%s approval=%s", agent_id, approval_id)
+    return result
+
+
+async def _finish_after_approval(approval_id: str) -> None:
+    """Laptop-side waiter: Yes → apply even if the browser tab is gone."""
+    from gaming.src.backend.services.tx_approval import apply_approved_spend, poll_approval
 
     decision = await poll_approval(approval_id, 120)
     if decision.get("status") != "approved":
         logger.info(
-            "[RematchWeb] background spectator approval %s id=%s",
+            "[RematchWeb] background approval %s id=%s",
             decision.get("status"),
             approval_id,
         )
         return
-    await _apply_approved_spectator_bet(
-        approval_id=approval_id,
-        profile_id=profile_id,
-        match_id=match_id,
-        side=side,
-        amount=amount,
-        summary=summary,
-    )
+    await apply_approved_spend(approval_id)
 
 
 @router.get("/profile")
@@ -595,13 +662,8 @@ async def web_spectator_bet(
             }
         if decision.get("status") == "pending":
             background_tasks.add_task(
-                _finish_spectator_after_approval,
-                approval_id=str(decision.get("approval_id") or ""),
-                profile_id=profile_id,
-                match_id=match_id,
-                side=side,
-                amount=amount,
-                summary=summary,
+                _finish_after_approval,
+                str(decision.get("approval_id") or ""),
             )
             return {
                 "success": True,
@@ -706,58 +768,29 @@ async def web_spectator_bet_status(
     x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
     authorization: Optional[str] = Header(default=None),
 ):
-    """Poll Telegram Yes and apply the bet if the background task missed it."""
+    """Poll Telegram Yes and apply the spend if the background task missed it."""
     _require_key(x_rematch_key, x_stack_key, authorization)
     aid = (approval_id or "").strip()
     if not aid:
         raise HTTPException(status_code=400, detail="approval_id required")
-    from gaming.src.backend.services.tx_approval import get_approval_row
-    from gaming.src.backend.services.clawstation_circle import get_balance_summary
+    from gaming.src.backend.services.tx_approval import apply_approved_spend
 
-    row = get_approval_row(aid)
-    if not row:
-        return {"success": False, "error": "approval_not_found", "pending": False}
-    status = str(row.get("status") or "pending")
-    payload = dict(row.get("payload") or {})
-    if status == "pending":
-        return {
-            "success": True,
-            "pending": True,
-            "approval_id": aid,
-            "status": "pending",
-            "amount": payload.get("amount"),
-            "side": payload.get("side"),
-            "match_id": payload.get("match_id"),
-        }
-    if status in ("denied", "expired"):
-        return {
-            "success": False,
-            "pending": False,
-            "approval_id": aid,
-            "error": f"approval_{status}",
-            "status": status,
-        }
-    if status == "applied" or payload.get("_applied"):
-        return {
-            "success": True,
-            "pending": False,
-            "approval_id": aid,
-            "status": "applied",
-            **(payload.get("_result") or {}),
-        }
-    # approved but not applied — finish now (user tapped Yes, task may have died)
-    profile_id = str(row.get("profile_id") or "")
-    try:
-        summary = await get_balance_summary(profile_id)
-    except Exception:
-        summary = {}
-    return await _apply_approved_spectator_bet(
-        approval_id=aid,
-        profile_id=profile_id,
-        match_id=str(payload.get("match_id") or ""),
-        side=str(payload.get("side") or "a"),
-        amount=float(payload.get("amount") or 0),
-        summary=summary,
+    return await apply_approved_spend(aid)
+
+
+@router.get("/spectator/lp")
+@router.get("/spectator/approval")
+async def web_spectator_approval_status(
+    approval_id: str = Query(default=""),
+    x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
+    x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
+    authorization: Optional[str] = Header(default=None),
+):
+    return await web_spectator_bet_status(
+        approval_id=approval_id,
+        x_rematch_key=x_rematch_key,
+        x_stack_key=x_stack_key,
+        authorization=authorization,
     )
 
 
@@ -803,15 +836,14 @@ _AGENT_ID_ALIASES = {
 @router.post("/spectator/lp")
 async def web_spectator_lp(
     body: dict,
+    background_tasks: BackgroundTasks,
     x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
     x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
     authorization: Optional[str] = Header(default=None),
 ):
     """
     Real LP deposit: debit the human's wallet, credit the agent's LP pool.
-    Gate: Telegram-mediated approval (bets vs LP have separate always-approve).
-
-    body: { profile_id, agent_id, amount, agent_name? }
+    Gate: Telegram Yes. Returns immediately; poll GET /spectator/lp?approval_id=.
     """
     _require_key(x_rematch_key, x_stack_key, authorization)
     profile_id = str(body.get("profile_id") or "").strip()
@@ -831,11 +863,9 @@ async def web_spectator_lp(
         raise HTTPException(status_code=400, detail="amount must be >= 0.25")
 
     try:
-        from decimal import Decimal
-
         from gaming.src.backend.services.safety import is_paused
         from gaming.src.backend.services.clawstation_circle import get_balance_summary
-        from gaming.src.backend.db_layer_blockchain import debit_wallet, get_wallet_balance
+        from gaming.src.backend.services.tx_approval import start_approval
 
         if is_paused():
             raise HTTPException(status_code=503, detail="platform_paused")
@@ -853,9 +883,7 @@ async def web_spectator_lp(
                 "message": "Not enough USDC on your Boardman wallet.",
             }
 
-        from gaming.src.backend.services.tx_approval import request_approval
-
-        decision = await request_approval(
+        decision = await start_approval(
             profile_id,
             "lp_deposit",
             {"amount": amount, "agent_id": agent_id, "agent_name": agent_name},
@@ -874,48 +902,30 @@ async def web_spectator_lp(
                 "approval_id": decision.get("approval_id"),
                 "message": decision.get("message") or msg,
             }
-
-        ok = await debit_wallet(profile_id, amount)
-        if not ok:
-            bal = await get_wallet_balance(profile_id)
+        if decision.get("status") == "pending":
+            background_tasks.add_task(
+                _finish_after_approval,
+                str(decision.get("approval_id") or ""),
+            )
             return {
-                "success": False,
-                "error": "insufficient_balance",
-                "balance": float(bal),
-                "address": summary.get("address") or "",
+                "success": True,
+                "pending": True,
+                "approval_id": decision.get("approval_id"),
+                "profile_id": profile_id,
+                "amount": amount,
+                "agent_id": agent_id,
+                "agent_name": agent_name,
+                "message": "Check Telegram to approve. This page updates after you tap Yes.",
             }
 
-        from gaming.src.stack.agentic.economy.lp import AgentLPPool
-
-        pool = AgentLPPool().deposit(
-            agent_id,
-            lp_id=profile_id,
-            amount_usdc=Decimal(str(amount)),
+        return await _apply_approved_lp(
+            approval_id=str(decision.get("approval_id") or ""),
+            profile_id=profile_id,
+            agent_id=agent_id,
+            agent_name=agent_name,
+            amount=amount,
+            summary=summary,
         )
-
-        new_bal = await get_wallet_balance(profile_id)
-        try:
-            from gaming.src.backend.services.wallet_activity import log_debit
-
-            log_debit(
-                profile_id,
-                Decimal(str(amount)),
-                str(summary.get("chain_id") or "arc"),
-                status="spectator_lp",
-                source=f"lp:{agent_id}",
-            )
-        except Exception:
-            pass
-
-        return {
-            "success": True,
-            "profile_id": profile_id,
-            "amount": amount,
-            "agent_id": agent_id,
-            "balance": float(new_bal),
-            "address": summary.get("address") or "",
-            "lp_total_usdc": pool.get("total_lp_usdc"),
-        }
     except HTTPException:
         raise
     except Exception as exc:

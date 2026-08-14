@@ -52,8 +52,10 @@ export async function GET(req: NextRequest) {
   const res = await stackFetch(
     `/api/rematch/web/spectator/bet?approval_id=${encodeURIComponent(approvalId)}`
   );
-  if (res.ok && res.data?.success !== false && (res.data?.pending || res.data?.balance != null || res.data?.status === "applied")) {
-    return NextResponse.json(jsonBet(res.data, session, { status: res.data?.status || "" }));
+  if (res.ok && res.data?.success !== false) {
+    return NextResponse.json(
+      jsonBet(res.data, session, { status: res.data?.status || "", kind: res.data?.kind || "" })
+    );
   }
   const err = String(res.data?.error || res.data?.detail || "stack_unavailable");
   return NextResponse.json(

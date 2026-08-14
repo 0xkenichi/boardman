@@ -123,6 +123,59 @@ def create_approval_row(
     return aid
 
 
+def find_open_approval(
+    profile_id: str,
+    action: str,
+    payload: dict,
+) -> Optional[dict]:
+    """Reuse a still-pending ping so a second click does not spawn a new Yes."""
+    try:
+        r = (
+            _sb()
+            .schema("gaming")
+            .table("tx_approvals")
+            .select("*")
+            .eq("profile_id", profile_id)
+            .eq("action", action)
+            .eq("status", "pending")
+            .order("created_at", desc=True)
+            .limit(8)
+            .execute()
+        )
+        rows = getattr(r, "data", None) or []
+    except Exception:
+        return None
+    want = {
+        "amount": payload.get("amount"),
+        "side": payload.get("side"),
+        "match_id": payload.get("match_id"),
+        "agent_id": payload.get("agent_id"),
+    }
+    now = datetime.now(timezone.utc)
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        exp = row.get("expires_at")
+        if exp:
+            try:
+                end = datetime.fromisoformat(str(exp).replace("Z", "+00:00"))
+                if end < now:
+                    continue
+            except ValueError:
+                pass
+        have = dict(row.get("payload") or {})
+        same = True
+        for k, v in want.items():
+            if v in (None, "", 0):
+                continue
+            if str(have.get(k) or "") != str(v):
+                same = False
+                break
+        if same:
+            return row
+    return None
+
+
 def get_approval_row(approval_id: str) -> Optional[dict]:
     try:
         r = (
@@ -140,10 +193,11 @@ def get_approval_row(approval_id: str) -> Optional[dict]:
 
 
 def _mark_status(approval_id: str, status: str) -> None:
+    """Only a pending row may change. Never overwrite approved/applied with expired."""
     try:
         _sb().schema("gaming").table("tx_approvals").update(
             {"status": status, "decided_at": datetime.now(timezone.utc).isoformat()}
-        ).eq("id", approval_id).execute()
+        ).eq("id", approval_id).eq("status", "pending").execute()
     except Exception:
         pass
 
@@ -262,7 +316,11 @@ async def start_approval(
     if get_approval_mode(profile_id, action) == "always":
         return {"status": "approved", "mode": "always", "skipped": True}
 
-    approval_id = create_approval_row(profile_id, action, payload, timeout_sec)
+    existing = find_open_approval(profile_id, action, payload)
+    if existing and existing.get("id"):
+        approval_id = str(existing["id"])
+    else:
+        approval_id = create_approval_row(profile_id, action, payload, timeout_sec)
     from gaming.src.bot.keyboards import approval_menu
 
     sent = await _notify(
@@ -298,5 +356,89 @@ async def poll_approval(approval_id: str, timeout_sec: int) -> dict:
             }
         if asyncio.get_event_loop().time() >= deadline:
             _mark_status(approval_id, "expired")
+            fresh = get_approval_row(approval_id) or {}
+            st = str(fresh.get("status") or "expired")
+            if st in ("approved", "applied"):
+                return {
+                    "status": "approved",
+                    "approval_id": approval_id,
+                    "mode": "ask",
+                }
             return {"status": "expired", "approval_id": approval_id}
-        await asyncio.sleep(1.5)
+        await asyncio.sleep(0.8)
+
+
+async def apply_approved_spend(approval_id: str) -> dict:
+    """Idempotent: pending → wait, approved → lock funds, applied → stored result.
+
+    Telegram Yes and the website poll both call this. claim_apply wins the race.
+    """
+    aid = (approval_id or "").strip()
+    if not aid:
+        return {"success": False, "pending": False, "error": "approval_id required"}
+    row = get_approval_row(aid)
+    if not row:
+        return {"success": False, "pending": False, "error": "approval_not_found"}
+    status = str(row.get("status") or "pending")
+    payload = dict(row.get("payload") or {})
+    if status == "pending":
+        return {
+            "success": True,
+            "pending": True,
+            "approval_id": aid,
+            "status": "pending",
+            "action": row.get("action"),
+            "amount": payload.get("amount"),
+            "side": payload.get("side"),
+            "match_id": payload.get("match_id"),
+            "agent_id": payload.get("agent_id"),
+        }
+    if status in ("denied", "expired"):
+        return {
+            "success": False,
+            "pending": False,
+            "approval_id": aid,
+            "error": f"approval_{status}",
+            "status": status,
+        }
+    if status == "applied" or payload.get("_result"):
+        return {
+            "success": True,
+            "pending": False,
+            "approval_id": aid,
+            "status": "applied",
+            "action": row.get("action"),
+            **(payload.get("_result") or {}),
+        }
+
+    from gaming.src.backend.services.clawstation_circle import get_balance_summary
+
+    profile_id = str(row.get("profile_id") or "")
+    try:
+        summary = await get_balance_summary(profile_id)
+    except Exception:
+        summary = {}
+
+    action = str(row.get("action") or "")
+    if action == "lp_deposit":
+        from gaming.src.backend.api.rematch_web import _apply_approved_lp
+
+        return await _apply_approved_lp(
+            approval_id=aid,
+            profile_id=profile_id,
+            agent_id=str(payload.get("agent_id") or ""),
+            agent_name=str(payload.get("agent_name") or ""),
+            amount=float(payload.get("amount") or 0),
+            summary=summary,
+        )
+
+    from gaming.src.backend.api.rematch_web import _apply_approved_spectator_bet
+
+    return await _apply_approved_spectator_bet(
+        approval_id=aid,
+        profile_id=profile_id,
+        match_id=str(payload.get("match_id") or ""),
+        side=str(payload.get("side") or "a"),
+        amount=float(payload.get("amount") or 0),
+        summary=summary,
+    )
