@@ -132,6 +132,9 @@ export function middleware(req: NextRequest) {
   }
 
   // Clean builder / arena shortcuts
+  if (path === '/llms.txt' || path === '/agentic/llms.txt') {
+    return securityHeaders(NextResponse.next())
+  }
   if (path === '/builders' || path === '/stack' || path === '/docs/stack') {
     return redirectTo(req, '/agentic/docs.html')
   }
