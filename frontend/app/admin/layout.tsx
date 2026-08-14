@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import '../rematch/rematch.css'
 
 export const metadata: Metadata = {
   title: 'Admin — Boardman',

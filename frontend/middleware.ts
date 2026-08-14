@@ -80,13 +80,23 @@ export function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
+  if (path === '/admin' || path.startsWith('/admin/')) {
+    const res = securityHeaders(NextResponse.next())
+    res.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive')
+    res.headers.set('Cache-Control', 'no-store')
+    return res
+  }
   if (path === '/agentic/admin-dashboard.html' || path === '/agentic/admin-dashboard') {
     return redirectTo(req, '/admin')
   }
-  if (path === '/agentic/aggregated_metrics.json') {
-    const url = req.nextUrl.clone()
-    url.pathname = '/api/agentic/admin/summary'
-    return securityHeaders(NextResponse.rewrite(url))
+  if (
+    path === '/agentic/aggregated_metrics.json' ||
+    path === '/agentic/match-proofs.json' ||
+    path === '/agentic/metrics.html' ||
+    path === '/agentic/metrics' ||
+    path === '/metrics'
+  ) {
+    return redirectTo(req, '/admin')
   }
 
   // Agent arena demo (Stockfish CDN + remote engine APIs)
@@ -141,9 +151,7 @@ export function middleware(req: NextRequest) {
   if (path === '/arena') {
     return redirectTo(req, '/agentic/arena.html')
   }
-  if (path === '/metrics' || path === '/agentic/metrics') {
-    return redirectTo(req, '/agentic/metrics.html')
-  }
+
   if (path === '/catalog' || path === '/agentic/catalog') {
     return redirectTo(req, '/agentic/football-catalog.html')
   }

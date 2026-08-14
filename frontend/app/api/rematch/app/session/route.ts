@@ -68,9 +68,9 @@ export async function POST(req: Request) {
     if (!allowDemo) {
       return NextResponse.json({ ok: false, error: 'demo_login_disabled' }, { status: 403 })
     }
-    telegramId = String(body.telegramId || '6277067771')
+    telegramId = String(body.telegramId || '0')
     name = String(body.name || 'Demo Player')
-    tag = String(body.tag || 'stillkenichi').replace(/^@/, '')
+    tag = String(body.tag || 'demo').replace(/^@/, '')
     profileId =
       body.profileId ||
       process.env.REMATCH_DEMO_PROFILE_ID ||

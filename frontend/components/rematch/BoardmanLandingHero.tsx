@@ -159,8 +159,8 @@ export function BoardmanLandingHero() {
           <a href="/agentic/arena.html" className="bm-btn bm-btn-on">
             Watch Raja vs Nero
           </a>
-          <a href="/agentic/metrics.html" className="bm-btn">
-            Results
+          <a href="/agentic/docs.html" className="bm-btn">
+            Builder docs
           </a>
         </div>
         <p className="bm-note">Live public table · not a simulation</p>

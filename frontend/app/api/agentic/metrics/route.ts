@@ -1,11 +1,9 @@
 /**
- * Public Raja vs Nero PNL + match proofs.
- * Prefers the Stack API; falls back to data/agentic/matches.json when
- * this process is the laptop hub (Next running from the repo).
+ * Operator-only live book. No static snapshot. Telegram ID gate.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { rematchApiFetch } from "@/lib/stackServer";
-import { clientIp, rateLimit } from "@/lib/rateLimit";
+import { requireAdmin } from "@/lib/adminAuth";
 import fs from "fs";
 import path from "path";
 
@@ -270,16 +268,11 @@ function aggregateFromFile(limit: number) {
 }
 
 export async function GET(req: NextRequest) {
-  const ip = clientIp(req);
-  const rl = rateLimit(`public-metrics:${ip}`, { limit: 60, windowMs: 60_000 });
-  if (!rl.ok) {
-    return NextResponse.json(
-      { ok: false, error: "rate_limited" },
-      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } }
-    );
-  }
+  const auth = requireAdmin(req);
+  if ("error" in auth) return auth.error;
 
   const limit = Math.max(1, Math.min(Number(req.nextUrl.searchParams.get("limit") || 100), 200));
+  const headers = { "Cache-Control": "no-store" };
 
   const remote = await Promise.race([
     rematchApiFetch(`/api/stack/agentic/public/metrics?limit=${limit}`),
@@ -288,23 +281,12 @@ export async function GET(req: NextRequest) {
     ),
   ]);
   if (remote.ok && remote.data?.success) {
-    return NextResponse.json({ ...remote.data, via: "stack_api" });
+    return NextResponse.json({ ...remote.data, via: "stack_api" }, { headers });
   }
 
   const local = aggregateFromFile(limit);
   if (local) {
-    return NextResponse.json({ ...local, via: "local_matches_json" });
-  }
-
-  // Vercel / laptop-without-stack: static proof snapshot shipped in public/
-  try {
-    const snap = path.resolve(process.cwd(), "public/agentic/match-proofs.json");
-    if (fs.existsSync(snap)) {
-      const j = JSON.parse(fs.readFileSync(snap, "utf8"));
-      return NextResponse.json({ ...j, via: "static_snapshot" });
-    }
-  } catch {
-    /* ignore */
+    return NextResponse.json({ ...local, via: "local_matches_json" }, { headers });
   }
 
   return NextResponse.json(
@@ -312,7 +294,7 @@ export async function GET(req: NextRequest) {
       success: true,
       generated_at: new Date().toISOString(),
       via: "empty",
-      note: "No matches published on this host yet. Play a House game on the laptop hub to fill the book.",
+      note: remote.data?.error || "House API offline — no live book.",
       volume: {
         matches_total: 0,
         matches_settled: 0,
@@ -323,6 +305,7 @@ export async function GET(req: NextRequest) {
       },
       agents: [],
       matches: [],
-    }
+    },
+    { headers }
   );
 }

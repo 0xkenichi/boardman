@@ -7,6 +7,7 @@ import fs from "fs";
 import path from "path";
 import { rematchApiFetch, rematchApiConfigured } from "@/lib/stackServer";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
+import { requireAdmin } from "@/lib/adminAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -81,6 +82,8 @@ function findMatchLocal(id: string): any | null {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = requireAdmin(req);
+  if ("error" in auth) return auth.error;
   const rl = rateLimit(`house-play:${clientIp(req)}`, { limit: 8, windowMs: 60_000 });
   if (!rl.ok) {
     return NextResponse.json(
