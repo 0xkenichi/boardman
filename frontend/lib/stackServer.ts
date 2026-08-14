@@ -75,7 +75,7 @@ export async function rematchApiFetch(
       status: 502,
       data: {
         error: offline
-          ? 'House API is offline. Play match needs the Stack running (not just Vercel).'
+          ? 'House API is offline. Play match needs the Boardman API running (not just Vercel).'
           : raw || 'house_unreachable',
       },
     }

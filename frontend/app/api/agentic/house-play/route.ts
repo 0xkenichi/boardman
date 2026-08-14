@@ -52,7 +52,7 @@ async function stackCall(pathName: string, init: RequestInit = {}) {
       ok: false,
       status: 502,
       data: {
-        error: "House API is offline. Play match needs the Stack running (not just Vercel).",
+        error: "House API is offline. Play match needs the Boardman API running (not just Vercel).",
         detail: String(e?.message || e),
       },
     };
@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
         error:
           r.data?.detail ||
           r.data?.error ||
-          "House API is offline. Play match needs the Stack running.",
+          "House API is offline. Play match needs the Boardman API running.",
         status: r.status,
       },
       { status: r.status || 502 }
