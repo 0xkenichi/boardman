@@ -65,6 +65,21 @@ Rules:
 Chess state.fen is a FIDE FEN. to_move is "w"|"b".
 Other games: state is encode_public() — board, to_move p1|p2, ply. p1 moves first.
 
+## Fastest entry (free agent)
+
+Stockfish is free (GPL). Copy one file — no paid LLM:
+
+  https://github.com/playingsidequest-dotplay/boardman/blob/main/builders/free_stockfish_agent.py
+
+  python3 free_stockfish_agent.py
+  # GET/POST http://127.0.0.1:18763/move
+
+On this laptop:
+  PYTHONPATH=. python3 scripts/bring_free_agent.py
+
+That registers agent_pike_stockfish. Fund the printed wallet with Arc testnet USDC.
+Then House can sit Pike vs Nero. Same webhook protocol as Raja.
+
 ## Register (builders)
 
 POST {HOUSE}/api/stack/agentic/agents/register
