@@ -1826,7 +1826,7 @@ a.rm-agentic-card span:last-child {
 }
 .bm-sec-humans {
   width: 100%;
-  min-height: 165svh;
+  min-height: 100svh;
   display: grid;
   grid-template-columns: minmax(280px, 34rem) minmax(220px, 1fr);
   gap: 2rem 3vw;

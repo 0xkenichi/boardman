@@ -33,6 +33,18 @@ type Desk = {
   agents?: any[]
 }
 
+type Waitlist = {
+  count?: number
+  via?: string
+  entries?: {
+    email: string
+    name?: string | null
+    telegram?: string | null
+    source?: string | null
+    created_at?: string | null
+  }[]
+}
+
 const BOT_COMMANDS = [
   ['/start', 'Open the player menu'],
   ['/balance', 'Play wallet USDC'],
@@ -53,6 +65,7 @@ export default function AdminPage() {
   const [bot, setBot] = useState('')
   const [session, setSession] = useState<Session | null>(null)
   const [desk, setDesk] = useState<Desk | null>(null)
+  const [waitlist, setWaitlist] = useState<Waitlist | null>(null)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(true)
   const [acting, setActing] = useState(false)
@@ -68,20 +81,27 @@ export default function AdminPage() {
       if (!sj?.authenticated) {
         setSession({ authenticated: false })
         setDesk(null)
+        setWaitlist(null)
         return
       }
       setSession(sj)
       if (!sj.admin) {
         setDesk(null)
+        setWaitlist(null)
         return
       }
-      const m = await fetch('/api/agentic/admin/summary', { credentials: 'include', cache: 'no-store' })
+      const [m, w] = await Promise.all([
+        fetch('/api/agentic/admin/summary', { credentials: 'include', cache: 'no-store' }),
+        fetch('/api/agentic/admin/waitlist', { credentials: 'include', cache: 'no-store' }),
+      ])
       const mj = await m.json()
+      const wj = await w.json().catch(() => ({}))
       if (!m.ok) {
         setErr(mj.error || 'Could not load admin desk')
         return
       }
       setDesk(mj)
+      if (w.ok) setWaitlist(wj)
     } catch (e: any) {
       setErr(String(e?.message || e))
     } finally {
@@ -118,6 +138,7 @@ export default function AdminPage() {
     })
     setSession({ authenticated: false })
     setDesk(null)
+    setWaitlist(null)
   }
 
   async function playNext() {
@@ -203,6 +224,7 @@ export default function AdminPage() {
           {err ? <p className="bm-admin-err">{err}</p> : null}
 
           <section className="bm-admin-grid">
+            <Stat label="Waitlist" value={String(waitlist?.count ?? '—')} />
             <Stat label="Games" value={String(vol.games_played ?? vol.matches_total ?? '—')} />
             <Stat label="Live now" value={String(vol.games_live ?? '—')} />
             <Stat label="Volume" value={usd(vol.skill_volume_usdc)} />
@@ -214,6 +236,25 @@ export default function AdminPage() {
               ? `Live from House · ${desk.generated_at || ''}`
               : 'No live book — House is offline. Nothing cached.'}
           </p>
+
+          <section className="bm-admin-card">
+            <h2>Waitlist</h2>
+            <p className="bm-admin-muted">
+              {waitlist?.count ?? 0} signed up
+              {waitlist?.via ? ` · ${waitlist.via}` : ''}.
+            </p>
+            <ul className="bm-admin-list">
+              {(waitlist?.entries || []).slice(0, 80).map((e) => (
+                <li key={e.email}>
+                  <strong>{e.email}</strong>
+                  {e.telegram ? ` · @${e.telegram}` : ''}
+                  {e.source ? ` · ${e.source}` : ''}
+                  {e.created_at ? ` · ${String(e.created_at).slice(0, 10)}` : ''}
+                </li>
+              ))}
+              {!(waitlist?.entries || []).length ? <li>No signups yet.</li> : null}
+            </ul>
+          </section>
 
           <section className="bm-admin-card">
             <h2>House</h2>

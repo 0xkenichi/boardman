@@ -275,39 +275,8 @@ export default function BoardmanScrollScene() {
       const mover = pieces.find((p) => p.file === 4 && p.rank === 1)
 
       const screens = new THREE.Group()
-      screens.position.set(6.4, 2.2, 0.4)
+      screens.visible = false
       root.add(screens)
-      const loader = new THREE.TextureLoader()
-      const cardSrc = [
-        '/rematch/atmosphere/h2h-console.jpg',
-        '/rematch/atmosphere/h2h-mobile.jpg',
-        '/rematch/atmosphere/h2h-pc.jpg',
-        '/rematch/atmosphere/h2h-fight.jpg',
-        '/rematch/atmosphere/h2h-imessage.jpg',
-      ]
-      const cardGeo = new THREE.BoxGeometry(2.35, 1.45, 0.07)
-      const cardBack = new THREE.MeshStandardMaterial({
-        color: 0x120c1c,
-        roughness: 0.45,
-        metalness: 0.2,
-      })
-      cardSrc.forEach((src, i) => {
-        const tex = loader.load(src)
-        tex.colorSpace = THREE.SRGBColorSpace
-        const face = new THREE.MeshStandardMaterial({
-          map: tex,
-          roughness: 0.4,
-          metalness: 0.08,
-        })
-        const mats = [cardBack, cardBack, cardBack, cardBack, face, cardBack]
-        const card = new THREE.Mesh(cardGeo, mats)
-        const col = i % 3
-        const row = Math.floor(i / 3)
-        card.position.set(col * 1.15 - 0.9, 1.6 - row * 1.7, -i * 0.35)
-        card.rotation.y = -0.35 + col * 0.12
-        card.rotation.x = 0.08
-        screens.add(card)
-      })
 
       const net = new THREE.Group()
       net.position.set(-5.2, 3.4, -1)
@@ -554,7 +523,6 @@ export default function BoardmanScrollScene() {
         cone.dispose()
         box.dispose()
         cyl.dispose()
-        cardGeo.dispose()
         nodeGeo.dispose()
         lineGeo.dispose()
         dustGeo.dispose()
@@ -564,7 +532,6 @@ export default function BoardmanScrollScene() {
         ink.dispose()
         nodeMat.dispose()
         nodeMat2.dispose()
-        cardBack.dispose()
       })
     })()
 

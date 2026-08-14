@@ -8,7 +8,7 @@ import { REMATCH_BOT_URL, REMATCH_GROUP_URL } from '@/lib/rematchLinks'
 const BoardmanScrollScene = dynamic(() => import('./BoardmanScrollScene'), { ssr: false })
 
 const GAMES = [
-  { src: '/rematch/atmosphere/h2h-console.jpg', t: 'Console', d: 'EA FC · NBA 2K' },
+  { src: '/rematch/atmosphere/h2h-console.jpg', t: 'PlayStation', d: 'EA FC · NBA 2K' },
   { src: '/rematch/atmosphere/h2h-mobile.jpg', t: 'Mobile', d: 'Free Fire · FC Mobile' },
   { src: '/rematch/atmosphere/h2h-pc.jpg', t: 'PC', d: 'Valorant · ranked' },
   { src: '/rematch/atmosphere/h2h-fight.jpg', t: 'Fighting', d: 'BO sets' },
@@ -111,17 +111,10 @@ function HumanReel() {
   const [shot, setShot] = useState(0)
 
   useEffect(() => {
-    const el = document.getElementById('humans')
-    if (!el) return
-    const onScroll = () => {
-      const r = el.getBoundingClientRect()
-      const span = Math.max(r.height * 0.7, 1)
-      const t = Math.min(1, Math.max(0, (window.innerHeight * 0.65 - r.top) / span))
-      setShot(Math.min(GAMES.length - 1, Math.floor(t * GAMES.length)))
-    }
-    onScroll()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
+    const id = window.setInterval(() => {
+      setShot((n) => (n + 1) % GAMES.length)
+    }, 3200)
+    return () => window.clearInterval(id)
   }, [])
 
   return (
@@ -187,10 +180,9 @@ export function BoardmanLandingHero() {
             <li>Console</li>
             <li>Mobile</li>
             <li>PC</li>
+            <li>PlayStation</li>
             <li>iMessage</li>
-            <li>Physical</li>
           </ul>
-          <WaitlistForm id="waitlist-humans" />
           <div className="bm-cta">
             <Link href="/app" className="bm-btn bm-btn-em">
               Open /app
