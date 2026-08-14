@@ -158,30 +158,38 @@
         "</div>"
       );
     }
+    function set(id, text) {
+      const n = $(id);
+      if (n) n.textContent = text;
+    }
     function paint(j) {
       const v = j.volume || {};
       const live = Number(v.games_live || 0);
       const settled = Number(v.games_settled != null ? v.games_settled : v.matches_settled || 0);
       const played = Number(v.games_played != null ? v.games_played : settled);
-      $("vGames").textContent = played + (live ? " · " + live + " live" : "");
-      $("vTxs").textContent = String(v.transactions != null ? v.transactions : "—");
-      $("vSkill").textContent = "$" + Number(v.skill_volume_usdc || 0).toFixed(2);
-      $("vSpec").textContent = "$" + Number(v.spectator_volume_usdc || 0).toFixed(2);
-      $("vCounts").textContent = (v.matches_settled || 0) + " / " + (v.matches_onchain || 0);
-      $("vWhen").textContent = when(j.generated_at);
+      set("vGames", played + (live ? " · " + live + " live" : ""));
+      set("vTxs", String(v.transactions != null ? v.transactions : "—"));
+      set("vSkill", "$" + Number(v.skill_volume_usdc || 0).toFixed(2));
+      set("vSpec", "$" + Number(v.spectator_volume_usdc || 0).toFixed(2));
+      set("vCounts", (v.matches_settled || 0) + " / " + (v.matches_onchain || 0));
+      set("vWhen", when(j.generated_at));
       const steps = v.tx_by_step || {};
       const bits = Object.keys(steps).sort().map((k) => k + " " + steps[k]);
-      $("txBreak").textContent = bits.length ? bits.join(" · ") : "";
-      $("cards").innerHTML = (j.agents || []).map(cardHtml).join("") || "";
+      set("txBreak", bits.join(" · "));
+      if ($("cards")) $("cards").innerHTML = (j.agents || []).map(cardHtml).join("") || "";
       const txs = j.transactions || [];
-      $("txLog").innerHTML = txs.length
-        ? '<div class="panel">' + txs.map(txLogRow).join("") + "</div>"
-        : '<div class="empty">No recorded transactions yet.</div>';
+      if ($("txLog")) {
+        $("txLog").innerHTML = txs.length
+          ? '<div class="panel">' + txs.map(txLogRow).join("") + "</div>"
+          : '<div class="empty">No recorded transactions yet.</div>';
+      }
       const rows = j.matches || [];
-      $("log").innerHTML = rows.length
-        ? rows.map(matchCard).join("")
-        : '<div class="empty">No finished matches yet.</div>';
-      $("note").textContent = j.log ? "Log: " + j.log : "";
+      if ($("log")) {
+        $("log").innerHTML = rows.length
+          ? rows.map(matchCard).join("")
+          : '<div class="empty">No finished matches yet.</div>';
+      }
+      set("note", j.via === "static_snapshot" ? "Showing last saved snapshot — live API timed out." : (j.log ? "Log: " + j.log : ""));
     }
     async function load() {
       const urls = ["/api/agentic/metrics?limit=80", "/agentic/match-proofs.json"];

@@ -345,34 +345,60 @@ def build_public_metrics(
     order = {RAJA_ID: 0, NERO_ID: 1}
     out_cards.sort(key=lambda c: (order.get(c["agent_id"], 9), c["name"]))
 
-    from gaming.src.stack.agentic.tx_log import list_transactions, sync_from_matches
-
-    log_stats = sync_from_matches(store)
-    tx_rows = list_transactions(min(200, max(40, int(limit) * 3)))
-    # Per-agent tx count: unique hashes on matches they played
-    for card in out_cards:
-        mid_set = {
-            m.get("match_id")
-            for m in rows_src
-            if card["agent_id"] in {m.get("agent_a_id"), m.get("agent_b_id")}
-        }
-        n = 0
-        seen: set[str] = set()
-        for t in tx_rows:
-            h = t.get("tx_hash") or ""
-            if not h or h in seen:
-                continue
-            if t.get("match_id") in mid_set or t.get("agent_id") == card["agent_id"]:
-                seen.add(h)
-                n += 1
-        card["tx_count"] = n
-        card["games_played"] = card["played"]
-
     playing_n = sum(
         1
         for m in rows_src
         if m.get("status") in {"playing", "locking", "locked", "open"}
     )
+
+    # Count hashes in memory — never block this request on sqlite.
+    tx_seen: set[str] = set()
+    tx_by_step: dict[str, int] = {}
+    tx_rows: list[dict[str, Any]] = []
+    tx_by_match: dict[str, int] = {}
+
+    def _add_tx(h: Any, step: str, match_id: str, agent_id: str = "") -> None:
+        txh = str(h or "").strip()
+        if not txh or txh in tx_seen:
+            return
+        tx_seen.add(txh)
+        tx_by_step[step or "tx"] = tx_by_step.get(step or "tx", 0) + 1
+        tx_by_match[match_id] = tx_by_match.get(match_id, 0) + 1
+        tx_rows.append(
+            {
+                "tx_hash": txh,
+                "step": step or "tx",
+                "match_id": match_id,
+                "agent_id": agent_id,
+                "explorer": _explorer(txh),
+                "created_at": "",
+            }
+        )
+
+    for m in rows_src:
+        mid = str(m.get("match_id") or "")
+        p = _proofs(m)
+        _add_tx(p.get("create_tx_hash"), "lock", mid, m.get("agent_a_id") or "")
+        _add_tx(p.get("join_tx_hash"), "join", mid, m.get("agent_b_id") or "")
+        _add_tx(p.get("settle_tx_hash"), "settle", mid, m.get("winner_agent_id") or "")
+        for t in p.get("txs") or []:
+            _add_tx(t.get("tx_hash"), t.get("step") or "tx", mid)
+        book = m.get("spectator_book") or {}
+        _add_tx(book.get("open_tx_hash"), "openBook", mid)
+        _add_tx(book.get("resolve_tx_hash"), "resolveBook", mid)
+        for b in book.get("bets") or []:
+            _add_tx(b.get("tx_hash"), "deposit", mid)
+        for t in book.get("deposit_txs") or []:
+            _add_tx(t.get("tx_hash"), t.get("step") or "deposit", mid)
+
+    for card in out_cards:
+        mids = {
+            m.get("match_id")
+            for m in rows_src
+            if card["agent_id"] in {m.get("agent_a_id"), m.get("agent_b_id")}
+        }
+        card["tx_count"] = sum(tx_by_match.get(mid, 0) for mid in mids if mid)
+        card["games_played"] = card["played"]
 
     return {
         "success": True,
@@ -392,14 +418,14 @@ def build_public_metrics(
             "games_played": settled_n + playing_n,
             "games_settled": settled_n,
             "games_live": playing_n,
-            "transactions": int(log_stats.get("transactions") or 0),
-            "tx_by_step": log_stats.get("tx_by_step") or {},
+            "transactions": len(tx_seen),
+            "tx_by_step": tx_by_step,
             "skill_volume_usdc": _q(skill_volume),
             "spectator_volume_usdc": _q(spectator_volume),
         },
         "agents": out_cards,
         "matches": public_rows,
-        "transactions": tx_rows,
+        "transactions": tx_rows[: min(200, max(40, int(limit) * 3))],
     }
 
 

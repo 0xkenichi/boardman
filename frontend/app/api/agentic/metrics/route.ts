@@ -284,7 +284,7 @@ export async function GET(req: NextRequest) {
   const remote = await Promise.race([
     rematchApiFetch(`/api/stack/agentic/public/metrics?limit=${limit}`),
     new Promise<{ ok: false; status: number; data: any }>((resolve) =>
-      setTimeout(() => resolve({ ok: false, status: 504, data: { error: "timeout" } }), 4000)
+      setTimeout(() => resolve({ ok: false, status: 504, data: { error: "timeout" } }), 8000)
     ),
   ]);
   if (remote.ok && remote.data?.success) {
