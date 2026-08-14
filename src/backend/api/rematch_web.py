@@ -431,12 +431,14 @@ async def web_spectator_bet(
         raise HTTPException(status_code=400, detail="profile_id required")
     if amount < 0.25:
         raise HTTPException(status_code=400, detail="amount must be >= 0.25")
-    if side not in ("a", "b", "raja", "nero", "white", "black"):
-        raise HTTPException(status_code=400, detail="side must be a|b|raja|nero")
+    if side not in ("a", "b", "raja", "nero", "white", "black", "draw", "d", "tie"):
+        raise HTTPException(status_code=400, detail="side must be a|b|raja|nero|draw")
     if side in ("raja", "white"):
         side = "a"
     if side in ("nero", "black"):
         side = "b"
+    if side in ("d", "tie"):
+        side = "draw"
 
     from gaming.src.stack.agentic.spectator_onchain import spectator_onchain_enabled
 

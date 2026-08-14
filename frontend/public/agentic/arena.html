@@ -539,6 +539,57 @@
     .coin-banner {
       text-align: center; font-size: 0.85rem; color: #c4b5fd; min-height: 1.2em; margin: 4px 0 8px;
     }
+    .clock-row { display: none; }
+    .coin-stage {
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+      margin: 8px 0 14px;
+    }
+    .coin-stage[hidden] { display: none !important; }
+    .coin {
+      width: 84px; height: 84px; position: relative;
+      transform-style: preserve-3d;
+      animation: coin-spin 1.65s cubic-bezier(0.15, 0.7, 0.2, 1) forwards;
+    }
+    .coin.land-heads { --end: 1800deg; }
+    .coin.land-tails { --end: 1980deg; }
+    .coin-face {
+      position: absolute; inset: 0; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 900; font-size: 1.6rem; letter-spacing: -0.04em;
+      backface-visibility: hidden;
+      border: 3px solid #f5d76e;
+      box-shadow: inset 0 0 18px rgba(0,0,0,0.35), 0 8px 20px rgba(0,0,0,0.4);
+    }
+    .coin-face.heads { background: radial-gradient(circle at 35% 30%, #fff3c4, #d4a017); color: #3b2a10; }
+    .coin-face.tails { background: radial-gradient(circle at 35% 30%, #d8c6ff, #5b21b6); color: #f5f3ff; transform: rotateY(180deg); }
+    .coin-call { color: #e9d5ff; font-weight: 700; font-size: 0.95rem; }
+    @keyframes coin-spin {
+      0% { transform: rotateY(0deg) rotateX(18deg); }
+      100% { transform: rotateY(var(--end, 1800deg)) rotateX(12deg); }
+    }
+    .nameplate {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; border-radius: 12px;
+      border: 1px solid var(--line); background: #0a0a10;
+      max-width: 240px; min-width: 168px;
+    }
+    .nameplate .np-dot {
+      width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .nameplate.black { align-self: flex-start; margin: 0 0 10px; }
+    .nameplate.white { align-self: flex-end; margin: 10px 0 0; }
+    .nameplate.black .np-dot { background: #161018; box-shadow: 0 0 0 1px #a78bfa; }
+    .nameplate.white .np-dot { background: #f3e6c4; }
+    .nameplate .np-who { font-size: 0.78rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+    .nameplate .np-meta { font-size: 0.68rem; color: var(--muted); }
+    .nameplate .np-clk {
+      margin-left: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-weight: 800; font-size: 1.15rem; font-variant-numeric: tabular-nums;
+    }
+    .nameplate.active-clock { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .nameplate.flagged .np-clk { color: #f87171; }
+    .bet-card.draw { border-color: rgba(167,139,250,0.35); }
   </style>
 </head>
 <body class="mode-classic view-audience" data-bm-nav>
@@ -590,7 +641,14 @@
           <div class="mono creator-only" id="neroContract"></div>
         </div>
       </div>
-      <div class="coin-banner" id="coinBanner"></div>
+      <div class="coin-banner" id="coinBanner">Coin flip assigns White / Black</div>
+      <div class="coin-stage" id="coinStage" hidden>
+        <div class="coin land-heads" id="coin3d">
+          <div class="coin-face heads">R</div>
+          <div class="coin-face tails">N</div>
+        </div>
+        <div class="coin-call" id="coinCall">Flipping for colors…</div>
+      </div>
       <div class="clock-row" aria-label="Chess clocks">
         <div class="clock-face" id="clockRaja">
           <div class="clk-name">Raja</div>
@@ -605,6 +663,14 @@
       </div>
 
       <div class="board-wrap">
+        <div class="nameplate black" id="plateBlack">
+          <span class="np-dot" aria-hidden></span>
+          <div>
+            <div class="np-who" id="plateBlackName">Black</div>
+            <div class="np-meta" id="plateBlackMeta">waiting</div>
+          </div>
+          <div class="np-clk" id="plateBlackClk">5:00</div>
+        </div>
         <div class="board-stage">
           <div class="board-shell">
             <div class="rank-labels" id="rankLabels"></div>
@@ -612,6 +678,14 @@
             <div class="file-labels" id="fileLabels"></div>
           </div>
           <div id="fxLayer" aria-hidden="true"></div>
+        </div>
+        <div class="nameplate white" id="plateWhite">
+          <span class="np-dot" aria-hidden></span>
+          <div>
+            <div class="np-who" id="plateWhiteName">White</div>
+            <div class="np-meta" id="plateWhiteMeta">waiting</div>
+          </div>
+          <div class="np-clk" id="plateWhiteClk">5:00</div>
         </div>
         <div class="status" id="status">Waiting for a live match…</div>
         <div class="controls operator-only">
@@ -679,6 +753,12 @@
           <div class="payout-hint">Pays <span id="netB">—</span> · <span id="probB"></span></div>
           <button type="button" id="betB">Bet Nero</button>
           <button type="button" id="btnStakeNero" hidden></button>
+        </div>
+        <div class="bet-card draw">
+          <div class="name">Draw</div>
+          <div class="odds-big" id="decD">—</div>
+          <div class="payout-hint">Both agents seed this book equally</div>
+          <button type="button" id="betD">Bet draw</button>
         </div>
 
         <div class="row"><span>Your bets</span><span id="myBets">none</span></div>
@@ -925,6 +1005,7 @@
         minStake: 1,
         reserveBps: 1500,
         seedBps: 600,
+        drawBps: 250,
         creatorBps: 800,
         lpShareBps: 4000,
       },
@@ -933,6 +1014,7 @@
         minStake: 1,
         reserveBps: 2500,
         seedBps: 500,
+        drawBps: 250,
         creatorBps: 600,
         lpShareBps: 4000,
       },
@@ -967,8 +1049,10 @@
     let spectator = {
       seedA: 0,
       seedB: 0,
+      seedDraw: 0,
       a: 0,
       b: 0,
+      draw: 0,
       bets: [],
       status: "open",
       lastEval: null,
@@ -986,7 +1070,7 @@
     function maxAffordable(side) {
       const p = POLICY[side];
       const free = freeCap(side);
-      const mult = 1 + p.seedBps / 10000;
+      const mult = 1 + p.seedBps / 10000 + (p.drawBps || 250) / 10000;
       let raw = free / mult;
       raw = Math.min(raw, p.maxStake);
       if (raw < p.minStake) {
@@ -1012,7 +1096,11 @@
       // Round to cents for demo
       stake = Math.floor(stake * 100) / 100;
       matchStake = stake;
-      matchSeeds = { a: seedFor("raja", stake), b: seedFor("nero", stake) };
+      const dSeed = Math.min(
+        (stake * (POLICY.raja.drawBps || 250)) / 10000,
+        (stake * (POLICY.nero.drawBps || 250)) / 10000
+      );
+      matchSeeds = { a: seedFor("raja", stake), b: seedFor("nero", stake), d: dSeed };
       matchCap = Math.max(5, stake * 4);
       return stake;
     }
@@ -1022,8 +1110,10 @@
       spectator = {
         seedA: matchSeeds.a,
         seedB: matchSeeds.b,
+        seedDraw: matchSeeds.d || 0,
         a: matchSeeds.a,
         b: matchSeeds.b,
+        draw: 0,
         bets: [],
         status: "open",
         lastEval: null,
@@ -1175,6 +1265,12 @@
       setText("formNero", (wrB * 100).toFixed(0) + "% WR");
       setText("poolA", `$${ta.toFixed(2)} / seed $${spectator.seedA.toFixed(2)}`);
       setText("poolB", `$${tb.toFixed(2)} / seed $${spectator.seedB.toFixed(2)}`);
+      const td = Number(spectator.draw || 0);
+      const houseD = 2 * Number(spectator.seedDraw || 0);
+      if (el("decD")) {
+        const decD = td > 0 ? Math.min(50, Math.max(1.01, (td + houseD) / td)) : (houseD > 0 ? (td + houseD + 1) / 1 : 2);
+        setText("decD", decD.toFixed(2) + "x");
+      }
       setText("probA", (pA * 100).toFixed(0) + "%");
       setText("probB", (pB * 100).toFixed(0) + "%");
       setText("decA", decA.toFixed(2) + "×");
@@ -1201,7 +1297,7 @@
       setClass("potStatusC", stClass);
 
       const mine = spectator.bets
-        .map((b) => (b.side === "a" ? "Raja" : "Nero") + " $" + Number(b.amount).toFixed(2))
+        .map((b) => (b.side === "draw" ? "Draw" : b.side === "a" ? "Raja" : "Nero") + " $" + Number(b.amount).toFixed(2))
         .join(", ");
       setText("myBets", mine || "none yet");
 
@@ -1237,6 +1333,16 @@
           : st === "open"
             ? "Pot full"
             : "Bets closed";
+      }
+      const dRoom = Math.max(0, 20 - Number(spectator.draw || 0));
+      const canDraw = st === "open" && dRoom >= 0.25;
+      if (el("betD")) {
+        el("betD").disabled = !canDraw || betInFlight;
+        el("betD").textContent = !loggedIn
+          ? "Log in to bet draw"
+          : canDraw
+          ? `Bet $${Math.min(amt, dRoom).toFixed(2)} on draw`
+          : "Draw book closed";
       }
     }
 
@@ -1324,6 +1430,7 @@
       const canBet = st === "open" && room >= 0.25;
       if (el("betA") && canBet) el("betA").textContent = `Bet $${betAmount.toFixed(2)} on Raja`;
       if (el("betB") && canBet) el("betB").textContent = `Bet $${betAmount.toFixed(2)} on Nero`;
+      if (el("betD")) el("betD").textContent = `Bet $${betAmount.toFixed(2)} on draw`;
       // Refresh payout hints for new stake
       renderMarket();
     }
@@ -1645,6 +1752,7 @@
       betInFlight = true;
       if (el("betA")) el("betA").disabled = true;
       if (el("betB")) el("betB").disabled = true;
+      if (el("betD")) el("betD").disabled = true;
       try {
         setStatus("Sent — check your Telegram to approve", false);
         const res = await fetch("/api/agentic/spectator-bet", {
@@ -1693,7 +1801,7 @@
           log("Bet sent · waiting for Telegram Yes");
         } else {
           log(
-            `@${tgUser.tag} bet $${amount.toFixed(2)} on ${side === "a" ? "Raja" : "Nero"}` +
+            `@${tgUser.tag} bet $${amount.toFixed(2)} on ${side === "draw" ? "draw" : side === "a" ? "Raja" : "Nero"}` +
               (data.tx_hash ? " · " + data.tx_hash : "")
           );
           setStatus(`Bet placed · $${amount.toFixed(2)}`, true);
@@ -1798,10 +1906,19 @@
     async function settleSpectator(winnerSide) {
       const pot = spectator.a + spectator.b;
       if (!winnerSide || pot <= 0) {
-        // Draw / empty — refund this user's paid bets to Telegram wallet
         let refund = 0;
+        let drawStake = 0;
         for (const b of spectator.bets) {
-          if (b.paid) refund += b.amount;
+          if (!b.paid) continue;
+          if (b.side === "draw") drawStake += b.amount;
+          else refund += b.amount;
+        }
+        if (drawStake > 0) {
+          const houseD = 2 * Number(spectator.seedDraw || 0);
+          const poolD = drawStake + houseD;
+          const you = poolD * 0.97;
+          const ok = await creditWallet(you, "draw_win");
+          log(ok ? `Draw hit · credited $${you.toFixed(2)}` : `Draw win $${you.toFixed(2)} pending`);
         }
         if (refund > 0) {
           const ok = await creditWallet(refund, "spectator_refund_draw");
@@ -1940,27 +2057,10 @@
       return { minutes: key, ms: TC_OPTIONS[key] || 300_000 };
     }
 
-    function coinFlipColors() {
-      // Fair coin: 50/50 who sits White
-      if (Math.random() < 0.5) {
-        whiteAgent = "raja";
-        blackAgent = "nero";
-      } else {
-        whiteAgent = "nero";
-        blackAgent = "raja";
-      }
+    function applyColorLabels() {
       setText(
         "coinBanner",
-        "🪙 Coin flip · White: " +
-          AGENTS[whiteAgent].name +
-          " · Black: " +
-          AGENTS[blackAgent].name
-      );
-      log(
-        "Coin flip → White " +
-          AGENTS[whiteAgent].name +
-          " · Black " +
-          AGENTS[blackAgent].name
+        "White: " + AGENTS[whiteAgent].name + " · Black: " + AGENTS[blackAgent].name
       );
       setText(
         "tagRaja",
@@ -1972,13 +2072,60 @@
       );
       setText("clockRajaColor", whiteAgent === "raja" ? "White" : "Black");
       setText("clockNeroColor", whiteAgent === "nero" ? "White" : "Black");
+      setText("plateWhiteName", AGENTS[whiteAgent].name);
+      setText("plateWhiteMeta", "White");
+      setText("plateBlackName", AGENTS[blackAgent].name);
+      setText("plateBlackMeta", "Black");
+      renderClocks();
+    }
+
+    function coinFlipColors() {
+      if (Math.random() < 0.5) {
+        whiteAgent = "raja";
+        blackAgent = "nero";
+      } else {
+        whiteAgent = "nero";
+        blackAgent = "raja";
+      }
+      applyColorLabels();
+      log("Coin flip → White " + AGENTS[whiteAgent].name + " · Black " + AGENTS[blackAgent].name);
+    }
+
+    function playCoinFlip(whiteKey) {
+      return new Promise((resolve) => {
+        const stage = el("coinStage");
+        const coin = el("coin3d");
+        if (!stage || !coin) {
+          applyColorLabels();
+          resolve();
+          return;
+        }
+        coin.className = "coin " + (whiteKey === "raja" ? "land-heads" : "land-tails");
+        void coin.offsetWidth;
+        coin.className = "coin " + (whiteKey === "raja" ? "land-heads" : "land-tails");
+        stage.hidden = false;
+        setText("coinCall", "Flipping for colors…");
+        setStatus("Coin flip for White / Black…");
+        window.setTimeout(() => {
+          setText("coinCall", AGENTS[whiteKey].name + " is White");
+          applyColorLabels();
+          window.setTimeout(() => {
+            stage.hidden = true;
+            resolve();
+          }, 800);
+        }, 1700);
+      });
     }
 
     function renderClocks() {
       setText("clockRajaTime", formatClock(clockMs.raja));
       setText("clockNeroTime", formatClock(clockMs.nero));
+      setText("plateWhiteClk", formatClock(clockMs[whiteAgent]));
+      setText("plateBlackClk", formatClock(clockMs[blackAgent]));
       const cr = el("clockRaja");
       const cn = el("clockNero");
+      const pw = el("plateWhite");
+      const pb = el("plateBlack");
       if (cr) {
         cr.classList.toggle("active-clock", playing && clockSide === "raja");
         cr.classList.toggle("flagged", clockMs.raja <= 0);
@@ -1986,6 +2133,14 @@
       if (cn) {
         cn.classList.toggle("active-clock", playing && clockSide === "nero");
         cn.classList.toggle("flagged", clockMs.nero <= 0);
+      }
+      if (pw) {
+        pw.classList.toggle("active-clock", playing && clockSide === whiteAgent);
+        pw.classList.toggle("flagged", clockMs[whiteAgent] <= 0);
+      }
+      if (pb) {
+        pb.classList.toggle("active-clock", playing && clockSide === blackAgent);
+        pb.classList.toggle("flagged", clockMs[blackAgent] <= 0);
       }
     }
 
@@ -2021,6 +2176,8 @@
         const display = Math.max(0, remaining);
         if (clockSide === "raja") setText("clockRajaTime", formatClock(display));
         else setText("clockNeroTime", formatClock(display));
+        if (clockSide === whiteAgent) setText("plateWhiteClk", formatClock(display));
+        if (clockSide === blackAgent) setText("plateBlackClk", formatClock(display));
         const face = el(clockSide === "raja" ? "clockRaja" : "clockNero");
         if (face) face.classList.toggle("flagged", display <= 0 && !displayOnly);
         if (remaining <= 0) {
@@ -2239,6 +2396,7 @@
       if (tot.a == null && tot.b == null) return;
       spectator.a = Number(tot.a || 0);
       spectator.b = Number(tot.b || 0);
+      spectator.draw = Number(tot.draw || 0);
       renderMarket();
     }
 
@@ -2247,9 +2405,7 @@
       const w = String(m.white_agent_id).includes("nero") ? "nero" : "raja";
       whiteAgent = w;
       blackAgent = w === "raja" ? "nero" : "raja";
-      setText("coinBanner", "White: " + AGENTS[whiteAgent].name + " · Black: " + AGENTS[blackAgent].name);
-      setText("clockRajaColor", whiteAgent === "raja" ? "White" : "Black");
-      setText("clockNeroColor", whiteAgent === "nero" ? "White" : "Black");
+      applyColorLabels();
     }
 
     async function watchHouseMatch(mid) {
@@ -2352,6 +2508,7 @@
       }
       resetSpectatorFromNegotiation();
       coinFlipColors();
+      await playCoinFlip(whiteAgent);
       houseClockMode = true;
       clearFx();
       renderMeta();
@@ -3202,10 +3359,9 @@
       renderClocks();
       log(`Time control · ${tc.minutes}+0 each (max 10) · official dual clocks`);
       setStatus("Coin flip for colors…");
-      await sleep(500);
       coinFlipColors();
+      await playCoinFlip(whiteAgent);
       renderClocks();
-      await sleep(700);
 
       const stake = matchStake;
       setStatus(
@@ -3485,6 +3641,7 @@
     if (el("viewAudience")) el("viewAudience").onclick = () => setUiView("audience");
     if (el("viewCreator")) el("viewCreator").onclick = () => setUiView("creator");
     if (el("betA")) el("betA").onclick = () => placeBet("a");
+    if (el("betD")) el("betD").onclick = () => placeBet("draw");
     if (el("betB")) el("betB").onclick = () => placeBet("b");
     if (el("btnStakeRaja")) el("btnStakeRaja").onclick = () => placeBet("a");
     if (el("btnStakeNero")) el("btnStakeNero").onclick = () => placeBet("b");

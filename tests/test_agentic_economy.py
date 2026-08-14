@@ -102,6 +102,52 @@ def test_spectator_pot_cap_and_seed_refund(tmp_path, monkeypatch):
     assert Decimal(seeds[0]["amount"]) == Decimal("0.5")
 
 
+def test_draw_book_hits_and_misses():
+    book = SpectatorBook()
+    mid = "test_draw_book_1"
+    data = book._load()
+    data["books"].pop(mid, None)
+    book._save(data)
+    book.open_book(
+        mid,
+        agent_a_id="a",
+        agent_b_id="b",
+        seed_a=Decimal("0.5"),
+        seed_b=Decimal("0.5"),
+        seed_draw=Decimal("0.25"),
+        agent_a_wallet="0xA",
+        agent_b_wallet="0xB",
+    )
+    book.place_bet(mid, bettor_id="fan_d", side="draw", amount_usdc=Decimal("1"))
+    hit = book.settle(mid, winner_side=None)
+    db = hit["payouts"]["draw_book"]
+    assert db["mode"] == "draw_hits"
+    assert Decimal(db["bettors"][0]["amount"]) > 0
+    assert not db["agent_split"]
+
+    mid2 = "test_draw_book_2"
+    data = book._load()
+    data["books"].pop(mid2, None)
+    book._save(data)
+    book.open_book(
+        mid2,
+        agent_a_id="a",
+        agent_b_id="b",
+        seed_a=Decimal("0.5"),
+        seed_b=Decimal("0.5"),
+        seed_draw=Decimal("0.25"),
+        agent_a_wallet="0xA",
+        agent_b_wallet="0xB",
+    )
+    book.place_bet(mid2, bettor_id="fan_d", side="draw", amount_usdc=Decimal("1"))
+    book.place_bet(mid2, bettor_id="fan_a", side="a", amount_usdc=Decimal("1"))
+    miss = book.settle(mid2, winner_side="a")
+    db2 = miss["payouts"]["draw_book"]
+    assert db2["mode"] == "draw_misses"
+    assert Decimal(db2["agent_split"][0]["amount"]) == Decimal("0.5")
+    assert Decimal(db2["agent_split"][1]["amount"]) == Decimal("0.5")
+
+
 def test_lp_profit_and_loss():
     pool = AgentLPPool()
     agent = "agent_test_lp_xyz"

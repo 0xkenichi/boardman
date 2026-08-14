@@ -855,7 +855,7 @@ async def economy_policy(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
 
 class BetBody(BaseModel):
     bettor_id: str
-    side: str = Field(..., description="a or b (agent_a / agent_b)")
+    side: str = Field(..., description="a or b or draw")
     amount_usdc: float = Field(..., gt=0, le=10_000)
 
 

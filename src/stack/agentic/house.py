@@ -109,8 +109,10 @@ def is_house(agent_id: Optional[str]) -> bool:
 
 
 def resolve_side(match: dict[str, Any], side: str) -> str:
-    """Map a human/agent label to book slot a|b using the match record."""
+    """Map a human/agent label to book slot a|b|draw using the match record."""
     s = (side or "").strip().lower()
+    if s in {"draw", "d", "tie"}:
+        return "draw"
     if s in {"a", "0"}:
         return "a"
     if s in {"b", "1"}:
@@ -375,7 +377,7 @@ class HouseRuntime:
             raise ValueError("Boardman House cannot bet on its own tables")
         slot = resolve_side(m, side)
         existing = SpectatorBook().get(match_id) or {}
-        if existing.get("onchain"):
+        if existing.get("onchain") and slot != "draw":
             raise ValueError("on-chain spectator book — deposit on SpectatorPool first")
         book = SpectatorBook().place_bet(
             match_id,

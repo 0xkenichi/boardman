@@ -144,10 +144,11 @@ export async function POST(req: NextRequest) {
   let side = String(body.side || "").toLowerCase();
   if (side === "raja" || side === "white") side = "a";
   if (side === "nero" || side === "black") side = "b";
+  if (side === "d" || side === "tie") side = "draw";
   if (!Number.isFinite(amount) || amount < 0.25) {
     return NextResponse.json({ ok: false, error: "invalid_amount" }, { status: 400 });
   }
-  if (side !== "a" && side !== "b") {
+  if (side !== "a" && side !== "b" && side !== "draw") {
     return NextResponse.json({ ok: false, error: "invalid_side" }, { status: 400 });
   }
 

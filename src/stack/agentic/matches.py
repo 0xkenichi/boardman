@@ -151,6 +151,7 @@ class AgentMatchService:
             stake = Decimal(neg.stake_usdc)
             seed_a = Decimal(neg.seed_a)
             seed_b = Decimal(neg.seed_b)
+            seed_draw = Decimal(getattr(neg, "draw_seed", "0") or "0")
             negotiation = neg.to_dict()
         else:
             stake = Decimal(str(stake_usdc))
@@ -162,10 +163,12 @@ class AgentMatchService:
                 raise ValueError(f"agent B cannot stake: {why_b}")
             seed_a = bud_a.spectator_seed_for_stake(stake)
             seed_b = bud_b.spectator_seed_for_stake(stake)
+            seed_draw = min(bud_a.draw_seed_for_stake(stake), bud_b.draw_seed_for_stake(stake))
             negotiation = {
                 "stake_usdc": str(stake),
                 "seed_a": str(seed_a),
                 "seed_b": str(seed_b),
+                "draw_seed": str(seed_draw),
                 "binding": "request",
                 "ok": True,
                 "reason": "manual stake (auto_negotiate=false)",
@@ -195,6 +198,7 @@ class AgentMatchService:
             agent_b_id=agent_b_id,
             seed_a=seed_a,
             seed_b=seed_b,
+            seed_draw=seed_draw,
             creator_a_id=str(a.get("creator_id") or a.get("owner_id") or ""),
             creator_b_id=str(b.get("creator_id") or b.get("owner_id") or ""),
             pot_cap_usdc=pot_cap,
@@ -226,6 +230,7 @@ class AgentMatchService:
                 "creator_fee_bps_b": b.get("creator_fee_bps") or bud_b.creator_fee_bps,
                 "spectator_seed_a": str(seed_a),
                 "spectator_seed_b": str(seed_b),
+                "spectator_seed_draw": str(seed_draw),
                 "negotiation": negotiation,
                 "pot_cap_usdc": str(pot_cap),
                 "lp_profit_share_bps_a": bud_a.lp_profit_share_bps,
@@ -336,6 +341,7 @@ class AgentMatchService:
         eco = m.get("economy") or {}
         seed_a = Decimal(str(eco.get("spectator_seed_a") or "0"))
         seed_b = Decimal(str(eco.get("spectator_seed_b") or "0"))
+        seed_draw = Decimal(str(eco.get("spectator_seed_draw") or "0"))
         if seed_a > 0:
             ledger.debit(
                 m["agent_a_wallet"],
@@ -348,6 +354,19 @@ class AgentMatchService:
                 m["agent_b_wallet"],
                 seed_b,
                 reason="spectator_seed",
+                ref=match_id,
+            )
+        if seed_draw > 0:
+            ledger.debit(
+                m["agent_a_wallet"],
+                seed_draw,
+                reason="draw_seed",
+                ref=match_id,
+            )
+            ledger.debit(
+                m["agent_b_wallet"],
+                seed_draw,
+                reason="draw_seed",
                 ref=match_id,
             )
         if onchain_result:
@@ -631,7 +650,18 @@ class AgentMatchService:
                 w = sr.get("wallet")
                 amt = Decimal(str(sr.get("amount") or "0"))
                 if w and amt > 0:
-                    ledger.credit(w, amt, reason="seed_refund_draw", ref=match_id)
+                    ledger.credit(w, amt, reason=str(sr.get("reason") or "seed_refund_draw"), ref=match_id)
+            draw_book = (spec.get("payouts") or {}).get("draw_book") or {}
+            for sp in draw_book.get("agent_split") or []:
+                w = sp.get("wallet")
+                amt = Decimal(str(sp.get("amount") or "0"))
+                if w and amt > 0:
+                    ledger.credit(w, amt, reason="draw_underwrite_win", ref=match_id)
+            for bt in draw_book.get("bettors") or []:
+                bid = bt.get("bettor_id")
+                amt = Decimal(str(bt.get("amount") or "0"))
+                if bid and amt > 0:
+                    ledger.credit(str(bid), amt, reason="draw_win", ref=match_id)
         except Exception as exc:
             logger.warning("[agentic] spectator settle: %s", exc)
 

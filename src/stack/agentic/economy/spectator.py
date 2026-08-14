@@ -10,7 +10,10 @@ Settlement:
   platform takes spectator_fee_bps
   creators of BOTH agents split creator_spectator_bps of pot (or of fee)
   remainder goes pro-rata to bettors who picked the winning agent
-  draw → refund all spectator bets + seeds to origins
+  draw side-book → refund A/B bets + side seeds
+  draw book (separate): both agents seed the same $; fans bet "draw"
+    decisive game → agents split public draw bets 50/50 and get seeds back
+    actual draw → draw bettors take public draw + both agent seeds
 
 Demo ledger only (same file store as agentic). On-chain pools later.
 """
@@ -54,6 +57,7 @@ class SpectatorBook:
         agent_b_id: str,
         seed_a: Decimal = Decimal("0"),
         seed_b: Decimal = Decimal("0"),
+        seed_draw: Decimal = Decimal("0"),
         creator_a_id: str = "",
         creator_b_id: str = "",
         pot_cap_usdc: Optional[Decimal] = None,
@@ -79,9 +83,11 @@ class SpectatorBook:
             "agent_b_wallet": agent_b_wallet,
             "seed_a": str(seed_a),
             "seed_b": str(seed_b),
+            "seed_draw": str(seed_draw),
             "pot_cap_usdc": str(cap),
-            "bets": [],  # {bettor_id, side: a|b, amount, ts}
-            "totals": {"a": str(seed_a), "b": str(seed_b)},
+            "draw_cap_usdc": str(max(Decimal("5"), seed_draw * 40) if seed_draw > 0 else Decimal("20")),
+            "bets": [],  # {bettor_id, side: a|b|draw, amount, ts}
+            "totals": {"a": str(seed_a), "b": str(seed_b), "draw": "0"},
             "odds_history": [],  # snapshots from economy.odds
             "onchain": False,
             "pool": "",
@@ -104,26 +110,35 @@ class SpectatorBook:
         amount_usdc: Decimal,
     ) -> dict[str, Any]:
         side = side.lower()
-        if side not in {"a", "b"}:
-            raise ValueError("side must be a or b")
+        if side in {"d", "tie"}:
+            side = "draw"
+        if side not in {"a", "b", "draw"}:
+            raise ValueError("side must be a, b, or draw")
         if amount_usdc <= 0:
             raise ValueError("amount must be positive")
         data = self._load()
         book = data["books"].get(match_id)
         if not book:
             raise ValueError("book not found")
-        if book.get("onchain"):
+        if book.get("onchain") and side != "draw":
             raise ValueError("on-chain book — use project_deposit after a confirmed tx")
         if book["status"] != "open":
             raise ValueError(f"book not open: {book['status']}")
-        pot = _d(book["totals"]["a"]) + _d(book["totals"]["b"])
-        cap = _d(book.get("pot_cap_usdc") or "0")
+        book.setdefault("totals", {})
+        book["totals"].setdefault("draw", "0")
+        if side == "draw":
+            pot = _d(book["totals"].get("draw") or "0")
+            cap = _d(book.get("draw_cap_usdc") or "0")
+        else:
+            pot = _d(book["totals"].get("a") or "0") + _d(book["totals"].get("b") or "0")
+            cap = _d(book.get("pot_cap_usdc") or "0")
         if cap > 0 and pot + amount_usdc > cap + Decimal("0.000001"):
             room = cap - pot
             if room <= 0:
-                book["status"] = "full"
-                data["books"][match_id] = book
-                self._save(data)
+                if side != "draw":
+                    book["status"] = "full"
+                    data["books"][match_id] = book
+                    self._save(data)
                 raise ValueError("pot full — no more bets")
             raise ValueError(f"bet exceeds pot room ${room}")
         book["bets"].append(
@@ -257,23 +272,131 @@ class SpectatorBook:
         if book["status"] == "settled":
             return book
 
-        total_a = _d(book["totals"]["a"])
-        total_b = _d(book["totals"]["b"])
+        totals = book.setdefault("totals", {})
+        totals.setdefault("draw", "0")
+        total_a = _d(totals.get("a") or "0")
+        total_b = _d(totals.get("b") or "0")
+        public_draw = sum(
+            (_d(b.get("amount") or "0") for b in book.get("bets") or [] if str(b.get("side") or "") == "draw"),
+            Decimal("0"),
+        )
         pot = total_a + total_b
         seed_a = _d(book.get("seed_a") or "0")
         seed_b = _d(book.get("seed_b") or "0")
+        seed_draw = _d(book.get("seed_draw") or "0")
+        house_draw = seed_draw * 2
 
-        if winner_side is None or pot == 0:
-            # Refund fan bets + return seeds to agent wallets (caller credits)
+        def _draw_book_payouts(game_drawn: bool) -> dict[str, Any]:
+            if game_drawn:
+                if public_draw <= 0:
+                    unused = []
+                    if seed_draw > 0:
+                        unused = [
+                            {
+                                "side": "draw",
+                                "agent_id": book.get("agent_a_id"),
+                                "wallet": book.get("agent_a_wallet"),
+                                "amount": str(seed_draw),
+                                "reason": "draw_seed_unused",
+                            },
+                            {
+                                "side": "draw",
+                                "agent_id": book.get("agent_b_id"),
+                                "wallet": book.get("agent_b_wallet"),
+                                "amount": str(seed_draw),
+                                "reason": "draw_seed_unused",
+                            },
+                        ]
+                    return {
+                        "mode": "draw_seed_return",
+                        "public_draw": "0",
+                        "house_draw": str(house_draw),
+                        "bettors": [],
+                        "agent_split": [],
+                        "seed_refunds": unused,
+                    }
+                pot_d = public_draw + house_draw
+                fee = _bps(pot_d, platform_fee_bps)
+                dist = pot_d - fee
+                bettors = []
+                for b in book.get("bets") or []:
+                    if str(b.get("side") or "") != "draw":
+                        continue
+                    share = _d(b["amount"]) / public_draw * dist
+                    bettors.append(
+                        {
+                            "bettor_id": b["bettor_id"],
+                            "amount": str(share.quantize(Decimal("0.000001"))),
+                            "reason": "draw_win",
+                        }
+                    )
+                return {
+                    "mode": "draw_hits",
+                    "public_draw": str(public_draw),
+                    "house_draw": str(house_draw),
+                    "pot": str(pot_d),
+                    "platform_fee": str(fee),
+                    "bettors": bettors,
+                    "agent_split": [],
+                    "seed_refunds": [],
+                }
+            half = (public_draw / 2).quantize(Decimal("0.000001"))
+            split = []
+            if half > 0:
+                split = [
+                    {
+                        "agent_id": book.get("agent_a_id"),
+                        "wallet": book.get("agent_a_wallet"),
+                        "amount": str(half),
+                        "reason": "draw_underwrite_win",
+                    },
+                    {
+                        "agent_id": book.get("agent_b_id"),
+                        "wallet": book.get("agent_b_wallet"),
+                        "amount": str(half),
+                        "reason": "draw_underwrite_win",
+                    },
+                ]
+            returned = []
+            if seed_draw > 0:
+                returned = [
+                    {
+                        "side": "draw",
+                        "agent_id": book.get("agent_a_id"),
+                        "wallet": book.get("agent_a_wallet"),
+                        "amount": str(seed_draw),
+                        "reason": "draw_seed_return",
+                    },
+                    {
+                        "side": "draw",
+                        "agent_id": book.get("agent_b_id"),
+                        "wallet": book.get("agent_b_wallet"),
+                        "amount": str(seed_draw),
+                        "reason": "draw_seed_return",
+                    },
+                ]
+            return {
+                "mode": "draw_misses",
+                "public_draw": str(public_draw),
+                "house_draw": str(house_draw),
+                "bettors": [],
+                "agent_split": split,
+                "seed_refunds": returned,
+            }
+
+        if winner_side is None:
+            side_refunds = [
+                {"bettor_id": b["bettor_id"], "amount": b["amount"], "reason": "refund"}
+                for b in book.get("bets") or []
+                if str(b.get("side") or "") in {"a", "b"}
+            ]
+            draw_book = _draw_book_payouts(game_drawn=True)
             book["status"] = "settled"
             book["settled_at"] = _now()
             book["payouts"] = {
-                "mode": "refund",
+                "mode": "refund" if winner_side is None else "empty",
                 "pot": str(pot),
-                "bettors": [
-                    {"bettor_id": b["bettor_id"], "amount": b["amount"], "reason": "refund"}
-                    for b in book["bets"]
-                ],
+                "bettors": side_refunds,
                 "seed_refunds": [
                     {
                         "side": "a",
@@ -289,7 +412,9 @@ class SpectatorBook:
                         "amount": str(seed_b),
                         "reason": "seed_refund_draw",
                     },
+                    *draw_book.get("seed_refunds", []),
                 ],
+                "draw_book": draw_book,
                 "creators": [],
                 "platform_fee": "0",
             }
@@ -308,6 +433,7 @@ class SpectatorBook:
         distributable = pot - platform_fee - creator_pool
         win_total = total_a if winner_side == "a" else total_b
 
+        draw_book = _draw_book_payouts(game_drawn=False)
         bettor_payouts = []
         if win_total > 0 and distributable > 0:
             for b in book["bets"]:
@@ -352,6 +478,8 @@ class SpectatorBook:
             "distributable": str(distributable),
             "bettors": bettor_payouts,
             "creators": creators,
+            "draw_book": draw_book,
+            "seed_refunds": list(draw_book.get("seed_refunds") or []),
         }
         data["books"][match_id] = book
         self._save(data)
