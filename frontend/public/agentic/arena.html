@@ -1611,8 +1611,14 @@
       amount = Math.min(amount, room);
       amount = Math.round(amount * 100) / 100;
       if (!houseMatchId || houseMatchId === "arena" || houseMatchId === "live") {
-        setStatus("No live House table — start Auto play first", true);
-        log("Bet blocked — need a live match_id (not arena)");
+        try {
+          const lr = await fetch("/api/agentic/house-play", { cache: "no-store" });
+          const ld = await lr.json();
+          if (ld && ld.match_id) houseMatchId = ld.match_id;
+        } catch (e) {}
+      }
+      if (!houseMatchId || houseMatchId === "arena" || houseMatchId === "live") {
+        setStatus("No live match to bet on yet", true);
         return;
       }
 
@@ -1664,28 +1670,24 @@
         }
         if (data.balance != null) tgUser.balance = data.balance;
         if (data.address) tgUser.address = data.address;
-        spectator.bets.push({ side, amount, paid: true, profileId: tgUser.profileId });
-        if (side === "a") spectator.a += amount;
-        else spectator.b += amount;
-        maybeClosePot();
-        const newRoom = potRoom();
-        if (betAmount > newRoom) setBetAmount(newRoom > 0 ? newRoom : 0.25);
         renderAuth();
-        renderMarket();
-        const dec =
-          side === "a"
-            ? el("decA") && el("decA").textContent
-            : el("decB") && el("decB").textContent;
-        log(
-          `@${tgUser.tag} bet $${amount.toFixed(2)} on ${side === "a" ? "Raja" : "Nero"} @ ${dec || "?"} · bal $${Number(tgUser.balance || 0).toFixed(2)}` +
-            (data.tx_hash ? " · " + data.tx_hash : "")
-        );
-        setStatus(
-          data.tx_hash
-            ? `On-chain bet ${String(data.tx_hash).slice(0, 12)}… · $${amount.toFixed(2)}`
-            : `Bet placed from Telegram wallet · $${amount.toFixed(2)}`,
-          true
-        );
+        if (data.pending) {
+          setStatus("Check Telegram — tap Yes. The pot updates here after you approve.", true);
+          log("Bet sent · waiting for Telegram Yes");
+        } else {
+          spectator.bets.push({ side, amount, paid: true, profileId: tgUser.profileId });
+          if (side === "a") spectator.a += amount;
+          else spectator.b += amount;
+          maybeClosePot();
+          const newRoom = potRoom();
+          if (betAmount > newRoom) setBetAmount(newRoom > 0 ? newRoom : 0.25);
+          renderMarket();
+          log(
+            `@${tgUser.tag} bet $${amount.toFixed(2)} on ${side === "a" ? "Raja" : "Nero"}` +
+              (data.tx_hash ? " · " + data.tx_hash : "")
+          );
+          setStatus(`Bet placed · $${amount.toFixed(2)}`, true);
+        }
       } catch (e) {
         log("Bet network error: " + e.message);
       } finally {
@@ -2142,8 +2144,105 @@
       return true;
     }
 
+    let watchGen = 0;
+
+    function applySpectatorBook(m) {
+      const tot = (m && m.spectator_book && m.spectator_book.totals) || {};
+      if (tot.a == null && tot.b == null) return;
+      spectator.a = Number(tot.a || 0);
+      spectator.b = Number(tot.b || 0);
+      renderMarket();
+    }
+
+    function applyLiveColors(m) {
+      if (!m || !m.white_agent_id) return;
+      const w = String(m.white_agent_id).includes("nero") ? "nero" : "raja";
+      whiteAgent = w;
+      blackAgent = w === "raja" ? "nero" : "raja";
+      setText("coinBanner", "White: " + AGENTS[whiteAgent].name + " · Black: " + AGENTS[blackAgent].name);
+      setText("clockRajaColor", whiteAgent === "raja" ? "White" : "Black");
+      setText("clockNeroColor", whiteAgent === "nero" ? "White" : "Black");
+    }
+
+    async function watchHouseMatch(mid) {
+      const gen = ++watchGen;
+      houseMatchId = mid;
+      playing = true;
+      houseApplied = 0;
+      game = new Chess();
+      lastFrom = lastTo = null;
+      fallen = [];
+      evalHistory = [];
+      matchMoveLog = [];
+      renderBoard();
+      updateMovesList();
+      const done = new Set(["settled", "settle_failed", "error", "lock_failed", "cancelled"]);
+      setStatus("Watching live match", true);
+      log("watching " + mid);
+      while (gen === watchGen) {
+        try {
+          const poll = await fetch("/api/agentic/house-play?id=" + encodeURIComponent(mid), { cache: "no-store" });
+          const pj = await poll.json();
+          const m = pj.match || {};
+          const st = m.status || "";
+          setText("escrowPill", st || "…");
+          if (st === "locked" || st === "playing" || st === "locking") {
+            setClass("escrowPill", "pill ok");
+            if (st !== "locking") {
+              setText("lockA", "✓ locked");
+              setText("lockB", "✓ locked");
+            }
+          }
+          applyLiveColors(m);
+          applySpectatorBook(m);
+          const moves = m.moves || [];
+          for (; houseApplied < moves.length; houseApplied++) {
+            applyHouseMove(moves[houseApplied] || {});
+          }
+          if (st === "playing") setStatus("Live", true);
+          else if (st === "locking") setStatus("Locking stakes…", true);
+          if (done.has(st)) {
+            setText("escrowPill", st);
+            setClass("escrowPill", st === "settled" ? "pill ok" : "pill");
+            const winId = m.winner_agent_id || "";
+            const winner = winId.includes("nero") ? "nero" : winId.includes("raja") ? "raja" : null;
+            if (winner) {
+              setText("winnerLabel", AGENTS[winner].name);
+              setStatus(AGENTS[winner].name + " wins", true);
+            } else {
+              setText("winnerLabel", m.result || st);
+              setStatus(String(m.result || st), true);
+            }
+            const tx = (m.onchain_settle || {}).tx_hash || ((m.escrow || {}).onchain_settle || {}).tx_hash;
+            if (tx) setText("payoutLabel", "settle " + tx.slice(0, 12) + "…");
+            await loadOnchainBankrolls();
+            renderMeta();
+            break;
+          }
+        } catch (e) {
+          /* keep watching */
+        }
+        await sleep(800);
+      }
+      if (gen === watchGen) {
+        playing = false;
+        if (el("btnPlay")) el("btnPlay").disabled = false;
+      }
+    }
+
+    async function joinLiveIfAny() {
+      try {
+        const r = await fetch("/api/agentic/house-play", { cache: "no-store" });
+        const d = await r.json();
+        if (d && d.match_id) {
+          if (el("btnPlay")) el("btnPlay").disabled = true;
+          await watchHouseMatch(d.match_id);
+        }
+      } catch (e) {}
+    }
+
     async function runHouseMatch() {
-      if (playing) return;
+      if (playing && houseMatchId) return;
       playing = true;
       houseApplied = 0;
       flagSide = null;
@@ -2194,69 +2293,7 @@
         houseMatchId = mid;
         log("table " + mid);
         setText("escrowPill", data.status || "locking");
-
-        const done = new Set(["settled", "settle_failed", "error", "lock_failed", "cancelled"]);
-        let m = data.match || {};
-        while (playing) {
-          const poll = await fetch("/api/agentic/house-play?id=" + encodeURIComponent(mid), { cache: "no-store" });
-          const pj = await poll.json();
-          if (pj.match) m = pj.match;
-          const st = m.status || "";
-          setText("escrowPill", st || "…");
-          if (st === "locked" || st === "playing" || st === "locking") {
-            setClass("escrowPill", "pill ok");
-            if (st !== "locking") {
-              setText("lockA", "✓ locked");
-              setText("lockB", "✓ locked");
-            }
-          }
-          if (m.white_agent_id) {
-            const w = (m.white_agent_id || "").includes("nero") ? "nero" : "raja";
-            if (w !== whiteAgent) {
-              whiteAgent = w;
-              blackAgent = w === "raja" ? "nero" : "raja";
-              setText(
-                "coinBanner",
-                "White: " + AGENTS[whiteAgent].name + " · Black: " + AGENTS[blackAgent].name
-              );
-              setText("clockRajaColor", whiteAgent === "raja" ? "White" : "Black");
-              setText("clockNeroColor", whiteAgent === "nero" ? "White" : "Black");
-            }
-          }
-          const moves = m.moves || [];
-          for (; houseApplied < moves.length; houseApplied++) {
-            applyHouseMove(moves[houseApplied] || {});
-          }
-          if (st === "playing") {
-            setStatus("House match live · " + mid, true);
-          } else if (st === "locking") {
-            setStatus("Locking stakes…", true);
-          }
-          if (done.has(st)) {
-            setText("escrowPill", st);
-            setClass("escrowPill", st === "settled" ? "pill ok" : "pill");
-            const winId = m.winner_agent_id || "";
-            const winner = winId.includes("nero") ? "nero" : winId.includes("raja") ? "raja" : null;
-            if (winner) {
-              setText("winnerLabel", AGENTS[winner].name + " · " + (m.result || "win"));
-              setStatus(AGENTS[winner].name + " wins — House settled", true);
-              log("RESULT " + AGENTS[winner].name + " · " + (m.result || "") + " · " + (m.settlement_mode || ""));
-            } else {
-              setText("winnerLabel", m.result || st);
-              setStatus((m.result || st) + " — House settled", true);
-              log("RESULT " + (m.result || st));
-            }
-            const tx = (m.onchain_settle || {}).tx_hash || ((m.escrow || {}).onchain_settle || {}).tx_hash;
-            if (tx) {
-              setText("payoutLabel", "settle " + tx.slice(0, 12) + "…");
-              log("settle tx " + tx);
-            }
-            await loadOnchainBankrolls();
-            renderMeta();
-            break;
-          }
-          await sleep(800);
-        }
+        await watchHouseMatch(mid);
       } catch (err) {
         const msg = String(err.message || err || "");
         setStatus(
@@ -2269,13 +2306,11 @@
         );
         log("House play failed: " + (err.message || err));
         setText("escrowPill", "error");
+        playing = false;
+        if (el("btnPlay")) el("btnPlay").disabled = false;
       }
-
-      playing = false;
-      if (el("btnPlay")) el("btnPlay").disabled = false;
-      if (autoPlay) {
-        log("Auto play — next House table in 4s…");
-        setStatus("Auto play · next House match shortly…", true);
+      if (autoPlay && !playing) {
+        setStatus("Next match shortly…", true);
         await sleep(4000);
         if (autoPlay && !playing) runHouseMatch();
       }
@@ -3390,6 +3425,7 @@
       renderAuth();
       renderMeta();
       renderClocks();
+      joinLiveIfAny();
     })();
     if (el("betSlider")) {
       el("betSlider").addEventListener("input", (e) => {

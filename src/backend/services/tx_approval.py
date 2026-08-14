@@ -201,8 +201,25 @@ async def request_approval(
     if get_approval_mode(profile_id, action) == "always":
         return {"status": "approved", "mode": "always", "skipped": True}
 
-    approval_id = create_approval_row(profile_id, action, payload, timeout_sec)
+    started = await start_approval(profile_id, action, payload, timeout_sec)
+    if started.get("status") != "pending":
+        return started
+    return await poll_approval(started["approval_id"], timeout_sec)
 
+
+async def start_approval(
+    profile_id: str,
+    action: str,
+    payload: dict,
+    timeout_sec: int = DEFAULT_APPROVAL_TIMEOUT_SEC,
+) -> dict:
+    """Send the Telegram prompt and return immediately (no wait)."""
+    if action not in VALID_ACTIONS:
+        return {"status": "denied", "reason": f"unknown action {action}"}
+    if get_approval_mode(profile_id, action) == "always":
+        return {"status": "approved", "mode": "always", "skipped": True}
+
+    approval_id = create_approval_row(profile_id, action, payload, timeout_sec)
     from gaming.src.bot.keyboards import approval_menu
 
     sent = await _notify(
@@ -221,8 +238,7 @@ async def request_approval(
                 "then try the bet / LP again."
             ),
         }
-
-    return await poll_approval(approval_id, timeout_sec)
+    return {"status": "pending", "approval_id": approval_id, "mode": "ask"}
 
 
 async def poll_approval(approval_id: str, timeout_sec: int) -> dict:

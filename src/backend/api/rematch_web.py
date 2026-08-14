@@ -138,6 +138,69 @@ async def _deposit_spectator_onchain(
     }
 
 
+async def _finish_spectator_after_approval(
+    *,
+    approval_id: str,
+    profile_id: str,
+    match_id: str,
+    side: str,
+    amount: float,
+    summary: dict,
+) -> None:
+    """Runs after the HTTP response so Vercel timeout cannot drop a Yes tap."""
+    from gaming.src.backend.services.tx_approval import poll_approval
+    from gaming.src.backend.db_layer_blockchain import debit_wallet, get_wallet_balance
+    from gaming.src.stack.agentic.spectator_onchain import spectator_onchain_enabled
+
+    decision = await poll_approval(approval_id, 120)
+    if decision.get("status") != "approved":
+        logger.info(
+            "[RematchWeb] background spectator approval %s id=%s",
+            decision.get("status"),
+            approval_id,
+        )
+        return
+    ok = await debit_wallet(profile_id, amount)
+    if not ok:
+        logger.warning("[RematchWeb] background spectator debit failed profile=%s", profile_id)
+        return
+    try:
+        if spectator_onchain_enabled():
+            await _deposit_spectator_onchain(
+                profile_id=profile_id,
+                match_id=match_id,
+                side=side,
+                amount=amount,
+                user_address=str(summary.get("address") or ""),
+            )
+        else:
+            from gaming.src.stack.agentic.house import get_house
+
+            get_house().take_bet(
+                match_id,
+                bettor_id=profile_id,
+                side=side,
+                amount_usdc=Decimal(str(amount)),
+            )
+    except Exception:
+        logger.exception("[RematchWeb] background spectator book/deposit failed")
+        return
+    try:
+        from gaming.src.backend.services.wallet_activity import log_debit
+
+        log_debit(
+            profile_id,
+            Decimal(str(amount)),
+            str(summary.get("chain_id") or "arc"),
+            status="spectator_bet",
+            source=f"arena:{match_id}:{side}",
+        )
+        await get_wallet_balance(profile_id)
+    except Exception:
+        pass
+    logger.info("[RematchWeb] background spectator bet placed match=%s", match_id)
+
+
 @router.get("/profile")
 async def web_profile_by_telegram(
     telegram_id: int = Query(..., description="Telegram user id"),
@@ -368,9 +431,9 @@ async def web_spectator_bet(
         # Telegram-mediated approval: ask the user to approve the spend (unless
         # they've pre-approved bets with 'always'). Declined/expired → no debit.
         try:
-            from gaming.src.backend.services.tx_approval import request_approval
+            from gaming.src.backend.services.tx_approval import start_approval
 
-            decision = await request_approval(
+            decision = await start_approval(
                 profile_id,
                 "spectator_bet",
                 {"amount": amount, "side": side, "match_id": match_id},
@@ -391,6 +454,29 @@ async def web_spectator_bet(
                 "error": f"approval_{decision['status']}",
                 "approval_id": decision.get("approval_id"),
                 "message": decision.get("message") or msg,
+            }
+        if decision.get("status") == "pending":
+            import asyncio
+
+            asyncio.create_task(
+                _finish_spectator_after_approval(
+                    approval_id=str(decision.get("approval_id") or ""),
+                    profile_id=profile_id,
+                    match_id=match_id,
+                    side=side,
+                    amount=amount,
+                    summary=summary,
+                )
+            )
+            return {
+                "success": True,
+                "pending": True,
+                "approval_id": decision.get("approval_id"),
+                "match_id": match_id,
+                "profile_id": profile_id,
+                "amount": amount,
+                "side": side,
+                "message": "Check Telegram to approve. The pot updates here after you tap Yes.",
             }
         if decision.get("mode") == "always":
             logger.info("[RematchWeb] spectator bet auto-approved (always) profile=%s", profile_id)

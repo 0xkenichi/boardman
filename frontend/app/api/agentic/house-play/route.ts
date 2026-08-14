@@ -148,7 +148,31 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const id = req.nextUrl.searchParams.get("id") || "";
   if (!id) {
-    return NextResponse.json({ ok: false, error: "missing id" }, { status: 400 });
+    const floor = await stackCall("/api/stack/agentic/house/floor");
+    const tables = floor.data?.floor?.tables || floor.data?.tables || [];
+    const pair = new Set([
+      "agent_raja_kia_alekhine",
+      "agent_nero_sicilian_french",
+    ]);
+    const live = tables.find(
+      (t: any) =>
+        pair.has(t?.agent_a_id) &&
+        pair.has(t?.agent_b_id) &&
+        ["playing", "locking", "locked", "open"].includes(String(t?.status || ""))
+    );
+    if (!live?.match_id) {
+      return NextResponse.json({ ok: true, match: null, match_id: "" });
+    }
+    const got = await stackCall(
+      `/api/stack/agentic/matches/${encodeURIComponent(live.match_id)}`
+    );
+    const match = got.data?.match || null;
+    return NextResponse.json({
+      ok: true,
+      match_id: live.match_id,
+      status: match?.status || live.status,
+      match,
+    });
   }
   const r = await stackCall(`/api/stack/agentic/matches/${encodeURIComponent(id)}`);
   if (r.ok && r.data?.match) {

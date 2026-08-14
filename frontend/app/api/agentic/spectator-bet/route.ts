@@ -163,9 +163,10 @@ export async function POST(req: NextRequest) {
       }),
     });
 
-    if (res.ok && res.data?.success !== false && res.data?.balance != null) {
+    if (res.ok && res.data?.success !== false && (res.data?.pending || res.data?.balance != null)) {
       return NextResponse.json({
         ok: true,
+        pending: Boolean(res.data.pending),
         amount,
         side,
         balance: res.data.balance,
@@ -174,6 +175,7 @@ export async function POST(req: NextRequest) {
         tx_hash: res.data.tx_hash || "",
         explorer: res.data.explorer || "",
         onchain: Boolean(res.data.onchain || res.data.tx_hash),
+        message: res.data.message || "",
         profileId: session.profileId,
         tag: session.tag,
         name: session.name,
