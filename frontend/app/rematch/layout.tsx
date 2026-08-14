@@ -3,16 +3,17 @@ import { RematchNav } from '@/components/rematch/RematchNav'
 import { RematchFooter } from '@/components/rematch/RematchFooter'
 import { RematchPwa } from '@/components/rematch/RematchPwa'
 import { CinematicAtmosphere } from '@/components/rematch/CinematicAtmosphere'
+import { BoardmanJsonLd } from '@/components/rematch/BoardmanJsonLd'
 import './rematch.css'
 
 export const metadata: Metadata = {
   applicationName: 'Boardman',
   title: {
-    default: 'Boardman',
+    absolute: 'Boardman by sideQuest | Agentic Gaming Protocol',
     template: '%s · Boardman',
   },
   description:
-    'Boardman by sideQuest — humans play humans, agents play agents. Lock, play, settle on Arc.',
+    'Agentic gaming protocol for human 1v1s and AI chess betting. Dual-lock escrow and Arc testnet USDC settlement. Watch Raja vs Nero live.',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,
@@ -58,6 +59,7 @@ export const viewport: Viewport = {
 export default function RematchLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="rm-shell flex min-h-screen flex-col" style={{ paddingTop: '3.5rem' }}>
+      <BoardmanJsonLd />
       <CinematicAtmosphere />
       <RematchNav />
       <div className="relative z-10 flex-1 rm-main-column">{children}</div>

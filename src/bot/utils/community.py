@@ -142,10 +142,13 @@ def public_group_challenge_menu(challenge_id: str, public_code: str) -> InlineKe
     )
     deep = f"https://t.me/{_bot_username()}?start=m_{public_code}"
     builder.row(InlineKeyboardButton(text="🤖 Open bot", url=deep))
-    board = os.getenv(
-        "REMATCH_LEADERBOARD_URL", "https://playingsidequest.fun/rematch/leaderboard"
-    )
-    builder.row(InlineKeyboardButton(text="📋 Public board", url=board))
+    try:
+        from gaming.src.bot.brand_assets import boardman_leaderboard_url
+
+        board = boardman_leaderboard_url()
+    except Exception:
+        board = "https://boardman.playingsidequest.fun/leaderboard"
+    builder.row(InlineKeyboardButton(text="🏅 Leaderboard", url=board))
     return builder.as_markup()
 
 

@@ -7,15 +7,19 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 try:
-    from gaming.src.bot.brand_assets import boardman_site_url
+    from gaming.src.bot.brand_assets import (
+        boardman_arena_url,
+        boardman_leaderboard_url,
+        boardman_site_url,
+    )
 
     REMATCH_WEB = boardman_site_url()
+    REMATCH_BOARD = boardman_leaderboard_url()
+    BOARDMAN_ARENA = boardman_arena_url()
 except Exception:
     REMATCH_WEB = os.getenv("REMATCH_WEB_URL", "https://boardman.playingsidequest.fun")
-REMATCH_BOARD = os.getenv(
-    "REMATCH_LEADERBOARD_URL",
-    f"{REMATCH_WEB.rstrip('/')}/leaderboard",
-)
+    REMATCH_BOARD = f"{REMATCH_WEB.rstrip('/')}/leaderboard"
+    BOARDMAN_ARENA = f"{REMATCH_WEB.rstrip('/')}/agentic/arena.html"
 try:
     from gaming.src.bot.telegram_env import telegram_bot_url as _bot_url
 
@@ -98,6 +102,27 @@ def main_menu(miniapp_url: str | None = None) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def welcome_menu() -> InlineKeyboardMarkup:
+    """First-screen buttons after /start — play + live site."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="💧 Get money", callback_data="ui:get_money"),
+        InlineKeyboardButton(text="⚔️ Challenge", callback_data="ui:challenge"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="♟️ Watch live chess", url=BOARDMAN_ARENA),
+        InlineKeyboardButton(text="🏅 Leaderboard", url=REMATCH_BOARD),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🌐 Boardman site", url=REMATCH_WEB),
+    )
+    group = rematch_group_url()
+    if group:
+        builder.row(InlineKeyboardButton(text="💬 Join community", url=group))
+    builder.row(InlineKeyboardButton(text="🏠 Open menu", callback_data="menu:main"))
+    return builder.as_markup()
+
+
 def more_menu(miniapp_url: str | None = None) -> InlineKeyboardMarkup:
     """Secondary links — board, community, site, rules."""
     builder = InlineKeyboardBuilder()
@@ -109,6 +134,7 @@ def more_menu(miniapp_url: str | None = None) -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(text="🏅 Leaderboard", url=REMATCH_BOARD),
+        InlineKeyboardButton(text="♟️ Watch live chess", url=BOARDMAN_ARENA),
     )
     if group:
         builder.row(InlineKeyboardButton(text="💬 Join community · live rooms", url=group))
@@ -117,7 +143,7 @@ def more_menu(miniapp_url: str | None = None) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="💬 Join community · live rooms", callback_data="ui:community")
         )
     builder.row(
-        InlineKeyboardButton(text="🌐 Site", url=web),
+        InlineKeyboardButton(text="🌐 Boardman site", url=web),
         InlineKeyboardButton(text="📜 Rules", callback_data="ui:rules"),
     )
     builder.row(

@@ -3,8 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Boardman Agent Arena — Raja vs Nero</title>
+  <title>Boardman Agent Arena — AI Chess Betting | Raja vs Nero</title>
+  <meta name="description" content="Watch autonomous chess agents Raja and Nero on Boardman by sideQuest. Spectator betting, dual-lock escrow, Arc testnet USDC settlement." />
+  <link rel="canonical" href="https://boardman.playingsidequest.fun/agentic/arena.html" />
   <link rel="icon" href="/boardman-logo.png" />
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"WebPage","name":"Boardman Agent Arena","url":"https://boardman.playingsidequest.fun/agentic/arena.html","isPartOf":{"@type":"WebSite","name":"Boardman by sideQuest","url":"https://boardman.playingsidequest.fun"},"about":"AI chess betting and agentic gaming protocol"}
+  </script>
   <link rel="stylesheet" href="/boardman-nav.css" />
   <style>
     :root {
@@ -1707,6 +1712,49 @@
       renderAuth();
     }
 
+    async function waitForApproval(approvalId, amount, side) {
+      const deadline = Date.now() + 130000;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2000));
+        try {
+          const res = await fetch(
+            "/api/agentic/spectator-bet?approval_id=" + encodeURIComponent(approvalId),
+            { credentials: "include", cache: "no-store" }
+          );
+          const data = await res.json();
+          if (data && data.pending) {
+            setStatus("Waiting for Telegram Yes…", false);
+            continue;
+          }
+          if (data && data.ok && !data.pending) {
+            log(
+              `@${tgUser.tag} bet $${Number(amount).toFixed(2)} on ${
+                side === "draw" ? "draw" : side === "a" ? "Raja" : "Nero"
+              }` + (data.tx_hash ? " · " + data.tx_hash : "")
+            );
+            setStatus(`Bet placed · $${Number(amount).toFixed(2)}`, true);
+            if (data.balance != null) tgUser.balance = data.balance;
+            renderAuth();
+            await refreshSpectatorBook();
+            return true;
+          }
+          const err = (data && (data.message || data.error)) || res.status;
+          if (String(data && data.error || "").startsWith("approval_")) {
+            setStatus(data.message || "Not approved in Telegram — nothing charged", true);
+            log("Bet not charged: " + err);
+            return false;
+          }
+          setStatus("Bet failed after approve — " + err, true);
+          log("Bet apply failed: " + err);
+          return false;
+        } catch (e) {
+          log("Approval poll error: " + e.message);
+        }
+      }
+      setStatus("Still waiting on Telegram — tap Yes, then refresh", true);
+      return false;
+    }
+
     async function placeBet(side) {
       if (betInFlight) return;
       if (spectator.status !== "open") return;
@@ -1796,8 +1844,13 @@
           }
           return;
         }
-        if (data.pending) {
-          setStatus("Check Telegram — tap Yes. Balance updates after you approve.", true);
+        if (data.pending && data.approval_id) {
+          setStatus("Check Telegram — tap Yes. This page updates after you approve.", true);
+          log("Bet sent · waiting for Telegram Yes");
+          const done = await waitForApproval(data.approval_id, amount, side);
+          if (done) await refreshWallet();
+        } else if (data.pending) {
+          setStatus("Check Telegram — tap Yes. Refresh if the pot does not move.", true);
           log("Bet sent · waiting for Telegram Yes");
         } else {
           log(
@@ -1805,8 +1858,9 @@
               (data.tx_hash ? " · " + data.tx_hash : "")
           );
           setStatus(`Bet placed · $${amount.toFixed(2)}`, true);
+          await refreshWallet();
+          await refreshSpectatorBook();
         }
-        await refreshWallet();
       } catch (e) {
         log("Bet network error: " + e.message);
       } finally {
@@ -2390,6 +2444,20 @@
     }
 
     let watchGen = 0;
+
+    async function refreshSpectatorBook() {
+      if (!houseMatchId) return;
+      try {
+        const r = await fetch(
+          "/api/agentic/house-play?id=" + encodeURIComponent(houseMatchId),
+          { cache: "no-store" }
+        );
+        const d = await r.json();
+        if (d && d.match) applySpectatorBook(d.match);
+      } catch (e) {
+        /* next watch tick */
+      }
+    }
 
     function applySpectatorBook(m) {
       const tot = (m && m.spectator_book && m.spectator_book.totals) || {};

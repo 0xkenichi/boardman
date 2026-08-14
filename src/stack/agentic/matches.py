@@ -44,7 +44,47 @@ class AgentMatchService:
         return ms[:limit]
 
     def get(self, match_id: str) -> Optional[dict[str, Any]]:
-        return self._load()["matches"].get(match_id)
+        m = self._load()["matches"].get(match_id)
+        if m:
+            self._overlay_live_book(m)
+        return m
+
+    @staticmethod
+    def _overlay_live_book(m: dict[str, Any]) -> None:
+        """Serve live spectator totals, not the open-time snapshot."""
+        mid = str(m.get("match_id") or "")
+        if not mid:
+            return
+        try:
+            from gaming.src.stack.agentic.economy.spectator import SpectatorBook
+
+            live = SpectatorBook().get(mid)
+        except Exception:
+            return
+        if not live:
+            return
+        snap = dict(m.get("spectator_book") or {})
+        snap["totals"] = live.get("totals") or snap.get("totals")
+        snap["status"] = live.get("status") or snap.get("status")
+        if live.get("pot_cap_usdc") is not None:
+            snap["pot_cap_usdc"] = live.get("pot_cap_usdc")
+        snap["bets"] = live.get("bets") or snap.get("bets") or []
+        m["spectator_book"] = snap
+
+    def persist_spectator_snapshot(self, match_id: str, book: dict[str, Any]) -> None:
+        data = self._load()
+        rec = data["matches"].get(match_id)
+        if not rec:
+            return
+        rec["spectator_book"] = {
+            "match_id": match_id,
+            "totals": book.get("totals"),
+            "status": book.get("status"),
+            "pot_cap_usdc": book.get("pot_cap_usdc"),
+        }
+        rec["updated_at"] = _now()
+        data["matches"][match_id] = rec
+        self._save(data)
 
     def create_match(
         self,

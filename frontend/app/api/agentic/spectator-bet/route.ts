@@ -14,6 +14,60 @@ import { usdcBalanceOf } from "@/lib/arcUsdc";
 
 export const dynamic = "force-dynamic";
 
+function jsonBet(data: any, session: { profileId: string; tag?: string; name?: string }, extra: Record<string, unknown> = {}) {
+  return {
+    ok: true,
+    pending: Boolean(data?.pending),
+    amount: data?.amount,
+    side: data?.side,
+    balance: data?.balance,
+    address: data?.address || data?.wallet || "",
+    match_id: data?.match_id || "",
+    tx_hash: data?.tx_hash || "",
+    explorer: data?.explorer || "",
+    onchain: Boolean(data?.onchain || data?.tx_hash),
+    approval_id: data?.approval_id || "",
+    message: data?.message || "",
+    profileId: session.profileId,
+    tag: session.tag,
+    name: session.name,
+    source: "rematch_api",
+    ...extra,
+  };
+}
+
+export async function GET(req: NextRequest) {
+  const limited = rateLimitRequest(req, "spectator-bet-poll", 60);
+  if (limited) return limited;
+  const auth = requireSession(req);
+  if ("error" in auth) return auth.error;
+  const { session } = auth;
+  const approvalId = new URL(req.url).searchParams.get("approval_id") || "";
+  if (!approvalId) {
+    return NextResponse.json({ ok: false, error: "approval_id required" }, { status: 400 });
+  }
+  if (!stackConfigured()) {
+    return NextResponse.json({ ok: false, error: "stack_not_configured" }, { status: 503 });
+  }
+  const res = await stackFetch(
+    `/api/rematch/web/spectator/bet?approval_id=${encodeURIComponent(approvalId)}`
+  );
+  if (res.ok && res.data?.success !== false && (res.data?.pending || res.data?.balance != null || res.data?.status === "applied")) {
+    return NextResponse.json(jsonBet(res.data, session, { status: res.data?.status || "" }));
+  }
+  const err = String(res.data?.error || res.data?.detail || "stack_unavailable");
+  return NextResponse.json(
+    {
+      ok: false,
+      pending: Boolean(res.data?.pending),
+      error: err,
+      message: res.data?.message || "",
+      approval_id: approvalId,
+    },
+    { status: res.data?.pending ? 200 : err.startsWith("approval_") ? 403 : 502 }
+  );
+}
+
 async function debitViaSupabase(
   profileId: string,
   amount: number
@@ -165,23 +219,9 @@ export async function POST(req: NextRequest) {
     });
 
     if (res.ok && res.data?.success !== false && (res.data?.pending || res.data?.balance != null)) {
-      return NextResponse.json({
-        ok: true,
-        pending: Boolean(res.data.pending),
-        amount,
-        side,
-        balance: res.data.balance,
-        address: res.data.address || res.data.wallet || "",
-        match_id: res.data.match_id || body.match_id,
-        tx_hash: res.data.tx_hash || "",
-        explorer: res.data.explorer || "",
-        onchain: Boolean(res.data.onchain || res.data.tx_hash),
-        message: res.data.message || "",
-        profileId: session.profileId,
-        tag: session.tag,
-        name: session.name,
-        source: "rematch_api",
-      });
+      return NextResponse.json(
+        jsonBet(res.data, session, { amount, side, match_id: res.data.match_id || body.match_id })
+      );
     }
 
     // Never silent-debit. Spectator lock requires Telegram Yes.

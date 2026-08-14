@@ -113,15 +113,15 @@ async def request_arc_usdc(address: str) -> dict[str, Any]:
 
 def fund_helper_url(address: str, site: Optional[str] = None) -> str:
     """Our site page with address prefilled for one-tap copy + faucet open."""
-    root = (site or os.getenv("REMATCH_WEB_URL") or "https://playingsidequest.fun/rematch").rstrip(
-        "/"
-    )
-    # allow either /rematch or site root
+    try:
+        from gaming.src.bot.brand_assets import boardman_site_url
+
+        root = (site or boardman_site_url()).rstrip("/")
+    except Exception:
+        root = (site or os.getenv("BOARDMAN_URL") or os.getenv("REMATCH_WEB_URL") or "https://boardman.playingsidequest.fun").rstrip("/")
     if root.endswith("/rematch"):
-        base = root
-    else:
-        base = f"{root}/rematch"
+        root = root[: -len("/rematch")]
     addr = (address or "").strip()
     if addr:
-        return f"{base}/get-usdc?address={addr}"
-    return f"{base}/get-usdc"
+        return f"{root}/get-usdc?address={addr}"
+    return f"{root}/get-usdc"

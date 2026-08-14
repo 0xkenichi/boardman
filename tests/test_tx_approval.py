@@ -6,6 +6,22 @@ import pytest
 from gaming.src.backend.services import tx_approval as ta
 
 
+def test_boardman_leaderboard_url_ignores_legacy_rematch_path(monkeypatch):
+    monkeypatch.setenv("REMATCH_LEADERBOARD_URL", "https://playingsidequest.fun/rematch/leaderboard")
+    monkeypatch.setenv("BOARDMAN_URL", "https://boardman.playingsidequest.fun")
+    from gaming.src.bot.brand_assets import boardman_leaderboard_url
+
+    assert boardman_leaderboard_url() == "https://boardman.playingsidequest.fun/leaderboard"
+
+
+def test_house_pull_dest_uses_address_not_resolver_key(monkeypatch):
+    monkeypatch.setenv("BOARDMAN_RESOLVER_KEY", "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E")
+    monkeypatch.setenv("BOARDMAN_OPS_USDC_ADDRESS", "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E")
+    from gaming.src.backend.api.rematch_web import _house_pull_dest
+
+    assert _house_pull_dest().lower() == "0xfa931c535c9d10a324ea7417a63ed22dd9b0cb2e"
+
+
 class _FakeSB:
     """In-memory stand-in for the supabase client used by tx_approval."""
 

@@ -55,6 +55,7 @@ function CssBoard() {
 function WaitlistForm({ id }: { id: string }) {
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState<'idle' | 'loading' | 'ok' | 'err'>('idle')
+  const [title, setTitle] = useState('')
   const [message, setMessage] = useState('')
 
   async function onSubmit(e: FormEvent) {
@@ -74,12 +75,35 @@ function WaitlistForm({ id }: { id: string }) {
         return
       }
       setStatus('ok')
-      setMessage(data.message || "You're on the list.")
+      setTitle(data.title || 'We got you.')
+      setMessage(
+        data.message ||
+          "Your email landed. That's the handshake. Hope you enjoy your games. Walk good."
+      )
       setEmail('')
     } catch {
       setStatus('err')
       setMessage('Network error.')
     }
+  }
+
+  if (status === 'ok') {
+    return (
+      <aside className="bm-thanks" id={id} aria-live="polite">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/brand/boardman-welcome.jpg" alt="" />
+        <div>
+          <p className="bm-thanks-kicker">Boardman · the desk</p>
+          <h2>{title}</h2>
+          <p>{message}</p>
+          <p className="bm-thanks-sign">— Boardman</p>
+          <div className="bm-thanks-links">
+            <a href="https://t.me/myboardmanOfficialBot">Say hi on Telegram</a>
+            <a href="/agentic/arena.html">Watch a game</a>
+          </div>
+        </div>
+      </aside>
+    )
   }
 
   return (
@@ -98,7 +122,7 @@ function WaitlistForm({ id }: { id: string }) {
         disabled={status === 'loading'}
       />
       <button type="submit" disabled={status === 'loading'}>
-        {status === 'loading' ? 'Joining…' : 'Join waitlist'}
+        {status === 'loading' ? 'Walking in…' : 'Join waitlist'}
       </button>
       {message ? (
         <p className={status === 'err' ? 'bm-msg bm-msg-err' : 'bm-msg'}>{message}</p>
@@ -151,7 +175,8 @@ export function BoardmanLandingHero() {
           Boardman settles.
         </h1>
         <p className="bm-sub">
-          Skill 1v1s for people. An economy for agents. Same rails — lock, play, settle.
+          Agentic gaming protocol — dual-lock escrow, AI chess betting, Arc testnet
+          USDC settlement. Skill 1v1s for people. An economy for agents.
         </p>
         <WaitlistForm id="waitlist" />
         <div className="bm-cta">

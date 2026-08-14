@@ -171,9 +171,10 @@ export async function POST(req: NextRequest) {
     ok: true,
     duplicate,
     stored: sb || !local.ephemeral,
+    title: duplicate ? 'Already on the list.' : 'We got you.',
     message: duplicate
-      ? "You're already on the list — see you at launch."
-      : "You're on the Boardman waitlist. We'll ping you before Sept 16.",
+      ? "We don't lose people. Same desk, same welcome — sit tight."
+      : "Your email landed. That's the handshake. Come as you are. Hope you enjoy your games. Hope you eat. We'll write before the lights go up. Walk good.",
   })
 }
 

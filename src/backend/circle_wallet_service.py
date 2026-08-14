@@ -502,7 +502,11 @@ class CircleWalletService:
                 }
 
             idempotency_key = str(uuid.uuid4())
-            amount_wei = int(amount_usdc * 1_000_000)
+            # Circle transfer `amounts` are token units (e.g. "18.50"), not 6-decimal atoms.
+            # Passing 18500000 made Circle require $18.5M against a $211 wallet.
+            amount_str = f"{float(amount_usdc):.6f}".rstrip("0").rstrip(".")
+            if amount_str in {"", ".", "-"}:
+                amount_str = "0"
             ciphertext = self._generate_entity_secret_ciphertext()
             if not ciphertext:
                 return {"success": False, "error": "entity secret ciphertext missing"}
@@ -513,7 +517,7 @@ class CircleWalletService:
                 "walletId": from_wallet_id,
                 "tokenId": token_id,
                 "destinationAddress": to_address,
-                "amounts": [str(amount_wei)],
+                "amounts": [amount_str],
                 # Top-level feeLevel works on Arc; nested fee object is rejected
                 "feeLevel": _circle_fee_level(),
             }

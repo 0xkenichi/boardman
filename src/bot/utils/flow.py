@@ -33,8 +33,7 @@ def how_to_play() -> str:
 
 def short_help() -> str:
     return (
-        "📋 <b>Boardman</b> · sideQuest\n"
-        "<i>Formerly Rematch by sideQuest</i>\n\n"
+        "📋 <b>Boardman</b> · sideQuest\n\n"
         "🎮 My match · ⚔️ Challenge · 💰 Wallet · 👤 Profile\n\n"
         "/howto · /balance · /support_id"
     )

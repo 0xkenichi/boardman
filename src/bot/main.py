@@ -96,11 +96,13 @@ async def _set_bot_branding(bot: Bot) -> None:
 
     site = boardman_site_url()
     uname = telegram_bot_username()
-    short = "Boardman · skill 1v1s with USDC. Formerly Rematch by sideQuest."
+    short = "Boardman · skill 1v1s and live agent chess. Lock, play, settle."
     full = (
-        "Boardman by sideQuest — digital boardman for skill 1v1s.\n"
-        "Lock stake · play · settle. Formerly Rematch by sideQuest.\n\n"
+        "Boardman by sideQuest — digital boardman for humans and agents.\n"
+        "Lock stake · play · settle. Watch Raja vs Nero live.\n\n"
         f"Site: {site}\n"
+        f"Arena: {site}/agentic/arena.html\n"
+        f"Leaderboard: {site}/leaderboard\n"
         f"Open: https://t.me/{uname}"
     )
     try:

@@ -12,7 +12,7 @@ import os
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query
 
 from gaming.src.backend.rematch_auth import extract_api_key, rematch_api_key
 
@@ -138,11 +138,32 @@ async def _deposit_spectator_onchain(
     }
 
 
+def _house_pull_dest() -> str:
+    """Public House/ops address. Dest only — never treat BOARDMAN_RESOLVER_KEY as a key."""
+    for key in (
+        "BOARDMAN_OPS_USDC_ADDRESS",
+        "BOARDMAN_FEE_RECIPIENT",
+        "FEE_RECIPIENT_ADDRESS",
+        "RESOLVER_ADDRESS",
+        "BOARDMAN_HOUSE_WALLET",
+    ):
+        val = (os.getenv(key) or "").strip()
+        if val.startswith("0x") and len(val) == 42:
+            return val
+    try:
+        from gaming.src.stack.agentic.disbursement import house_public_wallet
+
+        val = (house_public_wallet() or "").strip()
+        if val.startswith("0x") and len(val) == 42:
+            return val
+    except Exception:
+        pass
+    raise ValueError("no House USDC address configured (BOARDMAN_OPS_USDC_ADDRESS)")
+
+
 async def _pull_play_usdc(profile_id: str, amount: float) -> dict:
     """Move USDC from the user's Circle play wallet (what Telegram shows)."""
     import asyncio
-
-    from eth_account import Account
 
     from backend.circle_wallet_service import CircleWalletService
     from gaming.src.backend.services.chains import (
@@ -155,7 +176,6 @@ async def _pull_play_usdc(profile_id: str, amount: float) -> dict:
         ensure_user_wallet,
         get_usdc_balance,
     )
-    from gaming.src.stack.agentic.onchain import load_resolver_key
 
     spendable = await get_usdc_balance(profile_id)
     if spendable + Decimal("0.000001") < Decimal(str(amount)):
@@ -164,7 +184,7 @@ async def _pull_play_usdc(profile_id: str, amount: float) -> dict:
     wallet_id = wallet.get("wallet_id")
     if not wallet_id:
         raise ValueError("No Circle play wallet on this profile")
-    dest = Account.from_key(load_resolver_key()).address
+    dest = _house_pull_dest()
     cid = wallet.get("chain_id") or "arc"
     circle = CircleWalletService(
         blockchain=get_circle_blockchain(cid),
@@ -175,6 +195,129 @@ async def _pull_play_usdc(profile_id: str, amount: float) -> dict:
     result = await asyncio.to_thread(circle.transfer_usdc, wallet_id, dest, float(amount))
     if not result.get("success"):
         raise ValueError(result.get("error") or "play wallet transfer failed")
+    return result
+
+
+async def _apply_approved_spectator_bet(
+    *,
+    approval_id: str,
+    profile_id: str,
+    match_id: str,
+    side: str,
+    amount: float,
+    summary: dict,
+) -> dict:
+    """Debit + book the bet once. Idempotent across background task and GET poll."""
+    from gaming.src.backend.services.tx_approval import (
+        claim_apply,
+        get_approval_row,
+        store_apply_result,
+    )
+    from gaming.src.backend.db_layer_blockchain import debit_wallet
+    from gaming.src.stack.agentic.spectator_onchain import spectator_onchain_enabled
+
+    row = get_approval_row(approval_id) or {}
+    payload = dict(row.get("payload") or {})
+    if row.get("status") == "applied" or payload.get("_applied"):
+        return {"success": True, "pending": False, **(payload.get("_result") or {})}
+
+    claimed = claim_apply(approval_id)
+    if claimed is None:
+        fresh = get_approval_row(approval_id) or {}
+        prev = dict((fresh.get("payload") or {}).get("_result") or {})
+        if fresh.get("status") == "applied" or prev:
+            return {"success": True, "pending": False, **prev}
+        return {"success": False, "pending": True, "error": "not_approved_yet"}
+
+    pull_err = ""
+    try:
+        await _pull_play_usdc(profile_id, amount)
+    except Exception as exc:
+        logger.exception("[RematchWeb] play-wallet pull failed profile=%s", profile_id)
+        pull_err = str(exc)
+
+    try:
+        ledger = float((summary or {}).get("ledger_usdc") or 0)
+        if ledger + 1e-9 >= amount:
+            await debit_wallet(profile_id, amount)
+    except Exception:
+        logger.warning("[RematchWeb] ledger sync after pull failed", exc_info=True)
+
+    chain_tx: dict = {}
+    book = None
+    try:
+        if spectator_onchain_enabled():
+            try:
+                chain_tx = await _deposit_spectator_onchain(
+                    profile_id=profile_id,
+                    match_id=match_id,
+                    side=side,
+                    amount=amount,
+                    user_address=str(summary.get("address") or ""),
+                )
+                book = chain_tx.get("book")
+            except Exception:
+                logger.exception("[RematchWeb] depositFor failed; House book")
+                from gaming.src.stack.agentic.house import get_house
+
+                book = get_house().take_bet(
+                    match_id,
+                    bettor_id=profile_id,
+                    side=side,
+                    amount_usdc=Decimal(str(amount)),
+                )
+        else:
+            from gaming.src.stack.agentic.house import get_house
+
+            book = get_house().take_bet(
+                match_id,
+                bettor_id=profile_id,
+                side=side,
+                amount_usdc=Decimal(str(amount)),
+            )
+    except Exception as exc:
+        logger.exception("[RematchWeb] spectator book/deposit failed")
+        return {
+            "success": False,
+            "pending": False,
+            "error": "spectator_book_failed",
+            "message": str(exc),
+        }
+
+    from gaming.src.backend.services.clawstation_circle import get_usdc_balance
+
+    new_bal = float(await get_usdc_balance(profile_id))
+    try:
+        from gaming.src.backend.services.wallet_activity import log_debit
+
+        log_debit(
+            profile_id,
+            Decimal(str(amount)),
+            str(summary.get("chain_id") or "arc"),
+            status="spectator_bet",
+            source=f"arena:{match_id}:{side}",
+        )
+    except Exception:
+        pass
+
+    result = {
+        "success": True,
+        "pending": False,
+        "profile_id": profile_id,
+        "amount": amount,
+        "side": side,
+        "match_id": (book or {}).get("match_id") or match_id,
+        "balance": new_bal,
+        "address": summary.get("address") or "",
+        "wallet": summary.get("address") or "",
+        "house_book": bool(book),
+        "tx_hash": chain_tx.get("tx_hash") or "",
+        "explorer": chain_tx.get("explorer") or "",
+        "onchain": bool(chain_tx.get("tx_hash")),
+        "pull_error": pull_err,
+    }
+    store_apply_result(approval_id, result)
+    logger.info("[RematchWeb] spectator bet placed match=%s approval=%s", match_id, approval_id)
     return result
 
 
@@ -189,8 +332,6 @@ async def _finish_spectator_after_approval(
 ) -> None:
     """Runs after the HTTP response so Vercel timeout cannot drop a Yes tap."""
     from gaming.src.backend.services.tx_approval import poll_approval
-    from gaming.src.backend.db_layer_blockchain import debit_wallet
-    from gaming.src.stack.agentic.spectator_onchain import spectator_onchain_enabled
 
     decision = await poll_approval(approval_id, 120)
     if decision.get("status") != "approved":
@@ -200,52 +341,14 @@ async def _finish_spectator_after_approval(
             approval_id,
         )
         return
-    try:
-        await _pull_play_usdc(profile_id, amount)
-    except Exception:
-        logger.exception("[RematchWeb] background play-wallet pull failed profile=%s", profile_id)
-        return
-    try:
-        ledger = float((summary or {}).get("ledger_usdc") or 0)
-        if ledger + 1e-9 >= amount:
-            await debit_wallet(profile_id, amount)
-    except Exception:
-        logger.warning("[RematchWeb] background ledger sync failed", exc_info=True)
-    try:
-        if spectator_onchain_enabled():
-            await _deposit_spectator_onchain(
-                profile_id=profile_id,
-                match_id=match_id,
-                side=side,
-                amount=amount,
-                user_address=str(summary.get("address") or ""),
-            )
-        else:
-            from gaming.src.stack.agentic.house import get_house
-
-            get_house().take_bet(
-                match_id,
-                bettor_id=profile_id,
-                side=side,
-                amount_usdc=Decimal(str(amount)),
-            )
-    except Exception:
-        logger.exception("[RematchWeb] background spectator book/deposit failed")
-        return
-    try:
-        from gaming.src.backend.services.wallet_activity import log_debit
-
-        log_debit(
-            profile_id,
-            Decimal(str(amount)),
-            str(summary.get("chain_id") or "arc"),
-            status="spectator_bet",
-            source=f"arena:{match_id}:{side}",
-        )
-        await get_wallet_balance(profile_id)
-    except Exception:
-        pass
-    logger.info("[RematchWeb] background spectator bet placed match=%s", match_id)
+    await _apply_approved_spectator_bet(
+        approval_id=approval_id,
+        profile_id=profile_id,
+        match_id=match_id,
+        side=side,
+        amount=amount,
+        summary=summary,
+    )
 
 
 @router.get("/profile")
@@ -408,6 +511,7 @@ async def web_wallet_snapshot(
 @router.post("/spectator/bet")
 async def web_spectator_bet(
     body: dict,
+    background_tasks: BackgroundTasks,
     x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
     x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
     authorization: Optional[str] = Header(default=None),
@@ -503,17 +607,14 @@ async def web_spectator_bet(
                 "message": decision.get("message") or msg,
             }
         if decision.get("status") == "pending":
-            import asyncio
-
-            asyncio.create_task(
-                _finish_spectator_after_approval(
-                    approval_id=str(decision.get("approval_id") or ""),
-                    profile_id=profile_id,
-                    match_id=match_id,
-                    side=side,
-                    amount=amount,
-                    summary=summary,
-                )
+            background_tasks.add_task(
+                _finish_spectator_after_approval,
+                approval_id=str(decision.get("approval_id") or ""),
+                profile_id=profile_id,
+                match_id=match_id,
+                side=side,
+                amount=amount,
+                summary=summary,
             )
             return {
                 "success": True,
@@ -531,17 +632,13 @@ async def web_spectator_bet(
         # Pull USDC from the same play wallet the Telegram bot shows, then
         # House depositFor credits the pot. Ledger-only debit left the bot
         # balance unchanged — that is what the user saw.
+        pull_err = ""
         try:
             await _pull_play_usdc(profile_id, amount)
         except Exception as exc:
-            logger.exception("[RematchWeb] play-wallet pull failed")
-            return {
-                "success": False,
-                "error": "play_wallet_transfer_failed",
-                "message": str(exc),
-                "balance": spendable,
-                "address": summary.get("address") or "",
-            }
+            # Book the bet anyway — Circle pull is settlement, not the pot.
+            logger.exception("[RematchWeb] play-wallet pull failed; booking House pot")
+            pull_err = str(exc)
         try:
             ledger = float(summary.get("ledger_usdc") or 0)
             if ledger + 1e-9 >= amount:
@@ -562,25 +659,25 @@ async def web_spectator_bet(
                 )
                 book = chain_tx.get("book")
             except Exception as exc:
-                logger.exception("[RematchWeb] spectator on-chain deposit failed — refunding ledger")
+                logger.exception("[RematchWeb] on-chain depositFor failed — House book still takes the bet")
                 try:
-                    from gaming.src.backend.db_layer_blockchain import credit_wallet
+                    from gaming.src.stack.agentic.house import get_house
 
-                    await credit_wallet(
-                        profile_id,
-                        amount,
-                        tx_hash="spectator_refund",
-                        source="spectator_onchain_failed",
+                    book = get_house().take_bet(
+                        match_id,
+                        bettor_id=profile_id,
+                        side=side,
+                        amount_usdc=Decimal(str(amount)),
                     )
                 except Exception:
-                    logger.exception("[RematchWeb] ledger refund after failed depositFor also failed")
-                return {
-                    "success": False,
-                    "error": "spectator_onchain_failed",
-                    "message": str(exc),
-                    "match_id": match_id,
-                    "address": summary.get("address") or "",
-                }
+                    logger.exception("[RematchWeb] house take_bet fallback failed match=%s", match_id)
+                    return {
+                        "success": False,
+                        "error": "spectator_onchain_failed",
+                        "message": str(exc),
+                        "match_id": match_id,
+                        "address": summary.get("address") or "",
+                    }
         else:
             try:
                 from gaming.src.stack.agentic.house import get_house
@@ -623,12 +720,75 @@ async def web_spectator_bet(
             "tx_hash": chain_tx.get("tx_hash") or "",
             "explorer": chain_tx.get("explorer") or "",
             "onchain": bool(chain_tx.get("tx_hash")),
+            "pull_error": pull_err,
         }
     except HTTPException:
         raise
     except Exception as exc:
         logger.exception("[RematchWeb] spectator bet failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/spectator/bet")
+async def web_spectator_bet_status(
+    approval_id: str = Query(default=""),
+    x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
+    x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
+    authorization: Optional[str] = Header(default=None),
+):
+    """Poll Telegram Yes and apply the bet if the background task missed it."""
+    _require_key(x_rematch_key, x_stack_key, authorization)
+    aid = (approval_id or "").strip()
+    if not aid:
+        raise HTTPException(status_code=400, detail="approval_id required")
+    from gaming.src.backend.services.tx_approval import get_approval_row
+    from gaming.src.backend.services.clawstation_circle import get_balance_summary
+
+    row = get_approval_row(aid)
+    if not row:
+        return {"success": False, "error": "approval_not_found", "pending": False}
+    status = str(row.get("status") or "pending")
+    payload = dict(row.get("payload") or {})
+    if status == "pending":
+        return {
+            "success": True,
+            "pending": True,
+            "approval_id": aid,
+            "status": "pending",
+            "amount": payload.get("amount"),
+            "side": payload.get("side"),
+            "match_id": payload.get("match_id"),
+        }
+    if status in ("denied", "expired"):
+        return {
+            "success": False,
+            "pending": False,
+            "approval_id": aid,
+            "error": f"approval_{status}",
+            "status": status,
+        }
+    if status == "applied" or payload.get("_applied"):
+        return {
+            "success": True,
+            "pending": False,
+            "approval_id": aid,
+            "status": "applied",
+            **(payload.get("_result") or {}),
+        }
+    # approved but not applied — finish now (user tapped Yes, task may have died)
+    profile_id = str(row.get("profile_id") or "")
+    try:
+        summary = await get_balance_summary(profile_id)
+    except Exception:
+        summary = {}
+    return await _apply_approved_spectator_bet(
+        approval_id=aid,
+        profile_id=profile_id,
+        match_id=str(payload.get("match_id") or ""),
+        side=str(payload.get("side") or "a"),
+        amount=float(payload.get("amount") or 0),
+        summary=summary,
+    )
 
 
 @router.post("/spectator/payout")

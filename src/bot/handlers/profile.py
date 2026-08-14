@@ -50,7 +50,9 @@ def _format_profile(profile: dict, history: list | None = None) -> str:
                 f"${h.get('stake') or '?'} {escape(str(h.get('chain') or ''))} "
                 f"({escape(str(h.get('status') or ''))})\n"
             )
-    text += "\nLeaderboard: playingsidequest.fun/rematch/leaderboard"
+    from gaming.src.bot.brand_assets import boardman_leaderboard_url
+
+    text += f"\nLeaderboard: {boardman_leaderboard_url()}"
     return text
 
 

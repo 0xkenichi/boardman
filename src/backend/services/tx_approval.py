@@ -84,7 +84,12 @@ def _approval_text(action: str, payload: dict) -> str:
             f"Withdrawable anytime from free capital.</i>"
         )
     side = str(payload.get("side") or "a")
-    who = "Raja" if side in ("a", "raja", "white") else "Nero"
+    if side in ("a", "raja", "white"):
+        who = "Raja"
+    elif side in ("draw", "d", "tie"):
+        who = "draw"
+    else:
+        who = "Nero"
     return (
         f"🎯 <b>Approve arena bet?</b>\n\n"
         f"You're about to bet <b>${amount:,.2f}</b> on <b>{who}</b>.\n\n"
@@ -139,6 +144,44 @@ def _mark_status(approval_id: str, status: str) -> None:
         _sb().schema("gaming").table("tx_approvals").update(
             {"status": status, "decided_at": datetime.now(timezone.utc).isoformat()}
         ).eq("id", approval_id).execute()
+    except Exception:
+        pass
+
+
+def claim_apply(approval_id: str) -> Optional[dict]:
+    """Mark an approved row as applied. Returns the row if we won the race, else None."""
+    row = get_approval_row(approval_id)
+    if not row:
+        return None
+    if row.get("status") == "applied":
+        return None
+    if row.get("status") != "approved":
+        return None
+    payload = dict(row.get("payload") or {})
+    if payload.get("_applied"):
+        return None
+    payload["_applied"] = True
+    try:
+        _sb().schema("gaming").table("tx_approvals").update(
+            {"status": "applied", "payload": payload}
+        ).eq("id", approval_id).eq("status", "approved").execute()
+    except Exception:
+        return None
+    fresh = get_approval_row(approval_id)
+    if not fresh or fresh.get("status") != "applied":
+        return None
+    return fresh
+
+
+def store_apply_result(approval_id: str, result: dict) -> None:
+    row = get_approval_row(approval_id) or {}
+    payload = dict(row.get("payload") or {})
+    payload["_applied"] = True
+    payload["_result"] = result
+    try:
+        _sb().schema("gaming").table("tx_approvals").update({"payload": payload}).eq(
+            "id", approval_id
+        ).execute()
     except Exception:
         pass
 
@@ -247,8 +290,12 @@ async def poll_approval(approval_id: str, timeout_sec: int) -> dict:
     while True:
         row = get_approval_row(approval_id)
         status = (row or {}).get("status") or "pending"
-        if status in ("approved", "denied"):
-            return {"status": status, "approval_id": approval_id, "mode": "ask"}
+        if status in ("approved", "denied", "applied"):
+            return {
+                "status": "approved" if status == "applied" else status,
+                "approval_id": approval_id,
+                "mode": "ask",
+            }
         if asyncio.get_event_loop().time() >= deadline:
             _mark_status(approval_id, "expired")
             return {"status": "expired", "approval_id": approval_id}

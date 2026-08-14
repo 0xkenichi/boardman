@@ -515,7 +515,13 @@ def format_leaderboard_text(rows: list[dict], limit: int = 10) -> str:
             f"{r['rank']}. @{r['tag']} · <b>{r['play_points']:,}</b> PLAY · "
             f"rep {r['reputation']} · {r['wins']}W/{r['losses']}L"
         )
-    lines.append("\nFull board: playingsidequest.fun/rematch/leaderboard")
+    try:
+        from gaming.src.bot.brand_assets import boardman_leaderboard_url
+
+        board = boardman_leaderboard_url().replace("https://", "")
+    except Exception:
+        board = "boardman.playingsidequest.fun/leaderboard"
+    lines.append(f"\nFull board: {board}")
     return "\n".join(lines)
 
 

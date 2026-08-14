@@ -385,6 +385,10 @@ class HouseRuntime:
             side=slot,
             amount_usdc=Decimal(str(amount_usdc)),
         )
+        try:
+            get_match_service().persist_spectator_snapshot(match_id, book)
+        except Exception:
+            pass
         return {"match_id": match_id, "side": slot, "book": book, "clerk": HOUSE_ID}
 
     def floor(self) -> dict[str, Any]:

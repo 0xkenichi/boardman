@@ -12,7 +12,7 @@ from aiogram import Router
 
 from gaming.src.backend.middleware.geo_fence import BlockedRegionError, check_region
 from gaming.src.backend.services.clawstation_circle import ensure_user_wallet
-from gaming.src.bot.keyboards import main_menu, back_menu
+from gaming.src.bot.keyboards import main_menu, back_menu, welcome_menu
 from gaming.src.bot.utils.db import get_or_create_profile, update_telegram_chat_id
 
 logger = logging.getLogger(__name__)
@@ -263,58 +263,65 @@ async def cmd_start(message: types.Message) -> None:
     except Exception:
         logger.warning("[Start] balance preview skipped/failed for %s", profile["id"])
 
+    from gaming.src.bot.brand_assets import boardman_arena_url, boardman_site_url
+
+    site = boardman_site_url()
+    arena = boardman_arena_url()
     text = (
-        f"🎮 <b>Welcome to Boardman, {name}!</b>\n"
-        f"<i>Digital boardman · by sideQuest</i>\n"
-        f"<i>Formerly Rematch by sideQuest</i>\n\n"
+        f"🤝 <b>Welcome to Boardman, {name}.</b>\n"
+        f"<i>Nice to have you here.</i>\n\n"
+        f"Hope you make a lot of money. Hope you enjoy your games. "
+        f"This desk is yours now — lock, play, settle.\n\n"
         f"Your tag: <code>@{tag}</code>\n"
-        f"Friends challenge you with this.\n\n"
         f"{bal_line}"
-        f"Your <b>play</b> fund address:\n"
-        f"<code>{addr}</code>\n\n"
-        f"<b>Get started</b>\n"
-        f"1. <b>Get money</b> → fund that play address only\n"
-        f"2. <b>Challenge</b> a friend\n"
-        f"3. Accept → Lock → Side → FT photo\n\n"
-        f"Tap <b>How to play</b> under More anytime."
+        f"Play address:\n<code>{addr}</code>\n\n"
+        f"<b>Quick start</b>\n"
+        f"1. <b>Get money</b> — fund that address\n"
+        f"2. <b>Challenge</b> a friend, or watch Raja vs Nero live\n"
+        f"3. Lock → play → send the result photo\n\n"
+        f"🌐 {escape(site)}\n"
+        f"♟️ {escape(arena)}"
     )
     try:
         from aiogram.types import FSInputFile
 
-        from gaming.src.bot.brand_assets import boardman_logo_path
+        from gaming.src.bot.brand_assets import boardman_welcome_image_path
 
-        logo = boardman_logo_path()
-        if logo is not None:
+        art = boardman_welcome_image_path()
+        kb = welcome_menu()
+        if art is not None:
             await message.answer_photo(
-                photo=FSInputFile(str(logo)),
+                photo=FSInputFile(str(art)),
                 caption=text,
-                reply_markup=main_menu(),
+                reply_markup=kb,
                 parse_mode=ParseMode.HTML,
             )
         else:
-            await message.answer(text, reply_markup=main_menu(), parse_mode=ParseMode.HTML)
+            await message.answer(text, reply_markup=kb, parse_mode=ParseMode.HTML)
     except Exception as exc:
-        # Never fail silent — fall back to plain text so the user always gets a reply.
         logger.exception("[Start] Failed to send welcome HTML message: %s", exc)
         plain = (
-            f"🎮 Welcome to Boardman, {profile.get('display_name') or user.first_name}!\n\n"
-            f"Tag: {profile.get('gaming_tag') or '—'}\n\n"
-            f"Your Arc deposit address:\n"
-            f"{address}\n\n"
-            f"1. Get USDC → fund address\n"
-            f"2. New challenge → Lock → Side → FT photo"
+            f"Welcome to Boardman, {profile.get('display_name') or user.first_name}.\n"
+            f"Nice to have you here. Hope you make money and enjoy your games.\n\n"
+            f"Tag: {profile.get('gaming_tag') or '—'}\n"
+            f"Play address:\n{address}\n\n"
+            f"1. Get money\n2. Challenge a friend\n3. Lock → play → result photo\n\n"
+            f"{site}"
         )
-        await message.answer(plain, reply_markup=main_menu(), parse_mode=None)
+        await message.answer(plain, reply_markup=welcome_menu(), parse_mode=None)
 
 
 @router.callback_query(F.data == "m_main")
 async def cb_main(callback: types.CallbackQuery) -> None:
     """Back to main menu."""
     await callback.answer()
-    await callback.message.edit_text(
-        "Choose an option:",
-        reply_markup=main_menu(),
-    )
+    try:
+        await callback.message.edit_text(
+            "Choose an option:",
+            reply_markup=main_menu(),
+        )
+    except Exception:
+        await callback.message.answer("Choose an option:", reply_markup=main_menu())
 
 
 def _callback_as_user_message(callback: types.CallbackQuery, text: str) -> types.Message:
@@ -365,9 +372,6 @@ async def cb_menu_profile(callback: types.CallbackQuery) -> None:
     await cmd_profile(_callback_as_user_message(callback, "/profile"))
 
 
-REMATCH_INFO_URL = "https://boardman.playingsidequest.fun"
-
-
 @router.callback_query(F.data == "menu:learn")
 async def cb_menu_learn(callback: types.CallbackQuery) -> None:
     """In-bot how-to (simple steps)."""
@@ -385,9 +389,16 @@ async def cb_menu_learn(callback: types.CallbackQuery) -> None:
 async def cb_menu_app(callback: types.CallbackQuery) -> None:
     """Send the Boardman site link."""
     await callback.answer()
+    from gaming.src.bot.brand_assets import boardman_arena_url, boardman_site_url
+
+    site = boardman_site_url()
+    arena = boardman_arena_url()
     await callback.message.edit_text(
-        f"🌐 Boardman\n\n{REMATCH_INFO_URL}",
+        f"🌐 <b>Boardman</b>\n\n"
+        f"Site: {site}\n"
+        f"Live chess: {arena}",
         reply_markup=back_menu(),
+        parse_mode=ParseMode.HTML,
     )
 
 
