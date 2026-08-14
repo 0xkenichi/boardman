@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "BoardmanEscrow (V1) for Boardman by sideQuest — ClawEscrow is V0 archive",
   "scripts": {
+    "deploy:spectator:arc": "hardhat run scripts/deploy_spectator_pool.js --network arcTestnet",
     "deploy:boardman:arc": "hardhat run scripts/deploy_boardman_escrow.js --network arcTestnet",
     "deploy:boardman:arc-mainnet": "hardhat run scripts/deploy_boardman_escrow.js --network arcMainnet",
     "deploy:boardman:base-sepolia": "hardhat run scripts/deploy_boardman_escrow.js --network baseSepolia",

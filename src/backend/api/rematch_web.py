@@ -48,6 +48,96 @@ def _sb():
     return get_supabase()
 
 
+def _resolve_live_match_id(match_id: str) -> str:
+    """Map arena/live/empty onto the current House table. Never return 'arena'."""
+    from gaming.src.stack.agentic.house import LIVE_STATUSES
+    from gaming.src.stack.agentic.matches import get_match_service
+
+    mid = (match_id or "").strip()
+    if mid and mid.lower() not in {"arena", "live"}:
+        return mid
+    pair = {"agent_raja_kia_alekhine", "agent_nero_sicilian_french"}
+    for m in get_match_service().list_matches(50):
+        if m.get("status") in LIVE_STATUSES and {
+            m.get("agent_a_id"),
+            m.get("agent_b_id"),
+        } == pair:
+            found = str(m.get("match_id") or "")
+            if found and found.lower() not in {"arena", "live"}:
+                return found
+    raise HTTPException(
+        status_code=400,
+        detail="no live match to bet on — start Auto play first",
+    )
+
+
+async def _deposit_spectator_onchain(
+    *,
+    profile_id: str,
+    match_id: str,
+    side: str,
+    amount: float,
+    user_address: str,
+) -> dict:
+    """House depositFor + JSON projection. Caller already debited the ledger."""
+    from gaming.src.stack.agentic.economy.spectator import SpectatorBook
+    from gaming.src.stack.agentic.house import resolve_side
+    from gaming.src.stack.agentic.matches import get_match_service
+    from gaming.src.stack.agentic.spectator_onchain import deposit_for
+
+    svc = get_match_service()
+    match = svc.get(match_id)
+    if not match:
+        raise ValueError(f"match not found: {match_id}")
+    slot = resolve_side(match, side)
+    if not user_address or not str(user_address).startswith("0x"):
+        raise ValueError("on-chain spectator bet needs your Boardman wallet address")
+    dep = deposit_for(
+        match_id,
+        user_address,
+        Decimal(str(amount)),
+        slot,
+        match=match,
+    )
+    book = SpectatorBook()
+    if not (book.get(match_id) or {}).get("onchain"):
+        book.mark_onchain(
+            match_id,
+            pool=str(dep.get("pool") or ""),
+            open_tx_hash=str(dep.get("open_tx_hash") or ""),
+        )
+    projected = book.project_deposit(
+        match_id,
+        bettor_id=profile_id,
+        side=slot,
+        amount_usdc=Decimal(str(amount)),
+        tx_hash=str(dep.get("tx_hash") or ""),
+        explorer=str(dep.get("explorer") or ""),
+    )
+    rec = svc.get(match_id) or match
+    rec["spectator_book"] = {
+        "match_id": match_id,
+        "status": projected.get("status"),
+        "totals": projected.get("totals"),
+        "pot_cap_usdc": projected.get("pot_cap_usdc"),
+        "onchain": True,
+        "pool": projected.get("pool") or dep.get("pool"),
+        "deposit_txs": [
+            {"tx_hash": b.get("tx_hash"), "explorer": b.get("explorer")}
+            for b in (projected.get("bets") or [])
+            if b.get("tx_hash")
+        ],
+    }
+    data = svc._load()
+    data["matches"][match_id] = rec
+    svc._save(data)
+    return {
+        "tx_hash": dep.get("tx_hash"),
+        "explorer": dep.get("explorer"),
+        "book": {"match_id": match_id, "side": slot, "book": projected},
+    }
+
+
 @router.get("/profile")
 async def web_profile_by_telegram(
     telegram_id: int = Query(..., description="Telegram user id"),
@@ -225,7 +315,7 @@ async def web_spectator_bet(
     except (TypeError, ValueError):
         amount = 0.0
     side = str(body.get("side") or "").strip().lower()
-    match_id = str(body.get("match_id") or "arena")[:64]
+    match_id = str(body.get("match_id") or "").strip()[:64]
 
     if not profile_id:
         raise HTTPException(status_code=400, detail="profile_id required")
@@ -237,6 +327,21 @@ async def web_spectator_bet(
         side = "a"
     if side in ("nero", "black"):
         side = "b"
+
+    from gaming.src.stack.agentic.spectator_onchain import spectator_onchain_enabled
+
+    try:
+        match_id = _resolve_live_match_id(match_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("[RematchWeb] live match lookup failed")
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if spectator_onchain_enabled() and match_id.lower() in {"arena", "live", ""}:
+        raise HTTPException(
+            status_code=400,
+            detail="spectator on-chain requires a live match_id — start Auto play first",
+        )
 
     try:
         from gaming.src.backend.services.safety import is_paused
@@ -290,25 +395,9 @@ async def web_spectator_bet(
         if decision.get("mode") == "always":
             logger.info("[RematchWeb] spectator bet auto-approved (always) profile=%s", profile_id)
 
-        # If on-chain spectator pool is enabled, attempt deposit; otherwise debit wallet.
-        spectator_onchain = str(os.getenv("SPECTATOR_ONCHAIN") or "").strip().lower() in (
-            "1",
-            "true",
-            "yes",
-        )
-        if spectator_onchain:
-            try:
-                from backend.services.spectator_escrow import deposit_to_pool
-
-                dep = await deposit_to_pool(profile_id, match_id, side, Decimal(str(amount)))
-                # Still record debit in ledger (platform accountability)
-                ok = True
-            except Exception:
-                # Fallback to internal debit path if on-chain deposit fails
-                logger.exception("[RematchWeb] spectator on-chain deposit failed, falling back to ledger debit")
-                ok = await debit_wallet(profile_id, amount)
-        else:
-            ok = await debit_wallet(profile_id, amount)
+        # Custodial debit first (Telegram play balance). On-chain path then
+        # depositFor from House float so the bet gets an Arc hash.
+        ok = await debit_wallet(profile_id, amount)
         if not ok:
             bal = await get_wallet_balance(profile_id)
             return {
@@ -318,10 +407,53 @@ async def web_spectator_bet(
                 "address": summary.get("address") or "",
             }
 
+        chain_tx: dict = {}
+        book = None
+        if spectator_onchain_enabled():
+            try:
+                chain_tx = await _deposit_spectator_onchain(
+                    profile_id=profile_id,
+                    match_id=match_id,
+                    side=side,
+                    amount=amount,
+                    user_address=str(summary.get("address") or ""),
+                )
+                book = chain_tx.get("book")
+            except Exception as exc:
+                logger.exception("[RematchWeb] spectator on-chain deposit failed — refunding ledger")
+                try:
+                    from gaming.src.backend.db_layer_blockchain import credit_wallet
+
+                    await credit_wallet(
+                        profile_id,
+                        amount,
+                        tx_hash="spectator_refund",
+                        source="spectator_onchain_failed",
+                    )
+                except Exception:
+                    logger.exception("[RematchWeb] ledger refund after failed depositFor also failed")
+                return {
+                    "success": False,
+                    "error": "spectator_onchain_failed",
+                    "message": str(exc),
+                    "match_id": match_id,
+                    "address": summary.get("address") or "",
+                }
+        else:
+            try:
+                from gaming.src.stack.agentic.house import get_house
+
+                book = get_house().take_bet(
+                    match_id,
+                    bettor_id=profile_id,
+                    side=side,
+                    amount_usdc=Decimal(str(amount)),
+                )
+            except Exception:
+                logger.exception("[RematchWeb] house take_bet failed match=%s", match_id)
+
         new_bal = await get_wallet_balance(profile_id)
         try:
-            from decimal import Decimal
-
             from gaming.src.backend.services.wallet_activity import log_debit
 
             log_debit(
@@ -334,31 +466,6 @@ async def web_spectator_bet(
         except Exception:
             pass
 
-        book = None
-        try:
-            from gaming.src.stack.agentic.house import get_house, LIVE_STATUSES
-            from gaming.src.stack.agentic.matches import get_match_service
-
-            mid = match_id
-            if not mid or mid in {"arena", "live"}:
-                pair = {"agent_raja_kia_alekhine", "agent_nero_sicilian_french"}
-                for m in get_match_service().list_matches(50):
-                    if m.get("status") in LIVE_STATUSES and {
-                        m.get("agent_a_id"),
-                        m.get("agent_b_id"),
-                    } == pair:
-                        mid = m.get("match_id")
-                        break
-            if mid and mid not in {"arena", "live"}:
-                book = get_house().take_bet(
-                    mid,
-                    bettor_id=profile_id,
-                    side=side,
-                    amount_usdc=Decimal(str(amount)),
-                )
-        except Exception:
-            logger.exception("[RematchWeb] house take_bet failed match=%s", match_id)
-
         return {
             "success": True,
             "profile_id": profile_id,
@@ -369,6 +476,9 @@ async def web_spectator_bet(
             "address": summary.get("address") or "",
             "wallet": summary.get("address") or "",
             "house_book": bool(book),
+            "tx_hash": chain_tx.get("tx_hash") or "",
+            "explorer": chain_tx.get("explorer") or "",
+            "onchain": bool(chain_tx.get("tx_hash")),
         }
     except HTTPException:
         raise

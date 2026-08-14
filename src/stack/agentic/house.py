@@ -374,6 +374,9 @@ class HouseRuntime:
         if is_house(bettor_id) or (bettor_id or "").lower() in HOUSE_NAMES:
             raise ValueError("Boardman House cannot bet on its own tables")
         slot = resolve_side(m, side)
+        existing = SpectatorBook().get(match_id) or {}
+        if existing.get("onchain"):
+            raise ValueError("on-chain spectator book — deposit on SpectatorPool first")
         book = SpectatorBook().place_bet(
             match_id,
             bettor_id=bettor_id,

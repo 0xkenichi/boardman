@@ -1610,6 +1610,11 @@
       }
       amount = Math.min(amount, room);
       amount = Math.round(amount * 100) / 100;
+      if (!houseMatchId || houseMatchId === "arena" || houseMatchId === "live") {
+        setStatus("No live House table — start Auto play first", true);
+        log("Bet blocked — need a live match_id (not arena)");
+        return;
+      }
 
       betInFlight = true;
       if (el("betA")) el("betA").disabled = true;
@@ -1620,7 +1625,7 @@
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ amount, side, match_id: houseMatchId || "arena" }),
+          body: JSON.stringify({ amount, side, match_id: houseMatchId }),
         });
         const data = await res.json();
         if (!data || !data.ok) {
@@ -1672,9 +1677,15 @@
             ? el("decA") && el("decA").textContent
             : el("decB") && el("decB").textContent;
         log(
-          `@${tgUser.tag} bet $${amount.toFixed(2)} on ${side === "a" ? "Raja" : "Nero"} @ ${dec || "?"} · bal $${Number(tgUser.balance || 0).toFixed(2)}`
+          `@${tgUser.tag} bet $${amount.toFixed(2)} on ${side === "a" ? "Raja" : "Nero"} @ ${dec || "?"} · bal $${Number(tgUser.balance || 0).toFixed(2)}` +
+            (data.tx_hash ? " · " + data.tx_hash : "")
         );
-        setStatus(`Bet placed from Telegram wallet · $${amount.toFixed(2)}`, true);
+        setStatus(
+          data.tx_hash
+            ? `On-chain bet ${String(data.tx_hash).slice(0, 12)}… · $${amount.toFixed(2)}`
+            : `Bet placed from Telegram wallet · $${amount.toFixed(2)}`,
+          true
+        );
       } catch (e) {
         log("Bet network error: " + e.message);
       } finally {

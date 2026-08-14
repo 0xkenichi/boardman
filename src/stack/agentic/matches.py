@@ -353,6 +353,35 @@ class AgentMatchService:
                 "txs": onchain_result.get("txs"),
             }
 
+        try:
+            from gaming.src.stack.agentic.spectator_onchain import (
+                open_book_onchain,
+                spectator_onchain_enabled,
+            )
+            from gaming.src.stack.agentic.economy.spectator import SpectatorBook
+
+            if spectator_onchain_enabled():
+                opened = open_book_onchain(m, chain_id=m.get("chain_id") or "arc")
+                SpectatorBook().mark_onchain(
+                    match_id,
+                    pool=str(opened.get("pool") or ""),
+                    open_tx_hash=str(opened.get("tx_hash") or ""),
+                )
+                m["spectator_pool"] = {
+                    "pool": opened.get("pool"),
+                    "open_tx_hash": opened.get("tx_hash"),
+                    "explorer": opened.get("explorer"),
+                    "already_open": opened.get("already_open"),
+                }
+                snap = dict(m.get("spectator_book") or {})
+                snap["onchain"] = True
+                snap["pool"] = opened.get("pool")
+                snap["open_tx_hash"] = opened.get("tx_hash")
+                m["spectator_book"] = snap
+        except Exception as exc:
+            logger.warning("[agentic] SpectatorPool openBook: %s", exc)
+            m["spectator_pool_error"] = str(exc)
+
         m["escrow"] = esc
         m["status"] = "locked" if esc.get("status") == "locked" else "partial_lock"
         if m["status"] == "locked":
@@ -543,20 +572,51 @@ class AgentMatchService:
 
         # Spectator pot settle
         try:
-            spec = SpectatorBook().settle(match_id, winner_side=winner_side)
+            from gaming.src.stack.agentic.spectator_onchain import (
+                resolve_book as resolve_spectator_pool,
+                spectator_onchain_enabled,
+            )
+
+            spec_book = SpectatorBook()
+            live = spec_book.get(match_id) or {}
+            onchain_spec = bool(live.get("onchain")) and spectator_onchain_enabled()
+            if onchain_spec:
+                try:
+                    resolved = resolve_spectator_pool(
+                        match_id,
+                        winner_side,
+                        chain_id=m.get("chain_id") or "arc",
+                    )
+                    if resolved.get("tx_hash"):
+                        spec_book.project_resolve(
+                            match_id,
+                            tx_hash=str(resolved.get("tx_hash") or ""),
+                            explorer=str(resolved.get("explorer") or ""),
+                        )
+                    m["spectator_pool_resolve"] = resolved
+                except Exception as exc:
+                    logger.warning("[agentic] SpectatorPool resolve: %s", exc)
+                    m["spectator_pool_resolve_error"] = str(exc)
+            spec = spec_book.settle(match_id, winner_side=winner_side)
             m["spectator_book"] = {
                 "status": spec.get("status"),
                 "totals": spec.get("totals"),
                 "payouts": spec.get("payouts"),
+                "onchain": bool(spec.get("onchain")),
+                "pool": spec.get("pool"),
+                "open_tx_hash": spec.get("open_tx_hash"),
+                "resolve_tx_hash": spec.get("resolve_tx_hash"),
             }
-            for c in (spec.get("payouts") or {}).get("creators") or []:
-                ledger.credit(
-                    f"creator:{c['creator_id']}",
-                    Decimal(str(c["amount"])),
-                    reason="creator_fee_spectator",
-                    ref=match_id,
-                )
-            # Draw: return seeds to agent wallets
+            # On-chain books push creator fees in the contract. Ledger only
+            # refunds JSON seeds (those were never deposited to the pool).
+            if not onchain_spec:
+                for c in (spec.get("payouts") or {}).get("creators") or []:
+                    ledger.credit(
+                        f"creator:{c['creator_id']}",
+                        Decimal(str(c["amount"])),
+                        reason="creator_fee_spectator",
+                        ref=match_id,
+                    )
             for sr in (spec.get("payouts") or {}).get("seed_refunds") or []:
                 w = sr.get("wallet")
                 amt = Decimal(str(sr.get("amount") or "0"))

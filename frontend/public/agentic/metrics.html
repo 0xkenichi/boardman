@@ -55,7 +55,7 @@
     <p class="sub">
       Public proof book. Every House skill match: who sat White / Black, who won,
       and the Arc testnet transaction hashes for lock, join, and settle.
-      Spectator bets share the same <span class="mono">match_id</span> (ledger until SpectatorPool).
+      Spectator bets share the same <span class="mono">match_id</span> and show a SpectatorPool hash when the deposit landed on-chain.
     </p>
 
     <div class="grid">
@@ -120,6 +120,7 @@
         : (m.result === "draw" || m.result === "1/2-1/2" ? "Draw" : (m.status || "open"));
       const extra = (p.txs || []).filter((t) => t.tx_hash && t.tx_hash !== p.create_tx_hash && t.tx_hash !== p.join_tx_hash && t.tx_hash !== p.settle_tx_hash);
       const spec = m.spectator || {};
+      const specTxs = spec.txs || [];
       return (
         '<article class="match">' +
           "<h3>" + (m.white && m.white.name) + " (White) vs " + (m.black && m.black.name) + " (Black)</h3>" +
@@ -133,8 +134,9 @@
           extra.map((t) => txLine(t.step || "tx", t.tx_hash, t.explorer)).join("") +
           (spec.pot_usdc && Number(spec.pot_usdc) > 0
             ? '<div class="row"><span>Spectator pot</span><span>$' + Number(spec.pot_usdc).toFixed(2) +
-              " · " + (spec.ledger_only ? "ledger (no chain hash yet)" : "on-chain") + "</span></div>"
+              " · " + (spec.ledger_only ? "ledger (no chain hash yet)" : "SpectatorPool") + "</span></div>"
             : "") +
+          specTxs.map((t) => txLine(t.step || "bet", t.tx_hash, t.explorer)).join("") +
           (p.settle_error ? '<div class="note" style="color:var(--amber)">' + p.settle_error + "</div>" : "") +
         "</article>"
       );

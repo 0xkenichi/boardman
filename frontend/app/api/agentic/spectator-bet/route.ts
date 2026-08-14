@@ -159,7 +159,7 @@ export async function POST(req: NextRequest) {
         profile_id: session.profileId,
         amount,
         side,
-        match_id: body.match_id || "arena",
+        match_id: body.match_id || "",
       }),
     });
 
@@ -171,6 +171,9 @@ export async function POST(req: NextRequest) {
         balance: res.data.balance,
         address: res.data.address || res.data.wallet || "",
         match_id: res.data.match_id || body.match_id,
+        tx_hash: res.data.tx_hash || "",
+        explorer: res.data.explorer || "",
+        onchain: Boolean(res.data.onchain || res.data.tx_hash),
         profileId: session.profileId,
         tag: session.tag,
         name: session.name,

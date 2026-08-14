@@ -33,6 +33,13 @@ async def test_deposit_to_pool_success(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_arena_match_id_refused(monkeypatch):
+    monkeypatch.setenv("SPECTATOR_ESCROW_ADDRESS", "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
+    with pytest.raises(spectator_escrow.SpectatorEscrowError, match="not 'arena'"):
+        await spectator_escrow.deposit_to_pool("p", "arena", "a", Decimal("1"))
+
+
+@pytest.mark.asyncio
 async def test_missing_env_raises(monkeypatch):
     # Ensure escrow address missing
     monkeypatch.delenv("SPECTATOR_ESCROW_ADDRESS", raising=False)

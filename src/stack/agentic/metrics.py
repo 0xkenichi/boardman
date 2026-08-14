@@ -1,9 +1,7 @@
 """Public match / PNL aggregation from matches.json.
 
 No secrets. Skill escrow PNL + on-chain lock/join/settle proofs.
-Spectator bets and LP deposits stay on the internal ledger; this surface
-only publishes hashes that already exist on matches (and optional LP
-realized_pnl from the demo LP file).
+Spectator bets publish SpectatorPool deposit/resolve hashes when present.
 """
 from __future__ import annotations
 
@@ -166,13 +164,40 @@ def _proofs(match: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _public_row(match: dict[str, Any], agents: dict[str, Any]) -> dict[str, Any]:
+def _spectator_txs(book: dict[str, Any]) -> list[dict[str, str]]:
+    txs: list[dict[str, str]] = []
+    seen: set[str] = set()
+
+    def _add(step: str, txh: Optional[str], href: Optional[str] = None) -> None:
+        h = (txh or "").strip()
+        if not h or h in seen:
+            return
+        seen.add(h)
+        txs.append({"step": step, "tx_hash": h, "explorer": href or _explorer(h)})
+
+    _add("openBook", book.get("open_tx_hash"), book.get("open_explorer"))
+    for b in book.get("bets") or []:
+        _add("deposit", b.get("tx_hash"), b.get("explorer"))
+    for t in book.get("deposit_txs") or []:
+        _add("deposit", t.get("tx_hash"), t.get("explorer"))
+    _add("resolve", book.get("resolve_tx_hash"), book.get("resolve_explorer"))
+    return txs
+
+
+def _public_row(
+    match: dict[str, Any],
+    agents: dict[str, Any],
+    live_book: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
     white_id = match.get("white_agent_id")
     black_id = match.get("black_agent_id")
     winner_id = match.get("winner_agent_id")
-    book = match.get("spectator_book") or {}
+    book = dict(match.get("spectator_book") or {})
+    if live_book:
+        book = {**book, **{k: v for k, v in live_book.items() if v not in (None, "", [], {})}}
     totals = book.get("totals") or {}
     pot = _d(totals.get("a")) + _d(totals.get("b"))
+    spec_txs = _spectator_txs(book)
     pgn = match.get("pgn") or ""
     return {
         "match_id": match.get("match_id"),
@@ -206,7 +231,11 @@ def _public_row(match: dict[str, Any], agents: dict[str, Any]) -> dict[str, Any]
             "status": book.get("status"),
             "pot_usdc": _q(pot),
             "mode": (book.get("payouts") or {}).get("mode"),
-            "ledger_only": True,
+            "ledger_only": not spec_txs,
+            "pool": book.get("pool") or "",
+            "open_tx_hash": book.get("open_tx_hash") or "",
+            "resolve_tx_hash": book.get("resolve_tx_hash") or "",
+            "txs": spec_txs,
         },
         "skill_pnl": {
             "a": _q(_skill_pnl(match, match.get("agent_a_id") or "")),
@@ -234,6 +263,8 @@ def build_public_metrics(
     store = matches if matches is not None else load_json("matches.json", {"matches": {}})
     agent_store = agents if agents is not None else load_json("agents.json", {"agents": {}})
     lp_store = lp_pools if lp_pools is not None else load_json("agent_lp_pools.json", {"pools": {}})
+    spec_store = load_json("spectator_books.json", {"books": {}})
+    spec_books = spec_store.get("books") or {}
 
     agent_map: dict[str, Any] = dict(agent_store.get("agents") or {})
     rows_src = list((store.get("matches") or {}).values())
@@ -294,7 +325,9 @@ def build_public_metrics(
                 card["onchain_locks"] += 1
 
         if len(public_rows) < max(1, int(limit)):
-            public_rows.append(_public_row(m, agent_map))
+            public_rows.append(
+                _public_row(m, agent_map, spec_books.get(m.get("match_id") or ""))
+            )
 
     out_cards = []
     for aid, card in cards.items():
@@ -318,7 +351,8 @@ def build_public_metrics(
         "source": "matches.json",
         "note": (
             "Skill lock/settle proofs are on-chain when settlement_mode=onchain. "
-            "Spectator bets and LP deposits are internal-ledger (no spectator pool contract)."
+            "Spectator bets show SpectatorPool deposit hashes when SPECTATOR_ONCHAIN is on; "
+            "otherwise they stay on the match_id ledger."
         ),
         "volume": {
             "matches_total": len(rows_src),

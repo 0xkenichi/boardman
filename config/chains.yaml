@@ -33,6 +33,8 @@ chains:
     # V0 ClawEscrow archive: 0xFC44a06295d4fC58420027932A6FcB3C13D83859
     escrow_address: "0x3cD57447490c81598Bd8CaCBe3843b24E5735A77"
     escrow_contract: BoardmanEscrow
+    # SpectatorPool V1 (2026-08). Override: SPECTATOR_ESCROW_ADDRESS
+    spectator_pool_address: "0x7Dcd347fA916bF93Ad8BF3c1c8e9D17111B5313e"
     fee_recipient: "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E"
     notes: "Boardman V1. Gas paid in USDC. Best UX."
 

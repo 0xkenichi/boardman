@@ -1,0 +1,19 @@
+{
+  "product": "Boardman by sideQuest",
+  "version": "v1",
+  "contractName": "SpectatorPool",
+  "network": "arcTestnet",
+  "chainId": 5042002,
+  "contracts": {
+    "SpectatorPool": "0x7Dcd347fA916bF93Ad8BF3c1c8e9D17111B5313e"
+  },
+  "config": {
+    "usdc": "0x3600000000000000000000000000000000000000",
+    "feeRecipient": "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E",
+    "resolver": "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E",
+    "platformFeeBps": 300,
+    "creatorBps": 200
+  },
+  "deployedAt": "2026-08-14T00:22:42.115Z",
+  "deployer": "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E"
+}

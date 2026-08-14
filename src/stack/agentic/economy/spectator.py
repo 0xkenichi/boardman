@@ -83,6 +83,10 @@ class SpectatorBook:
             "bets": [],  # {bettor_id, side: a|b, amount, ts}
             "totals": {"a": str(seed_a), "b": str(seed_b)},
             "odds_history": [],  # snapshots from economy.odds
+            "onchain": False,
+            "pool": "",
+            "open_tx_hash": "",
+            "resolve_tx_hash": "",
             "created_at": _now(),
             "settled_at": None,
             "payouts": None,
@@ -108,6 +112,8 @@ class SpectatorBook:
         book = data["books"].get(match_id)
         if not book:
             raise ValueError("book not found")
+        if book.get("onchain"):
+            raise ValueError("on-chain book — use project_deposit after a confirmed tx")
         if book["status"] != "open":
             raise ValueError(f"book not open: {book['status']}")
         pot = _d(book["totals"]["a"]) + _d(book["totals"]["b"])
@@ -133,6 +139,92 @@ class SpectatorBook:
         new_pot = _d(book["totals"]["a"]) + _d(book["totals"]["b"])
         if cap > 0 and new_pot >= cap - Decimal("0.000001"):
             book["status"] = "full"
+        data["books"][match_id] = book
+        self._save(data)
+        return book
+
+    def mark_onchain(
+        self,
+        match_id: str,
+        *,
+        pool: str = "",
+        open_tx_hash: str = "",
+    ) -> dict[str, Any]:
+        data = self._load()
+        book = data["books"].get(match_id)
+        if not book:
+            raise ValueError("book not found")
+        book["onchain"] = True
+        if pool:
+            book["pool"] = pool
+        if open_tx_hash:
+            book["open_tx_hash"] = open_tx_hash
+        data["books"][match_id] = book
+        self._save(data)
+        return book
+
+    def project_deposit(
+        self,
+        match_id: str,
+        *,
+        bettor_id: str,
+        side: str,
+        amount_usdc: Decimal,
+        tx_hash: str,
+        explorer: str = "",
+    ) -> dict[str, Any]:
+        """Append-only projection after a confirmed SpectatorPool deposit.
+
+        No cap / status==open check — the chain already accepted the bet.
+        Idempotent on tx_hash.
+        """
+        side = side.lower()
+        if side not in {"a", "b"}:
+            raise ValueError("side must be a or b")
+        if amount_usdc <= 0:
+            raise ValueError("amount must be positive")
+        txh = (tx_hash or "").strip()
+        if not txh:
+            raise ValueError("tx_hash required")
+        data = self._load()
+        book = data["books"].get(match_id)
+        if not book:
+            raise ValueError("book not found")
+        if not book.get("onchain"):
+            raise ValueError("project_deposit only for on-chain books")
+        for existing in book.get("bets") or []:
+            if (existing.get("tx_hash") or "") == txh:
+                return book
+        book.setdefault("bets", []).append(
+            {
+                "bettor_id": bettor_id,
+                "side": side,
+                "amount": str(amount_usdc),
+                "ts": _now(),
+                "tx_hash": txh,
+                "explorer": explorer,
+            }
+        )
+        tot = _d(book["totals"].get(side, "0")) + amount_usdc
+        book["totals"][side] = str(tot)
+        data["books"][match_id] = book
+        self._save(data)
+        return book
+
+    def project_resolve(
+        self,
+        match_id: str,
+        *,
+        tx_hash: str,
+        explorer: str = "",
+    ) -> dict[str, Any]:
+        data = self._load()
+        book = data["books"].get(match_id)
+        if not book:
+            raise ValueError("book not found")
+        if tx_hash:
+            book["resolve_tx_hash"] = tx_hash
+            book["resolve_explorer"] = explorer
         data["books"][match_id] = book
         self._save(data)
         return book

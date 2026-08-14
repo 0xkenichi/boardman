@@ -55,6 +55,12 @@ async def deposit_to_pool(profile_id: str, match_id: str, side: str, amount: Dec
     Returns dict with keys: success(bool), tx_id, tx_hash, explorer_url.
     Raises SpectatorEscrowError on unrecoverable failure.
     """
+    mid = (match_id or "").strip()
+    if not mid or mid.lower() in {"arena", "live"}:
+        raise SpectatorEscrowError(
+            "spectator on-chain requires a live match_id, not 'arena'"
+        )
+
     chain_id = normalize_chain_id(os.getenv("SPECTATOR_CHAIN") or default_chain_id())
     escrow_address = os.getenv("SPECTATOR_ESCROW_ADDRESS")
     if not escrow_address:
