@@ -70,48 +70,6 @@
     );
   }
 
-  var ADMIN_LINK = {
-    href: "/admin",
-    label: "Admin",
-    match: ["/admin", "/agentic/admin-dashboard"],
-  };
-
-  function ensureAdminLink() {
-    var has = LINKS.some(function (l) {
-      return l.href === "/admin";
-    });
-    if (!has) {
-      var i = 0;
-      for (; i < LINKS.length; i++) {
-        if (LINKS[i].label === "Hub") break;
-      }
-      LINKS.splice(i, 0, ADMIN_LINK);
-    }
-  }
-
-  function remount() {
-    var existing = document.querySelector("header.bm-nav");
-    if (existing) {
-      existing.outerHTML = render();
-      return;
-    }
-    mount();
-  }
-
-  function maybeShowAdmin() {
-    fetch("/api/rematch/app/session", { credentials: "include", cache: "no-store" })
-      .then(function (r) {
-        return r.json();
-      })
-      .then(function (j) {
-        if (j && j.admin) {
-          ensureAdminLink();
-          remount();
-        }
-      })
-      .catch(function () {});
-  }
-
   function mount(target) {
     var el =
       typeof target === "string"
@@ -133,10 +91,8 @@
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", function () {
       mount();
-      maybeShowAdmin();
     });
   } else {
     mount();
-    maybeShowAdmin();
   }
 })();
