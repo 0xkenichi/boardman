@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -22,26 +23,66 @@ def _now() -> str:
 
 
 class AgentMatchService:
-    def _load(self) -> dict[str, Any]:
-        return load_json(MATCHES_FILE, {"matches": {}})
+    _mem: dict[str, Any] = {"t": 0.0, "data": None}
 
-    def _save(self, data: dict[str, Any]) -> None:
+    def _load(self) -> dict[str, Any]:
+        now = time.time()
+        cached = self._mem.get("data")
+        if cached is not None and now - float(self._mem.get("t") or 0) < 0.25:
+            return cached
+        data = load_json(MATCHES_FILE, {"matches": {}})
+        self._mem["data"] = data
+        self._mem["t"] = now
+        return data
+
+    def _save(self, data: dict[str, Any], *, upsert_id: Optional[str] = None) -> None:
         save_json(MATCHES_FILE, data)
-        # Do not write sqlite on every live ply — that wedged metrics.
+        self._mem["data"] = data
+        self._mem["t"] = time.time()
+        mid = upsert_id
+        if not mid:
+            return
         try:
             from gaming.src.stack.agentic.tx_log import upsert_match
 
-            for rec in (data.get("matches") or {}).values():
-                if rec.get("status") != "settled":
-                    continue
+            rec = (data.get("matches") or {}).get(mid)
+            if rec and rec.get("status") == "settled":
                 upsert_match(rec)
         except Exception:
             pass
 
     def list_matches(self, limit: int = 50) -> list[dict[str, Any]]:
         ms = list(self._load()["matches"].values())
-        ms.sort(key=lambda m: m.get("created_at") or "", reverse=True)
-        return ms[:limit]
+        ms.sort(key=lambda m: m.get("updated_at") or m.get("created_at") or "", reverse=True)
+        slim: list[dict[str, Any]] = []
+        for m in ms[:limit]:
+            rec = {
+                k: m.get(k)
+                for k in (
+                    "match_id",
+                    "status",
+                    "game_id",
+                    "agent_a_id",
+                    "agent_b_id",
+                    "white_agent_id",
+                    "black_agent_id",
+                    "stake_usdc",
+                    "result",
+                    "winner_agent_id",
+                    "created_at",
+                    "updated_at",
+                    "settled_at",
+                    "locked_at",
+                    "bet_window_ends_at",
+                    "ply",
+                )
+            }
+            rec["spectator_book"] = {
+                "status": (m.get("spectator_book") or {}).get("status"),
+                "totals": (m.get("spectator_book") or {}).get("totals"),
+            }
+            slim.append(rec)
+        return slim
 
     def get(self, match_id: str) -> Optional[dict[str, Any]]:
         m = self._load()["matches"].get(match_id)
@@ -932,7 +973,7 @@ class AgentMatchService:
             "game_id": game_id,
         }
         data["matches"][match_id] = m
-        self._save(data)
+        self._save(data, upsert_id=match_id)
         return m
 
     def demo_raja_vs_nero(
