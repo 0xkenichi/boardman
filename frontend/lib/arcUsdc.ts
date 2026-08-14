@@ -27,7 +27,10 @@ function padAddress(addr: string): string {
 }
 
 /** ERC-20 balanceOf → human USDC (6 decimals). */
-export async function usdcBalanceOf(address: string): Promise<{
+export async function usdcBalanceOf(
+  address: string,
+  opts: { timeoutMs?: number } = {}
+): Promise<{
   ok: boolean
   address: string
   balance_usdc: number
@@ -56,7 +59,7 @@ export async function usdcBalanceOf(address: string): Promise<{
         params: [{ to: usdc, data }, 'latest'],
       }),
       cache: 'no-store',
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(opts.timeoutMs ?? 6000),
     })
     const json = (await res.json()) as { result?: string; error?: { message?: string } }
     if (!res.ok || json.error) {

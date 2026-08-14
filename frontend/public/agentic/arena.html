@@ -936,6 +936,7 @@
       },
     };
     let matchStake = 0; // negotiated equal skill stake
+    let houseMatchId = null;
     let matchSeeds = { a: 0, b: 0 };
     let matchCap = 20;
     let matchBinding = "—";
@@ -1014,6 +1015,7 @@
       return stake;
     }
     function resetSpectatorFromNegotiation() {
+      if (houseMatchId && matchStake > 0) return;
       negotiateStake();
       spectator = {
         seedA: matchSeeds.a,
@@ -1417,7 +1419,13 @@
           raja: AGENTS.raja.wallet,
           nero: AGENTS.nero.wallet,
         });
-        const res = await fetch("/api/agentic/onchain-balances?" + q.toString());
+        const ac = new AbortController();
+        const kill = setTimeout(() => ac.abort(), 6000);
+        const res = await fetch("/api/agentic/onchain-balances?" + q.toString(), {
+          cache: "no-store",
+          signal: ac.signal,
+        });
+        clearTimeout(kill);
         const data = await res.json();
         if (!data || !data.ok || !data.balances) {
           throw new Error((data && data.error) || "bad response");
@@ -2053,12 +2061,45 @@
     }
 
     function applySkillLock(m) {
-      const st = m && m.stake_usdc != null ? Number(m.stake_usdc) : 0;
+      if (!m) return;
+      const neg = (m.economy && m.economy.negotiation) || {};
+      const st = Number(m.stake_usdc != null ? m.stake_usdc : neg.stake_usdc || 0);
       if (st > 0) {
         matchStake = st;
         setText("skillLockLabel", "Agents locked $" + st.toFixed(2) + " each");
-        setText("stakeLabel", "$" + st.toFixed(2));
       }
+      if (neg.bankroll_a != null) {
+        const ba = Number(neg.bankroll_a);
+        const bb = Number(neg.bankroll_b);
+        if (Number.isFinite(ba) && ba > 0) bal.raja = ba;
+        if (Number.isFinite(bb) && bb > 0) bal.nero = bb;
+        if (balSource === "loading") balSource = "arc_usdc";
+      }
+      if (neg.seed_a != null) matchSeeds.a = Number(neg.seed_a) || 0;
+      if (neg.seed_b != null) matchSeeds.b = Number(neg.seed_b) || 0;
+      if (neg.binding === "b") matchBinding = "Nero policy cap";
+      else if (neg.binding === "a") matchBinding = "Raja policy cap";
+      else if (neg.binding && neg.binding !== "request") matchBinding = String(neg.binding);
+      else if (st > 0) matchBinding = "negotiated";
+      const book = m.spectator_book || {};
+      if (book.pot_cap_usdc) matchCap = Number(book.pot_cap_usdc) || matchCap;
+      if (neg.free_a != null) {
+        setText(
+          "freeRaja",
+          "$" + Number(neg.free_a).toFixed(2) + " free · max $" + Number(neg.max_a || 0).toFixed(2)
+        );
+        setText(
+          "freeNero",
+          "$" + Number(neg.free_b).toFixed(2) + " free · max $" + Number(neg.max_b || 0).toFixed(2)
+        );
+      }
+      const esc = m.escrow || {};
+      const on = m.onchain || esc.onchain || {};
+      if (on.create_tx_hash && !el("payoutLabel")?.textContent?.includes("settle")) {
+        setText("payoutLabel", "lock " + String(on.create_tx_hash).slice(0, 10) + "…");
+      }
+      renderMeta();
+      renderMarket();
     }
 
     /** How long Stockfish may think this move — never open blatantly; use clock budget. */
@@ -2158,7 +2199,6 @@
     }
 
     let houseApplied = 0;
-    let houseMatchId = null;
 
     function applyHouseMove(mv) {
       const uci = mv.uci || "";

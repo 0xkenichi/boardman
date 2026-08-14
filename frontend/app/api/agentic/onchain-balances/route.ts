@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
   > = {}
   await Promise.all(
     list.map(async ({ key, address }) => {
-      const r = await usdcBalanceOf(address)
+      const r = await usdcBalanceOf(address, { timeoutMs: 5000 })
       results[key] = {
         address: r.address,
         balance_usdc: r.balance_usdc,
@@ -53,13 +53,13 @@ export async function GET(req: NextRequest) {
     })
   )
 
-  // Real on-chain transfer volume per address (via authenticated stack API).
-  // `days` defaults to 30 — a rolling 30-day window, per product decision.
+  // Volume is extra — never block the bankroll response on the laptop API.
   const days = Number(sp.get('days') || 30)
   const volume = await (async () => {
     try {
       const r = await rematchApiFetch(
-        `/api/stack/agentic/agents/onchain_volume?chain=1&days=${days}`
+        `/api/stack/agentic/agents/onchain_volume?chain=1&days=${days}`,
+        { signal: AbortSignal.timeout(2500) }
       )
       if (!r.ok) return {}
       const j = r.data || {}
@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
         onchain: j.onchain || {},
         window_days: j.window_days ?? days,
       }
-    } catch (e) {
+    } catch {
       return {}
     }
   })()
