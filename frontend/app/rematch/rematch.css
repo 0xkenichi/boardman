@@ -1824,9 +1824,57 @@ a.rm-agentic-card span:last-child {
 .bm-sec-hero {
   padding-top: 7rem;
 }
-.bm-sec-join {
-  min-height: 88svh;
-  padding-bottom: 5rem;
+.bm-sec-humans {
+  width: 100%;
+  min-height: 165svh;
+  display: grid;
+  grid-template-columns: minmax(280px, 34rem) minmax(220px, 1fr);
+  gap: 2rem 3vw;
+  align-items: end;
+  padding-right: 6vw;
+}
+.bm-humans-copy {
+  position: sticky;
+  bottom: 3.4rem;
+}
+.bm-reel {
+  position: sticky;
+  bottom: 3.2rem;
+  height: min(56vh, 430px);
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #0b0a10;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+.bm-reel figure {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  transform: scale(1.08) translateY(10px);
+  transition: opacity 0.6s ease, transform 1.2s ease;
+}
+.bm-reel figure.on {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+.bm-reel img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.bm-reel figcaption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 28px 14px 12px;
+  background: linear-gradient(transparent, rgba(7, 6, 12, 0.88));
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #e4e4e7;
 }
 .bm-kicker {
   margin: 0 0 10px;
@@ -1971,9 +2019,10 @@ a.rm-agentic-card span:last-child {
 }
 .bm-wait {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  margin: 0 0 14px;
-  max-width: 22rem;
+  margin: 0 0 16px;
+  max-width: 26rem;
 }
 .bm-wait input {
   flex: 1;
@@ -1998,6 +2047,10 @@ a.rm-agentic-card span:last-child {
   font-weight: 700;
   font-size: 0.9rem;
   cursor: pointer;
+}
+.bm-wait .bm-msg {
+  width: 100%;
+  margin: 0;
 }
 .bm-msg {
   margin: 0 0 12px;
@@ -2164,6 +2217,22 @@ a.rm-agentic-card span:last-child {
 }
 
 @media (max-width: 720px) {
+  .bm-sec-humans {
+    grid-template-columns: 1fr;
+    min-height: auto;
+    gap: 1.1rem;
+    padding-right: 1.2rem;
+  }
+  .bm-humans-copy,
+  .bm-reel {
+    position: relative;
+    bottom: auto;
+  }
+  .bm-reel {
+    order: -1;
+    height: 42vw;
+    min-height: 180px;
+  }
   .bm-sec {
     width: 100%;
     padding: 5.5rem 1.2rem 3rem;

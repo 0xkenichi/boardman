@@ -258,41 +258,32 @@ export default function BoardmanScrollScene() {
         return g
       }
 
-      const pieces: Array<{ obj: Object3D; baseY: number; phase: number }> = []
+      const pieces: Array<{ obj: Object3D; baseY: number; phase: number; file: number; rank: number }> =
+        []
       const place = (obj: Object3D, file: number, rank: number, y = 0.12) => {
         obj.position.set(file - 3.5, y, rank - 3.5)
         board.add(obj)
-        pieces.push({ obj, baseY: y, phase: file * 0.7 + rank * 0.35 })
+        pieces.push({ obj, baseY: y, phase: file * 0.7 + rank * 0.35, file, rank })
       }
-      place(rook(gold), 0, 0)
-      place(knight(gold), 1, 0)
-      place(bishop(gold), 2, 0)
-      place(queen(gold), 3, 0)
-      place(king(gold), 4, 0)
-      place(pawn(gold), 0, 1)
-      place(pawn(gold), 3, 1)
-      place(pawn(gold), 5, 1)
-      place(rook(ink), 7, 7)
-      place(knight(ink), 6, 7)
-      place(bishop(ink), 5, 7)
-      place(queen(ink), 3, 7)
-      place(king(ink), 4, 7)
-      place(pawn(ink), 4, 6)
-      place(pawn(ink), 5, 6)
-      place(pawn(ink), 7, 6)
-      const mover = pawn(gold)
-      place(mover, 4, 1)
+      const back = [rook, knight, bishop, queen, king, bishop, knight, rook]
+      for (let f = 0; f < 8; f++) {
+        place(back[f](gold), f, 0)
+        place(pawn(gold), f, 1)
+        place(pawn(ink), f, 6)
+        place(back[f](ink), f, 7)
+      }
+      const mover = pieces.find((p) => p.file === 4 && p.rank === 1)
 
       const screens = new THREE.Group()
       screens.position.set(6.4, 2.2, 0.4)
       root.add(screens)
       const loader = new THREE.TextureLoader()
       const cardSrc = [
-        '/rematch/atmosphere/football.jpg',
-        '/rematch/atmosphere/fps.jpg',
-        '/rematch/atmosphere/battle.jpg',
-        '/rematch/atmosphere/console.jpg',
-        '/rematch/atmosphere/mobile.jpg',
+        '/rematch/atmosphere/h2h-console.jpg',
+        '/rematch/atmosphere/h2h-mobile.jpg',
+        '/rematch/atmosphere/h2h-pc.jpg',
+        '/rematch/atmosphere/h2h-fight.jpg',
+        '/rematch/atmosphere/h2h-imessage.jpg',
       ]
       const cardGeo = new THREE.BoxGeometry(2.35, 1.45, 0.07)
       const cardBack = new THREE.MeshStandardMaterial({
@@ -486,20 +477,32 @@ export default function BoardmanScrollScene() {
         })
 
         pieces.forEach((pc) => {
-          pc.obj.position.y = pc.baseY + Math.sin(t * 0.85 + pc.phase) * 0.035
+          pc.obj.position.y = pc.baseY + Math.sin(t * 0.85 + pc.phase) * 0.028
         })
-        mover.position.z = 1 - 3.5 + (Math.sin(t * 0.35) * 0.5 + 0.5) * 1.85
+        if (mover) {
+          mover.obj.position.z = 1 - 3.5 + (Math.sin(t * 0.35) * 0.5 + 0.5) * 1.85
+        }
 
         const screenA = kf(p, [
           [0, 0],
           [0.12, 0],
-          [0.22, 1],
-          [0.38, 0.15],
-          [0.5, 0],
+          [0.2, 1],
+          [0.36, 1],
+          [0.46, 0],
         ])
         screens.visible = screenA > 0.02
-        screens.rotation.y = -0.2 + Math.sin(t * 0.25) * 0.06
-        screens.position.y = 2.2 + Math.sin(t * 0.5) * 0.12
+        const spin = kf(p, [
+          [0.12, 0],
+          [0.38, Math.PI * 2],
+        ])
+        const nCards = screens.children.length || 1
+        screens.children.forEach((card, i) => {
+          const a = (i / nCards) * Math.PI * 2 + spin
+          card.position.set(Math.sin(a) * 2.55, Math.cos(a) * 0.42, Math.cos(a) * 1.15)
+          card.rotation.y = -a + 0.15
+          card.rotation.x = 0.06
+        })
+        screens.position.y = 2.05
         screens.traverse((o) => {
           const m = o as Mesh
           if (!m.material) return
