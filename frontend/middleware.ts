@@ -144,6 +144,9 @@ export function middleware(req: NextRequest) {
   if (path === '/minipay' || path.startsWith('/minipay/')) {
     return rewriteTo(req, `/rematch${path}`)
   }
+  if (path === '/contact' || path.startsWith('/contact/')) {
+    return rewriteTo(req, `/rematch${path}`)
+  }
 
   // Clean builder / arena shortcuts
   if (path === '/llms.txt' || path === '/agentic/llms.txt') {

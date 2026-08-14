@@ -19,6 +19,7 @@ Demo ledger only (same file store as agentic). On-chain pools later.
 """
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Optional
@@ -28,6 +29,17 @@ from gaming.src.stack.agentic.store import load_json, save_json
 BOOK_FILE = "spectator_books.json"
 DEFAULT_SPECTATOR_FEE_BPS = 300  # 3% platform
 DEFAULT_CREATOR_SPECTATOR_BPS = 200  # 2% of pot split across both creators
+# 12 full moves = 24 plies. Mid-game book freeze after the opening.
+DEFAULT_BOOK_CLOSE_PLIES = 24
+
+
+def book_close_plies() -> int:
+    """Ply count after which new spectator bets are refused."""
+    try:
+        n = int(os.getenv("BOARDMAN_BOOK_CLOSE_PLIES") or str(DEFAULT_BOOK_CLOSE_PLIES))
+    except ValueError:
+        n = DEFAULT_BOOK_CLOSE_PLIES
+    return max(4, min(n, 200))
 
 
 def _now() -> str:
@@ -250,7 +262,7 @@ class SpectatorBook:
         book = data["books"].get(match_id)
         if not book:
             raise ValueError("book not found")
-        if book["status"] == "open":
+        if book["status"] in {"open", "full"}:
             book["status"] = "closed"
             book["closed_reason"] = reason
             data["books"][match_id] = book

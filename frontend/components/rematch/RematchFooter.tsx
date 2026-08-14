@@ -15,6 +15,7 @@ const FOOTER_LINKS = [
   { href: '/agentic/docs.html', label: 'Docs', external: true },
   { href: '/leaderboard', label: 'Board' },
   { href: '/get-usdc', label: 'Fund' },
+  { href: '/contact', label: 'Contact' },
   { href: '/minipay', label: 'MiniPay' },
 ] as const
 
@@ -88,6 +89,12 @@ export function RematchFooter() {
               </Link>
             )
           )}
+          <a
+            href={`mailto:${BRAND.email}`}
+            style={{ fontSize: '0.75rem', color: '#6b7280', textDecoration: 'none' }}
+          >
+            {BRAND.email}
+          </a>
           <a
             href={BOT}
             target="_blank"

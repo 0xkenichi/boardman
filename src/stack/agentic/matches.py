@@ -69,6 +69,12 @@ class AgentMatchService:
         if live.get("pot_cap_usdc") is not None:
             snap["pot_cap_usdc"] = live.get("pot_cap_usdc")
         snap["bets"] = live.get("bets") or snap.get("bets") or []
+        if live.get("payouts") is not None:
+            snap["payouts"] = live.get("payouts")
+        if live.get("odds_live") is not None:
+            snap["odds_live"] = live.get("odds_live")
+        if live.get("closed_reason"):
+            snap["closed_reason"] = live.get("closed_reason")
         m["spectator_book"] = snap
 
     def persist_spectator_snapshot(self, match_id: str, book: dict[str, Any]) -> None:
@@ -81,10 +87,37 @@ class AgentMatchService:
             "totals": book.get("totals"),
             "status": book.get("status"),
             "pot_cap_usdc": book.get("pot_cap_usdc"),
+            "bets": book.get("bets") or [],
+            "payouts": book.get("payouts"),
+            "odds_live": book.get("odds_live"),
+            "closed_reason": book.get("closed_reason"),
         }
         rec["updated_at"] = _now()
         data["matches"][match_id] = rec
         self._save(data)
+
+    def _record_live_odds(self, rec: dict[str, Any], eval_pawns: Optional[float]) -> None:
+        from gaming.src.stack.agentic.economy.odds import build_market
+        from gaming.src.stack.agentic.economy.spectator import SpectatorBook
+
+        mid = rec.get("match_id") or ""
+        book = SpectatorBook().get(mid) or rec.get("spectator_book") or {}
+        totals = book.get("totals") or {}
+        eco = rec.get("economy") or {}
+        snap = build_market(
+            match_id=mid,
+            agent_a={"agent_id": rec.get("agent_a_id"), "name": "Raja"},
+            agent_b={"agent_id": rec.get("agent_b_id"), "name": "Nero"},
+            pot_a=Decimal(str(totals.get("a") or "0")),
+            pot_b=Decimal(str(totals.get("b") or "0")),
+            seed_a=Decimal(str(eco.get("spectator_seed_a") or book.get("seed_a") or "0")),
+            seed_b=Decimal(str(eco.get("spectator_seed_b") or book.get("seed_b") or "0")),
+            eval_pawns=eval_pawns if eval_pawns is not None else rec.get("last_eval"),
+            a_is_white=rec.get("white_agent_id") == rec.get("agent_a_id"),
+            ply=int(rec.get("ply") or len(rec.get("moves") or [])),
+        )
+        SpectatorBook().record_odds(mid, snap.to_dict())
+        rec["odds_live"] = snap.to_dict()
 
     def create_match(
         self,
@@ -779,22 +812,30 @@ class AgentMatchService:
             if not rec:
                 return
             moves = list(rec.get("moves") or [])
+            ply = payload.get("ply")
+            if ply is not None and any(x.get("ply") == ply for x in moves):
+                return
             clk = payload.get("clock") or {}
+            ev_eval = payload.get("eval_pawns")
             moves.append(
                 {
-                    "ply": payload.get("ply"),
+                    "ply": ply,
                     "san": payload.get("san"),
                     "uci": payload.get("uci"),
                     "fen": payload.get("fen"),
                     "side": payload.get("side"),
                     "agent_id": payload.get("agent_id"),
                     "source": payload.get("engine_source"),
+                    "eval_pawns": ev_eval,
                     "clock": clk or None,
                 }
             )
             rec["moves"] = moves
             rec["status"] = "playing"
             rec["updated_at"] = _now()
+            rec["ply"] = ply
+            if ev_eval is not None:
+                rec["last_eval"] = ev_eval
             if clk:
                 snap = dict(rec.get("clock") or {})
                 snap["control_id"] = rec.get("time_control_id") or snap.get("control_id")
@@ -805,6 +846,23 @@ class AgentMatchService:
                         "flag": bool(clk.get("flag")),
                     }
                 rec["clock"] = snap
+            try:
+                from gaming.src.stack.agentic.economy.spectator import (
+                    SpectatorBook,
+                    book_close_plies,
+                )
+
+                close_at = book_close_plies()
+                if ply is not None and int(ply) >= close_at:
+                    book = SpectatorBook().close_book(match_id, reason=f"ply_{ply}")
+                    snap_b = dict(rec.get("spectator_book") or {})
+                    snap_b["status"] = book.get("status")
+                    snap_b["closed_reason"] = book.get("closed_reason")
+                    rec["spectator_book"] = snap_b
+                if ev_eval is not None or (ply and int(ply) % 2 == 0):
+                    self._record_live_odds(rec, ev_eval)
+            except Exception:
+                logger.warning("[agentic] live book/odds update failed", exc_info=True)
             live["matches"][match_id] = rec
             self._save(live)
             if on_move:
@@ -813,6 +871,7 @@ class AgentMatchService:
         if game_id == "agentic.chess_standard":
             from gaming.src.stack.agentic.chess.arena import play_match
 
+            prior = list(m.get("moves") or [])
             result = play_match(
                 white_agent=white,
                 black_agent=black,
@@ -821,6 +880,8 @@ class AgentMatchService:
                 time_control_id=m.get("time_control_id"),
                 use_agent_think_delay=move_delay_sec <= 0.05,
                 on_move=_persist_live,
+                prior_moves=prior,
+                clock_snap=m.get("clock"),
             )
         else:
             from gaming.src.stack.agentic.games.runner import play_generic_match
@@ -840,7 +901,10 @@ class AgentMatchService:
                 result["result"] = "black_win"
 
         data = self._load()
-        m = data["matches"][match_id]
+        m = data["matches"].get(match_id)
+        if not m:
+            logger.error("[agentic] match %s vanished after play", match_id)
+            return {"match_id": match_id, "status": "error", "play_error": "match missing after play"}
         esc = self._settle(match_id, m, result, white, black)
 
         m["status"] = "settled"

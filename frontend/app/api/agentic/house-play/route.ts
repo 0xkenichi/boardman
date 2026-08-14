@@ -166,6 +166,27 @@ export async function GET(req: NextRequest) {
         ["playing", "locking", "locked", "open"].includes(String(t?.status || ""))
     );
     if (!live?.match_id) {
+      const recent = await stackCall("/api/stack/agentic/matches?limit=20");
+      const list = recent.data?.matches || recent.data?.items || [];
+      const last = (Array.isArray(list) ? list : []).find(
+        (t: any) =>
+          pair.has(t?.agent_a_id) &&
+          pair.has(t?.agent_b_id) &&
+          String(t?.status || "") === "settled"
+      );
+      if (last?.match_id) {
+        const got = await stackCall(
+          `/api/stack/agentic/matches/${encodeURIComponent(last.match_id)}`
+        );
+        const match = got.data?.match || last;
+        return NextResponse.json({
+          ok: true,
+          match_id: last.match_id,
+          status: match?.status || "settled",
+          match,
+          last_settled: true,
+        });
+      }
       return NextResponse.json({ ok: true, match: null, match_id: "" });
     }
     const got = await stackCall(

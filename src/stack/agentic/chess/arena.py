@@ -116,8 +116,8 @@ def _classify(
 
 
 def _default_max_plies() -> int:
-    # Longer games → more checkmates / conversions
-    return int(os.getenv("BOARDMAN_MAX_PLIES", "200"))
+    # Spectator tables should finish. 80 plies ≈ 40 moves, then adjudicate.
+    return int(os.getenv("BOARDMAN_MAX_PLIES", "80"))
 
 
 def _ask_builder_or_engine(
@@ -164,6 +164,30 @@ def _ask_builder_or_engine(
     return engine.choose_move(board)
 
 
+def _replay_prior(
+    prior_moves: Optional[list[dict[str, Any]]],
+) -> tuple[chess.Board, chess.pgn.Game, Any, list[dict[str, Any]]]:
+    """Rebuild board + PGN from persisted house moves so a dead worker can resume."""
+    board = chess.Board()
+    game = chess.pgn.Game()
+    node: Any = game
+    events: list[dict[str, Any]] = []
+    for rec in prior_moves or []:
+        uci = str(rec.get("uci") or "")
+        if len(uci) < 4:
+            continue
+        try:
+            mv = chess.Move.from_uci(uci)
+        except ValueError:
+            break
+        if mv not in board.legal_moves:
+            break
+        board.push(mv)
+        node = node.add_variation(mv)
+        events.append(dict(rec))
+    return board, game, node, events
+
+
 def play_match(
     *,
     white_agent: dict[str, Any],
@@ -174,6 +198,8 @@ def play_match(
     time_control_id: Optional[str] = None,
     use_agent_think_delay: bool = True,
     on_move: Optional[Callable[[MoveEvent], None]] = None,
+    prior_moves: Optional[list[dict[str, Any]]] = None,
+    clock_snap: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     from gaming.src.stack.agentic.clock import (
         MatchClock,
@@ -183,7 +209,7 @@ def play_match(
 
     rng_seed = seed if seed is not None else random.randint(1, 10**9)
     max_plies = max_plies if max_plies is not None else _default_max_plies()
-    board = chess.Board()
+    board, game, node, events = _replay_prior(prior_moves)
     rng_w = random.Random(rng_seed + 1)
     rng_b = random.Random(rng_seed + 2)
 
@@ -212,6 +238,13 @@ def play_match(
         depth=b_depth,
     )
     eval_history: list[float] = []
+    for rec in events:
+        ev0 = rec.get("eval_pawns")
+        if ev0 is not None:
+            try:
+                eval_history.append(float(ev0))
+            except (TypeError, ValueError):
+                pass
     # Only resign when completely lost — give room for mating attacks on camera
     resign_threshold = float(os.getenv("BOARDMAN_RESIGN_EVAL", "5.5"))
 
@@ -224,9 +257,23 @@ def play_match(
     ) or ["blitz_3|2"]
     tc_id = time_control_id or negotiate_time_control(list(prefs_w), list(prefs_b))
     match_clock = MatchClock.from_control(tc_id)
+    if isinstance(clock_snap, dict):
+        wclk = clock_snap.get("white") or {}
+        bclk = clock_snap.get("black") or {}
+        if wclk.get("remaining_ms") is not None:
+            match_clock.white.remaining_ms = max(0, int(wclk["remaining_ms"]))
+        if bclk.get("remaining_ms") is not None:
+            match_clock.black.remaining_ms = max(0, int(bclk["remaining_ms"]))
+    for rec in events:
+        clk = rec.get("clock") or {}
+        if clk.get("remaining_ms") is None:
+            continue
+        side = clk.get("side") or rec.get("side")
+        if side == "white":
+            match_clock.white.remaining_ms = max(0, int(clk["remaining_ms"]))
+        elif side == "black":
+            match_clock.black.remaining_ms = max(0, int(clk["remaining_ms"]))
 
-    events: list[dict[str, Any]] = []
-    game = chess.pgn.Game()
     game.headers["Event"] = "Boardman Agent Arena"
     game.headers["Site"] = "boardman.playingsidequest.fun"
     game.headers["Date"] = datetime.now(timezone.utc).strftime("%Y.%m.%d")
@@ -236,7 +283,6 @@ def play_match(
     game.headers["BlackAgent"] = black_agent["agent_id"]
     game.headers["TimeControl"] = tc_id
     game.headers["Annotator"] = "Boardman HybridEngine (siloed minds + Stockfish)"
-    node = game
 
     started = _now()
     flagged: Optional[str] = None

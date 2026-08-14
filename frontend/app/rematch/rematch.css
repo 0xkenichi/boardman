@@ -2135,6 +2135,92 @@ a.rm-agentic-card span:last-child {
   white-space: nowrap;
   border: 0;
 }
+.bm-contact {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 2.2rem 1.1rem 4.5rem;
+}
+.bm-contact h1 {
+  margin: 0 0 0.6rem;
+  font-size: clamp(1.8rem, 4vw, 2.4rem);
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+.bm-contact-lead {
+  margin: 0 0 1.6rem;
+  color: #a1a1aa;
+  font-size: 1rem;
+  line-height: 1.5;
+  max-width: 28rem;
+}
+.bm-contact-doors {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 2rem;
+}
+.bm-contact-door {
+  display: block;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(18, 18, 26, 0.65);
+  text-decoration: none;
+  color: inherit;
+}
+.bm-contact-door span {
+  display: block;
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #c4b5fd;
+  margin-bottom: 4px;
+}
+.bm-contact-door strong {
+  display: block;
+  font-size: 1.05rem;
+  margin-bottom: 4px;
+}
+.bm-contact-door em {
+  font-style: normal;
+  font-size: 0.86rem;
+  color: #a1a1aa;
+  line-height: 1.4;
+}
+.bm-contact-note h2 {
+  margin: 0 0 0.4rem;
+  font-size: 1.15rem;
+}
+.bm-contact-note > p {
+  margin: 0 0 12px;
+  color: #a1a1aa;
+  font-size: 0.9rem;
+}
+.bm-contact-note form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 26rem;
+}
+.bm-contact-note input,
+.bm-contact-note textarea {
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(18, 18, 26, 0.72);
+  color: #f4f4f5;
+  font: inherit;
+}
+.bm-contact-note button {
+  align-self: flex-start;
+  padding: 11px 16px;
+  border-radius: 12px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 /* ── Super-admin desk (/admin only) ───────────────────────── */
 .bm-admin {
   max-width: 880px;

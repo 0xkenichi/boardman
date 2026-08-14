@@ -230,24 +230,20 @@ async def _apply_approved_spectator_bet(
         return {"success": False, "pending": True, "error": "not_approved_yet"}
 
     pull_err = ""
-    try:
-        await _pull_play_usdc(profile_id, amount)
-    except Exception as exc:
-        logger.exception("[RematchWeb] play-wallet pull failed profile=%s", profile_id)
-        pull_err = str(exc)
-
-    try:
-        ledger = float((summary or {}).get("ledger_usdc") or 0)
-        if ledger + 1e-9 >= amount:
-            await debit_wallet(profile_id, amount)
-    except Exception:
-        logger.warning("[RematchWeb] ledger sync after pull failed", exc_info=True)
-
     chain_tx: dict = {}
     book = None
     try:
+        from gaming.src.stack.agentic.house import get_house
+
+        book = get_house().take_bet(
+            match_id,
+            bettor_id=profile_id,
+            side=side,
+            amount_usdc=Decimal(str(amount)),
+        )
         if spectator_onchain_enabled():
             try:
+                await _pull_play_usdc(profile_id, amount)
                 chain_tx = await _deposit_spectator_onchain(
                     profile_id=profile_id,
                     match_id=match_id,
@@ -255,26 +251,17 @@ async def _apply_approved_spectator_bet(
                     amount=amount,
                     user_address=str(summary.get("address") or ""),
                 )
-                book = chain_tx.get("book")
-            except Exception:
-                logger.exception("[RematchWeb] depositFor failed; House book")
-                from gaming.src.stack.agentic.house import get_house
-
-                book = get_house().take_bet(
-                    match_id,
-                    bettor_id=profile_id,
-                    side=side,
-                    amount_usdc=Decimal(str(amount)),
-                )
-        else:
-            from gaming.src.stack.agentic.house import get_house
-
-            book = get_house().take_bet(
-                match_id,
-                bettor_id=profile_id,
-                side=side,
-                amount_usdc=Decimal(str(amount)),
-            )
+                if chain_tx.get("book"):
+                    book = chain_tx.get("book")
+            except Exception as exc:
+                logger.exception("[RematchWeb] on-chain deposit after book failed")
+                pull_err = str(exc)
+        try:
+            ledger = float((summary or {}).get("ledger_usdc") or 0)
+            if ledger + 1e-9 >= amount:
+                await debit_wallet(profile_id, amount)
+        except Exception:
+            logger.warning("[RematchWeb] ledger sync after book failed", exc_info=True)
     except Exception as exc:
         logger.exception("[RematchWeb] spectator book/deposit failed")
         return {
@@ -629,27 +616,32 @@ async def web_spectator_bet(
         if decision.get("mode") == "always":
             logger.info("[RematchWeb] spectator bet auto-approved (always) profile=%s", profile_id)
 
-        # Pull USDC from the same play wallet the Telegram bot shows, then
-        # House depositFor credits the pot. Ledger-only debit left the bot
-        # balance unchanged — that is what the user saw.
+        # Book first so Telegram Yes is visible immediately. Circle/on-chain
+        # pull only runs when SPECTATOR_ONCHAIN=1 — otherwise it just stalls.
         pull_err = ""
-        try:
-            await _pull_play_usdc(profile_id, amount)
-        except Exception as exc:
-            # Book the bet anyway — Circle pull is settlement, not the pot.
-            logger.exception("[RematchWeb] play-wallet pull failed; booking House pot")
-            pull_err = str(exc)
-        try:
-            ledger = float(summary.get("ledger_usdc") or 0)
-            if ledger + 1e-9 >= amount:
-                await debit_wallet(profile_id, amount)
-        except Exception:
-            logger.warning("[RematchWeb] ledger sync after play pull failed", exc_info=True)
-
         chain_tx: dict = {}
         book = None
+        try:
+            from gaming.src.stack.agentic.house import get_house
+
+            book = get_house().take_bet(
+                match_id,
+                bettor_id=profile_id,
+                side=side,
+                amount_usdc=Decimal(str(amount)),
+            )
+        except Exception:
+            logger.exception("[RematchWeb] house take_bet failed match=%s", match_id)
+            return {
+                "success": False,
+                "error": "spectator_book_failed",
+                "message": "Could not book the bet",
+                "match_id": match_id,
+                "address": summary.get("address") or "",
+            }
         if spectator_onchain_enabled():
             try:
+                await _pull_play_usdc(profile_id, amount)
                 chain_tx = await _deposit_spectator_onchain(
                     profile_id=profile_id,
                     match_id=match_id,
@@ -657,39 +649,17 @@ async def web_spectator_bet(
                     amount=amount,
                     user_address=str(summary.get("address") or ""),
                 )
-                book = chain_tx.get("book")
+                if chain_tx.get("book"):
+                    book = chain_tx.get("book")
             except Exception as exc:
-                logger.exception("[RematchWeb] on-chain depositFor failed — House book still takes the bet")
-                try:
-                    from gaming.src.stack.agentic.house import get_house
-
-                    book = get_house().take_bet(
-                        match_id,
-                        bettor_id=profile_id,
-                        side=side,
-                        amount_usdc=Decimal(str(amount)),
-                    )
-                except Exception:
-                    logger.exception("[RematchWeb] house take_bet fallback failed match=%s", match_id)
-                    return {
-                        "success": False,
-                        "error": "spectator_onchain_failed",
-                        "message": str(exc),
-                        "match_id": match_id,
-                        "address": summary.get("address") or "",
-                    }
-        else:
-            try:
-                from gaming.src.stack.agentic.house import get_house
-
-                book = get_house().take_bet(
-                    match_id,
-                    bettor_id=profile_id,
-                    side=side,
-                    amount_usdc=Decimal(str(amount)),
-                )
-            except Exception:
-                logger.exception("[RematchWeb] house take_bet failed match=%s", match_id)
+                logger.exception("[RematchWeb] on-chain deposit after book failed")
+                pull_err = str(exc)
+        try:
+            ledger = float(summary.get("ledger_usdc") or 0)
+            if ledger + 1e-9 >= amount:
+                await debit_wallet(profile_id, amount)
+        except Exception:
+            logger.warning("[RematchWeb] ledger sync after book failed", exc_info=True)
 
         from gaming.src.backend.services.clawstation_circle import get_usdc_balance
 

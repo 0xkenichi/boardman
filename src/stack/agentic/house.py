@@ -12,7 +12,9 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -35,6 +37,57 @@ def max_tables() -> int:
     except ValueError:
         n = 5
     return max(1, min(n, 25))
+
+
+def bet_window_sec() -> float:
+    """Seconds the book stays open after lock before the game auto-starts."""
+    try:
+        n = float(os.getenv("BOARDMAN_BET_WINDOW_SEC") or "120")
+    except ValueError:
+        n = 120.0
+    return max(0.0, min(n, 600.0))
+
+
+def _parse_iso(ts: str) -> Optional[datetime]:
+    raw = (ts or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _wait_bet_window(match_id: str) -> bool:
+    """Hold a locked table so spectators can bet, then auto-start.
+
+    Returns False if the match was cancelled while waiting.
+    """
+    from gaming.src.stack.agentic.matches import get_match_service
+
+    window = bet_window_sec()
+    m = get_match_service().get(match_id) or {}
+    if m.get("status") in {"cancelled", "error", "lock_failed", "settled"}:
+        return False
+    ends_at = _parse_iso(str(m.get("bet_window_ends_at") or ""))
+    if ends_at is None:
+        if window <= 0:
+            return True
+        ends_at = datetime.now(timezone.utc) + timedelta(seconds=window)
+        _set_status(
+            match_id,
+            m.get("status") or "locked",
+            bet_window_ends_at=ends_at.isoformat(),
+            bet_window_sec=window,
+        )
+    remaining = (ends_at - datetime.now(timezone.utc)).total_seconds()
+    while remaining > 0:
+        cur = get_match_service().get(match_id) or {}
+        if cur.get("status") in {"cancelled", "error", "lock_failed"}:
+            return False
+        time.sleep(min(1.0, remaining))
+        remaining = (ends_at - datetime.now(timezone.utc)).total_seconds()
+    return True
 
 
 _floor_lock = threading.RLock()
@@ -216,11 +269,39 @@ def ensure_builder_webhooks() -> None:
         )
 
 
+def rescue_orphans() -> list[str]:
+    """Re-seat playing/locking tables whose worker died (API restart)."""
+    from gaming.src.stack.agentic.matches import get_match_service
+
+    resumed: list[str] = []
+    with _floor_lock:
+        for m in get_match_service().list_matches(200):
+            st = m.get("status")
+            mid = m.get("match_id")
+            if not mid or mid in _workers:
+                continue
+            if st == "playing":
+                delay = float(m.get("play_delay_sec") or 0.05)
+                fut = _executor().submit(_run_table, mid, delay, m.get("play_seed"))
+                _workers[mid] = fut
+                resumed.append(mid)
+            elif st == "locking":
+                delay = float(m.get("play_delay_sec") or 0.05)
+                fut = _executor().submit(_lock_and_run, mid, delay, m.get("play_seed"))
+                _workers[mid] = fut
+                resumed.append(mid)
+    if resumed:
+        logger.info("[house] resumed orphan tables %s", resumed)
+    return resumed
+
+
 def _lock_and_run(match_id: str, move_delay_sec: float, seed: Optional[int]) -> None:
     from gaming.src.stack.agentic.matches import get_match_service
 
     try:
         get_match_service().lock_both(match_id)
+        if not _wait_bet_window(match_id):
+            return
         get_match_service().run_match(
             match_id, move_delay_sec=move_delay_sec, seed=seed
         )
@@ -366,7 +447,7 @@ class HouseRuntime:
         amount_usdc: Decimal,
     ) -> dict[str, Any]:
         from gaming.src.stack.agentic.matches import get_match_service
-        from gaming.src.stack.agentic.economy.spectator import SpectatorBook
+        from gaming.src.stack.agentic.economy.spectator import SpectatorBook, book_close_plies
 
         m = get_match_service().get(match_id)
         if not m:
@@ -375,6 +456,11 @@ class HouseRuntime:
             raise ValueError(f"match not open for bets: {m.get('status')}")
         if is_house(bettor_id) or (bettor_id or "").lower() in HOUSE_NAMES:
             raise ValueError("Boardman House cannot bet on its own tables")
+
+        ply = len(m.get("moves") or [])
+        if ply >= book_close_plies():
+            SpectatorBook().close_book(match_id, reason=f"ply_{ply}")
+            raise ValueError(f"book closed after {book_close_plies()} plies")
         slot = resolve_side(m, side)
         existing = SpectatorBook().get(match_id) or {}
         if existing.get("onchain") and slot != "draw":
@@ -394,6 +480,10 @@ class HouseRuntime:
     def floor(self) -> dict[str, Any]:
         from gaming.src.stack.agentic.matches import get_match_service
 
+        try:
+            rescue_orphans()
+        except Exception:
+            logger.exception("[house] orphan rescue failed")
         live = [
             m
             for m in get_match_service().list_matches(200)
@@ -569,7 +659,11 @@ class HouseRuntime:
         if busy and {busy.get("agent_a_id"), busy.get("agent_b_id")} == {
             agent_a_id,
             agent_b_id,
-        } and busy.get("status") in {"playing", "locking"}:
+        } and busy.get("status") in {"playing", "locking", "locked", "open", "queued"}:
+            try:
+                rescue_orphans()
+            except Exception:
+                logger.exception("[house] orphan rescue on attach failed")
             return {
                 "released_stale": [],
                 "match_id": busy.get("match_id"),
@@ -589,6 +683,13 @@ class HouseRuntime:
         mid = m["match_id"]
         if wait:
             locked = self.lock(mid)
+            if not _wait_bet_window(mid):
+                return {
+                    "released_stale": [r["match_id"] for r in released],
+                    "match_id": mid,
+                    "status": "cancelled",
+                    "match": locked,
+                }
             played = self.play(mid, move_delay_sec=move_delay_sec, seed=seed, wait=True)
             return {
                 "released_stale": [r["match_id"] for r in released],

@@ -69,6 +69,10 @@ def boardman_arena_url() -> str:
     return f"{boardman_site_url()}/agentic/arena.html"
 
 
+def boardman_mail() -> str:
+    return (os.getenv("BOARDMAN_MAIL") or "boardman@playingsidequest.fun").strip()
+
+
 def boardman_welcome_image_path() -> Optional[Path]:
     explicit = (os.getenv("BOARDMAN_WELCOME_IMAGE") or "").strip()
     if explicit:

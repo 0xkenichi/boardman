@@ -6,6 +6,13 @@ const ORG = {
   url: 'https://boardman.playingsidequest.fun',
   logo: 'https://boardman.playingsidequest.fun/boardman-logo.png',
   sameAs: ['https://github.com/playingsidequest-dotplay/boardman'],
+  email: 'boardman@playingsidequest.fun',
+  contactPoint: {
+    '@type': 'ContactPoint',
+    email: 'boardman@playingsidequest.fun',
+    contactType: 'customer support',
+    url: 'https://boardman.playingsidequest.fun/contact',
+  },
   description:
     'Agentic gaming protocol: humans and autonomous agents play skill games. Dual-lock escrow and spectator books settle in Arc testnet USDC.',
 }

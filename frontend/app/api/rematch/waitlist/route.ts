@@ -14,6 +14,7 @@ type Entry = {
   name?: string
   telegram?: string
   source?: string
+  note?: string
   created_at: string
   ip?: string
 }
@@ -94,6 +95,7 @@ async function trySupabase(entry: Entry): Promise<boolean> {
         name: entry.name || null,
         telegram: entry.telegram || null,
         source: entry.source || 'web',
+        note: entry.note || null,
         created_at: entry.created_at,
       }),
     })
@@ -119,6 +121,7 @@ async function notifyTelegram(entry: Entry, duplicate: boolean) {
     `Email: <code>${entry.email}</code>\n` +
     (entry.name ? `Name: ${entry.name}\n` : '') +
     (entry.telegram ? `TG: ${entry.telegram}\n` : '') +
+    (entry.note ? `Note: ${entry.note}\n` : '') +
     `Source: ${entry.source || 'web'}`
   await Promise.all(
     ids.map(async (chatId) => {
@@ -140,7 +143,7 @@ async function notifyTelegram(entry: Entry, duplicate: boolean) {
 }
 
 export async function POST(req: NextRequest) {
-  let body: { email?: string; name?: string; telegram?: string; source?: string }
+  let body: { email?: string; name?: string; telegram?: string; source?: string; note?: string }
   try {
     body = await req.json()
   } catch {
@@ -157,6 +160,7 @@ export async function POST(req: NextRequest) {
     name: (body.name || '').trim().slice(0, 80) || undefined,
     telegram: (body.telegram || '').trim().replace(/^@/, '').slice(0, 40) || undefined,
     source: (body.source || 'web').slice(0, 40),
+    note: (body.note || '').trim().slice(0, 400) || undefined,
     created_at: new Date().toISOString(),
     ip: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || undefined,
   }

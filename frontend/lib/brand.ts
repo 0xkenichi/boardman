@@ -32,6 +32,8 @@ export const BRAND = {
   host: 'boardman.playingsidequest.fun',
   /** Full marketing URL once DNS is live */
   url: 'https://boardman.playingsidequest.fun',
+  /** One inbox — support, press, builders, partners */
+  email: 'boardman@playingsidequest.fun',
   /** Primary logo path */
   logo: '/boardman-logo.jpg',
   logoPng: '/boardman-logo.png',

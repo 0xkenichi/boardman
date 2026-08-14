@@ -483,6 +483,38 @@
       font-weight: 600;
     }
     .lp-box[open] summary { color: #e4e4e7; margin-bottom: 6px; }
+    .lp-box .lp-math {
+      font-size: 0.78rem;
+      color: #a1a1aa;
+      line-height: 1.5;
+      margin: 0 0 10px;
+    }
+    .lp-box .lp-math strong { color: #e4e4e7; }
+    .ticket-box {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: #0a0a10;
+    }
+    .ticket-list { font-size: 0.78rem; color: #d4d4d8; line-height: 1.55; margin-top: 6px; }
+    .outcome-box {
+      margin-top: 8px;
+      font-size: 0.82rem;
+      color: #c4b5fd;
+      line-height: 1.45;
+    }
+    .window-banner {
+      margin: 0 0 10px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: #1a1030;
+      border: 1px solid #3b2a55;
+      color: #e9d5ff;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .window-banner[hidden] { display: none !important; }
     body:not(.is-operator) .operator-only { display: none !important; }
     .auth-pill {
       display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
@@ -693,6 +725,7 @@
           <div class="np-clk" id="plateWhiteClk">5:00</div>
         </div>
         <div class="status" id="status">Waiting for a live match…</div>
+        <div class="window-banner" id="betWindowBanner" hidden></div>
         <div class="controls operator-only">
           <button id="btnPlay">Play next</button>
           <button class="secondary" id="btnReset" hidden>Reset</button>
@@ -766,12 +799,30 @@
           <button type="button" id="betD">Bet draw</button>
         </div>
 
-        <div class="row"><span>Your bets</span><span id="myBets">none</span></div>
+        <div class="ticket-box">
+          <div class="row"><span>Your bets</span><span id="myBets">none</span></div>
+          <div class="ticket-list" id="myBetsDetail"></div>
+          <div class="outcome-box" id="matchOutcome">No result yet — watch the board and this ticket.</div>
+        </div>
         <div class="row" hidden><span>Match</span><span id="matchStateLabel"></span></div>
 
         <details class="lp-box">
-          <summary>Add liquidity</summary>
-          <p class="hint">Back an agent’s bankroll. Telegram will ask you to confirm.</p>
+          <summary>Add liquidity — what $20 actually means</summary>
+          <p class="lp-math">
+            This is <strong>equity in the agent</strong>, not a bet on this game.
+            $20 into Raja is $20 of Raja’s bankroll. You are not in the spectator pot.
+          </p>
+          <p class="lp-math">
+            <strong>Win:</strong> LPs as a group take <strong>40%</strong> of that agent’s
+            net skill profit, split by your share. $20 of a $100 LP book = 20% of that 40%.
+            If Raja nets $10, the LP pool gets $4 and your cut is $0.80 — claim becomes $20.80.
+          </p>
+          <p class="lp-math">
+            <strong>Loss:</strong> your claim shrinks with the bankroll. If LPs are 20% of a
+            $100 bankroll and Raja loses a $20 stake, the haircut is $4 — your $20 becomes $16.
+            Withdraw only free capital above reserve and open locks.
+          </p>
+          <p class="hint">Telegram will ask you to confirm. This is slower than a spectator bet on purpose.</p>
           <div style="display:flex;gap:6px;margin:8px 0;flex-wrap:wrap">
             <button type="button" class="secondary" id="btnLpRajaAud">+$20 Raja</button>
             <button type="button" class="secondary" id="btnLpNeroAud">+$20 Nero</button>
@@ -1062,6 +1113,9 @@
       status: "open",
       lastEval: null,
       ply: 0,
+      betWindowEndsAt: null,
+      payouts: null,
+      closedReason: "",
     };
 
     function freeCap(side) {
@@ -1123,6 +1177,9 @@
         status: "open",
         lastEval: null,
         ply: 0,
+        betWindowEndsAt: null,
+        payouts: null,
+        closedReason: "",
       };
     }
     resetSpectatorFromNegotiation();
@@ -1251,14 +1308,18 @@
       setText("potTotal", "$" + tot.toFixed(2));
       setText("potTotalC", "$" + tot.toFixed(2));
       setText("potCapC", "$" + matchCap.toFixed(0));
-      setText(
-        "potCapLabel",
+      let capLine =
         tot >= matchCap
           ? "Pot full — waiting on result"
           : tot > 0
             ? "$" + tot.toFixed(2) + " in the pot"
-            : "Pick a side and an amount"
-      );
+            : "Pick a side and an amount";
+      if (spectator.status === "closed") {
+        capLine = "Book closed after ~12 moves — waiting on the result";
+      } else if (spectator.ply > 0 && spectator.ply < 24) {
+        capLine += " · live odds · closes at move 12";
+      }
+      setText("potCapLabel", capLine);
       const fillPct = Math.min(100, (tot / Math.max(matchCap, 0.01)) * 100);
       const meter = el("potMeter");
       if (meter) meter.style.width = fillPct.toFixed(1) + "%";
@@ -1301,10 +1362,7 @@
       setText("potStatusC", stLabel);
       setClass("potStatusC", stClass);
 
-      const mine = spectator.bets
-        .map((b) => (b.side === "draw" ? "Draw" : b.side === "a" ? "Raja" : "Nero") + " $" + Number(b.amount).toFixed(2))
-        .join(", ");
-      setText("myBets", mine || "none yet");
+      renderYourTicket();
 
       // Match state for spectators
       let matchLbl = "waiting";
@@ -2459,12 +2517,85 @@
       }
     }
 
+    function myProfileId() {
+      return (tgUser && (tgUser.profileId || tgUser.profile_id)) || "";
+    }
+
+    function renderYourTicket() {
+      const mine = (spectator.bets || []).filter((b) => {
+        const pid = myProfileId();
+        if (!pid) return true;
+        return String(b.bettor_id || "") === String(pid);
+      });
+      const line = mine
+        .map((b) => (b.side === "draw" ? "Draw" : b.side === "a" ? "Raja" : "Nero") + " $" + Number(b.amount).toFixed(2))
+        .join(" · ");
+      setText("myBets", line || (myProfileId() ? "none on this table" : "sign in to see yours"));
+      const detail = el("myBetsDetail");
+      if (detail) {
+        detail.innerHTML = mine.length
+          ? mine
+              .map((b) => {
+                const who = b.side === "draw" ? "Draw" : b.side === "a" ? "Raja" : "Nero";
+                const ts = (b.ts || "").replace("T", " ").slice(0, 16);
+                return escapeHtml(who + " · $" + Number(b.amount).toFixed(2) + (ts ? " · " + ts : ""));
+              })
+              .join("<br/>")
+          : "";
+      }
+      const out = el("matchOutcome");
+      if (!out) return;
+      const pay = spectator.payouts;
+      if (pay && (pay.mode || pay.winner_side)) {
+        const win = pay.winner_side === "a" ? "Raja" : pay.winner_side === "b" ? "Nero" : pay.mode || "result";
+        const minePay = (pay.bettors || []).filter((p) => {
+          const pid = myProfileId();
+          return !pid || String(p.bettor_id || "") === String(pid);
+        });
+        const got = minePay.reduce((s, p) => s + Number(p.amount || 0), 0);
+        const staked = mine.reduce((s, b) => s + Number(b.amount || 0), 0);
+        if (!mine.length) {
+          out.textContent = "Result: " + win + ". You had no ticket.";
+        } else if (got > 0) {
+          out.textContent =
+            "Result: " + win + " · you get $" + got.toFixed(2) + " back on $" + staked.toFixed(2) + " staked.";
+        } else if (pay.mode === "refund") {
+          out.textContent = "Draw — A/B tickets refunded.";
+        } else {
+          out.textContent = "Result: " + win + " · your ticket lost $" + staked.toFixed(2) + ".";
+        }
+      } else if (spectator.status === "closed") {
+        out.textContent = "Book closed after the opening. Waiting on the result.";
+      } else if (mine.length) {
+        out.textContent = "Ticket is live. Money is on the book — result posts here when the game ends.";
+      } else {
+        out.textContent = "No result yet — watch the board and this ticket.";
+      }
+    }
+
     function applySpectatorBook(m) {
-      const tot = (m && m.spectator_book && m.spectator_book.totals) || {};
-      if (tot.a == null && tot.b == null) return;
-      spectator.a = Number(tot.a || 0);
-      spectator.b = Number(tot.b || 0);
-      spectator.draw = Number(tot.draw || 0);
+      if (!m) return;
+      const book = m.spectator_book || {};
+      const tot = book.totals || {};
+      if (tot.a != null || tot.b != null) {
+        spectator.a = Number(tot.a || 0);
+        spectator.b = Number(tot.b || 0);
+        spectator.draw = Number(tot.draw || 0);
+      }
+      if (book.status) spectator.status = book.status;
+      spectator.bets = Array.isArray(book.bets) ? book.bets : spectator.bets;
+      spectator.payouts = book.payouts || spectator.payouts;
+      spectator.closedReason = book.closed_reason || spectator.closedReason;
+      if (m.last_eval != null) spectator.lastEval = Number(m.last_eval);
+      const moves = m.moves || [];
+      if (m.ply != null) spectator.ply = Number(m.ply);
+      else if (moves.length) spectator.ply = moves.length;
+      const last = moves[moves.length - 1] || {};
+      if (last.eval_pawns != null) spectator.lastEval = Number(last.eval_pawns);
+      spectator.betWindowEndsAt = m.bet_window_ends_at || spectator.betWindowEndsAt;
+      if (book.odds_live && book.odds_live.eval_pawns != null) {
+        spectator.lastEval = Number(book.odds_live.eval_pawns);
+      }
       renderMarket();
     }
 
@@ -2515,7 +2646,29 @@
           }
           if (st === "playing" || st === "locked") {
             syncHouseClocks(m);
-            setStatus("Live", true);
+            const ends = m.bet_window_ends_at;
+            const left = ends ? Math.max(0, Math.ceil((Date.parse(ends) - Date.now()) / 1000)) : 0;
+            const banner = el("betWindowBanner");
+            if (banner) {
+              if (st === "locked" && left > 0) {
+                banner.hidden = false;
+                banner.textContent =
+                  "Betting window · game starts in " +
+                  Math.floor(left / 60) +
+                  ":" +
+                  String(left % 60).padStart(2, "0");
+                setStatus("Place bets — game starts in " + left + "s", true);
+              } else {
+                banner.hidden = true;
+                if (st === "playing") {
+                  const ply = (m.moves || []).length;
+                  setStatus(
+                    ply >= 24 ? "Live · book closed after the opening" : "Live · odds move with the board",
+                    true
+                  );
+                } else setStatus("Locked — waiting to start", true);
+              }
+            } else if (st === "playing") setStatus("Live", true);
           } else if (st === "locking") setStatus("Locking stakes…", true);
           if (done.has(st)) {
             setText("escrowPill", st);
@@ -2531,8 +2684,12 @@
             }
             const tx = (m.onchain_settle || {}).tx_hash || ((m.escrow || {}).onchain_settle || {}).tx_hash;
             if (tx) setText("payoutLabel", "settle " + tx.slice(0, 12) + "…");
+            applySpectatorBook(m);
+            const banner = el("betWindowBanner");
+            if (banner) banner.hidden = true;
             await loadOnchainBankrolls();
             renderMeta();
+            renderMarket();
             break;
           }
         } catch (e) {
@@ -2552,6 +2709,23 @@
       try {
         const r = await fetch("/api/agentic/house-play", { cache: "no-store" });
         const d = await r.json();
+        if (d && d.match_id && d.last_settled && d.match) {
+          houseMatchId = d.match_id;
+          game = new Chess();
+          houseApplied = 0;
+          const moves = d.match.moves || [];
+          for (; houseApplied < moves.length; houseApplied++) {
+            applyHouseMove(moves[houseApplied] || {});
+          }
+          applyLiveColors(d.match);
+          applySpectatorBook(d.match);
+          applySkillLock(d.match);
+          const winId = d.match.winner_agent_id || "";
+          const winner = winId.includes("nero") ? "nero" : winId.includes("raja") ? "raja" : null;
+          if (winner) setStatus(AGENTS[winner].name + " won the last table", true);
+          else setStatus(String(d.match.result || "last table settled"), true);
+          return;
+        }
         if (d && d.match_id) {
           if (el("btnPlay")) el("btnPlay").disabled = true;
           await watchHouseMatch(d.match_id);

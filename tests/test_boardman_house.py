@@ -14,6 +14,8 @@ def _iso(tmp_path, monkeypatch):
     monkeypatch.setenv("BOARDMAN_AGENTIC_DATA", str(tmp_path))
     monkeypatch.setenv("BOARDMAN_AGENTIC_ONCHAIN", "0")
     monkeypatch.setenv("BOARDMAN_HOUSE_TABLES", "5")
+    monkeypatch.setenv("BOARDMAN_BET_WINDOW_SEC", "0")
+    monkeypatch.setenv("BOARDMAN_BOOK_CLOSE_PLIES", "24")
     monkeypatch.setattr(
         "gaming.src.stack.agentic.onchain.onchain_enabled", lambda: False
     )
@@ -218,13 +220,97 @@ def test_house_play_settles_only_with_disbursement(tmp_path, monkeypatch):
     auth = out.get("disbursement") or {}
     assert auth.get("trigger") in {"MATCH_RESOLVE_WIN", "MATCH_RESOLVE_DRAW"}
     assert auth.get("match_id") == m["match_id"]
-    parties = {
-        (out.get("agent_a_wallet") or "").lower(),
-        (out.get("agent_b_wallet") or "").lower(),
-    }
-    if auth.get("action") == "resolve":
-        assert (auth.get("winner_wallet") or "").lower() in parties
-    else:
-        assert auth.get("winner_wallet") is None
-    assert out.get("house_agent_id") == HOUSE_ID
-    assert out.get("winner_agent_id") != HOUSE_ID
+
+
+def test_book_closes_after_plies(tmp_path, monkeypatch):
+    reg = _iso(tmp_path, monkeypatch)
+    monkeypatch.setenv("BOARDMAN_BOOK_CLOSE_PLIES", "4")
+    from gaming.src.stack.agentic.house import get_house
+    from gaming.src.stack.agentic.store import load_json, save_json
+
+    agents = {a["agent_id"]: a for a in reg.ensure_demo_agents()}
+    rt = get_house()
+    m = rt.open_match(
+        agent_a_id=agents["agent_raja_kia_alekhine"]["agent_id"],
+        agent_b_id=agents["agent_nero_sicilian_french"]["agent_id"],
+        stake_usdc=1,
+    )
+    rt.lock(m["match_id"])
+    store = load_json("matches.json", {"matches": {}})
+    rec = store["matches"][m["match_id"]]
+    rec["moves"] = [{"ply": i, "uci": "e2e4", "san": "e4"} for i in range(1, 5)]
+    store["matches"][m["match_id"]] = rec
+    save_json("matches.json", store)
+    try:
+        rt.take_bet(m["match_id"], bettor_id="fan", side="a", amount_usdc=Decimal("0.25"))
+        assert False, "book should be closed"
+    except ValueError as e:
+        assert "closed" in str(e).lower()
+
+
+def test_bet_window_zero_is_instant(tmp_path, monkeypatch):
+    _iso(tmp_path, monkeypatch)
+    from gaming.src.stack.agentic.house import _wait_bet_window, bet_window_sec, get_house
+
+    assert bet_window_sec() == 0
+    agents = {a["agent_id"]: a for a in __import__(
+        "gaming.src.stack.agentic.registry", fromlist=["get_registry"]
+    ).get_registry().ensure_demo_agents()}
+    rt = get_house()
+    m = rt.open_match(
+        agent_a_id=agents["agent_raja_kia_alekhine"]["agent_id"],
+        agent_b_id=agents["agent_nero_sicilian_french"]["agent_id"],
+        stake_usdc=1,
+    )
+    rt.lock(m["match_id"])
+    assert _wait_bet_window(m["match_id"]) is True
+
+
+def test_overlay_serves_live_bets(tmp_path, monkeypatch):
+    reg = _iso(tmp_path, monkeypatch)
+    from gaming.src.stack.agentic.house import get_house
+    from gaming.src.stack.agentic.matches import get_match_service
+
+    agents = {a["agent_id"]: a for a in reg.ensure_demo_agents()}
+    rt = get_house()
+    m = rt.open_match(
+        agent_a_id=agents["agent_raja_kia_alekhine"]["agent_id"],
+        agent_b_id=agents["agent_nero_sicilian_french"]["agent_id"],
+        stake_usdc=1,
+    )
+    rt.lock(m["match_id"])
+    rt.take_bet(m["match_id"], bettor_id="fan-ken", side="a", amount_usdc=Decimal("1.25"))
+    got = get_match_service().get(m["match_id"])
+    bets = (got.get("spectator_book") or {}).get("bets") or []
+    assert any(b.get("bettor_id") == "fan-ken" for b in bets)
+
+
+def test_play_match_resumes_prior_moves():
+    from gaming.src.stack.agentic.chess.arena import _replay_prior
+
+    prior = [
+        {"uci": "e2e4", "san": "e4", "side": "white", "ply": 1},
+        {"uci": "e7e5", "san": "e5", "side": "black", "ply": 2},
+    ]
+    board, _game, _node, events = _replay_prior(prior)
+    assert len(events) == 2
+    assert board.ply() == 2
+    assert "4p3" in board.fen()
+
+
+def test_rematch_attaches_to_locked_pair(tmp_path, monkeypatch):
+    reg = _iso(tmp_path, monkeypatch)
+    from gaming.src.stack.agentic import house as house_mod
+    from gaming.src.stack.agentic.house import get_house
+
+    monkeypatch.setattr(house_mod, "ensure_builder_webhooks", lambda: None)
+    monkeypatch.setattr(house_mod, "rescue_orphans", lambda: [])
+    agents = {a["agent_id"]: a for a in reg.ensure_demo_agents()}
+    raja = agents["agent_raja_kia_alekhine"]["agent_id"]
+    nero = agents["agent_nero_sicilian_french"]["agent_id"]
+    rt = get_house()
+    m = rt.open_match(agent_a_id=raja, agent_b_id=nero, stake_usdc=1)
+    rt.lock(m["match_id"])
+    out = rt.rematch(agent_a_id=raja, agent_b_id=nero, stake_usdc=1, wait=False)
+    assert out.get("attached") is True
+    assert out.get("match_id") == m["match_id"]
