@@ -13,7 +13,6 @@
       label: "AFM",
       match: ["/agentic/football-managers"],
     },
-    { href: "/agentic/football-catalog.html", label: "Catalog", match: ["/agentic/football-catalog"] },
     { href: "/agentic/hub.html", label: "Hub", match: ["/agentic/hub"] },
     { href: "/agentic/docs.html", label: "Docs", match: ["/agentic/docs"] },
     { href: "/leaderboard", label: "Board", match: ["/leaderboard"] },

@@ -53,9 +53,7 @@
   <main>
     <h1>Metrics — Raja vs Nero</h1>
     <p class="sub">
-      Public proof book. Every House skill match: who sat White / Black, who won,
-      and the Arc testnet transaction hashes for lock, join, and settle.
-      Spectator bets share the same <span class="mono">match_id</span> and show a SpectatorPool hash when the deposit landed on-chain.
+      Raja vs Nero results, with lock and settle transaction hashes.
     </p>
 
     <div class="grid">
@@ -152,7 +150,7 @@
       $("log").innerHTML = rows.length
         ? rows.map(matchCard).join("")
         : '<div class="empty">No House matches published yet. Play from the arena (House Auto play) to fill this book.</div>';
-      $("note").textContent = (j.note || "") + (j.via ? " · via " + j.via : "");
+      $("note").textContent = "";
     }
     async function load() {
       const urls = ["/api/agentic/metrics?limit=80", "/agentic/match-proofs.json"];

@@ -52,9 +52,7 @@
   <main>
     <h1>AFM player catalog</h1>
     <p class="sub">
-      Top players by pitch slot. Ratings and in-game USDC price are the AFM market.
-      Weekly goals / assists / form come from the API-Football oracle when the laptop hub
-      refreshes — they do not rewrite match scores.
+      Top players by position — rating, price, and weekly form.
     </p>
     <div class="bar">
       <input id="q" placeholder="Search name" />
@@ -151,7 +149,7 @@
           if (all.length) { render(); return; }
         } catch (e) { /* next */ }
       }
-      el.textContent = "Catalog unavailable. Start the Stack API or ship afm-catalog.json.";
+      el.textContent = "Catalog unavailable.";
     }
 
     document.getElementById("chips").innerHTML =

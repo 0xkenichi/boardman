@@ -606,12 +606,12 @@
         </div>
         <div class="status" id="status">Tap Play to start the match.</div>
         <div class="controls">
-          <button id="btnPlay">▶ Play match (House)</button>
+          <button id="btnPlay">▶ Play match</button>
           <button class="secondary" id="btnReset">Reset</button>
           <button class="secondary" id="btnAuto" title="Play matches back-to-back all day">⟳ Auto play</button>
         </div>
         <p class="hint" id="autoHint" style="text-align:center;margin:6px 0 0">
-          Auto play off · Nero brain: ASI → Gemini → Stockfish (keys live)
+          Auto play off
         </p>
         <div class="graveyard creator-only" id="graveyard" title="Fallen pieces">
           <span class="mono" style="width:100%;margin-bottom:2px">Fallen</span>
@@ -2107,8 +2107,7 @@
       }
       setText(
         "autoHint",
-        (autoPlay ? "Auto play ON — House locks USDC, agents play, then next match · " : "Auto play off · ") +
-          "House clerk · Raja + Nero webhooks · BoardmanEscrow"
+        autoPlay ? "Auto play on" : "Auto play off"
       );
     }
 
@@ -2218,7 +2217,7 @@
           if (st === "playing") {
             setStatus("House match live · " + mid, true);
           } else if (st === "locking") {
-            setStatus("Dual-lock on BoardmanEscrow…", true);
+            setStatus("Locking stakes…", true);
           }
           if (done.has(st)) {
             setText("escrowPill", st);
@@ -2314,12 +2313,12 @@
     }
 
     function renderMeta() {
-      setText("rajaMeta", "Mate-hungry · plays as wallet");
-      setText("neroMeta", "Solid counter · plays as wallet");
-      setText("rajaWallet", "plays as " + AGENTS.raja.wallet);
-      setText("neroWallet", "plays as " + AGENTS.nero.wallet);
-      setText("rajaContract", "identity " + AGENTS.raja.contract);
-      setText("neroContract", "identity " + AGENTS.nero.contract);
+      setText("rajaMeta", "Sharp openings");
+      setText("neroMeta", "Solid counter");
+      setText("rajaWallet", "");
+      setText("neroWallet", "");
+      setText("rajaContract", "");
+      setText("neroContract", "");
       const srcTag =
         balSource === "arc_usdc"
           ? "Arc USDC"
@@ -2850,36 +2849,7 @@
     }
 
     async function probeLlmKeys() {
-      try {
-        const res = await fetch("/api/agentic/asi-move");
-        const data = await res.json();
-        if (!data || !data.ok) return;
-        const lines = (data.per_agent || [])
-          .map(
-            (p) =>
-              `${p.agent}: gemini=${p.gemini_configured ? "ON" : "off"}` +
-              `${p.gemini_dedicated ? "(dedicated)" : ""}` +
-              ` asi=${p.asi_configured ? "ON" : "off"}` +
-              `${p.asi_dedicated ? "(dedicated)" : ""}`
-          )
-          .join(" · ");
-        log(
-          `LLM key probe · ${lines || "no agents"} · order=${(data.order || []).join(",")}` +
-            ` · rule_book ${data.rule_book?.version || "?"}`
-        );
-        if (el("enginePill") && !playing) {
-          const any =
-            (data.per_agent || []).some((p) => p.gemini_configured || p.asi_configured);
-          setText(
-            "enginePill",
-            any
-              ? "LLM keys detected — agents will call ASI/Gemini"
-              : "No Gemini/ASI keys — set GEMINI_API_KEY_NERO / _RAJA on Vercel"
-          );
-        }
-      } catch (e) {
-        log("LLM key probe failed: " + e.message);
-      }
+      /* keep engine status off the public board */
     }
 
     async function stockfishMove(forSide) {
@@ -3401,23 +3371,11 @@
     setAutoPlay(false);
     // Restore Telegram session + wallet + live Arc agent bankrolls on load
     (async () => {
-      log("arena build 2026-08-12d · clocks · coin-flip colors · SF-first");
       await loadAuthConfig();
       await Promise.all([refreshWallet(), loadOnchainBankrolls()]);
       renderAuth();
       renderMeta();
       renderClocks();
-      // Show live LLM config
-      try {
-        const r = await fetch("/api/agentic/asi-move");
-        const d = await r.json();
-        if (d && d.ok) {
-          setText(
-            "autoHint",
-            `Auto play off · Nero: order ${((d.order || []).join("→") || "asi→gemini")} · ASI ${d.asi_configured ? "ON" : "off"} · Gemini ${d.gemini_configured ? "ON" : "off"}`
-          );
-        }
-      } catch (_) {}
     })();
     if (el("betSlider")) {
       el("betSlider").addEventListener("input", (e) => {
@@ -3520,17 +3478,7 @@
     renderMeta();
     renderBoard();
     renderSpectator();
-    setText(
-      "enginePill",
-      "Stockfish · " + (GM.movetimeMs / 1000).toFixed(1) + "s/move · probing LLM keys…"
-    );
-    log(
-      "Agents play under wallet addresses · Raja " +
-        AGENTS.raja.wallet +
-        " · Nero " +
-        AGENTS.nero.wallet +
-        " · FIDE rule book is mandatory"
-    );
+    setText("enginePill", "Engine ready");
     // Warm Stockfish WASM so first move isn't cold
     initLocalStockfish().catch((e) => log("SF warmup: " + e.message));
     // Show whether Gemini/ASI keys are actually configured (why "Gemini not used")

@@ -47,16 +47,7 @@
     <div class="sub">Finite-outcome games · deploy agents · spectator pots · Arc settlement</div>
   </div>
   <main>
-    <p class="mono">
-      Chess Arena Live: <a href="/agentic/arena.html">arena.html</a>
-      · API base (Stack): <input id="apiBase" style="width:220px" value="http://127.0.0.1:8000" />
-      <button class="secondary" id="btnPing" style="padding:4px 10px;font-size:0.75rem">Ping API</button>
-      <span class="pill" id="apiPill">unknown</span>
-    </p>
-    <p class="mono" id="apiHelp">
-      Start API (repo root): <code>./scripts/start_agentic_api.sh</code>
-      then hard-refresh this page. Chess always opens Arena Live (no API required).
-    </p>
+    <p class="sub" style="margin:0 0 8px">Pick a game. Chess opens the arena.</p>
 
     <div class="grid" id="gameGrid"></div>
 
@@ -72,70 +63,37 @@
         <button class="secondary" id="betB">Bet B $1</button>
       </div>
       <div class="mono" id="econ">Spectator: A $0 · B $0 · your bets —</div>
-      <pre id="out">Pick a game and run a demo.
-• Chess → opens Arena Live (browser-only)
-• Tic-Tac-Toe / Connect Four → local browser engine
-• Other games → need Stack API on :8000 (./scripts/start_agentic_api.sh)</pre>
+      <pre id="out">Pick a game.</pre>
     </div>
   </main>
 
   <script>
     const GAMES = [
-      { id: "agentic.chess_standard", name: "Chess", blurb: "Opens Arena Live (FX) — no API needed", arena: true },
+      { id: "agentic.chess_standard", name: "Chess", blurb: "Raja vs Nero in the arena", arena: true },
       {
         id: "agentic.football_managers",
         name: "Agentic Football Managers",
-        blurb: "WIP · Coming soon — flagship agent-only FM game",
+        blurb: "Coming soon",
         href: "/agentic/football-managers.html",
         wip: true,
       },
-      { id: "agentic.connect4", name: "Connect Four", blurb: "7×6 · works offline in browser", local: "c4" },
-      { id: "agentic.tictactoe", name: "Tic-Tac-Toe", blurb: "3×3 · works offline", local: "ttt" },
-      { id: "agentic.tictactoe_4", name: "Tic-Tac-Toe 4×4", blurb: "4-in-a-row · offline", local: "ttt4" },
-      { id: "agentic.checkers", name: "Checkers", blurb: "Needs Stack API on :8000", api: true },
-      { id: "agentic.go9", name: "Go 9×9", blurb: "Needs Stack API on :8000", api: true },
-      { id: "agentic.shogi_lite", name: "Shogi Lite", blurb: "Needs Stack API on :8000", api: true },
-      { id: "agentic.xiangqi_lite", name: "Xiangqi Lite", blurb: "Needs Stack API on :8000", api: true },
+      { id: "agentic.connect4", name: "Connect Four", blurb: "Play a demo here", local: "c4" },
+      { id: "agentic.tictactoe", name: "Tic-Tac-Toe", blurb: "Play a demo here", local: "ttt" },
+      { id: "agentic.tictactoe_4", name: "Tic-Tac-Toe 4×4", blurb: "Play a demo here", local: "ttt4" },
+      { id: "agentic.checkers", name: "Checkers", blurb: "Coming online with the API", api: true },
+      { id: "agentic.go9", name: "Go 9×9", blurb: "Coming online with the API", api: true },
+      { id: "agentic.shogi_lite", name: "Shogi Lite", blurb: "Coming online with the API", api: true },
+      { id: "agentic.xiangqi_lite", name: "Xiangqi Lite", blurb: "Coming online with the API", api: true },
     ];
 
     let selected = GAMES[1];
     let pot = { a: 0.3, b: 0.25, bets: [] };
 
-    function apiBase() {
-      return (document.getElementById("apiBase").value || "http://127.0.0.1:8000").replace(/\/$/, "");
-    }
-
-    async function pingApi() {
-      const pill = document.getElementById("apiPill");
-      pill.textContent = "…";
-      try {
-        const r = await fetch(apiBase() + "/api/stack/agentic/health", { mode: "cors" });
-        if (r.ok) {
-          pill.textContent = "online";
-          pill.className = "pill ok";
-          return true;
-        }
-      } catch (e) {}
-      try {
-        const r2 = await fetch(apiBase() + "/", { mode: "cors" });
-        if (r2.ok) {
-          pill.textContent = "online";
-          pill.className = "pill ok";
-          return true;
-        }
-      } catch (e) {}
-      pill.textContent = "offline";
-      pill.className = "pill";
-      return false;
-    }
-    document.getElementById("btnPing").onclick = pingApi;
-    pingApi();
-
     const grid = document.getElementById("gameGrid");
     GAMES.forEach((g) => {
       const d = document.createElement("div");
       d.className = "card" + (g.id === selected.id ? " on" : "");
-      d.innerHTML = `<h3>${g.name}</h3><p>${g.blurb}</p><p class="mono">${g.id}</p>`;
+      d.innerHTML = `<h3>${g.name}</h3><p>${g.blurb}</p>`;
       d.onclick = () => {
         if (g.href) {
           window.location.href = g.href;
@@ -146,11 +104,9 @@
         d.classList.add("on");
         document.getElementById("selName").textContent = g.name;
         if (g.arena) {
-          document.getElementById("out").textContent =
-            "Chess runs in Arena Live (full FX + spectator bets).\nClick Run → opens arena, or go to /agentic/arena.html";
+          document.getElementById("out").textContent = "Chess opens in the arena.";
         } else if (g.wip) {
-          document.getElementById("out").textContent =
-            g.name + " is work-in-progress / coming soon.\nOpen " + (g.href || "/agentic/football-managers.html");
+          document.getElementById("out").textContent = g.name + " is coming soon.";
         }
       };
       grid.appendChild(d);
@@ -268,11 +224,7 @@
       pot = { a: stake * 0.06, b: stake * 0.05, bets: pot.bets };
       renderPot();
 
-      // try Stack API (local :8000 or same-origin /api)
-      const endpoints = [
-        apiBase() + "/api/stack/agentic/demo/game",
-        "/api/stack/agentic/demo/game",
-      ];
+      const endpoints = ["/api/stack/agentic/demo/game"];
       for (const url of endpoints) {
         try {
           const res = await fetch(url, {
@@ -285,20 +237,12 @@
             const m = data.match || data;
             pill.textContent = "settled";
             pill.className = "pill ok";
-            out.textContent = JSON.stringify({
-              source: "stack_api",
-              url,
-              game_id: selected.id,
-              result: m.result,
-              winner: m.winner_agent_id,
-              fee_split: m.fee_split,
-              spectator: m.spectator_book,
-              plies: m.play?.plies,
-            }, null, 2);
+            out.textContent =
+              (m.result || "done") +
+              (m.winner_agent_id ? " · " + m.winner_agent_id : "");
             const side = (m.winner_agent_id || "").includes("raja") || m.result === "white_win" || m.result === "p1_win"
               ? "a" : (m.result === "draw" ? null : "b");
             settleLocalSpectator(side, stake);
-            pingApi();
             return;
           }
         } catch (e) { /* try next */ }
@@ -309,37 +253,15 @@
       else if (selected.local === "ttt") result = playTTT(3);
       else if (selected.local === "ttt4") result = playTTT(4);
       else {
-        out.textContent =
-          "This game needs the Boardman Stack API on port 8000.\n\n" +
-          "From the repo root run:\n\n" +
-          "  chmod +x scripts/start_agentic_api.sh\n" +
-          "  ./scripts/start_agentic_api.sh\n\n" +
-          "Then click Ping API (should say online) and Run again.\n\n" +
-          "Or:\n" +
-          "  curl -s -X POST http://127.0.0.1:8000/api/stack/agentic/demo/game \\\n" +
-          "    -H 'content-type: application/json' \\\n" +
-          "    -d '{\"game_id\":\"" + selected.id + "\",\"stake_usdc\":" + stake + "}'\n\n" +
-          "Chess does not need the API — open /agentic/arena.html";
-        pill.textContent = "api required";
+        out.textContent = "This game isn’t available here yet.";
+        pill.textContent = "unavailable";
         pill.className = "pill";
-        pingApi();
         return;
       }
-      pill.textContent = "settled (local)";
+      pill.textContent = "done";
       pill.className = "pill ok";
       const side = result.result === "p1_win" ? "a" : result.result === "p2_win" ? "b" : null;
-      const creatorBps = side === "a" ? 800 : 600;
-      const potSkill = stake * 2;
-      const platform = potSkill * 0.03;
-      const gross = potSkill - platform;
-      const cfee = side ? (gross * creatorBps) / 10000 : 0;
-      out.textContent = JSON.stringify({
-        source: "local_browser",
-        game_id: selected.id,
-        result: result.result,
-        moves: result.log,
-        skill: { pot: potSkill, platform, creator_fee: cfee, creator_bps: creatorBps },
-      }, null, 2);
+      out.textContent = (result.result || "done").replace("_", " ");
       settleLocalSpectator(side, stake);
     }
 
