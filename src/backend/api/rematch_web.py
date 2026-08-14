@@ -468,7 +468,7 @@ async def web_spectator_bet(
             return {
                 "success": False,
                 "error": "insufficient_balance",
-                "balance": available,
+                "balance": spendable,
                 "address": summary.get("address") or "",
                 "message": "Not enough USDC on your Boardman wallet. Fund via Telegram bot → Get money.",
             }
