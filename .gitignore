@@ -72,6 +72,11 @@ demos/build_pitch.js
 # Ops wallet notes (addresses may still appear in public contract docs)
 contracts/deployments/boardman_v1_wallets.json
 
+# Local UCI binaries + optional AGPL lichess-bot clone (do not vendor)
+engines/stockfish
+engines/stockfish-*
+third_party/lichess-bot/
+
 # Never commit local private archive (use ~/Boardman on laptop instead)
 /Boardman/
 

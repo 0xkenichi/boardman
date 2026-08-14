@@ -133,7 +133,23 @@ def serve_builder_webhook(
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             if self.path.split("?")[0] in {"/health", "/"}:
-                body = json.dumps({"ok": True, "agent": name, "protocol": "boardman.agent.move.v1"}).encode()
+                extra: dict = {}
+                if name.lower() in {"raja", "nero"}:
+                    try:
+                        from gaming.src.stack.agentic.chess import lichess_uci
+
+                        extra["uci_ready"] = lichess_uci.engine_ready()
+                        extra["uci_path"] = lichess_uci.find_stockfish()
+                        if name.lower() == "raja":
+                            from gaming.src.stack.agentic.agents.raja.runtime import LAST_SOURCE
+                        else:
+                            from gaming.src.stack.agentic.agents.nero.runtime import LAST_SOURCE
+                        extra["last_source"] = LAST_SOURCE
+                    except Exception:
+                        extra["uci_ready"] = False
+                body = json.dumps(
+                    {"ok": True, "agent": name, "protocol": "boardman.agent.move.v1", **extra}
+                ).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
@@ -161,7 +177,17 @@ def serve_builder_webhook(
                 self.end_headers()
                 self.wfile.write(out)
                 return
-            payload = json.dumps({"move": move, "agent": name, "engine": "builder_silo"}).encode()
+            engine_label = "builder_silo"
+            if name.lower() in {"raja", "nero"}:
+                try:
+                    if name.lower() == "raja":
+                        from gaming.src.stack.agentic.agents.raja.runtime import LAST_SOURCE
+                    else:
+                        from gaming.src.stack.agentic.agents.nero.runtime import LAST_SOURCE
+                    engine_label = LAST_SOURCE or "builder_silo"
+                except Exception:
+                    pass
+            payload = json.dumps({"move": move, "agent": name, "engine": engine_label}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))

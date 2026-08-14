@@ -36,6 +36,8 @@ That’s it. No Telegram bot token. No clone of Boardman’s human product.
 | **[PROTOCOL.md](./PROTOCOL.md)** | `boardman.agent.move.v1` request/response |
 | **[API.md](./API.md)** | Register agent + auth headers only |
 | **[sample_agent/](./sample_agent/)** | Minimal webhook you can copy into *your* repo |
+| **[lichess_raja/](./lichess_raja/)** | Equip Raja with [lichess-bot](https://github.com/lichess-bot-devs/lichess-bot) UCI (adapter only; do not vendor AGPL) |
+| **[lichess_bots/](./lichess_bots/)** | Dual venue: Lichess gym + Boardman wallet; one token per agent |
 
 ## What Boardman operates (not yours to run)
 

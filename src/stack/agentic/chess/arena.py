@@ -1,7 +1,7 @@
 """
 Real-time agent vs agent chess until terminal result.
 
-Uses HybridEngine (opening book + Stockfish APIs + local fallback).
+Uses builder webhooks first (Raja: local UCI Stockfish), then HybridEngine.
 """
 from __future__ import annotations
 
@@ -120,13 +120,30 @@ def _default_max_plies() -> int:
     return int(os.getenv("BOARDMAN_MAX_PLIES", "200"))
 
 
-def _ask_builder_or_engine(agent: dict[str, Any], engine: HybridEngine, board: chess.Board, *, game_id: str) -> chess.Move:
+def _ask_builder_or_engine(
+    agent: dict[str, Any],
+    engine: HybridEngine,
+    board: chess.Board,
+    *,
+    game_id: str,
+    match_clock: Any = None,
+) -> chess.Move:
     """Ask the builder webhook (or that silo only). Engine is last-resort fallback."""
     legal = [m.uci() for m in board.legal_moves]
+    state: dict[str, Any] = {
+        "fen": board.fen(),
+        "to_move": "w" if board.turn == chess.WHITE else "b",
+    }
+    if match_clock is not None:
+        state["clocks"] = {
+            "wtime_ms": int(match_clock.white.remaining_ms),
+            "btime_ms": int(match_clock.black.remaining_ms),
+            "inc_ms": int(match_clock.increment_ms),
+        }
     raw = ask_agent_move(
         agent,
         game_id=game_id,
-        state={"fen": board.fen(), "to_move": "w" if board.turn == chess.WHITE else "b"},
+        state=state,
         legal_moves=legal,
     )
     if raw:
@@ -242,7 +259,9 @@ def play_match(
         if delay > 0:
             time.sleep(delay)
 
-        mv = _ask_builder_or_engine(agent, engine, board, game_id="agentic.chess_standard")
+        mv = _ask_builder_or_engine(
+            agent, engine, board, game_id="agentic.chess_standard", match_clock=match_clock
+        )
         san = board.san(mv)
         is_cap = board.is_capture(mv)
         src = engine.last_source
@@ -362,7 +381,7 @@ def play_match(
         "engines": {
             "white": "hybrid+stockfish",
             "black": "hybrid+stockfish",
-            "providers": ["chess-api.com", "stockfish.online", "local"],
+            "providers": ["local-uci", "chess-api.com", "stockfish.online", "local"],
             "siloed": True,
         },
     }

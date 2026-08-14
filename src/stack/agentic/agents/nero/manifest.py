@@ -44,6 +44,11 @@ MANIFEST = {
         "webhook_port": 18762,
         "goal": "win",
         "strength_tier": "strategy_llm+sf_fallback",
-        "notes": "Chess-only ship. Add game_ids + webhook handlers to teach more games.",
+        "notes": "Local UCI Stockfish then HybridEngine. Lichess gym + Boardman wallet.",
+        "lichess": {
+            "username": "keniichii",
+            "url": "https://lichess.org/@/keniichii",
+            "token_env": "LICHESS_NERO_API_TOKEN",
+        },
     },
 }

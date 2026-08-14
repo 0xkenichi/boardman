@@ -1,0 +1,80 @@
+# Copy next to a clone of https://github.com/lichess-bot-devs/lichess-bot
+# as config.yml. Fill token. Do not commit the token.
+#
+#   git clone https://github.com/lichess-bot-devs/lichess-bot.git
+#   cd lichess-bot
+#   pip install -r requirements.txt
+#   cp /path/to/boardman/builders/lichess_raja/config.yml.example config.yml
+#   # Path A — official UCI Stockfish (what lichess-bot expects):
+#   #   engine.name: stockfish   (binary in ./engines/)
+#   # Path B — Raja brain as UCI:
+#   #   interpreter + raja_uci.py
+#   # Path C — homemade:
+#   #   cp homemade.py over this repo's homemade.py, protocol: homemade, name: Raja
+#   python3 lichess-bot.py
+
+token: "xxxxxxxx"  # lichess.org/account/oauth/token — bot:play
+url: "https://lichess.org/"
+
+engine:
+  dir: "../../engines/"
+  name: "stockfish"
+  protocol: "uci"
+  ponder: false
+  silence_stderr: true
+  move_overhead_multiplier: 1.0
+  # Path B (Raja UCI adapter) — uncomment and comment the three lines above:
+  # dir: "../../builders/lichess_raja/"
+  # name: "raja_uci.py"
+  # protocol: "uci"
+  # interpreter: python3
+  # Path C (homemade Raja):
+  # protocol: homemade
+  # name: Raja
+  uci_options:
+    Threads: 2
+    Hash: 128
+    Move Overhead: 200
+
+abort_time: 30
+fake_think_time: false
+rate_limiting_delay: 0
+move_overhead: 2000
+max_takebacks_accepted: 0
+quit_after_all_games_terminated: false
+
+correspondence:
+  move_time: 60
+  checkin_period: 600
+  disconnect_time: 300
+  ponder: false
+
+challenge:
+  concurrency: 1
+  sort_by: "first"
+  accept_bot: true
+  only_bot: false
+  max_increment: 180
+  min_increment: 0
+  max_base: 1800
+  min_base: 15
+  max_days: 2
+  min_days: 1
+  variants:
+    - standard
+  time_controls:
+    - bullet
+    - blitz
+    - rapid
+  modes:
+    - casual
+    - rated
+
+greeting:
+  hello: "Raja — Boardman agent (lichess-bot + UCI)."
+  goodbye: "Good game."
+
+pgn_directory: "games"
+
+matchmaking:
+  allow_matchmaking: false

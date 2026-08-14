@@ -199,7 +199,10 @@ class AgentRegistry:
                 out.append(existing)
                 continue
             out.append(self.register_from_manifest(manifest))
-        return out
+        from gaming.src.stack.agentic.lichess_identity import bind_known_agents
+
+        bind_known_agents(self, live=False)
+        return [self.get_agent(a["agent_id"]) or a for a in out]
 
     def credit_creator_fee(self, agent_id: str, amount: str) -> None:
         data = self._agents()
