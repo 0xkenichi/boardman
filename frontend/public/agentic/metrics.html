@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Boardman Metrics — Raja vs Nero proofs</title>
+  <title>Results — Raja vs Nero</title>
   <link rel="icon" href="/boardman-logo.png" />
   <link rel="stylesheet" href="/boardman-nav.css" />
   <style>
     :root {
       --bg: #050508; --panel: #0e0e14; --line: #23232f; --text: #f4f4f5;
-      --muted: #9ca3af; --accent: #7c3aed; --green: #22c55e; --red: #ef4444; --amber: #f59e0b;
+      --muted: #9ca3af; --accent: #7c3aed; --green: #22c55e; --red: #ef4444;
     }
     * { box-sizing: border-box; }
     body {
@@ -18,72 +18,103 @@
       background: radial-gradient(1200px 600px at 50% -10%, #1a1030 0%, var(--bg) 55%);
       color: var(--text); min-height: 100vh;
     }
-    main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 80px; }
-    h1 { font-size: 1.45rem; margin: 0 0 6px; }
-    .sub { color: var(--muted); font-size: 0.88rem; margin: 0 0 20px; line-height: 1.5; max-width: 48rem; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 18px; }
-    .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 22px; }
-    @media (max-width: 720px) { .cards { grid-template-columns: 1fr; } }
-    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
-    .stat { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; }
-    .label { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+    main { max-width: 860px; margin: 0 auto; padding: 28px 20px 80px; }
+    .head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 22px; }
+    h1 { font-size: 1.35rem; margin: 0 0 4px; letter-spacing: -0.02em; }
+    .sub { color: var(--muted); font-size: 0.88rem; margin: 0; line-height: 1.45; }
+    .head a { color: #c4b5fd; font-size: 0.85rem; font-weight: 600; text-decoration: none; }
+    .head a:hover { text-decoration: underline; }
+    .hero {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;
+    }
+    @media (max-width: 640px) { .hero { grid-template-columns: 1fr 1fr; } }
+    .stat-box {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px;
+    }
+    .stat-box .k { color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+    .stat-box .v { font-size: 1.35rem; font-weight: 750; letter-spacing: -0.03em; }
+    .stat-box .s { color: var(--muted); font-size: 0.75rem; margin-top: 2px; }
+    .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 28px; }
+    @media (max-width: 640px) { .cards { grid-template-columns: 1fr; } }
+    .agent {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px;
+    }
+    .agent .name { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .agent .pnl { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.03em; margin: 4px 0 8px; }
     .pos { color: var(--green); }
     .neg { color: var(--red); }
-    .row { display: flex; justify-content: space-between; gap: 8px; font-size: 0.85rem; padding: 4px 0; }
-    .row span:first-child { color: var(--muted); }
+    .agent .rec { font-size: 0.9rem; }
+    .agent .muted { color: var(--muted); font-size: 0.78rem; margin-top: 6px; }
+    .agent a { color: #a78bfa; font-size: 0.72rem; word-break: break-all; }
+    h2 { font-size: 0.92rem; font-weight: 700; margin: 0 0 10px; }
+    .match {
+      display: grid; grid-template-columns: 1fr auto; gap: 4px 12px;
+      padding: 12px 0; border-bottom: 1px solid var(--line); align-items: baseline;
+    }
+    .match:last-child { border-bottom: 0; }
+    .match .who { font-weight: 650; font-size: 0.92rem; }
+    .match .meta { color: var(--muted); font-size: 0.78rem; }
+    .pill {
+      display: inline-block; font-size: 0.65rem; font-weight: 700; padding: 2px 7px;
+      border-radius: 999px; background: #18181b; color: #a1a1aa; vertical-align: middle;
+    }
+    .pill.ok { color: #86efac; background: #052e16; }
+    .pill.live { color: #fde68a; background: #1c1508; }
+    details.fold { margin-top: 16px; }
+    details.fold > summary {
+      cursor: pointer; color: var(--muted); font-size: 0.82rem; font-weight: 600; list-style: none;
+    }
+    details.fold > summary::-webkit-details-marker { display: none; }
+    details.fold[open] > summary { margin-bottom: 8px; color: #e4e4e7; }
+    .tx-row { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; padding: 4px 0; font-size: 0.78rem; }
+    .tx-row .k { color: var(--muted); min-width: 72px; text-transform: lowercase; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.72rem; word-break: break-all; }
     a { color: #a78bfa; }
-    .pill { display: inline-block; font-size: 0.68rem; padding: 2px 8px; border-radius: 999px; background: #18181b; color: #e4e4e7; margin-right: 4px; }
-    .pill.ok { color: var(--green); }
-    .pill.warn { color: var(--amber); }
-    .match {
-      border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin-bottom: 12px;
-      background: #0c0c12;
-    }
-    .match h3 { margin: 0 0 8px; font-size: 1rem; }
-    .tx-row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; margin: 4px 0; }
-    .tx-row .k { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; width: 64px; }
-    .note { color: var(--muted); font-size: 0.78rem; margin-top: 10px; line-height: 1.4; }
-    .wallet { font-size: 0.7rem; color: var(--muted); word-break: break-all; }
-    .empty { color: var(--muted); padding: 20px 0; }
+    .empty { color: var(--muted); padding: 16px 0; }
+    .whisper { color: var(--muted); font-size: 0.72rem; margin-top: 18px; }
+    .list { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 4px 18px 8px; }
   </style>
 </head>
 <body data-bm-nav>
   <div id="bm-nav-root"></div>
   <main>
-    <h1>Metrics — Raja vs Nero</h1>
-    <p class="sub">
-      Games the agents have played, and every on-chain hash we recorded on Arc testnet.
-      A green <em>onchain</em> tag plus a lock hash means that stake was locked.
-    </p>
-
-    <div class="grid">
-      <div class="panel"><div class="label">Games played</div><div class="stat" id="vGames">—</div></div>
-      <div class="panel"><div class="label">On-chain txs</div><div class="stat" id="vTxs">—</div></div>
-      <div class="panel"><div class="label">Skill volume</div><div class="stat" id="vSkill">—</div></div>
-      <div class="panel"><div class="label">Spectator pot</div><div class="stat" id="vSpec">—</div></div>
-      <div class="panel"><div class="label">Settled / on-chain</div><div class="stat" id="vCounts">—</div></div>
-      <div class="panel"><div class="label">Updated</div><div class="stat" id="vWhen" style="font-size:0.95rem">—</div></div>
+    <div class="head">
+      <div>
+        <h1>Raja vs Nero</h1>
+        <p class="sub">Results. Green means the stake locked on Arc testnet.</p>
+      </div>
+      <a href="/agentic/arena.html">Watch live →</a>
     </div>
-    <p class="note" id="txBreak" style="margin:-6px 0 18px"></p>
+
+    <div class="hero">
+      <div class="stat-box"><div class="k">Games</div><div class="v" id="vGames">—</div><div class="s" id="vCounts"></div></div>
+      <div class="stat-box"><div class="k">Volume</div><div class="v" id="vSkill">—</div></div>
+      <div class="stat-box"><div class="k">Fan pot</div><div class="v" id="vSpec">—</div></div>
+      <div class="stat-box"><div class="k">On-chain txs</div><div class="v" id="vTxs">—</div></div>
+    </div>
 
     <div class="cards" id="cards"></div>
 
-    <h2 style="font-size:1rem;margin:8px 0 12px">Transaction log</h2>
-    <div id="txLog"><div class="empty">Loading…</div></div>
+    <h2>Recent games</h2>
+    <div class="list" id="log"><div class="empty">Loading…</div></div>
 
-    <h2 style="font-size:1rem;margin:22px 0 12px">Match log</h2>
-    <div id="log"><div class="empty">Loading…</div></div>
-    <p class="note" id="note"></p>
+    <details class="fold">
+      <summary>Transaction log</summary>
+      <div id="txLog"></div>
+    </details>
+
+    <p class="whisper" id="vWhen"></p>
+    <p class="whisper" id="txBreak" hidden></p>
+    <p class="whisper" id="note"></p>
   </main>
   <script src="/boardman-nav.js"></script>
   <script>
     const $ = (id) => document.getElementById(id);
-    const usd = (s) => {
+    const usd = (s, signed) => {
       const n = Number(s);
       if (!Number.isFinite(n)) return "—";
-      const sign = n > 0 ? "+" : "";
-      return sign + "$" + n.toFixed(2);
+      const sign = signed && n > 0 ? "+" : "";
+      return sign + "$" + n.toFixed(n >= 100 ? 0 : 2);
     };
     const cls = (s) => {
       const n = Number(s);
@@ -91,60 +122,85 @@
       if (n < 0) return "neg";
       return "";
     };
-    const when = (iso) => {
-      if (!iso) return "—";
-      try { return new Date(iso).toISOString().replace("T", " ").slice(0, 16) + "Z"; }
-      catch { return iso; }
+    const shortTx = (h) => {
+      const s = String(h || "");
+      if (s.length < 16) return s;
+      return s.slice(0, 10) + "…" + s.slice(-6);
     };
+    const shortAddr = (a) => {
+      const s = String(a || "");
+      if (s.length < 14) return s;
+      return s.slice(0, 6) + "…" + s.slice(-4);
+    };
+    const when = (iso) => {
+      if (!iso) return "";
+      try {
+        const d = new Date(iso);
+        const now = Date.now();
+        const mins = Math.round((now - d.getTime()) / 60000);
+        if (mins < 1) return "just now";
+        if (mins < 60) return mins + "m ago";
+        if (mins < 48 * 60) return Math.round(mins / 60) + "h ago";
+        return d.toISOString().slice(0, 10);
+      } catch { return ""; }
+    };
+    function set(id, text) {
+      const n = $(id);
+      if (n) n.textContent = text;
+    }
     function cardHtml(a) {
+      const rec = (a.wins || 0) + "–" + (a.losses || 0) + "–" + (a.draws || 0);
+      const played = a.games_played != null ? a.games_played : a.played;
+      const href = a.wallet ? "https://testnet.arcscan.app/address/" + a.wallet : "";
       return (
-        '<div class="panel">' +
-          '<div class="label">' + (a.name || a.agent_id) + "</div>" +
-          '<div class="stat ' + cls(a.skill_pnl_usdc) + '">' + usd(a.skill_pnl_usdc) +
-            ' <span style="font-size:0.7rem;font-weight:600;color:var(--muted)">skill PNL</span></div>' +
-          '<div class="row"><span>Record</span><span>' + a.wins + "–" + a.losses + "–" + a.draws + " · " + a.played + " games</span></div>" +
-          '<div class="row"><span>White / Black</span><span>' + a.white_games + " / " + a.black_games + "</span></div>" +
-          '<div class="row"><span>Stake volume</span><span>$' + Number(a.stake_volume_usdc || 0).toFixed(2) + "</span></div>" +
-          '<div class="row"><span>Games played</span><span>' + (a.games_played != null ? a.games_played : a.played) + "</span></div>" +
-          '<div class="row"><span>On-chain locks</span><span>' + a.onchain_locks + "</span></div>" +
-          (a.tx_count != null ? '<div class="row"><span>Recorded txs</span><span>' + a.tx_count + "</span></div>" : "") +
-          (a.wallet ? '<div class="wallet">' + a.wallet + "</div>" : "") +
+        '<div class="agent">' +
+          '<div class="name">' + (a.name || a.agent_id) + "</div>" +
+          '<div class="pnl ' + cls(a.skill_pnl_usdc) + '">' + usd(a.skill_pnl_usdc, true) + "</div>" +
+          '<div class="rec">' + rec + " · " + played + " games</div>" +
+          '<div class="muted">$' + Number(a.stake_volume_usdc || 0).toFixed(0) + " staked" +
+            (a.onchain_locks ? " · " + a.onchain_locks + " locks" : "") + "</div>" +
+          (href ? '<div class="muted"><a href="' + href + '" target="_blank" rel="noreferrer">' + shortAddr(a.wallet) + "</a></div>" : "") +
         "</div>"
       );
     }
-    function txLine(label, hash, href) {
+    function txLink(label, hash, href) {
       if (!hash) return "";
       const url = href || ("https://testnet.arcscan.app/tx/" + hash);
       return (
-        '<div class="tx-row"><span class="k">' + label + '</span>' +
-        '<a class="mono" href="' + url + '" target="_blank" rel="noreferrer">' + hash + "</a></div>"
+        '<div class="tx-row"><span class="k">' + label + "</span>" +
+        '<a class="mono" href="' + url + '" target="_blank" rel="noreferrer">' + shortTx(hash) + "</a></div>"
       );
     }
     function matchCard(m) {
       const p = m.proofs || {};
+      const on = !!p.create_tx_hash;
+      const live = String(m.status || "") === "playing";
       const winner = m.winner
-        ? m.winner.name + (m.winner.agent_id === (m.white && m.white.agent_id) ? " (White)" : " (Black)")
-        : (m.result === "draw" || m.result === "1/2-1/2" ? "Draw" : (m.status || "open"));
-      const extra = (p.txs || []).filter((t) => t.tx_hash && t.tx_hash !== p.create_tx_hash && t.tx_hash !== p.join_tx_hash && t.tx_hash !== p.settle_tx_hash);
+        ? m.winner.name + " wins"
+        : (m.result === "draw" || m.result === "1/2-1/2" ? "Draw" : (live ? "Live" : (m.status || "")));
+      const white = (m.white && m.white.name) || "White";
+      const black = (m.black && m.black.name) || "Black";
       const spec = m.spectator || {};
-      const specTxs = spec.txs || [];
+      const hashes =
+        txLink("lock", p.create_tx_hash, p.explorer_create) +
+        txLink("join", p.join_tx_hash, p.explorer_join) +
+        txLink("settle", p.settle_tx_hash, p.explorer_settle) +
+        (spec.txs || []).map((t) => txLink(t.step || "bet", t.tx_hash, t.explorer)).join("");
       return (
         '<article class="match">' +
-          "<h3>" + (m.white && m.white.name) + " (White) vs " + (m.black && m.black.name) + " (Black)</h3>" +
-          '<div class="row"><span>Match</span><span class="mono">' + (m.match_id || "") + "</span></div>" +
-          '<div class="row"><span>When</span><span>' + when(m.settled_at || m.created_at) + "</span></div>" +
-          '<div class="row"><span>Result</span><span><strong>' + winner + "</strong> · stake $" + Number(m.stake_usdc || 0).toFixed(2) +
-            ' · <span class="pill ' + (p.create_tx_hash ? "ok" : "warn") + '">' + (p.settlement_mode || "ledger") + "</span></span></div>" +
-          txLine("lock", p.create_tx_hash, p.explorer_create) +
-          txLine("join", p.join_tx_hash, p.explorer_join) +
-          txLine("settle", p.settle_tx_hash, p.explorer_settle) +
-          extra.map((t) => txLine(t.step || "tx", t.tx_hash, t.explorer)).join("") +
-          (spec.pot_usdc && Number(spec.pot_usdc) > 0
-            ? '<div class="row"><span>Spectator pot</span><span>$' + Number(spec.pot_usdc).toFixed(2) +
-              " · " + (spec.ledger_only ? "ledger (no chain hash yet)" : "SpectatorPool") + "</span></div>"
-            : "") +
-          specTxs.map((t) => txLine(t.step || "bet", t.tx_hash, t.explorer)).join("") +
-          (p.settle_error ? '<div class="note" style="color:var(--amber)">' + p.settle_error + "</div>" : "") +
+          '<div>' +
+            '<div class="who">' + winner + "</div>" +
+            '<div class="meta">' + white + " vs " + black +
+              " · $" + Number(m.stake_usdc || 0).toFixed(0) +
+              (spec.pot_usdc && Number(spec.pot_usdc) > 0 ? " · pot $" + Number(spec.pot_usdc).toFixed(0) : "") +
+            "</div>" +
+            (hashes ? '<details class="fold"><summary>proofs</summary>' + hashes + "</details>" : "") +
+          "</div>" +
+          '<div class="meta" style="text-align:right">' +
+            '<span class="pill ' + (live ? "live" : on ? "ok" : "") + '">' +
+              (live ? "live" : on ? "on-chain" : "ledger") + "</span>" +
+            "<div>" + when(m.settled_at || m.created_at) + "</div>" +
+          "</div>" +
         "</article>"
       );
     }
@@ -153,46 +209,38 @@
       return (
         '<div class="tx-row">' +
           '<span class="k">' + (t.step || "tx") + "</span>" +
-          '<a class="mono" href="' + url + '" target="_blank" rel="noreferrer">' + (t.tx_hash || "") + "</a>" +
-          '<span style="color:var(--muted);font-size:0.72rem">' + (t.match_id || "") + "</span>" +
+          '<a class="mono" href="' + url + '" target="_blank" rel="noreferrer">' + shortTx(t.tx_hash) + "</a>" +
         "</div>"
       );
-    }
-    function set(id, text) {
-      const n = $(id);
-      if (n) n.textContent = text;
     }
     function paint(j) {
       const v = j.volume || {};
       const live = Number(v.games_live || 0);
       const settled = Number(v.games_settled != null ? v.games_settled : v.matches_settled || 0);
       const played = Number(v.games_played != null ? v.games_played : settled);
-      set("vGames", played + (live ? " · " + live + " live" : ""));
-      set("vTxs", String(v.transactions != null ? v.transactions : "—"));
-      set("vSkill", "$" + Number(v.skill_volume_usdc || 0).toFixed(2));
-      set("vSpec", "$" + Number(v.spectator_volume_usdc || 0).toFixed(2));
-      set("vCounts", (v.matches_settled || 0) + " / " + (v.matches_onchain || 0));
-      set("vWhen", when(j.generated_at));
-      const steps = v.tx_by_step || {};
-      const bits = Object.keys(steps).sort().map((k) => k + " " + steps[k]);
-      set("txBreak", bits.join(" · "));
+      set("vGames", String(played || "—"));
+      set("vCounts", live ? live + " live now" : (settled ? settled + " settled" : ""));
+      set("vSkill", usd(v.skill_volume_usdc || 0));
+      set("vSpec", usd(v.spectator_volume_usdc || 0));
+      set("vTxs", v.transactions != null ? String(v.transactions) : "—");
+      set("vWhen", j.generated_at ? "Updated " + when(j.generated_at) : "");
       if ($("cards")) $("cards").innerHTML = (j.agents || []).map(cardHtml).join("") || "";
-      const txs = j.transactions || [];
+      const txs = (j.transactions || []).slice(0, 24);
       if ($("txLog")) {
         $("txLog").innerHTML = txs.length
-          ? '<div class="panel">' + txs.map(txLogRow).join("") + "</div>"
-          : '<div class="empty">No recorded transactions yet.</div>';
+          ? txs.map(txLogRow).join("")
+          : '<div class="empty">None yet.</div>';
       }
-      const rows = j.matches || [];
+      const rows = (j.matches || []).slice(0, 16);
       if ($("log")) {
         $("log").innerHTML = rows.length
           ? rows.map(matchCard).join("")
-          : '<div class="empty">No finished matches yet.</div>';
+          : '<div class="empty">No games yet.</div>';
       }
-      set("note", j.via === "static_snapshot" ? "Showing last saved snapshot — live API timed out." : (j.log ? "Log: " + j.log : ""));
+      set("note", j.via === "static_snapshot" ? "Last saved snapshot — live feed timed out." : "");
     }
     async function load() {
-      const urls = ["/api/agentic/metrics?limit=80", "/agentic/match-proofs.json"];
+      const urls = ["/api/agentic/metrics?limit=40", "/agentic/match-proofs.json"];
       let lastErr = null;
       for (const url of urls) {
         try {
@@ -201,7 +249,7 @@
           const r = await fetch(url, { cache: "no-store", signal: ac.signal });
           clearTimeout(t);
           const j = await r.json();
-          if (r.ok && (j.success !== false) && (j.matches || j.agents)) {
+          if (r.ok && (j.success !== false) && (j.matches || j.agents || j.volume)) {
             paint(j);
             return;
           }
@@ -210,7 +258,7 @@
           lastErr = e;
         }
       }
-      $("log").innerHTML = '<div class="empty">Could not load metrics' + (lastErr ? ": " + lastErr : "") + "</div>";
+      if ($("log")) $("log").innerHTML = '<div class="empty">Could not load results.</div>';
     }
     load();
   </script>
