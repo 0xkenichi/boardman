@@ -14,7 +14,6 @@
       match: ["/agentic/football-managers"],
     },
     { href: "/agentic/football-catalog.html", label: "Catalog", match: ["/agentic/football-catalog"] },
-    { href: "/agentic/admin-dashboard.html", label: "Admin", match: ["/agentic/admin-dashboard"] },
     { href: "/agentic/hub.html", label: "Hub", match: ["/agentic/hub"] },
     { href: "/agentic/docs.html", label: "Docs", match: ["/agentic/docs"] },
     { href: "/leaderboard", label: "Board", match: ["/leaderboard"] },
@@ -71,6 +70,48 @@
     );
   }
 
+  var ADMIN_LINK = {
+    href: "/admin",
+    label: "Admin",
+    match: ["/admin", "/agentic/admin-dashboard"],
+  };
+
+  function ensureAdminLink() {
+    var has = LINKS.some(function (l) {
+      return l.href === "/admin";
+    });
+    if (!has) {
+      var i = 0;
+      for (; i < LINKS.length; i++) {
+        if (LINKS[i].label === "Hub") break;
+      }
+      LINKS.splice(i, 0, ADMIN_LINK);
+    }
+  }
+
+  function remount() {
+    var existing = document.querySelector("header.bm-nav");
+    if (existing) {
+      existing.outerHTML = render();
+      return;
+    }
+    mount();
+  }
+
+  function maybeShowAdmin() {
+    fetch("/api/rematch/app/session", { credentials: "include", cache: "no-store" })
+      .then(function (r) {
+        return r.json();
+      })
+      .then(function (j) {
+        if (j && j.admin) {
+          ensureAdminLink();
+          remount();
+        }
+      })
+      .catch(function () {});
+  }
+
   function mount(target) {
     var el =
       typeof target === "string"
@@ -81,7 +122,9 @@
       return;
     }
     if (document.body && document.body.getAttribute("data-bm-nav") !== null) {
-      document.body.insertAdjacentHTML("afterbegin", render());
+      if (!document.querySelector("header.bm-nav")) {
+        document.body.insertAdjacentHTML("afterbegin", render());
+      }
     }
   }
 
@@ -90,8 +133,10 @@
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", function () {
       mount();
+      maybeShowAdmin();
     });
   } else {
     mount();
+    maybeShowAdmin();
   }
 })();

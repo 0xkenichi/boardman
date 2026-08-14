@@ -1,63 +1,14 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Admin Dashboard — AFM</title>
-    <style>
-      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:24px}
-      .card{border:1px solid #e6e6e6;padding:16px;border-radius:8px;margin-bottom:12px}
-      .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
-      pre{background:#f7f7f7;padding:12px;border-radius:6px;overflow:auto}
-    </style>
+    <meta http-equiv="refresh" content="0; url=/admin" />
+    <title>Admin — Boardman</title>
+    <script>
+      location.replace("/admin");
+    </script>
   </head>
   <body>
-    <h1>Admin Dashboard</h1>
-    <div class="grid">
-      <div class="card">
-        <h3>Platform Summary</h3>
-        <div id="summary">Loading…</div>
-      </div>
-      <div class="card">
-        <h3>Profiles (snapshot)</h3>
-        <div id="profiles">Loading…</div>
-      </div>
-      <div class="card">
-        <h3>Notes</h3>
-        <p>This dashboard is a local prototype using static files. For authoritative data, run Supabase queries or provide service keys.</p>
-      </div>
-    </div>
-
-    <h2>Raw aggregated_metrics.json</h2>
-    <pre id="raw">Loading…</pre>
-
-    <script>
-      async function load() {
-        try {
-          const r = await fetch('/agentic/aggregated_metrics.json', {cache: 'no-store'});
-          const j = await r.json();
-          document.getElementById('raw').textContent = JSON.stringify(j, null, 2);
-          document.getElementById('summary').innerHTML =
-            '<strong>Players:</strong> ' + j.players_count + '<br>' +
-            '<strong>Profiles:</strong> ' + j.profiles_count + '<br>' +
-            '<strong>Total ARC (USDC):</strong> ' + j.total_arc;
-
-          const list = document.createElement('ul');
-          j.profiles.forEach(p => {
-            const li = document.createElement('li');
-            li.textContent = p.id + ' — ' + p.arc + ' ARC';
-            list.appendChild(li);
-          });
-          const profilesEl = document.getElementById('profiles');
-          profilesEl.innerHTML = '';
-          profilesEl.appendChild(list);
-        } catch (err) {
-          document.getElementById('raw').textContent = 'Error loading data: ' + err;
-          document.getElementById('summary').textContent = 'Error';
-          document.getElementById('profiles').textContent = 'Error';
-        }
-      }
-      load();
-    </script>
+    <p><a href="/admin">Continue to Admin</a></p>
   </body>
 </html>

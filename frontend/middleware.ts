@@ -80,6 +80,15 @@ export function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
+  if (path === '/agentic/admin-dashboard.html' || path === '/agentic/admin-dashboard') {
+    return redirectTo(req, '/admin')
+  }
+  if (path === '/agentic/aggregated_metrics.json') {
+    const url = req.nextUrl.clone()
+    url.pathname = '/api/agentic/admin/summary'
+    return securityHeaders(NextResponse.rewrite(url))
+  }
+
   // Agent arena demo (Stockfish CDN + remote engine APIs)
   if (path.startsWith('/agentic/')) {
     return securityHeaders(NextResponse.next(), { agentic: true })

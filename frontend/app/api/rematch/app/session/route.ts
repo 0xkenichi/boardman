@@ -10,6 +10,7 @@ import { verifyTelegramLogin, verifyTelegramWebAppInitData } from '@/lib/telegra
 import { telegramBotUrl } from '@/lib/telegramBot'
 import { rateLimitRequest } from '@/lib/bff'
 import { stackConfigured, stackFetch } from '@/lib/stackServer'
+import { isBoardmanAdmin } from '@/lib/adminAuth'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,6 +29,7 @@ export async function GET(req: Request) {
     tag: s.tag,
     name: s.name,
     telegramId: s.telegramId,
+    admin: isBoardmanAdmin(s),
   })
 }
 
