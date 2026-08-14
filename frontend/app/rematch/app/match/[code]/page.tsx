@@ -17,7 +17,7 @@ export default function MatchDetailPage() {
   const load = useCallback(async () => {
     const s = await api('/api/rematch/app/session')
     if (!s.ok) {
-      router.replace('/rematch/app')
+      router.replace('/app')
       return
     }
     const res = await api(`/api/rematch/app/matches/${encodeURIComponent(code)}`)
@@ -129,7 +129,7 @@ export default function MatchDetailPage() {
             </button>
           ) : null}
           <Link
-            href={`/rematch/app/match/${encodeURIComponent(match.public_code || code)}/upload`}
+            href={`/app/match/${encodeURIComponent(match.public_code || code)}/upload`}
             className="rm-btn rm-btn-ghost"
           >
             📸 Submit result photo

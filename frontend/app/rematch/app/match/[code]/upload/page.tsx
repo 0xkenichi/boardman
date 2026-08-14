@@ -18,7 +18,7 @@ export default function UploadProofPage() {
   useEffect(() => {
     ;(async () => {
       const s = await api('/api/rematch/app/session')
-      if (!s.ok) router.replace('/rematch/app')
+      if (!s.ok) router.replace('/app')
     })()
   }, [router])
 
@@ -109,7 +109,7 @@ export default function UploadProofPage() {
       <button
         type="button"
         className="rm-btn rm-btn-ghost rm-mt-2"
-        onClick={() => router.push(`/rematch/app/match/${encodeURIComponent(code)}`)}
+        onClick={() => router.push(`/app/match/${encodeURIComponent(code)}`)}
       >
         Back to match
       </button>

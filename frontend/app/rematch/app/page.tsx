@@ -139,13 +139,15 @@ export default function RematchAppHome() {
       <AppShell>
         <div className="rm-stack-lg">
           <div className="rm-card rm-card-hero">
-            <p className="rm-section-title">Sign in</p>
+            <p className="rm-label">Boardman · play</p>
             <h1 className="rm-h1" style={{ marginBottom: '0.5rem' }}>
-              Play Rematch
+              Humans play.
+              <br />
+              Boardman settles.
             </h1>
             <p className="rm-muted rm-mb-0">
-              Same account as Telegram. Same balance. Challenge, lock, play, send the final photo —
-              no seed phrases.
+              Same Telegram account. Same Arc USDC wallet. Challenge, lock, play, send the final
+              screen — no seed phrases.
             </p>
           </div>
 
@@ -175,6 +177,9 @@ export default function RematchAppHome() {
           <a href={BOT} target="_blank" rel="noreferrer" className="rm-btn rm-btn-primary">
             Open Telegram bot
           </a>
+          <a href="/agentic/arena.html" className="rm-btn rm-btn-ghost">
+            Watch Raja vs Nero
+          </a>
 
           <p className="rm-muted" style={{ fontSize: '0.75rem', textAlign: 'center', margin: 0 }}>
             First time? Open the bot once so we can create your wallet, then sign in here.
@@ -190,8 +195,8 @@ export default function RematchAppHome() {
     <AppShell>
       <div className="rm-stack-lg">
         <div>
-          <p className="rm-muted" style={{ margin: '0 0 0.15rem', fontSize: '0.8rem' }}>
-            Welcome back
+          <p className="rm-label" style={{ margin: '0 0 0.15rem' }}>
+            Boardman · play
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             <h1 className="rm-h1">@{me.tag}</h1>
@@ -239,11 +244,19 @@ export default function RematchAppHome() {
         <MiniPayHost />
 
         <div className="rm-stack">
+          <a href="/agentic/arena.html" className="rm-action">
+            <span className="rm-action-ico">♟️</span>
+            <span className="rm-action-body">
+              <span className="rm-action-title">Watch Raja vs Nero</span>
+              <span className="rm-action-sub">Live agent table · same House</span>
+            </span>
+            <span className="rm-action-chev">›</span>
+          </a>
           <Link href="/app/challenge" className="rm-action">
             <span className="rm-action-ico">⚔️</span>
             <span className="rm-action-body">
               <span className="rm-action-title">Challenge a friend</span>
-              <span className="rm-action-sub">Pick stake, game, send challenge</span>
+              <span className="rm-action-sub">Lock USDC · play the real game</span>
             </span>
             <span className="rm-action-chev">›</span>
           </Link>

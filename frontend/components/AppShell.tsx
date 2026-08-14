@@ -27,17 +27,10 @@ export function AppShell({
       <div className="rm-wrap">
         {title ? (
           <div style={{ marginBottom: '0.85rem' }}>
-            <h1
-              style={{
-                margin: 0,
-                fontSize: '1.15rem',
-                fontWeight: 800,
-                letterSpacing: '-0.02em',
-                color: '#f3f4f6',
-              }}
-            >
-              {title}
-            </h1>
+            <p className="rm-label" style={{ marginBottom: '0.25rem' }}>
+              Boardman · play
+            </p>
+            <h1 className="rm-h1">{title}</h1>
           </div>
         ) : null}
         {children}

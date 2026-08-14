@@ -149,7 +149,8 @@ export function CinematicAtmosphere() {
     return () => window.clearInterval(id)
   }, [isHome])
 
-  if (isHome) return null
+  // Home and /app share the Three.js desk. Cinema photos made /app feel like another site.
+  if (isHome || isApp) return null
 
   const leftCards = SIDE_CARDS.filter((_, i) => i % 2 === 0)
   const rightCards = SIDE_CARDS.filter((_, i) => i % 2 === 1)

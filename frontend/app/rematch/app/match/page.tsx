@@ -29,7 +29,7 @@ export default function MatchListPage() {
     ;(async () => {
       const s = await api('/api/rematch/app/session')
       if (!s.ok) {
-        router.replace('/rematch/app')
+        router.replace('/app')
         return
       }
       const m = await api('/api/rematch/app/matches')
@@ -67,7 +67,7 @@ export default function MatchListPage() {
             type="button"
             className="rm-btn rm-btn-primary rm-mt-1"
             disabled={!code.trim()}
-            onClick={() => router.push(`/rematch/app/match/${encodeURIComponent(code.trim())}`)}
+            onClick={() => router.push(`/app/match/${encodeURIComponent(code.trim())}`)}
           >
             Open match
           </button>
@@ -95,7 +95,7 @@ export default function MatchListPage() {
                 active.map((m) => (
                   <Link
                     key={m.public_code || m.id}
-                    href={`/rematch/app/match/${encodeURIComponent(m.public_code || m.id || '')}`}
+                    href={`/app/match/${encodeURIComponent(m.public_code || m.id || '')}`}
                     className="rm-match-row"
                   >
                     <div
@@ -127,7 +127,7 @@ export default function MatchListPage() {
                 history.map((m) => (
                   <Link
                     key={(m.public_code || m.id) + String(m.created_at)}
-                    href={`/rematch/app/match/${encodeURIComponent(m.public_code || m.id || '')}`}
+                    href={`/app/match/${encodeURIComponent(m.public_code || m.id || '')}`}
                     className="rm-match-row"
                   >
                     <div

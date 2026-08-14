@@ -6,7 +6,7 @@ import { AppShell } from '@/components/AppShell'
 import { api, type Me } from '@/lib/appClient'
 
 const FAUCET = 'https://faucet.circle.com/'
-const GET_USDC = '/rematch/get-usdc'
+const GET_USDC = '/get-usdc'
 
 export default function WalletPage() {
   const router = useRouter()
@@ -19,7 +19,7 @@ export default function WalletPage() {
     try {
       const s = await api('/api/rematch/app/session')
       if (!s.ok) {
-        router.replace('/rematch/app')
+        router.replace('/app')
         return
       }
       const m = await api<Me>('/api/rematch/app/me')

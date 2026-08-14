@@ -30,7 +30,7 @@ export default function ChallengePage() {
         if (cancelled) return
         if (!s.ok) {
           setAuth('no')
-          router.replace('/rematch/app')
+          router.replace('/app')
           return
         }
         setAuth('yes')
@@ -81,7 +81,7 @@ export default function ChallengePage() {
         return
       }
       const code = res.data.public_code || res.data.match_id
-      router.push(`/rematch/app/match/${encodeURIComponent(code)}`)
+      router.push(`/app/match/${encodeURIComponent(code)}`)
     } catch (e: any) {
       setErr(e?.message || 'Network error')
       setBusy(false)
