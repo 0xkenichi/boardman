@@ -40,9 +40,13 @@ def load_json(name: str, default: Any) -> Any:
             return default
 
 
-def save_json(name: str, payload: Any) -> None:
+def save_json(name: str, payload: Any, *, compact: bool = False) -> None:
     path = _path(name)
     with _lock:
         tmp = path.with_suffix(path.suffix + ".tmp")
-        tmp.write_text(json.dumps(payload, indent=2, default=str) + "\n", encoding="utf-8")
+        if compact:
+            text = json.dumps(payload, separators=(",", ":"), default=str)
+        else:
+            text = json.dumps(payload, indent=2, default=str) + "\n"
+        tmp.write_text(text, encoding="utf-8")
         tmp.replace(path)

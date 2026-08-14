@@ -2790,7 +2790,7 @@
       let mid = null;
       try {
         const ac = new AbortController();
-        const kill = setTimeout(() => ac.abort(), 20000);
+        const kill = setTimeout(() => ac.abort(), 25000);
         const start = await fetch("/api/agentic/house-play", {
           method: "POST",
           headers: { "content-type": "application/json" },

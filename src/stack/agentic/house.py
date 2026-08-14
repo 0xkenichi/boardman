@@ -285,7 +285,7 @@ def rescue_orphans() -> list[str]:
                 fut = _executor().submit(_run_table, mid, delay, m.get("play_seed"))
                 _workers[mid] = fut
                 resumed.append(mid)
-            elif st == "locking":
+            elif st in {"locking", "locked"}:
                 delay = float(m.get("play_delay_sec") or 0.05)
                 fut = _executor().submit(_lock_and_run, mid, delay, m.get("play_seed"))
                 _workers[mid] = fut

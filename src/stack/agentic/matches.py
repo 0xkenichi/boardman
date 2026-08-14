@@ -16,6 +16,8 @@ from gaming.src.stack.agentic.store import load_json, save_json
 logger = logging.getLogger(__name__)
 
 MATCHES_FILE = "matches.json"
+ARCHIVE_FILE = "matches_archive.json"
+HOT_SETTLED = 8
 
 
 def _now() -> str:
@@ -35,8 +37,34 @@ class AgentMatchService:
         self._mem["t"] = now
         return data
 
+    def _archive_cold(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Keep live tables + the last few settled games in the hot file."""
+        items = list((data.get("matches") or {}).values())
+        live = [m for m in items if m.get("status") != "settled"]
+        settled = [m for m in items if m.get("status") == "settled"]
+        settled.sort(
+            key=lambda m: m.get("settled_at") or m.get("updated_at") or "",
+            reverse=True,
+        )
+        if len(settled) <= HOT_SETTLED:
+            return data
+        keep = {m["match_id"]: m for m in live}
+        for m in settled[:HOT_SETTLED]:
+            keep[m["match_id"]] = m
+        drop = settled[HOT_SETTLED:]
+        arch = load_json(ARCHIVE_FILE, {"matches": {}})
+        arch.setdefault("matches", {})
+        for m in drop:
+            mid = m.get("match_id")
+            if mid:
+                arch["matches"][mid] = m
+        save_json(ARCHIVE_FILE, arch, compact=True)
+        data["matches"] = keep
+        return data
+
     def _save(self, data: dict[str, Any], *, upsert_id: Optional[str] = None) -> None:
-        save_json(MATCHES_FILE, data)
+        data = self._archive_cold(data)
+        save_json(MATCHES_FILE, data, compact=True)
         self._mem["data"] = data
         self._mem["t"] = time.time()
         mid = upsert_id
@@ -86,6 +114,9 @@ class AgentMatchService:
 
     def get(self, match_id: str) -> Optional[dict[str, Any]]:
         m = self._load()["matches"].get(match_id)
+        if not m:
+            arch = load_json(ARCHIVE_FILE, {"matches": {}})
+            m = (arch.get("matches") or {}).get(match_id)
         if m:
             self._overlay_live_book(m)
         return m
