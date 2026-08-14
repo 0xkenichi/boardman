@@ -563,7 +563,7 @@ class HouseRuntime:
         if busy and {busy.get("agent_a_id"), busy.get("agent_b_id")} == {
             agent_a_id,
             agent_b_id,
-        }:
+        } and busy.get("status") in {"playing", "locking"}:
             return {
                 "released_stale": [],
                 "match_id": busy.get("match_id"),

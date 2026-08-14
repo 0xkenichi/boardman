@@ -699,6 +699,7 @@ class AgentMatchService:
             if not rec:
                 return
             moves = list(rec.get("moves") or [])
+            clk = payload.get("clock") or {}
             moves.append(
                 {
                     "ply": payload.get("ply"),
@@ -708,11 +709,22 @@ class AgentMatchService:
                     "side": payload.get("side"),
                     "agent_id": payload.get("agent_id"),
                     "source": payload.get("engine_source"),
+                    "clock": clk or None,
                 }
             )
             rec["moves"] = moves
             rec["status"] = "playing"
             rec["updated_at"] = _now()
+            if clk:
+                snap = dict(rec.get("clock") or {})
+                snap["control_id"] = rec.get("time_control_id") or snap.get("control_id")
+                side = clk.get("side") or payload.get("side")
+                if side in {"white", "black"}:
+                    snap[side] = {
+                        "remaining_ms": clk.get("remaining_ms"),
+                        "flag": bool(clk.get("flag")),
+                    }
+                rec["clock"] = snap
             live["matches"][match_id] = rec
             self._save(live)
             if on_move:

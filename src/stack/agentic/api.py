@@ -241,7 +241,7 @@ class HousePlayBody(RunBody):
 
 
 class HouseRematchBody(BaseModel):
-    stake_usdc: Optional[float] = Field(1.0, gt=0, le=1000)
+    stake_usdc: Optional[float] = Field(None, gt=0, le=1000)
     white: str = Field("raja", description="raja | nero")
     wait: bool = Field(False, description="False = return immediately; lock+play in worker")
     move_delay_sec: float = Field(0.05, ge=0, le=5)

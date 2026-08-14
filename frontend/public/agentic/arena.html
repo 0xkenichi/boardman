@@ -343,9 +343,10 @@
       font-size: 0.75rem; padding: 2px 6px; border-radius: 6px; background: #1c1c24;
     }
 
-    /* Audience vs creator surfaces */
+    /* Audience vs creator surfaces. Desk is operator-only even if ?view=creator. */
     body.view-audience .creator-only { display: none !important; }
     body.view-creator .audience-only { display: none !important; }
+    body:not(.is-operator) .creator-only { display: none !important; }
     .view-toggle {
       display: inline-flex; background: #12121a; border: 1px solid var(--line);
       border-radius: 999px; padding: 3px; gap: 2px;
@@ -449,6 +450,35 @@
     }
     details.moves-box summary::-webkit-details-marker { display: none; }
     details.moves-box[open] summary { margin-bottom: 6px; color: #e4e4e7; }
+    .moves-under {
+      width: 100%;
+      max-width: calc(22px + var(--board-size));
+      margin-top: 2px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: #0a0a10;
+      border: 1px solid var(--line);
+      font-family: ui-monospace, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.78rem;
+      line-height: 1.65;
+      color: #d4d4d8;
+      max-height: 168px;
+      overflow: auto;
+      white-space: pre-wrap;
+    }
+    .lp-box {
+      margin-top: 14px;
+      border-top: 1px solid var(--line);
+      padding-top: 10px;
+    }
+    .lp-box summary {
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 600;
+    }
+    .lp-box[open] summary { color: #e4e4e7; margin-bottom: 6px; }
+    body:not(.is-operator) .operator-only { display: none !important; }
     .auth-pill {
       display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
       font-size: 0.78rem; color: var(--muted); max-width: 420px;
@@ -516,22 +546,20 @@
   <header class="arena-toolbar">
     <div class="brand">
       <div>
-        <h1>AGENT ARENA</h1>
-        <div class="sub" id="headerSub">Watch agents play · bet the match</div>
+        <h1>Raja vs Nero</h1>
+        <div class="sub" id="headerSub">Watch the match. Bet who wins.</div>
       </div>
     </div>
     <div class="header-right">
-      <div class="view-toggle" role="group" aria-label="Who are you">
-        <button type="button" id="viewAudience" class="on">Spectator</button>
-        <button type="button" id="viewCreator">Creator desk</button>
+      <div class="view-toggle" id="viewToggle" hidden>
+        <button type="button" id="viewAudience" class="on">Bet</button>
+        <button type="button" id="viewCreator">Desk</button>
       </div>
       <div class="auth-pill" id="authPill">
-        <span id="authLabel">Sign in to bet with your Telegram wallet</span>
-        <button type="button" class="secondary" id="btnTgLogin" style="padding:6px 10px;font-size:0.78rem">Log in with Telegram</button>
+        <span id="authLabel">Sign in to bet</span>
+        <button type="button" class="secondary" id="btnTgLogin" style="padding:6px 10px;font-size:0.78rem">Log in</button>
         <button type="button" class="secondary" id="btnLogout" style="padding:6px 10px;font-size:0.78rem;display:none">Log out</button>
       </div>
-      <a class="btn" href="/metrics" style="text-decoration:none;padding:8px 14px;border-radius:10px;background:#7c3aed;color:#fff;font-weight:700;font-size:0.82rem">Metrics</a>
-      <div class="pill creator-only" id="enginePill">Stockfish GM · loading…</div>
     </div>
   </header>
   <div id="tgLoginModal" class="tg-modal" hidden>
@@ -562,16 +590,7 @@
           <div class="mono creator-only" id="neroContract"></div>
         </div>
       </div>
-      <div class="vs-line audience-only">Skill match · equal stakes · public betting pot</div>
-
-      <div class="tc-bar" id="tcBar" role="group" aria-label="Time control">
-        <label>Clock each</label>
-        <button type="button" data-tc="1" id="tc1">1 min</button>
-        <button type="button" data-tc="5" id="tc5" class="on">5 min</button>
-        <button type="button" data-tc="10" id="tc10">10 min</button>
-        <button type="button" data-tc="random" id="tcRandom" title="Random 1 / 5 / 10">Random</button>
-      </div>
-      <div class="coin-banner" id="coinBanner">Coin flip assigns White / Black each match</div>
+      <div class="coin-banner" id="coinBanner"></div>
       <div class="clock-row" aria-label="Chess clocks">
         <div class="clock-face" id="clockRaja">
           <div class="clk-name">Raja</div>
@@ -585,16 +604,6 @@
         </div>
       </div>
 
-      <div class="mode-bar">
-        <div class="mode-toggle" role="group" aria-label="Board view mode">
-          <button type="button" id="modeClassic" class="on">Classic</button>
-          <button type="button" id="modeArena">Arena Live <span class="pro">PRO</span></button>
-        </div>
-        <div class="mode-hint creator-only" id="modeHint">
-          Classic board or Arena Live story view.
-        </div>
-      </div>
-
       <div class="board-wrap">
         <div class="board-stage">
           <div class="board-shell">
@@ -604,18 +613,15 @@
           </div>
           <div id="fxLayer" aria-hidden="true"></div>
         </div>
-        <div class="status" id="status">Tap Play to start the match.</div>
-        <div class="controls">
-          <button id="btnPlay">▶ Play match</button>
-          <button class="secondary" id="btnReset">Reset</button>
-          <button class="secondary" id="btnAuto" title="Play matches back-to-back all day">⟳ Auto play</button>
+        <div class="status" id="status">Waiting for a live match…</div>
+        <div class="controls operator-only">
+          <button id="btnPlay">Play next</button>
+          <button class="secondary" id="btnReset" hidden>Reset</button>
+          <button class="secondary" id="btnAuto" hidden>Auto</button>
         </div>
-        <p class="hint" id="autoHint" style="text-align:center;margin:6px 0 0">
-          Auto play off
-        </p>
-        <div class="graveyard creator-only" id="graveyard" title="Fallen pieces">
-          <span class="mono" style="width:100%;margin-bottom:2px">Fallen</span>
-        </div>
+        <p class="hint" id="autoHint" hidden></p>
+        <div class="moves-under" id="movesAudience">Moves appear here</div>
+        <div class="graveyard creator-only" id="graveyard" hidden></div>
       </div>
     </section>
 
@@ -623,89 +629,72 @@
       <!-- SPECTATOR SURFACE -->
       <div class="audience-only">
         <div class="wallet-box" id="walletBox">
-          <div class="wb-title">Your Boardman wallet (Telegram)</div>
-          <div class="wb-bal" id="walletBal">Sign in to load balance</div>
-          <div class="wb-addr mono" id="walletAddr">—</div>
+          <div class="wb-title">Your balance</div>
+          <div class="wb-bal" id="walletBal">Sign in to bet</div>
+          <div class="wb-addr mono" id="walletAddr" hidden></div>
         </div>
         <div class="pot-banner">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
             <div>
-              <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted)">Betting pot</div>
-              <div class="pot-total" id="potTotal">$0.55</div>
-              <div class="pot-sub" id="potCapLabel">Fills as fans bet · closes when full or mid-game</div>
+              <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted)">Pot</div>
+              <div class="pot-total" id="potTotal">$0.00</div>
+              <div class="pot-sub" id="potCapLabel">Pick a side and an amount</div>
+              <div class="pot-sub" id="skillLockLabel"></div>
             </div>
             <span class="pill" id="potStatus">open</span>
           </div>
-          <div class="pot-meter" title="Pot fill"><i id="potMeter"></i></div>
+          <div class="pot-meter"><i id="potMeter"></i></div>
         </div>
-
-        <p class="hint">
-          Log in with Telegram to bet from the <strong>same wallet</strong> as the bot.
-          You can’t bet more than room left in the pot or your balance.
-        </p>
 
         <div class="bet-amount-box">
           <div class="amt-head">
-            <span class="amt-label">Your stake</span>
-            <span class="amt-value" id="betAmtLabel">$1.00</span>
+            <span class="amt-label">Amount</span>
+            <span class="amt-value" id="betAmtLabel">$5.00</span>
           </div>
-          <input type="range" id="betSlider" min="0.25" max="20" step="0.25" value="1" aria-label="Bet amount slider" />
+          <input type="range" id="betSlider" min="0.25" max="50" step="0.25" value="5" aria-label="Bet amount" />
           <div class="bet-amount-row">
             <span class="currency">$</span>
-            <input type="number" id="betInput" min="0.25" step="0.25" value="1" inputmode="decimal" aria-label="Custom bet amount" />
+            <input type="number" id="betInput" min="0.25" step="0.25" value="5" inputmode="decimal" aria-label="Bet amount" />
           </div>
           <div class="bet-presets" id="betPresets">
             <button type="button" data-amt="1">$1</button>
-            <button type="button" data-amt="2">$2</button>
             <button type="button" data-amt="5">$5</button>
             <button type="button" data-amt="10">$10</button>
+            <button type="button" data-amt="25">$25</button>
             <button type="button" data-amt="max">Max</button>
           </div>
-          <div class="bet-room">Room left in pot: <strong id="betRoomLabel">—</strong></div>
+          <div class="bet-room" id="betRoomLabel"></div>
         </div>
 
         <div class="bet-card">
-          <div class="name">Raja <span id="wrA" style="color:var(--muted);font-weight:600">—</span></div>
-          <div class="odds-big" id="decA">2.00×</div>
-          <div class="payout-hint">If you win → get <span id="netA">$2.00</span> back · chance <span id="probA">50%</span></div>
-          <button type="button" class="secondary" id="betA">Bet on Raja</button>
-          <button type="button" class="secondary" id="btnStakeRaja" style="margin-left:8px">Stake (spectator)</button>
+          <div class="name">Raja <span id="wrA" style="color:var(--muted);font-weight:600"></span></div>
+          <div class="odds-big" id="decA">—</div>
+          <div class="payout-hint">Pays <span id="netA">—</span> · <span id="probA"></span></div>
+          <button type="button" id="betA">Bet Raja</button>
+          <button type="button" id="btnStakeRaja" hidden></button>
         </div>
         <div class="bet-card">
-          <div class="name">Nero <span id="wrB" style="color:var(--muted);font-weight:600">—</span></div>
-          <div class="odds-big" id="decB">2.00×</div>
-          <div class="payout-hint">If you win → get <span id="netB">$2.00</span> back · chance <span id="probB">50%</span></div>
-          <button type="button" class="secondary" id="betB">Bet on Nero</button>
-          <button type="button" class="secondary" id="btnStakeNero" style="margin-left:8px">Stake (spectator)</button>
+          <div class="name">Nero <span id="wrB" style="color:var(--muted);font-weight:600"></span></div>
+          <div class="odds-big" id="decB">—</div>
+          <div class="payout-hint">Pays <span id="netB">—</span> · <span id="probB"></span></div>
+          <button type="button" id="betB">Bet Nero</button>
+          <button type="button" id="btnStakeNero" hidden></button>
         </div>
 
-        <div class="row"><span>Your bets</span><span id="myBets">none yet</span></div>
-        <div class="row"><span>Match</span><span id="matchStateLabel">waiting</span></div>
-        <div class="section-label" style="margin-top:12px">Provide LP</div>
-        <p class="hint">Top up an agent's bankroll. Telegram will ask you to approve the debit.</p>
-        <div style="display:flex;gap:6px;margin:8px 0;flex-wrap:wrap">
-          <button type="button" class="secondary" id="btnLpRajaAud" style="padding:6px 10px;font-size:0.78rem;flex:1">LP +$20 Raja</button>
-          <button type="button" class="secondary" id="btnLpNeroAud" style="padding:6px 10px;font-size:0.78rem;flex:1">LP +$20 Nero</button>
-        </div>
+        <div class="row"><span>Your bets</span><span id="myBets">none</span></div>
+        <div class="row" hidden><span>Match</span><span id="matchStateLabel"></span></div>
 
-        <details class="moves-box">
-          <summary>Move list</summary>
-          <div class="moves" id="movesAudience">—</div>
+        <details class="lp-box">
+          <summary>Add liquidity</summary>
+          <p class="hint">Back an agent’s bankroll. Telegram will ask you to confirm.</p>
+          <div style="display:flex;gap:6px;margin:8px 0;flex-wrap:wrap">
+            <button type="button" class="secondary" id="btnLpRajaAud">+$20 Raja</button>
+            <button type="button" class="secondary" id="btnLpNeroAud">+$20 Nero</button>
+          </div>
         </details>
-        <div class="section-label" style="margin-top:14px">Verified match log</div>
-        <p class="hint">
-          Browser-local SHA-256 of the PGN (this tab only).
-          On-chain lock/join/settle hashes + Raja vs Nero PNL:
-          <a href="/metrics">Metrics</a>.
-        </p>
-        <div class="mono" id="matchLogList" style="max-height:180px;overflow:auto;font-size:0.72rem;line-height:1.45">—</div>
-        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
-          <button type="button" class="secondary" id="btnExportLog" style="padding:6px 10px;font-size:0.78rem;flex:1">Export JSON</button>
-          <button type="button" class="secondary" id="btnClearLog" style="padding:6px 10px;font-size:0.78rem">Clear</button>
-        </div>
-        <p class="hint" style="margin-top:14px">
-          More games → <a href="/agentic/hub.html">Game hub</a>
-        </p>
+        <div id="matchLogList" hidden></div>
+        <button type="button" id="btnExportLog" hidden></button>
+        <button type="button" id="btnClearLog" hidden></button>
       </div>
 
       <!-- CREATOR / OWNER SURFACE -->
@@ -791,8 +780,7 @@
   </div>
 
   <p class="foot">
-    Agents play for skill stakes · fans bet a separate pot ·
-    <a href="/agentic/docs.html">how it works</a>
+    Raja vs Nero · pick a side · <a href="/agentic/docs.html">how it works</a>
   </p>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
@@ -899,7 +887,16 @@
     let fallen = [];
     let evalHistory = []; // white-POV engine evals
     let uiView = "audience"; // audience | creator
+    let isOperator = false; // @stillkenichi / admin session only
+    let houseClockMode = false; // house games: tick display, never local-flag
     const FEE_BPS = 300;
+    const HOUSE_TC = {
+      "bullet_1|0": 60_000,
+      "blitz_3|0": 180_000,
+      "blitz_3|2": 180_000,
+      "blitz_5|0": 300_000,
+      "rapid_10|0": 600_000,
+    };
 
     // Colors are agents, not fixed seats — coin flip each match
     // whiteAgent / blackAgent: 'raja' | 'nero'
@@ -942,7 +939,7 @@
     let matchSeeds = { a: 0, b: 0 };
     let matchCap = 20;
     let matchBinding = "—";
-    let betAmount = 1; // spectator stake (slider + custom input)
+    let betAmount = 5; // spectator bet; agents negotiate their own skill stake
     // Telegram → same Boardman profile / play wallet as the bot
     let tgUser = null; // { authenticated, profileId, tag, name, balance, address }
     let tgBotUsername = "myboardmanOfficialBot";
@@ -1159,7 +1156,9 @@
         "potCapLabel",
         tot >= matchCap
           ? "Pot full — waiting on result"
-          : `$${tot.toFixed(2)} of $${matchCap.toFixed(0)} · stake-linked cap`
+          : tot > 0
+            ? "$" + tot.toFixed(2) + " in the pot"
+            : "Pick a side and an amount"
       );
       const fillPct = Math.min(100, (tot / Math.max(matchCap, 0.01)) * 100);
       const meter = el("potMeter");
@@ -1348,9 +1347,7 @@
         if (logoutBtn) logoutBtn.style.display = "";
         setText(
           "walletBal",
-          `$${bal} USDC spendable` +
-            (tgUser.source ? ` · ${tgUser.source}` : "") +
-            (tgUser.demo ? " (demo)" : "")
+          "$" + bal + " USDC" + (tgUser.demo ? " (demo)" : "")
         );
         setText(
           "walletAddr",
@@ -1360,12 +1357,20 @@
         );
       } else {
         if (pill) pill.classList.remove("ok");
-        if (label) label.textContent = "Sign in to bet with your Telegram wallet";
+        if (label) label.textContent = "Sign in to bet";
         if (loginBtn) loginBtn.style.display = "";
         if (logoutBtn) logoutBtn.style.display = "none";
-        setText("walletBal", "Sign in to load balance");
+        setText("walletBal", "Sign in to bet");
         setText("walletAddr", "—");
       }
+    }
+
+    function applyOperatorGate(on) {
+      isOperator = !!on;
+      document.body.classList.toggle("is-operator", isOperator);
+      const vt = el("viewToggle");
+      if (vt) vt.hidden = !isOperator;
+      if (!isOperator && uiView === "creator") setUiView("audience");
     }
 
     function escapeHtml(s) {
@@ -1390,23 +1395,17 @@
             address: data.address || "",
             demo: data.demo,
             source: data.source || "",
+            admin: !!data.admin,
           };
+          applyOperatorGate(!!data.admin);
           renderAuth();
-          if (data.source) {
-            log(
-              `Your play wallet · $${Number(data.balance || 0).toFixed(2)} USDC` +
-                (data.address ? " · " + shortAddr(data.address) : "") +
-                " · source=" +
-                data.source +
-                (data.demo ? " (demo)" : "")
-            );
-          }
           return true;
         }
       } catch (e) {
         log("Wallet refresh failed: " + e.message);
       }
       tgUser = null;
+      applyOperatorGate(false);
       renderAuth();
       return false;
     }
@@ -1579,8 +1578,8 @@
         /* ignore */
       }
       tgUser = null;
+      applyOperatorGate(false);
       renderAuth();
-      log("Logged out");
     }
 
     async function placeBet(side) {
@@ -1978,24 +1977,29 @@
       }
     }
 
-    function stopClockTick() {
+    function clearClockInterval() {
       if (clockTickTimer) {
         clearInterval(clockTickTimer);
         clockTickTimer = null;
       }
-      // Apply elapsed on active side
+    }
+
+    function stopClockTick() {
       if (clockSide && clockTurnStarted) {
         const used = Date.now() - clockTurnStarted;
         clockMs[clockSide] = Math.max(0, clockMs[clockSide] - used);
         clockTurnStarted = 0;
       }
       clockSide = null;
+      clearClockInterval();
       renderClocks();
     }
 
-    function startClockFor(agentKey) {
-      stopClockTick();
-      if (!playing || flagSide) return;
+    function startClockFor(agentKey, opts) {
+      const displayOnly = !!(opts && opts.displayOnly) || houseClockMode;
+      clearClockInterval();
+      if (!playing) return;
+      if (!displayOnly && flagSide) return;
       clockSide = agentKey;
       clockTurnStarted = Date.now();
       renderClocks();
@@ -2006,15 +2010,55 @@
         if (clockSide === "raja") setText("clockRajaTime", formatClock(display));
         else setText("clockNeroTime", formatClock(display));
         const face = el(clockSide === "raja" ? "clockRaja" : "clockNero");
-        if (face) face.classList.toggle("flagged", display <= 0);
+        if (face) face.classList.toggle("flagged", display <= 0 && !displayOnly);
         if (remaining <= 0) {
-          flagSide = clockSide;
           clockMs[clockSide] = 0;
+          if (displayOnly) return;
+          flagSide = clockSide;
           stopClockTick();
           log(AGENTS[flagSide].name + " flagged — out of time");
           setStatus(AGENTS[flagSide].name + " ran out of time", true);
         }
       }, 200);
+    }
+
+    function syncHouseClocks(m) {
+      houseClockMode = true;
+      const tcId =
+        (m && (m.time_control_id || (m.play && m.play.time_control_id))) || "blitz_3|2";
+      const base = HOUSE_TC[tcId] || 180_000;
+      clockBaseMs = base;
+      let whiteMs = base;
+      let blackMs = base;
+      const snap = (m && m.clock) || {};
+      if (snap.white && snap.white.remaining_ms != null) {
+        whiteMs = Number(snap.white.remaining_ms);
+      }
+      if (snap.black && snap.black.remaining_ms != null) {
+        blackMs = Number(snap.black.remaining_ms);
+      }
+      const moves = (m && m.moves) || [];
+      for (let i = 0; i < moves.length; i++) {
+        const mv = moves[i] || {};
+        const c = mv.clock || {};
+        if (c.remaining_ms == null) continue;
+        const side = c.side || mv.side;
+        if (side === "white") whiteMs = Number(c.remaining_ms);
+        if (side === "black") blackMs = Number(c.remaining_ms);
+      }
+      clockMs[whiteAgent] = Math.max(0, whiteMs);
+      clockMs[blackAgent] = Math.max(0, blackMs);
+      const turnIsWhite = game && typeof game.turn === "function" ? game.turn() === "w" : moves.length % 2 === 0;
+      startClockFor(turnIsWhite ? whiteAgent : blackAgent, { displayOnly: true });
+    }
+
+    function applySkillLock(m) {
+      const st = m && m.stake_usdc != null ? Number(m.stake_usdc) : 0;
+      if (st > 0) {
+        matchStake = st;
+        setText("skillLockLabel", "Agents locked $" + st.toFixed(2) + " each");
+        setText("stakeLabel", "$" + st.toFixed(2));
+      }
     }
 
     /** How long Stockfish may think this move — never open blatantly; use clock budget. */
@@ -2168,6 +2212,7 @@
       const gen = ++watchGen;
       houseMatchId = mid;
       playing = true;
+      houseClockMode = true;
       houseApplied = 0;
       game = new Chess();
       lastFrom = lastTo = null;
@@ -2195,12 +2240,15 @@
           }
           applyLiveColors(m);
           applySpectatorBook(m);
+          applySkillLock(m);
           const moves = m.moves || [];
           for (; houseApplied < moves.length; houseApplied++) {
             applyHouseMove(moves[houseApplied] || {});
           }
-          if (st === "playing") setStatus("Live", true);
-          else if (st === "locking") setStatus("Locking stakes…", true);
+          if (st === "playing" || st === "locked") {
+            syncHouseClocks(m);
+            setStatus("Live", true);
+          } else if (st === "locking") setStatus("Locking stakes…", true);
           if (done.has(st)) {
             setText("escrowPill", st);
             setClass("escrowPill", st === "settled" ? "pill ok" : "pill");
@@ -2226,6 +2274,8 @@
       }
       if (gen === watchGen) {
         playing = false;
+        houseClockMode = false;
+        stopClockTick();
         if (el("btnPlay")) el("btnPlay").disabled = false;
       }
     }
@@ -2258,7 +2308,7 @@
       }
       resetSpectatorFromNegotiation();
       coinFlipColors();
-      const stake = matchStake > 0 ? matchStake : 1;
+      houseClockMode = true;
       clearFx();
       renderMeta();
       renderBoard();
@@ -2271,8 +2321,7 @@
       setText("lockA", "—");
       setText("lockB", "—");
       setText("log", "");
-      setStatus("House opening table · locking stakes on Arc…", true);
-      log("House rematch — same path as run_house_session.py");
+      setStatus("Opening the table…", true);
 
       let mid = null;
       try {
@@ -2281,7 +2330,7 @@
         const start = await fetch("/api/agentic/house-play", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ stake_usdc: stake, white: whiteAgent }),
+          body: JSON.stringify({ white: whiteAgent }),
           signal: ac.signal,
         });
         clearTimeout(kill);
@@ -2326,6 +2375,7 @@
     }
 
     function setUiView(v) {
+      if (v === "creator" && !isOperator) v = "audience";
       uiView = v === "creator" ? "creator" : "audience";
       document.body.classList.toggle("view-audience", uiView === "audience");
       document.body.classList.toggle("view-creator", uiView === "creator");
@@ -2334,8 +2384,8 @@
       setText(
         "headerSub",
         uiView === "creator"
-          ? "Owner tools · bankroll · escrow · seeds · fees"
-          : "Watch agents play · bet the match"
+          ? "Operator desk"
+          : "Watch the match. Bet who wins."
       );
       try {
         const u = new URL(location.href);
@@ -3060,10 +3110,10 @@
       let out = "";
       for (let i = 0; i < hist.length; i += 2) {
         const n = i / 2 + 1;
-        out += `${n}. ${hist[i] || ""}` + (hist[i + 1] ? `  ${hist[i + 1]}` : "") + "\n";
+        out += n + ". " + (hist[i] || "") + (hist[i + 1] ? "  " + hist[i + 1] : "") + "\n";
       }
       setText("moves", out || "—");
-      setText("movesAudience", out || "—");
+      setText("movesAudience", out.trim() || "Moves appear here");
     }
 
     async function runDemo() {
@@ -3386,12 +3436,12 @@
       }
     }
 
-    el("modeClassic").onclick = () => setViewMode("classic");
-    el("modeArena").onclick = () => setViewMode("arena");
-    el("viewAudience").onclick = () => setUiView("audience");
-    el("viewCreator").onclick = () => setUiView("creator");
-    el("betA").onclick = () => placeBet("a");
-    el("betB").onclick = () => placeBet("b");
+    if (el("modeClassic")) el("modeClassic").onclick = () => setViewMode("classic");
+    if (el("modeArena")) el("modeArena").onclick = () => setViewMode("arena");
+    if (el("viewAudience")) el("viewAudience").onclick = () => setUiView("audience");
+    if (el("viewCreator")) el("viewCreator").onclick = () => setUiView("creator");
+    if (el("betA")) el("betA").onclick = () => placeBet("a");
+    if (el("betB")) el("betB").onclick = () => placeBet("b");
     if (el("btnStakeRaja")) el("btnStakeRaja").onclick = () => placeBet("a");
     if (el("btnStakeNero")) el("btnStakeNero").onclick = () => placeBet("b");
     if (el("btnTgLogin")) el("btnTgLogin").onclick = () => openTgLoginModal();
@@ -3459,7 +3509,7 @@
     if (el("btnLpNero")) el("btnLpNero").onclick = () => addLp("nero", 20);
     if (el("btnLpRajaAud")) el("btnLpRajaAud").onclick = () => addLp("raja", 20);
     if (el("btnLpNeroAud")) el("btnLpNeroAud").onclick = () => addLp("nero", 20);
-    el("btnPlay").onclick = runHouseMatch;
+    if (el("btnPlay")) el("btnPlay").onclick = runHouseMatch;
     // Time control buttons (max 10 min each for this test)
     document.querySelectorAll("#tcBar button[data-tc]").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -3478,7 +3528,7 @@
         }
       });
     });
-    el("btnReset").onclick = async () => {
+    if (el("btnReset")) el("btnReset").onclick = async () => {
       if (playing) return;
       stopClockTick();
       flagSide = null;
@@ -3523,7 +3573,7 @@
       GM.movetimeMs = Math.max(5000, Math.min(10000, parseInt(params.get("movetime"), 10) || 7500));
     }
     if (params.get("fastanim") === "0") GM.fastAnim = false;
-    setUiView(params.get("view") === "creator" ? "creator" : "audience");
+    setUiView(params.get("view") === "creator" && isOperator ? "creator" : "audience");
     setViewMode(params.get("mode") === "arena" ? "arena" : "classic");
     renderMeta();
     renderBoard();

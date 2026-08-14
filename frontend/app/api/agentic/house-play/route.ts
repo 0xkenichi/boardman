@@ -94,15 +94,17 @@ export async function POST(req: NextRequest) {
   } catch {
     body = {};
   }
+  const rematchBody: Record<string, unknown> = {
+    white: body.white === "nero" ? "nero" : "raja",
+    wait: false,
+    move_delay_sec: 0.05,
+    game_id: "agentic.chess_standard",
+  };
+  const stake = Number(body.stake_usdc);
+  if (Number.isFinite(stake) && stake > 0) rematchBody.stake_usdc = stake;
   const r = await stackCall("/api/stack/agentic/house/rematch", {
     method: "POST",
-    body: JSON.stringify({
-      stake_usdc: Number(body.stake_usdc) > 0 ? Number(body.stake_usdc) : 1,
-      white: body.white === "nero" ? "nero" : "raja",
-      wait: false,
-      move_delay_sec: 0.05,
-      game_id: "agentic.chess_standard",
-    }),
+    body: JSON.stringify(rematchBody),
   });
   if (!r.ok) {
     const detail = String(r.data?.detail || r.data?.error || "");

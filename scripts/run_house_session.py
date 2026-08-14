@@ -6,7 +6,8 @@ not touch BoardmanEscrow. This script is the real money path.
 
   PYTHONPATH=. python3 scripts/run_house_session.py --games 3
   PYTHONPATH=. python3 scripts/run_house_session.py --games 0   # until Ctrl-C
-  PYTHONPATH=. python3 scripts/run_house_session.py --stake 1 --delay 0.05
+  PYTHONPATH=. python3 scripts/run_house_session.py --delay 0.05
+  PYTHONPATH=. python3 scripts/run_house_session.py --stake 5 --delay 0.05
 """
 from __future__ import annotations
 
@@ -88,7 +89,12 @@ def main() -> int:
     _bootstrap()
     ap = argparse.ArgumentParser()
     ap.add_argument("--games", type=int, default=3, help="0 = run until Ctrl-C")
-    ap.add_argument("--stake", type=float, default=1.0)
+    ap.add_argument(
+        "--stake",
+        type=float,
+        default=None,
+        help="Force a stake. Omit to let agent budgets negotiate.",
+    )
     ap.add_argument("--delay", type=float, default=0.05, help="seconds between moves")
     ap.add_argument("--pause", type=float, default=2.0, help="seconds between games")
     ap.add_argument("--game-id", default="agentic.chess_standard")
@@ -111,7 +117,10 @@ def main() -> int:
 
     print("Boardman House session")
     print(f"  onchain = {onchain_enabled()}")
-    print(f"  stake   = {args.stake} USDC  game={args.game_id}")
+    print(
+        f"  stake   = {args.stake if args.stake is not None else 'negotiate from agent policy'}  "
+        f"game={args.game_id}"
+    )
     print(f"  raja    = {raja['wallet_address']}  {usdc_balance(raja['wallet_address'])} USDC")
     print(f"  nero    = {nero['wallet_address']}  {usdc_balance(nero['wallet_address'])} USDC")
 

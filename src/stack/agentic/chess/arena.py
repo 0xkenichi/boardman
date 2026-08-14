@@ -35,6 +35,7 @@ class MoveEvent:
     engine_source: str
     eval_pawns: Optional[float]
     ts: str
+    clock: Optional[dict[str, Any]] = None
 
 
 def _now() -> str:
@@ -288,8 +289,9 @@ def play_match(
             engine_source=src,
             eval_pawns=ev_eval,
             ts=_now(),
+            clock=clock_ev,
         )
-        payload = {**ev.__dict__, "clock": clock_ev, "think_delay_sec": delay}
+        payload = {**ev.__dict__, "think_delay_sec": delay}
         events.append(payload)
         if on_move:
             on_move(ev)

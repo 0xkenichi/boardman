@@ -3,6 +3,7 @@ import { requireSession } from '@/lib/bff'
 import { stackConfigured, stackFetch } from '@/lib/stackServer'
 import { fetchProfileWallet } from '@/lib/supabaseAdmin'
 import { usdcBalanceOf } from '@/lib/arcUsdc'
+import { isBoardmanAdmin } from '@/lib/adminAuth'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,6 +33,7 @@ export async function GET(req: Request) {
           tag: res.data.gaming_tag || s.tag,
           name: res.data.display_name || s.name,
           telegramId: s.telegramId,
+          admin: isBoardmanAdmin(s),
           balance,
           totalBalance: Number(res.data.total_balance ?? balance + otherBalance),
           otherBalance,
@@ -82,6 +84,7 @@ export async function GET(req: Request) {
         tag: row.gaming_tag || s.tag,
         name: row.display_name || s.name,
         telegramId: s.telegramId,
+        admin: isBoardmanAdmin(s),
         balance,
         totalBalance: onchainOk ? onchain : totalBalance,
         otherBalance: 0,
@@ -111,6 +114,7 @@ export async function GET(req: Request) {
     tag: s.tag,
     name: s.name,
     telegramId: s.telegramId,
+    admin: isBoardmanAdmin(s),
     balance: Number(process.env.REMATCH_DEMO_BALANCE || 0),
     otherBalance: 0,
     otherAddress: '',

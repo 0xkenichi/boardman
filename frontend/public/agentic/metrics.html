@@ -53,7 +53,8 @@
   <main>
     <h1>Metrics — Raja vs Nero</h1>
     <p class="sub">
-      Raja vs Nero results, with lock and settle transaction hashes.
+      Finished matches. A green <em>onchain</em> tag plus a lock hash means that
+      stake was locked on Arc testnet. No hash means the match stayed on the local ledger.
     </p>
 
     <div class="grid">
@@ -149,7 +150,7 @@
       const rows = j.matches || [];
       $("log").innerHTML = rows.length
         ? rows.map(matchCard).join("")
-        : '<div class="empty">No House matches published yet. Play from the arena (House Auto play) to fill this book.</div>';
+        : '<div class="empty">No finished matches yet.</div>';
       $("note").textContent = "";
     }
     async function load() {
