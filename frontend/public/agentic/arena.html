@@ -1340,26 +1340,32 @@
       const logoutBtn = el("btnLogout");
       if (tgUser && tgUser.authenticated) {
         if (pill) pill.classList.add("ok");
-        const bal =
-          tgUser.balance != null && Number.isFinite(Number(tgUser.balance))
-            ? Number(tgUser.balance).toFixed(2)
-            : "—";
+        const play = Number(
+          tgUser.spendable != null ? tgUser.spendable : tgUser.balance
+        );
+        const other = Number(tgUser.otherBalance || 0);
+        const shown = Number.isFinite(play) ? play + (Number.isFinite(other) ? other : 0) : null;
+        const bal = shown != null ? shown.toFixed(2) : "—";
         if (label) {
           label.innerHTML =
             `<strong>@${escapeHtml(tgUser.tag || "player")}</strong> · $${bal} USDC`;
         }
         if (loginBtn) loginBtn.style.display = "none";
         if (logoutBtn) logoutBtn.style.display = "";
-        setText(
-          "walletBal",
-          "$" + bal + " USDC" + (tgUser.demo ? " (demo)" : "")
-        );
-        setText(
-          "walletAddr",
-          tgUser.address
+        setText("walletBal", shown != null ? "$" + bal + " USDC" : "—");
+        const addrEl = el("walletAddr");
+        if (addrEl) {
+          addrEl.hidden = false;
+          addrEl.textContent = tgUser.address
             ? tgUser.address
-            : "No deposit address on profile — open bot Wallet / Get money"
-        );
+            : "Open the bot → Wallet if no play address";
+        }
+        if (other > 0.009) {
+          setText(
+            "walletBal",
+            "$" + bal + " USDC · $" + play.toFixed(2) + " ready to bet"
+          );
+        }
       } else {
         if (pill) pill.classList.remove("ok");
         if (label) label.textContent = "Sign in to bet";
@@ -1397,6 +1403,8 @@
             tag: data.tag,
             name: data.name,
             balance: data.balance,
+            spendable: data.spendable != null ? data.spendable : data.balance,
+            otherBalance: Number(data.otherBalance || 0),
             address: data.address || "",
             demo: data.demo,
             source: data.source || "",
@@ -1610,8 +1618,11 @@
       }
       let amount = clampBetAmount(betAmount, room);
       // Cap by wallet balance when known
-      if (tgUser.balance != null && Number.isFinite(Number(tgUser.balance))) {
-        amount = Math.min(amount, Number(tgUser.balance));
+      const playBal = Number(
+        tgUser.spendable != null ? tgUser.spendable : tgUser.balance
+      );
+      if (Number.isFinite(playBal)) {
+        amount = Math.min(amount, playBal);
       }
       if (amount < 0.25 || amount > room + 0.0001) {
         log(`Bet rejected — amount $${amount} exceeds room $${room.toFixed(2)}`);
@@ -1678,26 +1689,17 @@
           }
           return;
         }
-        if (data.balance != null) tgUser.balance = data.balance;
-        if (data.address) tgUser.address = data.address;
-        renderAuth();
         if (data.pending) {
-          setStatus("Check Telegram — tap Yes. The pot updates here after you approve.", true);
+          setStatus("Check Telegram — tap Yes. Balance updates after you approve.", true);
           log("Bet sent · waiting for Telegram Yes");
         } else {
-          spectator.bets.push({ side, amount, paid: true, profileId: tgUser.profileId });
-          if (side === "a") spectator.a += amount;
-          else spectator.b += amount;
-          maybeClosePot();
-          const newRoom = potRoom();
-          if (betAmount > newRoom) setBetAmount(newRoom > 0 ? newRoom : 0.25);
-          renderMarket();
           log(
             `@${tgUser.tag} bet $${amount.toFixed(2)} on ${side === "a" ? "Raja" : "Nero"}` +
               (data.tx_hash ? " · " + data.tx_hash : "")
           );
           setStatus(`Bet placed · $${amount.toFixed(2)}`, true);
         }
+        await refreshWallet();
       } catch (e) {
         log("Bet network error: " + e.message);
       } finally {

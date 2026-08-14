@@ -138,6 +138,46 @@ async def _deposit_spectator_onchain(
     }
 
 
+async def _pull_play_usdc(profile_id: str, amount: float) -> dict:
+    """Move USDC from the user's Circle play wallet (what Telegram shows)."""
+    import asyncio
+
+    from eth_account import Account
+
+    from backend.circle_wallet_service import CircleWalletService
+    from gaming.src.backend.services.chains import (
+        get_circle_blockchain,
+        get_circle_usdc_token_id,
+        get_rpc_url,
+        get_usdc_address,
+    )
+    from gaming.src.backend.services.clawstation_circle import (
+        ensure_user_wallet,
+        get_usdc_balance,
+    )
+    from gaming.src.stack.agentic.onchain import load_resolver_key
+
+    spendable = await get_usdc_balance(profile_id)
+    if spendable + Decimal("0.000001") < Decimal(str(amount)):
+        raise ValueError(f"Play wallet has ${spendable}, need ${amount}")
+    wallet = await ensure_user_wallet(profile_id)
+    wallet_id = wallet.get("wallet_id")
+    if not wallet_id:
+        raise ValueError("No Circle play wallet on this profile")
+    dest = Account.from_key(load_resolver_key()).address
+    cid = wallet.get("chain_id") or "arc"
+    circle = CircleWalletService(
+        blockchain=get_circle_blockchain(cid),
+        usdc_address=get_usdc_address(cid),
+        usdc_token_id=get_circle_usdc_token_id(cid),
+        rpc_url=get_rpc_url(cid),
+    )
+    result = await asyncio.to_thread(circle.transfer_usdc, wallet_id, dest, float(amount))
+    if not result.get("success"):
+        raise ValueError(result.get("error") or "play wallet transfer failed")
+    return result
+
+
 async def _finish_spectator_after_approval(
     *,
     approval_id: str,
@@ -149,7 +189,7 @@ async def _finish_spectator_after_approval(
 ) -> None:
     """Runs after the HTTP response so Vercel timeout cannot drop a Yes tap."""
     from gaming.src.backend.services.tx_approval import poll_approval
-    from gaming.src.backend.db_layer_blockchain import debit_wallet, get_wallet_balance
+    from gaming.src.backend.db_layer_blockchain import debit_wallet
     from gaming.src.stack.agentic.spectator_onchain import spectator_onchain_enabled
 
     decision = await poll_approval(approval_id, 120)
@@ -160,10 +200,17 @@ async def _finish_spectator_after_approval(
             approval_id,
         )
         return
-    ok = await debit_wallet(profile_id, amount)
-    if not ok:
-        logger.warning("[RematchWeb] background spectator debit failed profile=%s", profile_id)
+    try:
+        await _pull_play_usdc(profile_id, amount)
+    except Exception:
+        logger.exception("[RematchWeb] background play-wallet pull failed profile=%s", profile_id)
         return
+    try:
+        ledger = float((summary or {}).get("ledger_usdc") or 0)
+        if ledger + 1e-9 >= amount:
+            await debit_wallet(profile_id, amount)
+    except Exception:
+        logger.warning("[RematchWeb] background ledger sync failed", exc_info=True)
     try:
         if spectator_onchain_enabled():
             await _deposit_spectator_onchain(
@@ -415,11 +462,9 @@ async def web_spectator_bet(
             raise HTTPException(status_code=503, detail="platform_paused")
 
         summary = await get_balance_summary(profile_id)
-        # Prefer internal ledger (bot play balance); fall back to spendable view
-        ledger = float(summary.get("ledger_usdc") or 0)
+        # Same number the bot shows: on-chain USDC on the play address.
         spendable = float(summary.get("spendable_usdc") or 0)
-        available = max(ledger, spendable)
-        if available + 1e-9 < amount:
+        if spendable + 1e-9 < amount:
             return {
                 "success": False,
                 "error": "insufficient_balance",
@@ -481,17 +526,26 @@ async def web_spectator_bet(
         if decision.get("mode") == "always":
             logger.info("[RematchWeb] spectator bet auto-approved (always) profile=%s", profile_id)
 
-        # Custodial debit first (Telegram play balance). On-chain path then
-        # depositFor from House float so the bet gets an Arc hash.
-        ok = await debit_wallet(profile_id, amount)
-        if not ok:
-            bal = await get_wallet_balance(profile_id)
+        # Pull USDC from the same play wallet the Telegram bot shows, then
+        # House depositFor credits the pot. Ledger-only debit left the bot
+        # balance unchanged — that is what the user saw.
+        try:
+            await _pull_play_usdc(profile_id, amount)
+        except Exception as exc:
+            logger.exception("[RematchWeb] play-wallet pull failed")
             return {
                 "success": False,
-                "error": "insufficient_balance",
-                "balance": float(bal),
+                "error": "play_wallet_transfer_failed",
+                "message": str(exc),
+                "balance": spendable,
                 "address": summary.get("address") or "",
             }
+        try:
+            ledger = float(summary.get("ledger_usdc") or 0)
+            if ledger + 1e-9 >= amount:
+                await debit_wallet(profile_id, amount)
+        except Exception:
+            logger.warning("[RematchWeb] ledger sync after play pull failed", exc_info=True)
 
         chain_tx: dict = {}
         book = None
@@ -538,7 +592,9 @@ async def web_spectator_bet(
             except Exception:
                 logger.exception("[RematchWeb] house take_bet failed match=%s", match_id)
 
-        new_bal = await get_wallet_balance(profile_id)
+        from gaming.src.backend.services.clawstation_circle import get_usdc_balance
+
+        new_bal = float(await get_usdc_balance(profile_id))
         try:
             from gaming.src.backend.services.wallet_activity import log_debit
 
