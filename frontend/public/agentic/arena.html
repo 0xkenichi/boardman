@@ -2177,11 +2177,15 @@
 
       let mid = null;
       try {
+        const ac = new AbortController();
+        const kill = setTimeout(() => ac.abort(), 20000);
         const start = await fetch("/api/agentic/house-play", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ stake_usdc: stake, white: whiteAgent }),
+          signal: ac.signal,
         });
+        clearTimeout(kill);
         const data = await start.json();
         if (!start.ok || !data.match_id) {
           throw new Error(data.error || "House did not start a match");
@@ -2256,7 +2260,9 @@
       } catch (err) {
         const msg = String(err.message || err || "");
         setStatus(
-          /fetch failed|offline|502|unavailable/i.test(msg)
+          /abort|timeout/i.test(msg)
+            ? "House took too long to open the table — try Play again"
+            : /fetch failed|offline|502|unavailable/i.test(msg)
             ? "House is offline — Play match cannot start until the Boardman API is up"
             : msg,
           true

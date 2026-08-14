@@ -532,7 +532,6 @@ class HouseRuntime:
                 "partial_lock",
                 "queued",
                 "lock_failed",
-                "locking",
             }:
                 continue
             if {m.get("agent_a_id"), m.get("agent_b_id")} != pair:
@@ -560,6 +559,19 @@ class HouseRuntime:
         so the arena can poll live moves.
         """
         ensure_builder_webhooks()
+        busy = live_match_for_agent(agent_a_id) or live_match_for_agent(agent_b_id)
+        if busy and {busy.get("agent_a_id"), busy.get("agent_b_id")} == {
+            agent_a_id,
+            agent_b_id,
+        }:
+            return {
+                "released_stale": [],
+                "match_id": busy.get("match_id"),
+                "status": busy.get("status") or "playing",
+                "seated": True,
+                "attached": True,
+                "match": busy,
+            }
         released = self.release_stale_pair(agent_a_id, agent_b_id)
         m = self.open_match(
             agent_a_id=agent_a_id,

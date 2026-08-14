@@ -105,6 +105,24 @@ export async function POST(req: NextRequest) {
     }),
   });
   if (!r.ok) {
+    const detail = String(r.data?.detail || r.data?.error || "");
+    const live = detail.match(/already live on (agm_[a-z0-9]+)/i);
+    if (live) {
+      const got = await stackCall(
+        `/api/stack/agentic/matches/${encodeURIComponent(live[1])}`
+      );
+      const attached = got.data?.match;
+      if (got.ok && attached?.match_id) {
+        return NextResponse.json({
+          ok: true,
+          match_id: attached.match_id,
+          status: attached.status || "playing",
+          match: attached,
+          attached: true,
+          clerk: "agent_boardman_house",
+        });
+      }
+    }
     return NextResponse.json(
       {
         ok: false,
