@@ -2246,7 +2246,13 @@
           await sleep(800);
         }
       } catch (err) {
-        setStatus(String(err.message || err), true);
+        const msg = String(err.message || err || "");
+        setStatus(
+          /fetch failed|offline|502|unavailable/i.test(msg)
+            ? "House is offline — Play match cannot start until the Stack API is up"
+            : msg,
+          true
+        );
         log("House play failed: " + (err.message || err));
         setText("escrowPill", "error");
       }

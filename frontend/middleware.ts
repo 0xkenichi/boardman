@@ -31,10 +31,10 @@ function securityHeaders(res: NextResponse, opts?: { agentic?: boolean }) {
   res.headers.set('Permissions-Policy', 'camera=(self), microphone=()')
   // Agentic arena needs chess.js CDN + remote Stockfish APIs for the recordable demo
   const scriptSrc = agentic
-    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://telegram.org https://cdnjs.cloudflare.com"
+    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://telegram.org https://cdnjs.cloudflare.com https://cdn.jsdelivr.net"
     : "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://telegram.org"
   const connectSrc = agentic
-    ? "connect-src 'self' https://api.telegram.org https://chess-api.com https://stockfish.online"
+    ? "connect-src 'self' https://api.telegram.org https://chess-api.com https://stockfish.online https://cdnjs.cloudflare.com https://cdn.jsdelivr.net"
     : "connect-src 'self' https://api.telegram.org"
   res.headers.set(
     'Content-Security-Policy',
@@ -44,6 +44,8 @@ function securityHeaders(res: NextResponse, opts?: { agentic?: boolean }) {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       connectSrc,
+      "worker-src 'self' blob:",
+      "child-src 'self' blob:",
       "frame-src https://oauth.telegram.org https://telegram.org",
       "base-uri 'self'",
       "form-action 'self'",

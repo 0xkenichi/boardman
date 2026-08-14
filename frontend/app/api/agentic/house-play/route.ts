@@ -48,7 +48,14 @@ async function stackCall(pathName: string, init: RequestInit = {}) {
     }
     return { ok: res.ok, status: res.status, data };
   } catch (e: any) {
-    return { ok: false, status: 502, data: { error: String(e?.message || e) } };
+    return {
+      ok: false,
+      status: 502,
+      data: {
+        error: "House API is offline. Play match needs the Stack running (not just Vercel).",
+        detail: String(e?.message || e),
+      },
+    };
   }
 }
 
@@ -104,7 +111,7 @@ export async function POST(req: NextRequest) {
         error:
           r.data?.detail ||
           r.data?.error ||
-          "House API unavailable. Start the Stack: ./scripts/start_agentic_api.sh",
+          "House API is offline. Play match needs the Stack running.",
         status: r.status,
       },
       { status: r.status || 502 }

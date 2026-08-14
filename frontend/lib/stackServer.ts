@@ -67,7 +67,18 @@ export async function rematchApiFetch(
     }
     return { ok: res.ok, status: res.status, data }
   } catch (e: any) {
-    return { ok: false, status: 502, data: { error: String(e?.message || e) } }
+    const raw = String(e?.message || e || '')
+    const offline =
+      /fetch failed|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|network|certificate/i.test(raw)
+    return {
+      ok: false,
+      status: 502,
+      data: {
+        error: offline
+          ? 'House API is offline. Play match needs the Stack running (not just Vercel).'
+          : raw || 'house_unreachable',
+      },
+    }
   }
 }
 
