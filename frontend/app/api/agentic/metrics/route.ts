@@ -126,14 +126,41 @@ function aggregateFromFile(limit: number) {
   let settled = 0;
   let locked = 0;
   let onchainN = 0;
+  let liveN = 0;
+  const txSeen = new Set<string>();
+  const txByStep: Record<string, number> = {};
+  const txRows: any[] = [];
   const publicRows: any[] = [];
+
+  const addTx = (hash: string, step: string, matchId: string) => {
+    const h = String(hash || "").trim();
+    if (!h || txSeen.has(h)) return;
+    txSeen.add(h);
+    txByStep[step || "tx"] = (txByStep[step || "tx"] || 0) + 1;
+    txRows.push({
+      tx_hash: h,
+      step: step || "tx",
+      match_id: matchId,
+      explorer: EXPLORER + h,
+      created_at: "",
+    });
+  };
 
   for (const m of rows) {
     const stake = Number(m.stake_usdc || 0);
     if (m.status === "settled" || m.status === "locked") skillVol += stake * 2;
     if (m.status === "settled") settled += 1;
     if (m.status === "locked") locked += 1;
+    if (["playing", "locking", "locked", "open"].includes(String(m.status || ""))) liveN += 1;
     if (m.settlement_mode === "onchain" || m.onchain?.create_tx_hash) onchainN += 1;
+    const p = proofs(m);
+    addTx(p.create_tx_hash, "lock", m.match_id);
+    addTx(p.join_tx_hash, "join", m.match_id);
+    addTx(p.settle_tx_hash, "settle", m.match_id);
+    for (const t of p.txs || []) addTx(t.tx_hash, t.step || "tx", m.match_id);
+    const book = m.spectator_book || {};
+    addTx(book.open_tx_hash, "openBook", m.match_id);
+    addTx(book.resolve_tx_hash, "resolveBook", m.match_id);
     const totals = m.spectator_book?.totals || {};
     specVol += Number(totals.a || 0) + Number(totals.b || 0);
 
@@ -228,11 +255,17 @@ function aggregateFromFile(limit: number) {
       matches_settled: settled,
       matches_locked: locked,
       matches_onchain: onchainN,
+      games_played: settled + liveN,
+      games_settled: settled,
+      games_live: liveN,
+      transactions: txSeen.size,
+      tx_by_step: txByStep,
       skill_volume_usdc: q6(skillVol),
       spectator_volume_usdc: q6(specVol),
     },
     agents,
     matches: publicRows,
+    transactions: txRows.slice(0, Math.min(200, limit * 3)),
   };
 }
 

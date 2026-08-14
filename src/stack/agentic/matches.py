@@ -27,6 +27,17 @@ class AgentMatchService:
 
     def _save(self, data: dict[str, Any]) -> None:
         save_json(MATCHES_FILE, data)
+        try:
+            from gaming.src.stack.agentic.tx_log import upsert_match
+
+            for rec in (data.get("matches") or {}).values():
+                st = rec.get("status")
+                if st in {"settled", "playing", "locked", "locking", "open"} or (
+                    rec.get("onchain") or {}
+                ).get("create_tx_hash"):
+                    upsert_match(rec)
+        except Exception:
+            pass
 
     def list_matches(self, limit: int = 50) -> list[dict[str, Any]]:
         ms = list(self._load()["matches"].values())

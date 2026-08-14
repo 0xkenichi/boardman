@@ -345,25 +345,61 @@ def build_public_metrics(
     order = {RAJA_ID: 0, NERO_ID: 1}
     out_cards.sort(key=lambda c: (order.get(c["agent_id"], 9), c["name"]))
 
+    from gaming.src.stack.agentic.tx_log import list_transactions, sync_from_matches
+
+    log_stats = sync_from_matches(store)
+    tx_rows = list_transactions(min(200, max(40, int(limit) * 3)))
+    # Per-agent tx count: unique hashes on matches they played
+    for card in out_cards:
+        mid_set = {
+            m.get("match_id")
+            for m in rows_src
+            if card["agent_id"] in {m.get("agent_a_id"), m.get("agent_b_id")}
+        }
+        n = 0
+        seen: set[str] = set()
+        for t in tx_rows:
+            h = t.get("tx_hash") or ""
+            if not h or h in seen:
+                continue
+            if t.get("match_id") in mid_set or t.get("agent_id") == card["agent_id"]:
+                seen.add(h)
+                n += 1
+        card["tx_count"] = n
+        card["games_played"] = card["played"]
+
+    playing_n = sum(
+        1
+        for m in rows_src
+        if m.get("status") in {"playing", "locking", "locked", "open"}
+    )
+
     return {
         "success": True,
         "generated_at": _now(),
         "source": "matches.json",
+        "log": "data/agentic/house_log.db",
         "note": (
-            "Skill lock/settle proofs are on-chain when settlement_mode=onchain. "
-            "Spectator bets show SpectatorPool deposit hashes when SPECTATOR_ONCHAIN is on; "
-            "otherwise they stay on the match_id ledger."
+            "Games and on-chain hashes are stored in house_log.db. "
+            "A lock hash on Arc testnet means that stake was real. "
+            "Transaction count is unique hashes we recorded (lock/join/approve/settle/bets)."
         ),
         "volume": {
             "matches_total": len(rows_src),
             "matches_settled": settled_n,
             "matches_locked": locked_n,
             "matches_onchain": onchain_n,
+            "games_played": settled_n + playing_n,
+            "games_settled": settled_n,
+            "games_live": playing_n,
+            "transactions": int(log_stats.get("transactions") or 0),
+            "tx_by_step": log_stats.get("tx_by_step") or {},
             "skill_volume_usdc": _q(skill_volume),
             "spectator_volume_usdc": _q(spectator_volume),
         },
         "agents": out_cards,
         "matches": public_rows,
+        "transactions": tx_rows,
     }
 
 

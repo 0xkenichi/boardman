@@ -53,20 +53,26 @@
   <main>
     <h1>Metrics — Raja vs Nero</h1>
     <p class="sub">
-      Finished matches. A green <em>onchain</em> tag plus a lock hash means that
-      stake was locked on Arc testnet. No hash means the match stayed on the local ledger.
+      Games the agents have played, and every on-chain hash we recorded on Arc testnet.
+      A green <em>onchain</em> tag plus a lock hash means that stake was locked.
     </p>
 
     <div class="grid">
+      <div class="panel"><div class="label">Games played</div><div class="stat" id="vGames">—</div></div>
+      <div class="panel"><div class="label">On-chain txs</div><div class="stat" id="vTxs">—</div></div>
       <div class="panel"><div class="label">Skill volume</div><div class="stat" id="vSkill">—</div></div>
       <div class="panel"><div class="label">Spectator pot</div><div class="stat" id="vSpec">—</div></div>
       <div class="panel"><div class="label">Settled / on-chain</div><div class="stat" id="vCounts">—</div></div>
       <div class="panel"><div class="label">Updated</div><div class="stat" id="vWhen" style="font-size:0.95rem">—</div></div>
     </div>
+    <p class="note" id="txBreak" style="margin:-6px 0 18px"></p>
 
     <div class="cards" id="cards"></div>
 
-    <h2 style="font-size:1rem;margin:8px 0 12px">Match log</h2>
+    <h2 style="font-size:1rem;margin:8px 0 12px">Transaction log</h2>
+    <div id="txLog"><div class="empty">Loading…</div></div>
+
+    <h2 style="font-size:1rem;margin:22px 0 12px">Match log</h2>
     <div id="log"><div class="empty">Loading…</div></div>
     <p class="note" id="note"></p>
   </main>
@@ -99,7 +105,9 @@
           '<div class="row"><span>Record</span><span>' + a.wins + "–" + a.losses + "–" + a.draws + " · " + a.played + " games</span></div>" +
           '<div class="row"><span>White / Black</span><span>' + a.white_games + " / " + a.black_games + "</span></div>" +
           '<div class="row"><span>Stake volume</span><span>$' + Number(a.stake_volume_usdc || 0).toFixed(2) + "</span></div>" +
+          '<div class="row"><span>Games played</span><span>' + (a.games_played != null ? a.games_played : a.played) + "</span></div>" +
           '<div class="row"><span>On-chain locks</span><span>' + a.onchain_locks + "</span></div>" +
+          (a.tx_count != null ? '<div class="row"><span>Recorded txs</span><span>' + a.tx_count + "</span></div>" : "") +
           (a.wallet ? '<div class="wallet">' + a.wallet + "</div>" : "") +
         "</div>"
       );
@@ -140,18 +148,40 @@
         "</article>"
       );
     }
+    function txLogRow(t) {
+      const url = t.explorer || ("https://testnet.arcscan.app/tx/" + t.tx_hash);
+      return (
+        '<div class="tx-row">' +
+          '<span class="k">' + (t.step || "tx") + "</span>" +
+          '<a class="mono" href="' + url + '" target="_blank" rel="noreferrer">' + (t.tx_hash || "") + "</a>" +
+          '<span style="color:var(--muted);font-size:0.72rem">' + (t.match_id || "") + "</span>" +
+        "</div>"
+      );
+    }
     function paint(j) {
       const v = j.volume || {};
+      const live = Number(v.games_live || 0);
+      const settled = Number(v.games_settled != null ? v.games_settled : v.matches_settled || 0);
+      const played = Number(v.games_played != null ? v.games_played : settled);
+      $("vGames").textContent = played + (live ? " · " + live + " live" : "");
+      $("vTxs").textContent = String(v.transactions != null ? v.transactions : "—");
       $("vSkill").textContent = "$" + Number(v.skill_volume_usdc || 0).toFixed(2);
       $("vSpec").textContent = "$" + Number(v.spectator_volume_usdc || 0).toFixed(2);
       $("vCounts").textContent = (v.matches_settled || 0) + " / " + (v.matches_onchain || 0);
       $("vWhen").textContent = when(j.generated_at);
+      const steps = v.tx_by_step || {};
+      const bits = Object.keys(steps).sort().map((k) => k + " " + steps[k]);
+      $("txBreak").textContent = bits.length ? bits.join(" · ") : "";
       $("cards").innerHTML = (j.agents || []).map(cardHtml).join("") || "";
+      const txs = j.transactions || [];
+      $("txLog").innerHTML = txs.length
+        ? '<div class="panel">' + txs.map(txLogRow).join("") + "</div>"
+        : '<div class="empty">No recorded transactions yet.</div>';
       const rows = j.matches || [];
       $("log").innerHTML = rows.length
         ? rows.map(matchCard).join("")
         : '<div class="empty">No finished matches yet.</div>';
-      $("note").textContent = "";
+      $("note").textContent = j.log ? "Log: " + j.log : "";
     }
     async function load() {
       const urls = ["/api/agentic/metrics?limit=80", "/agentic/match-proofs.json"];
