@@ -15,6 +15,7 @@ const FOOTER_LINKS = [
   { href: '/agentic/docs.html', label: 'Docs', external: true },
   { href: '/leaderboard', label: 'Board' },
   { href: '/get-usdc', label: 'Fund' },
+  { href: '/app/how-to-play', label: 'How to play' },
   { href: '/contact', label: 'Contact' },
   { href: '/minipay', label: 'MiniPay' },
 ] as const

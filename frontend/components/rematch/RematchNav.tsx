@@ -45,6 +45,11 @@ const LINKS = [
     label: 'Fund',
     match: (p: string) => p === '/get-usdc' || p.startsWith('/get-usdc'),
   },
+  {
+    href: '/app/how-to-play',
+    label: 'How to play',
+    match: (p: string) => p === '/app/how-to-play' || p.startsWith('/app/how-to-play'),
+  },
 ] as const
 
 function NavLink({

@@ -5,9 +5,46 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { promises as fs } from 'fs'
 import path from 'path'
+import { randomInt } from 'crypto'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+
+/**
+ * Warm welcome pool — one random variant per confirmed signup so no two
+ * people get the same first hello. All on-voice: the desk, the lights,
+ * walk good. Keep these short and human.
+ */
+const WELCOME_VARIANTS: string[] = [
+  "Your email landed. That's the handshake. Come as you are. Hope you enjoy your games. Hope you eat. We'll write before the lights go up. Walk good.",
+  "You're on the list. Pull up a chair — the games run deep and the door stays open. We'll write when it's time.",
+  "Landed. Consider yourself seated. We're setting the boards and sharpening the lines — we'll come find you before the first bell.",
+  "Got you down. No hurry, no fine print — just a seat saved at the table. Talk soon, when the house lights dim.",
+  "Welcome to the desk. You're in the book now — the one with no erasures. We'll be in touch when the room opens.",
+  "Your name's on the wall. That's a promise, not a post-it. We'll write before the lights go up. Walk good.",
+  "Noted, kept, and welcomed. The boards are warm and the coffee's on. We'll ping you when it's showtime.",
+  "You're in. The ledger has your line, clean as a first move. We'll reach out when the house is ready.",
+  "Email secured. The rest is timing. Sit tight, play something, and we'll call you when the doors open.",
+  "Consider this your seat check. The arena's still humming — you'll hear from us before the main event.",
+  "Landed in the good pile. The desk doesn't lose papers and it doesn't forget faces. We'll write soon.",
+  "You're on the roster. The games are being tuned, the stakes set, and your spot's held. See you when the lights go up.",
+  "Got it — and we mean it. The table's set, your chair's warm, and the first round's on the house. We'll be in touch.",
+  "Down on paper, up in spirit. Welcome to the room. We'll knock before the doors open.",
+  "You're in the book — the good one. We'll write before the lights go up, so keep your phone close and your game sharp.",
+  "Welcome to the desk. No queue, no fuss — you're in. We'll reach out when it's time to play for real.",
+  "Your seat's saved. The house is still sweeping the floors, but your name's on the door. We'll write when we flip the sign.",
+  "Landed. Consider the handshake done. We'll keep you posted — short notes, real news, no spam.",
+  "You're counted. The deck's stacked in your favor: a warm welcome, a seat, and a note when the room opens.",
+  "In the system, out of the cold. Welcome to the desk. We'll write before the lights go up — promise.",
+  "Done and dusted — in the good way. You're on the list, the games are coming, and we'll find you first.",
+  "Your email's home. Come as you are — that's the whole dress code. We'll be in touch when the boards are live.",
+  "Seated. The arena's getting ready, and so are we. You'll hear from us before the first whistle.",
+  "You're in the book. Sharp game, warm welcome, real people on the other end. Talk soon.",
+]
+
+function pickWelcome(): string {
+  return WELCOME_VARIANTS[randomInt(WELCOME_VARIANTS.length)]
+}
 
 type Entry = {
   email: string
@@ -178,7 +215,7 @@ export async function POST(req: NextRequest) {
     title: duplicate ? 'Already on the list.' : 'We got you.',
     message: duplicate
       ? "We don't lose people. Same desk, same welcome — sit tight."
-      : "Your email landed. That's the handshake. Come as you are. Hope you enjoy your games. Hope you eat. We'll write before the lights go up. Walk good.",
+      : pickWelcome(),
   })
 }
 

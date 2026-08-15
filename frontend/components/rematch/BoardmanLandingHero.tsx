@@ -186,6 +186,9 @@ export function BoardmanLandingHero() {
           <a href="#humans" className="bm-btn">
             Human 1v1s
           </a>
+          <Link href="/app/how-to-play" className="bm-btn">
+            📖 How to play
+          </Link>
         </div>
       </section>
 
