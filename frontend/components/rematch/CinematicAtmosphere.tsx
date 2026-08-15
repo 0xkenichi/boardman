@@ -144,6 +144,12 @@ export function CinematicAtmosphere() {
     path === '/rematch/app' ||
     path.startsWith('/rematch/app/')
   const isHome = path === '/' || path === '/rematch' || path === '/rematch/'
+  // Fund page runs its own Three.js vault scene.
+  const isFund =
+    path === '/get-usdc' ||
+    path.startsWith('/get-usdc') ||
+    path === '/rematch/get-usdc' ||
+    path.startsWith('/rematch/get-usdc')
 
   useEffect(() => {
     if (isHome) return
@@ -153,8 +159,8 @@ export function CinematicAtmosphere() {
     return () => window.clearInterval(id)
   }, [isHome])
 
-  // Home and /app share the Three.js desk. Cinema photos made /app feel like another site.
-  if (isHome || isApp) return null
+  // Home and /app share the Three.js desk; /get-usdc has the vault scene.
+  if (isHome || isApp || isFund) return null
 
   const leftCards = SIDE_CARDS.filter((_, i) => i % 2 === 0)
   const rightCards = SIDE_CARDS.filter((_, i) => i % 2 === 1)

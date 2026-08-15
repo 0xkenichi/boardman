@@ -1828,6 +1828,54 @@ a.rm-agentic-card span:last-child {
   position: relative;
   z-index: 3;
 }
+
+/* Fund page — golden vault instead of the chess desk */
+.bm-vault {
+  position: relative;
+  min-height: 100%;
+  color: #fff;
+}
+.bm-vault-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(1000px 560px at 72% 16%, rgba(245, 215, 142, 0.12), transparent 62%),
+    radial-gradient(760px 440px at 18% 82%, rgba(124, 58, 237, 0.24), transparent 60%),
+    radial-gradient(520px 300px at 50% 50%, rgba(52, 211, 153, 0.05), transparent 55%),
+    #07060c;
+}
+.bm-vault-body {
+  position: relative;
+  z-index: 3;
+}
+.bm-vault-css {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.bm-vault-coin {
+  position: absolute;
+  line-height: 1;
+  opacity: 0.55;
+  filter: drop-shadow(0 0 12px rgba(245, 215, 142, 0.35));
+  animation: bm-coin-float 7s ease-in-out infinite;
+}
+@keyframes bm-coin-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-8deg);
+  }
+  50% {
+    transform: translateY(-22px) rotate(10deg);
+  }
+}
+.bm-vault-css-shade {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 90% at 50% 40%, transparent 30%, rgba(7, 6, 12, 0.72) 100%);
+}
 .bm-css-board-app {
   right: 4%;
   top: 38%;
