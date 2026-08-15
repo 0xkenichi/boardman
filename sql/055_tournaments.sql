@@ -7,7 +7,7 @@ create table if not exists gaming.tournaments (
   id uuid primary key default gen_random_uuid(),
   code text not null unique,
   host_profile_id uuid,
-  title text not null default 'Rematch Cup',
+  title text not null default 'Boardman Cup',
   game_id text not null,
   preset int not null check (preset in (4, 8, 16)),
   entry_usdc numeric(12,2) not null default 0,

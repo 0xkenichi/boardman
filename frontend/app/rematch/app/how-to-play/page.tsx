@@ -20,6 +20,16 @@ export default function HowToPlayPage() {
           </p>
         </div>
 
+        <div className="rm-card rm-card-warn">
+          <p className="rm-section-title">🧪 Testnet money only — don&apos;t send real cash</p>
+          <p className="rm-muted" style={{ margin: 0, lineHeight: 1.6 }}>
+            Everything here runs on <strong>Arc testnet USDC</strong> from{' '}
+            <a href={FAUCET} target="_blank" rel="noreferrer">faucet.circle.com</a> — it&apos;s
+            free test money, not real cash. <strong>Don&apos;t send real USDC anywhere on Boardman
+            yet</strong> — it&apos;s all testnet.
+          </p>
+        </div>
+
         <div className="rm-card">
           <p className="rm-section-title">0 · Fund your play wallet (once)</p>
           <ol className="rm-muted" style={{ margin: 0, paddingLeft: '1.1rem', lineHeight: 1.75 }}>
@@ -32,16 +42,20 @@ export default function HowToPlayPage() {
               play address.
             </li>
             <li>
-              Send Arc testnet USDC to that address (the{' '}
+              Get Arc testnet USDC from{' '}
               <a href={FAUCET} target="_blank" rel="noreferrer">
-                Circle faucet
+                faucet.circle.com
               </a>{' '}
-              tops you up in a tap). This is the same wallet every stake and bet comes from.
+              and send it to that address — <strong>testnet only, don&apos;t send real money</strong>.
+              This is the same wallet every stake and bet comes from.
             </li>
           </ol>
           <div className="rm-btn-row rm-mt-2">
-            <Link href="/app/wallet" className="rm-btn rm-btn-primary">
-              💰 Fund my wallet
+            <a href={FAUCET} target="_blank" rel="noreferrer" className="rm-btn rm-btn-primary">
+              🚰 Open faucet (testnet)
+            </a>
+            <Link href="/app/wallet" className="rm-btn rm-btn-ghost">
+              💰 My wallet
             </Link>
             <a href={REMATCH_BOT_URL} target="_blank" rel="noreferrer" className="rm-btn rm-btn-ghost">
               Open Telegram bot
@@ -125,7 +139,7 @@ export default function HowToPlayPage() {
           <ul className="rm-muted" style={{ margin: 0, paddingLeft: '1.1rem', lineHeight: 1.75 }}>
             <li>One balance everywhere — Telegram, the app, and the arena use the same play wallet.</li>
             <li>Challenges lock real stakes into escrow; the winner is paid out, not credited twice.</li>
-            <li>Right now the arena settles on a demo ledger with Arc testnet USDC — the flows and numbers are the same as live.</li>
+            <li>Right now everything runs on Arc testnet USDC from the Circle faucet — testnet only, don&apos;t send real money. The flows and numbers are the same as live.</li>
             <li>Don&apos;t see a match? Hit <strong>Play next</strong> in the arena or check Telegram for a fresh table.</li>
           </ul>
         </div>

@@ -32,9 +32,9 @@ logger = logging.getLogger(__name__)
 def create_app() -> FastAPI:
     """Build the ClawStation / Rematch Stack FastAPI application."""
     app = FastAPI(
-        title="Rematch Stack API",
+        title="Boardman API",
         version="0.1.0",
-        description="Rematch product API + Rematch Stack (builder platform) surface",
+        description="Boardman product API + builder platform surface",
     )
 
     @app.middleware("http")

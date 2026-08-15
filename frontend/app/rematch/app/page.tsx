@@ -11,10 +11,79 @@ import { REMATCH_BOT_URL, REMATCH_BOT_USERNAME } from '@/lib/rematchLinks'
 
 const BOT = REMATCH_BOT_URL
 const BOT_USERNAME = REMATCH_BOT_USERNAME
+const FAUCET = 'https://faucet.circle.com/'
+
+type OpenBotFirst = { message?: string; bot?: string } | null
+
+function HowToPlayGuide() {
+  return (
+    <>
+      <div className="rm-card">
+        <p className="rm-section-title">How to play</p>
+        <div className="rm-stack" style={{ gap: '0.9rem' }}>
+          <div>
+            <p className="rm-label" style={{ marginBottom: '0.25rem' }}>1 · Fund (testnet)</p>
+            <p className="rm-muted" style={{ margin: 0, fontSize: '0.85rem', lineHeight: 1.55 }}>
+              Get Arc testnet USDC from <a href={FAUCET} target="_blank" rel="noreferrer">faucet.circle.com</a>{' '}
+              — testnet only, <strong>don&apos;t send real money</strong>. Send it to your play wallet
+              address (Wallet tab).
+            </p>
+            <div className="rm-btn-row rm-mt-1">
+              <a href={FAUCET} target="_blank" rel="noreferrer" className="rm-btn rm-btn-ghost rm-btn-sm">
+                Open faucet
+              </a>
+              <Link href="/app/wallet" className="rm-btn rm-btn-ghost rm-btn-sm">
+                💰 My wallet
+              </Link>
+            </div>
+          </div>
+          <div>
+            <p className="rm-label" style={{ marginBottom: '0.25rem' }}>2 · Play a friend</p>
+            <p className="rm-muted" style={{ margin: 0, fontSize: '0.85rem', lineHeight: 1.55 }}>
+              Challenge a friend by tag, both lock the stake, play the real game, then upload the
+              final screen photo — the winner is paid to the same play wallet.
+            </p>
+            <div className="rm-btn-row rm-mt-1">
+              <Link href="/app/challenge" className="rm-btn rm-btn-ghost rm-btn-sm">
+                ⚔️ Challenge
+              </Link>
+              <Link href="/app/match" className="rm-btn rm-btn-ghost rm-btn-sm">
+                🎮 My matches
+              </Link>
+            </div>
+          </div>
+          <div>
+            <p className="rm-label" style={{ marginBottom: '0.25rem' }}>3 · Bet the arena</p>
+            <p className="rm-muted" style={{ margin: 0, fontSize: '0.85rem', lineHeight: 1.55 }}>
+              Watch Raja vs Nero and bet on the pari-mutuel pot while the window is open. Same
+              balance on Telegram and the website.
+            </p>
+            <div className="rm-btn-row rm-mt-1">
+              <a href="/agentic/arena.html" className="rm-btn rm-btn-ghost rm-btn-sm">
+                ♟️ Open the arena
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="rm-card">
+        <p className="rm-label" style={{ marginBottom: '0.25rem' }}>Read the full guide</p>
+        <p className="rm-muted" style={{ margin: '0 0 0.75rem', fontSize: '0.85rem' }}>
+          Every step in detail — codes, locking, refunds.
+        </p>
+        <Link href="/app/how-to-play" className="rm-btn rm-btn-ghost rm-btn-sm">
+          📖 How to play
+        </Link>
+      </div>
+    </>
+  )
+}
 
 export default function RematchAppHome() {
   const [me, setMe] = useState<Me | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [openBotFirst, setOpenBotFirst] = useState<OpenBotFirst>(null)
   const [loading, setLoading] = useState(true)
   const [tgMissing, setTgMissing] = useState(() => !BOT_USERNAME)
 
@@ -66,6 +135,7 @@ export default function RematchAppHome() {
   const onTelegramAuth = useCallback(
     async (user: Record<string, string | number>) => {
       setErr(null)
+      setOpenBotFirst(null)
       try {
         const res = await api('/api/rematch/app/session', {
           method: 'POST',
@@ -73,7 +143,10 @@ export default function RematchAppHome() {
         })
         if (!res.ok) {
           if (res.data?.error === 'open_bot_first') {
-            setErr(res.data.message || 'Open the Boardman bot once, then sign in again.')
+            setOpenBotFirst({
+              message: res.data?.message,
+              bot: res.data?.bot || REMATCH_BOT_URL,
+            })
             return
           }
           setErr(res.data?.error || 'Telegram login failed')
@@ -91,6 +164,7 @@ export default function RematchAppHome() {
 
   async function demoLogin() {
     setErr(null)
+    setOpenBotFirst(null)
     try {
       const res = await api('/api/rematch/app/session', {
         method: 'POST',
@@ -151,8 +225,7 @@ export default function RematchAppHome() {
             </p>
           </div>
 
-          <MiniPayHost />
-          <LiveRoomsCard variant="compact" />
+          <HowToPlayGuide />
 
           <div className="rm-card">
             <p className="rm-label">Continue with Telegram</p>
@@ -168,6 +241,28 @@ export default function RematchAppHome() {
             ) : null}
           </div>
 
+          {openBotFirst ? (
+            <div className="rm-card rm-card-warn">
+              <p className="rm-section-title">This account hasn&apos;t interacted with the bot yet</p>
+              <p className="rm-muted" style={{ margin: '0 0 0.85rem', fontSize: '0.88rem', lineHeight: 1.6 }}>
+                Open the Boardman bot on Telegram, tap <strong>Start</strong> (or send{' '}
+                <code className="rm-code">/start</code>) to create your account, then come back and
+                sign in with Telegram.
+              </p>
+              <a
+                href={openBotFirst.bot || BOT}
+                target="_blank"
+                rel="noreferrer"
+                className="rm-btn rm-btn-primary"
+              >
+                Open the bot &amp; tap Start
+              </a>
+            </div>
+          ) : null}
+
+          <MiniPayHost />
+          <LiveRoomsCard variant="compact" />
+
           {showDemo ? (
             <button type="button" className="rm-btn rm-btn-ghost" onClick={demoLogin}>
               Continue with demo login
@@ -177,22 +272,14 @@ export default function RematchAppHome() {
           <a href={BOT} target="_blank" rel="noreferrer" className="rm-btn rm-btn-primary">
             Open Telegram bot
           </a>
-          <a href="/agentic/arena.html" className="rm-btn rm-btn-ghost">
-            Watch Raja vs Nero
-          </a>
-          <Link href="/app/how-to-play" className="rm-btn rm-btn-ghost">
-            How to play
-          </Link>
-
-          <p className="rm-muted" style={{ fontSize: '0.75rem', textAlign: 'center', margin: 0 }}>
-            First time? Open the bot once so we can create your wallet, then sign in here.
-          </p>
 
           {err ? <p className="rm-err">{err}</p> : null}
         </div>
       </AppShell>
     )
   }
+
+  const noBalance = Number(me.balance || 0) <= 0
 
   return (
     <AppShell>
@@ -203,9 +290,6 @@ export default function RematchAppHome() {
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             <h1 className="rm-h1">@{me.tag}</h1>
-            {me.demo ? <span className="rm-chip-dim rm-chip">Demo</span> : (
-              <span className="rm-chip">Live</span>
-            )}
           </div>
         </div>
 
@@ -244,6 +328,27 @@ export default function RematchAppHome() {
           ) : null}
         </div>
 
+        {noBalance ? (
+          <div className="rm-card rm-card-warn">
+            <p className="rm-section-title">No balance yet — fund your play wallet</p>
+            <p className="rm-muted" style={{ margin: '0 0 0.85rem', fontSize: '0.88rem', lineHeight: 1.6 }}>
+              Get Arc <strong>testnet</strong> USDC from{' '}
+              <a href={FAUCET} target="_blank" rel="noreferrer">faucet.circle.com</a> and send it to
+              your play address above. Testnet only — <strong>don&apos;t send real money</strong>.
+            </p>
+            <div className="rm-btn-row">
+              <a href={FAUCET} target="_blank" rel="noreferrer" className="rm-btn rm-btn-primary">
+                Open faucet
+              </a>
+              <Link href="/app/wallet" className="rm-btn rm-btn-ghost">
+                💰 My wallet
+              </Link>
+            </div>
+          </div>
+        ) : null}
+
+        <HowToPlayGuide />
+
         <MiniPayHost />
 
         <div className="rm-stack">
@@ -279,35 +384,10 @@ export default function RematchAppHome() {
             </span>
             <span className="rm-action-chev">›</span>
           </Link>
-          <Link href="/app/how-to-play" className="rm-action">
-            <span className="rm-action-ico">📖</span>
-            <span className="rm-action-body">
-              <span className="rm-action-title">How to play</span>
-              <span className="rm-action-sub">Fund, challenge, or bet the arena</span>
-            </span>
-            <span className="rm-action-chev">›</span>
-          </Link>
           <MiniPayPromo />
         </div>
 
         <LiveRoomsCard variant="compact" />
-
-        <div className="rm-card">
-          <p className="rm-label">How it works</p>
-          <ol className="rm-muted" style={{ margin: 0, paddingLeft: '1.1rem', lineHeight: 1.65 }}>
-            <li>Get money into your play wallet</li>
-            <li>Challenge a friend — or find randoms in Telegram live rooms</li>
-            <li>Both lock</li>
-            <li>Play → upload final photo → winner paid</li>
-          </ol>
-          <Link
-            href="/app/how-to-play"
-            className="rm-btn rm-btn-ghost rm-btn-sm"
-            style={{ marginTop: '0.85rem' }}
-          >
-            Read the full guide
-          </Link>
-        </div>
 
         <button
           type="button"

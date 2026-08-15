@@ -313,6 +313,12 @@
       appearance: none; border: 0; border-radius: 10px; padding: 10px 16px;
       font-weight: 600; cursor: pointer; background: #27272a; color: #e4e4e7;
     }
+    a.secondary {
+      appearance: none; border: 0; border-radius: 10px; padding: 10px 16px;
+      font-weight: 600; cursor: pointer; background: #27272a; color: #e4e4e7;
+      display: inline-block; text-align: center; text-decoration: none;
+      box-sizing: border-box;
+    }
     button:disabled { opacity: 0.45; cursor: not-allowed; }
     .status { text-align: center; min-height: 1.4em; color: var(--muted); font-size: 0.9rem; }
     .status.hot { color: var(--green); font-weight: 600; }
@@ -655,6 +661,11 @@
       <h3>Log in with Telegram</h3>
       <p class="hint">Same account as the Boardman bot. Your play wallet balance is used for spectator bets.</p>
       <div id="tgWidgetHost" style="min-height:48px;display:flex;justify-content:center"></div>
+      <div id="tgOpenBotFirst" hidden style="margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:12px;background:#0a0a10">
+        <p class="hint" style="margin:0 0 6px;font-weight:700;color:#fde68a">This account hasn&apos;t interacted with the bot yet</p>
+        <p class="hint" style="margin:0 0 10px">Open the Boardman bot on Telegram, tap <strong>Start</strong> (or send <span class="mono">/start</span>) to create your account, then come back and sign in with Telegram.</p>
+        <a id="tgOpenBotFirstBtn" href="#" target="_blank" rel="noreferrer" class="secondary" style="width:100%">Open the bot &amp; tap Start</a>
+      </div>
       <p class="hint" id="tgLoginHint">Open the bot once with /start if this is your first time.</p>
       <button type="button" class="secondary" id="tgModalClose" style="margin-top:12px;width:100%">Close</button>
     </div>
@@ -1681,6 +1692,8 @@
       const host = el("tgWidgetHost");
       if (!modal || !host) return;
       modal.hidden = false;
+      if (el("tgOpenBotFirst")) el("tgOpenBotFirst").hidden = true;
+      if (el("tgWidgetHost")) el("tgWidgetHost").style.display = "flex";
       host.innerHTML = "";
       // Official Telegram Login Widget
       window.onTelegramAuth = async function (user) {
@@ -1702,21 +1715,17 @@
           }
           if (data && data.error === "open_bot_first") {
             const botLink = data.bot || tgBotUrl;
+            const card = el("tgOpenBotFirst");
+            const btn = el("tgOpenBotFirstBtn");
+            if (card) card.hidden = false;
+            if (btn) btn.href = botLink || "#";
+            if (el("tgWidgetHost")) el("tgWidgetHost").style.display = "none";
             setText(
               "tgLoginHint",
-              "Telegram OK, but no profile row for your id in the DB. " +
-                "If you already use the bot, this is often a web API/DB config issue. " +
-                "Otherwise /start the bot once: " +
-                botLink +
-                (data.telegramId ? " (tg id " + data.telegramId + ")" : "")
+              "Then come back and tap the Telegram button again to sign in."
             );
-            log(
-              "open_bot_first · tg=" +
-                (data.telegramId || "?") +
-                " · " +
-                (data.message || botLink)
-            );
-            setStatus("Profile not found in DB for this Telegram login", true);
+            log("open_bot_first · " + (data.message || botLink));
+            setStatus("This account hasn't interacted with the bot yet", true);
             return;
           }
           if (data && data.error === "profile_lookup_failed") {

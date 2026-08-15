@@ -509,7 +509,7 @@ def get_recent_rivals(profile_id: str, limit: int = 8) -> list[dict[str, Any]]:
 def format_leaderboard_text(rows: list[dict], limit: int = 10) -> str:
     if not rows:
         return "No ranked players yet — settle a match to appear."
-    lines = ["🏆 <b>Rematch leaderboard</b> (PLAY points)\n"]
+    lines = ["🏆 <b>Boardman leaderboard</b> (PLAY points)\n"]
     for r in rows[:limit]:
         lines.append(
             f"{r['rank']}. @{r['tag']} · <b>{r['play_points']:,}</b> PLAY · "
@@ -530,7 +530,7 @@ def format_metrics_text(m: dict) -> str:
 
     Accepts either get_chain_metrics() or full get_ops_metrics().
     """
-    lines = ["📊 <b>Rematch testnet metrics</b>\n"]
+    lines = ["📊 <b>Boardman testnet metrics</b>\n"]
 
     if m.get("users_total") is not None:
         lines.append(
