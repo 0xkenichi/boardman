@@ -226,8 +226,49 @@ def main() -> int:
                 if m.get("status") != "settled":
                     # Keep the session alive; the next rematch clears stale locks.
                     continue
-            if args.pause > 0 and (args.games <= 0 or n < args.games):
-                time.sleep(args.pause)
+
+            # Pacing: the admin schedule drives when the next session game opens
+            # (cadence between games, burst = play N back-to-back). Play now from
+            # the arena still works on demand on top of this.
+            try:
+                from gaming.src.stack.agentic.house_schedule import (
+                    read_schedule,
+                    write_schedule,
+                )
+                from datetime import datetime as _dt, timezone as _tz
+
+                try:
+                    write_schedule(
+                        set_by="session",
+                        last_settled_at=(
+                            m.get("settled_at")
+                            or m.get("updated_at")
+                            or _dt.now(_tz.utc).isoformat()
+                        ),
+                        last_match_id=str(m.get("match_id") or ""),
+                    )
+                except Exception:
+                    pass
+                sch = read_schedule()
+                if not sch.get("enabled", True):
+                    print("  schedule paused (enabled=false) — check again in 60s")
+                    time.sleep(60)
+                    continue
+                burst = int(sch.get("burst_games") or 0)
+                cadence = int(sch.get("cadence_sec") or 0)
+                if burst > 0:
+                    write_schedule(set_by="session", burst_games=max(0, burst - 1))
+                    print(f"  burst active — {burst - 1} game(s) left, playing now")
+                    cadence = 0
+                if cadence <= 0:
+                    cadence = args.pause if args.pause > 0 else 2
+                print(
+                    f"  next game in {cadence}s ({cadence / 60:.0f}m) — schedule cadence"
+                )
+                time.sleep(cadence)
+            except Exception as exc:
+                print(f"  schedule pacing failed: {exc}")
+                time.sleep(args.pause if args.pause > 0 else 2)
     except KeyboardInterrupt:
         print("\nstopped")
         return 0

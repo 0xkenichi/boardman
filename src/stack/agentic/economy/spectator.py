@@ -153,7 +153,8 @@ class SpectatorBook:
                     data["books"][match_id] = book
                     self._save(data)
                 raise ValueError("pot full — no more bets")
-            raise ValueError(f"bet exceeds pot room ${room}")
+            label = "draw book" if side == "draw" else "pot"
+            raise ValueError(f"{label} cap ${cap} — ${room} room left, asked for ${amount_usdc}")
         book["bets"].append(
             {
                 "bettor_id": bettor_id,

@@ -277,6 +277,180 @@ async def house_rematch(body: HouseRematchBody = HouseRematchBody(), _: ApiKeyPr
     return {"success": True, "clerk": "agent_boardman_house", **out}
 
 
+class HouseScheduleBody(BaseModel):
+    cadence_sec: Optional[int] = Field(None, ge=0, le=86400, description="seconds between session games (0 = continuous)")
+    burst_games: Optional[int] = Field(None, ge=0, le=1000, description="play N games back-to-back, then resume cadence")
+    enabled: Optional[bool] = None
+
+
+@router.get("/house/schedule")
+async def house_schedule_get(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
+    from gaming.src.stack.agentic.house_schedule import PRESETS, read_schedule
+
+    sched = read_schedule()
+    return {"success": True, "schedule": sched, "presets": PRESETS, "clerk": "agent_boardman_house"}
+
+
+@router.post("/house/schedule")
+async def house_schedule_set(
+    body: HouseScheduleBody = HouseScheduleBody(),
+    _: ApiKeyPrincipal = Depends(require_stack_api_key),
+):
+    from gaming.src.stack.agentic.house_schedule import (
+        clamp_burst,
+        clamp_cadence,
+        write_schedule,
+    )
+
+    changes: dict[str, Any] = {}
+    if body.cadence_sec is not None:
+        changes["cadence_sec"] = clamp_cadence(body.cadence_sec)
+    if body.burst_games is not None:
+        changes["burst_games"] = clamp_burst(body.burst_games)
+    if body.enabled is not None:
+        changes["enabled"] = bool(body.enabled)
+    sched = write_schedule(set_by="admin_desk", **changes)
+    return {"success": True, "schedule": sched, "clerk": "agent_boardman_house"}
+
+
+@router.get("/house/status")
+async def house_status(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
+    """Operator status: schedule, agent health, bot process, last settlement."""
+    import os
+    import socket
+    import subprocess
+    from datetime import datetime, timedelta, timezone
+
+    from gaming.src.stack.agentic.house import get_house
+    from gaming.src.stack.agentic.house_schedule import PRESETS, read_schedule
+    from gaming.src.stack.agentic.metrics import build_public_metrics
+    from gaming.src.stack.agentic.registry import get_registry
+    from gaming.src.stack.agentic.store import load_json
+
+    sched = read_schedule()
+
+    def _probe(port: int) -> bool:
+        try:
+            s = socket.create_connection(("127.0.0.1", port), timeout=1.5)
+            s.close()
+            return True
+        except OSError:
+            return False
+
+    bot = {"running": False, "pid": None}
+    try:
+        r = subprocess.run(
+            ["pgrep", "-f", "gaming.src.bot.main"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            bot = {"running": True, "pid": r.stdout.strip().splitlines()[-1].strip()}
+    except Exception:
+        pass
+
+    ledger = load_json("ledger.json", {"balances": {}, "escrows": {}, "txs": []})
+    balances = ledger.get("balances") or {}
+
+    reg = get_registry()
+    agents_out: list[dict[str, Any]] = []
+    try:
+        demo = {a["agent_id"]: a for a in reg.ensure_demo_agents()}
+    except Exception:
+        demo = {}
+    for aid, name, port in (
+        ("agent_raja_kia_alekhine", "Raja", 18761),
+        ("agent_nero_sicilian_french", "Nero", 18762),
+    ):
+        a = demo.get(aid) or {}
+        wallet = a.get("wallet_address") or ""
+        agents_out.append(
+            {
+                "agent_id": aid,
+                "name": name,
+                "wallet": wallet,
+                "bankroll_usdc": float(balances.get(wallet.lower()) or 0),
+                "webhook_up": _probe(port),
+                "webhook_port": port,
+            }
+        )
+    try:
+        house = get_house()
+        snap = house.snapshot()
+        house_wallet = snap.get("wallet_address") or ""
+    except Exception:
+        house_wallet = ""
+    agents_out.insert(
+        0,
+        {
+            "agent_id": "agent_boardman_house",
+            "name": "Boardman House",
+            "wallet": house_wallet,
+            "bankroll_usdc": float(balances.get(house_wallet.lower()) or 0),
+            "webhook_up": True,
+            "webhook_port": None,
+        },
+    )
+
+    now = datetime.now(timezone.utc)
+    metrics = build_public_metrics(limit=10)
+    last_settled: dict[str, Any] = {}
+    games_24h = 0
+    for m in metrics.get("matches") or []:
+        if m.get("status") != "settled":
+            continue
+        if not last_settled:
+            last_settled = m
+        try:
+            sa = m.get("settled_at") or ""
+            if sa:
+                settled_dt = datetime.fromisoformat(sa.replace("Z", "+00:00"))
+                if settled_dt >= now - timedelta(hours=24):
+                    games_24h += 1
+        except Exception:
+            pass
+
+    next_game_at: Optional[str] = None
+    next_in_sec: Optional[int] = None
+    if sched.get("enabled") and sched.get("cadence_sec", 0) > 0 and sched.get("last_settled_at"):
+        try:
+            last_dt = datetime.fromisoformat(str(sched["last_settled_at"]).replace("Z", "+00:00"))
+            nxt = last_dt + timedelta(seconds=int(sched["cadence_sec"]))
+            next_game_at = nxt.isoformat()
+            next_in_sec = max(0, int((nxt - now).total_seconds()))
+        except Exception:
+            pass
+
+    api_ok = True
+    try:
+        import gaming.src.backend.supabase_client as _sc  # noqa: F401
+    except Exception:
+        api_ok = True
+
+    return {
+        "success": True,
+        "generated_at": now.isoformat(),
+        "api": {"ok": api_ok, "host": os.getenv("BOARDMAN_AGENTIC_DATA") or "data/agentic"},
+        "bot": bot,
+        "schedule": sched,
+        "presets": PRESETS,
+        "agents": agents_out,
+        "games_24h": games_24h,
+        "games_live": metrics.get("volume", {}).get("games_live"),
+        "last_settled": {
+            "match_id": last_settled.get("match_id"),
+            "result": last_settled.get("result"),
+            "winner": (last_settled.get("winner") or {}).get("name"),
+            "stake_usdc": last_settled.get("stake_usdc"),
+            "settled_at": last_settled.get("settled_at"),
+        },
+        "next_game_at": next_game_at,
+        "next_in_sec": next_in_sec,
+        "clerk": "agent_boardman_house",
+    }
+
+
 @router.post("/house/matches/{match_id}/play")
 async def house_play(match_id: str, body: HousePlayBody = HousePlayBody(), _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.house import get_house

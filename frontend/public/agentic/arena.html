@@ -1120,6 +1120,7 @@
       a: 0,
       b: 0,
       draw: 0,
+      drawCap: 20,
       bets: [],
       status: "open",
       lastEval: null,
@@ -1184,6 +1185,7 @@
         a: matchSeeds.a,
         b: matchSeeds.b,
         draw: 0,
+        drawCap: 20,
         bets: [],
         status: "open",
         lastEval: null,
@@ -1261,6 +1263,7 @@
       spectator.a = 0;
       spectator.b = 0;
       spectator.draw = 0;
+      spectator.drawCap = 20;
     }
 
     function renderMarket() {
@@ -1435,7 +1438,7 @@
             ? "Pot full"
             : "Bets closed";
       }
-      const dRoom = Math.max(0, 20 - Number(spectator.draw || 0));
+      const dRoom = Math.max(0, (spectator.drawCap || 20) - Number(spectator.draw || 0));
       const canDraw = st === "open" && dRoom >= 0.25;
       if (el("betD")) {
         el("betD").disabled = !canDraw || betInFlight;
@@ -1862,9 +1865,14 @@
         log("Bet blocked — sign in with Telegram first");
         return;
       }
-      const room = potRoom();
+      // Draw bets use the draw book cap, not the side pot room — sending a
+      // side-clamped amount to the draw book gets rejected server-side.
+      const room =
+        side === "draw"
+          ? Math.max(0, (spectator.drawCap || 20) - Number(spectator.draw || 0))
+          : potRoom();
       if (room < 0.25 - 0.001) {
-        spectator.status = "full";
+        if (side !== "draw") spectator.status = "full";
         renderMarket();
         return;
       }
@@ -2637,6 +2645,7 @@
         spectator.b = Number(tot.b || 0);
         spectator.draw = Number(tot.draw || 0);
       }
+      if (book.draw_cap_usdc != null) spectator.drawCap = Number(book.draw_cap_usdc) || 20;
       if (book.status) spectator.status = book.status;
       spectator.bets = Array.isArray(book.bets) ? book.bets : spectator.bets;
       spectator.payouts = book.payouts || spectator.payouts;
