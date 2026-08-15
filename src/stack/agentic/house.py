@@ -638,15 +638,16 @@ class HouseRuntime:
             # swap killed the process after the money moved) only needs its
             # record flipped to settled so the pair can rematch.
             if st == "settle_failed" and m.get("result") and (m.get("escrow") or {}).get("status") == "settled":
-                from gaming.src.stack.agentic.store import load_json, save_json
-
                 mid = str(m.get("match_id") or "")
-                data = load_json("matches.json", {"matches": {}})
+                # Re-mark through the service so its 0.25s _mem cache is updated
+                # too — otherwise open_match's busy check in the same call reads
+                # the stale settle_failed copy and refuses to proceed.
+                data = get_match_service()._load()
                 rec = data["matches"].get(mid) or {}
                 rec["status"] = "settled"
                 rec["settle_error"] = ""
                 data["matches"][mid] = rec
-                save_json("matches.json", data)
+                get_match_service()._save(data, upsert_id=mid)
                 logger.info("[house] re-marked completed table %s as settled", mid)
                 out.append({"match_id": mid, "action": "re-marked_settled"})
                 continue
