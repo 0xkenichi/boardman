@@ -637,7 +637,12 @@ class HouseRuntime:
             # A settle_failed table whose escrow already settled (e.g. a deploy
             # swap killed the process after the money moved) only needs its
             # record flipped to settled so the pair can rematch.
-            if st == "settle_failed" and m.get("result") and (m.get("escrow") or {}).get("status") == "settled":
+            # list_matches returns slim records without `escrow` — fetch the
+            # full record so the escrow check is real.
+            full: Optional[dict[str, Any]] = None
+            if st == "settle_failed" and m.get("result"):
+                full = get_match_service().get(str(m.get("match_id") or "")) or m
+            if st == "settle_failed" and m.get("result") and (full or {}).get("escrow", {}).get("status") == "settled":
                 mid = str(m.get("match_id") or "")
                 # Re-mark through the service so its 0.25s _mem cache is updated
                 # too — otherwise open_match's busy check in the same call reads
