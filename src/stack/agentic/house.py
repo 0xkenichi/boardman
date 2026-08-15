@@ -628,11 +628,16 @@ class HouseRuntime:
                 "partial_lock",
                 "queued",
                 "lock_failed",
+                "settle_failed",
             }:
                 continue
             if {m.get("agent_a_id"), m.get("agent_b_id")} != pair:
                 continue
             if m.get("result"):
+                continue
+            # abort_never_started refuses playing tables; settle_failed locks
+            # without a result are safe to release so the pair can rematch.
+            if m.get("status") == "playing":
                 continue
             out.append(self.abort_never_started(m["match_id"], reason="never_started"))
         return out

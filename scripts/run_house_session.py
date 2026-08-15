@@ -131,14 +131,29 @@ def main() -> int:
             white = raja if n % 2 else nero
             print(f"\n── game {n}  white={white['name']} ──")
             t0 = time.time()
-            out = house.rematch(
-                agent_a_id=raja["agent_id"],
-                agent_b_id=nero["agent_id"],
-                stake_usdc=args.stake,
-                game_id=args.game_id,
-                white_agent_id=white["agent_id"],
-                move_delay_sec=args.delay,
-            )
+            try:
+                out = house.rematch(
+                    agent_a_id=raja["agent_id"],
+                    agent_b_id=nero["agent_id"],
+                    stake_usdc=args.stake,
+                    game_id=args.game_id,
+                    white_agent_id=white["agent_id"],
+                    move_delay_sec=args.delay,
+                )
+            except Exception as exc:
+                # Never let a blocked/stale table kill the session (the watchdog
+                # would restart the whole container). Clear the pair's stale
+                # locks and try the next game.
+                print(f"  rematch failed: {exc}")
+                try:
+                    released = house.release_stale_pair(
+                        raja["agent_id"], nero["agent_id"]
+                    )
+                    print(f"  cleared {len(released)} stale locks for the pair")
+                except Exception as exc2:
+                    print(f"  stale-lock cleanup failed: {exc2}")
+                time.sleep(2)
+                continue
             m = out["match"]
             dt = time.time() - t0
             print(
