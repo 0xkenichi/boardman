@@ -265,7 +265,28 @@ def main() -> int:
                 print(
                     f"  next game in {cadence}s ({cadence / 60:.0f}m) — schedule cadence"
                 )
-                time.sleep(cadence)
+                # Sleep in short slices so admin changes (burst queued, cadence
+                # lowered) apply within a minute instead of after the full wait.
+                slept = 0
+                while slept < cadence:
+                    step = min(60, cadence - slept)
+                    time.sleep(step)
+                    slept += step
+                    try:
+                        cur = read_schedule()
+                        if int(cur.get("burst_games") or 0) > 0:
+                            print("  burst queued by admin — waking early")
+                            break
+                        new_cad = int(cur.get("cadence_sec") or 0)
+                        if new_cad != cadence:
+                            print(
+                                f"  cadence changed to {new_cad}s"
+                                + (" (continuous)" if new_cad <= 0 else "")
+                                + " — waking early"
+                            )
+                            break
+                    except Exception:
+                        pass
             except Exception as exc:
                 print(f"  schedule pacing failed: {exc}")
                 time.sleep(args.pause if args.pause > 0 else 2)

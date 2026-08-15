@@ -318,7 +318,6 @@ async def house_status(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Operator status: schedule, agent health, bot process, last settlement."""
     import os
     import socket
-    import subprocess
     from datetime import datetime, timedelta, timezone
 
     from gaming.src.stack.agentic.house import get_house
@@ -338,15 +337,18 @@ async def house_status(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
             return False
 
     bot = {"running": False, "pid": None}
+    # python:3.12-slim has no pgrep — scan /proc directly.
     try:
-        r = subprocess.run(
-            ["pgrep", "-f", "gaming.src.bot.main"],
-            capture_output=True,
-            text=True,
-            timeout=3,
-        )
-        if r.returncode == 0 and r.stdout.strip():
-            bot = {"running": True, "pid": r.stdout.strip().splitlines()[-1].strip()}
+        for pid in os.listdir("/proc"):
+            if not str(pid).isdigit():
+                continue
+            try:
+                cmd = open(f"/proc/{pid}/cmdline", "rb").read().decode("utf-8", "ignore").replace("\x00", " ")
+            except Exception:
+                continue
+            if "gaming.src.bot.main" in cmd:
+                bot = {"running": True, "pid": str(pid)}
+                break
     except Exception:
         pass
 
