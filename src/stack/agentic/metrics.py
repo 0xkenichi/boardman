@@ -280,13 +280,45 @@ def build_public_metrics(
     settled_n = 0
     onchain_n = 0
     locked_n = 0
+    # 30-day windows + on-chain-only volume
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+
+    cutoff_30d = _dt.now(_tz.utc) - _td(days=30)
+
+    def _created_30d(m: dict[str, Any]) -> bool:
+        ts = m.get("created_at") or ""
+        try:
+            return _dt.fromisoformat(ts).replace(tzinfo=_tz.utc) >= cutoff_30d
+        except Exception:
+            return False
+
+    def _is_onchain(m: dict[str, Any]) -> bool:
+        return bool(
+            (m.get("onchain") or {}).get("create_tx_hash")
+            or (m.get("spectator_book") or {}).get("open_tx_hash")
+        )
+
+    skill_volume_30d = Decimal("0")
+    spectator_volume_30d = Decimal("0")
+    onchain_skill_volume = Decimal("0")
+    onchain_spectator_volume = Decimal("0")
+    onchain_skill_volume_30d = Decimal("0")
+    onchain_spectator_volume_30d = Decimal("0")
 
     public_rows: list[dict[str, Any]] = []
     for m in rows_src:
         status = m.get("status")
         stake = _d(m.get("stake_usdc"))
+        in_30d = _created_30d(m)
+        onchain = _is_onchain(m)
         if status in {"settled", "locked"}:
             skill_volume += stake * 2
+            if in_30d:
+                skill_volume_30d += stake * 2
+            if onchain:
+                onchain_skill_volume += stake * 2
+                if in_30d:
+                    onchain_skill_volume_30d += stake * 2
         if status == "settled":
             settled_n += 1
         if status == "locked":
@@ -295,7 +327,14 @@ def build_public_metrics(
             onchain_n += 1
         book = m.get("spectator_book") or {}
         totals = book.get("totals") or {}
-        spectator_volume += _d(totals.get("a")) + _d(totals.get("b"))
+        spec_pot = _d(totals.get("a")) + _d(totals.get("b")) + _d(totals.get("draw"))
+        spectator_volume += spec_pot
+        if in_30d:
+            spectator_volume_30d += spec_pot
+        if onchain and spec_pot > 0:
+            onchain_spectator_volume += spec_pot
+            if in_30d:
+                onchain_spectator_volume_30d += spec_pot
 
         for aid in (m.get("agent_a_id"), m.get("agent_b_id")):
             if not aid:
@@ -305,6 +344,30 @@ def build_public_metrics(
             card = cards[aid]
             if status in {"settled", "locked"}:
                 card["_stake"] = _d(card.get("_stake")) + stake
+                if in_30d:
+                    card["_stake_30d"] = _d(card.get("_stake_30d")) + stake
+                if onchain:
+                    card["_stake_onchain"] = _d(card.get("_stake_onchain")) + stake
+                    if in_30d:
+                        card["_stake_onchain_30d"] = _d(card.get("_stake_onchain_30d")) + stake
+            if spec_pot > 0:
+                card["_spec"] = _d(card.get("_spec")) + spec_pot
+                if in_30d:
+                    card["_spec_30d"] = _d(card.get("_spec_30d")) + spec_pot
+                if onchain:
+                    card["_spec_onchain"] = _d(card.get("_spec_onchain")) + spec_pot
+                    if in_30d:
+                        card["_spec_onchain_30d"] = _d(card.get("_spec_onchain_30d")) + spec_pot
+            # creator earnings from settled spectator books
+            full_book = spec_books.get(m.get("match_id") or "") or {}
+            payouts = full_book.get("payouts") or {}
+            for c in payouts.get("creators") or []:
+                if str(c.get("creator_id") or "") != aid:
+                    continue
+                c_amt = _d(c.get("amount") or "0")
+                card["_fees"] = _d(card.get("_fees")) + c_amt
+                if in_30d:
+                    card["_fees_30d"] = _d(card.get("_fees_30d")) + c_amt
             if status == "settled":
                 card["played"] += 1
                 winner = m.get("winner_agent_id")
@@ -332,8 +395,24 @@ def build_public_metrics(
     out_cards = []
     for aid, card in cards.items():
         rec = agent_map.get(aid) or {}
+        _stake_30d = _d(card.pop("_stake_30d", 0))
+        _stake_on_30d = _d(card.pop("_stake_onchain_30d", 0))
+        _stake_on = _d(card.pop("_stake_onchain", 0))
+        _spec = _d(card.pop("_spec", 0))
+        _spec_30d = _d(card.pop("_spec_30d", 0))
+        _spec_on_30d = _d(card.pop("_spec_onchain_30d", 0))
+        _spec_on = _d(card.pop("_spec_onchain", 0))
         card["skill_pnl_usdc"] = _q(_d(card.pop("_pnl", 0)))
         card["stake_volume_usdc"] = _q(_d(card.pop("_stake", 0)))
+        card["stake_volume_30d_usdc"] = _q(_stake_30d)
+        card["onchain_stake_volume_30d_usdc"] = _q(_stake_on_30d)
+        card["onchain_stake_volume_usdc"] = _q(_stake_on)
+        card["spectator_volume_usdc"] = _q(_spec)
+        card["spectator_volume_30d_usdc"] = _q(_spec_30d)
+        card["onchain_spectator_volume_30d_usdc"] = _q(_spec_on_30d)
+        card["onchain_volume_30d_usdc"] = _q(_stake_on_30d + _spec_on_30d)
+        card["fees_earned_usdc"] = _q(_d(card.pop("_fees", 0)))
+        card["fees_earned_30d_usdc"] = _q(_d(card.pop("_fees_30d", 0)))
         card["seed_spent_usdc"] = _q(_d(card.pop("_seed", 0)))
         card["lp_realized_pnl_usdc"] = _q(_lp_realized(aid, lp_store))
         eco = rec.get("economy") or {}
@@ -422,6 +501,13 @@ def build_public_metrics(
             "tx_by_step": tx_by_step,
             "skill_volume_usdc": _q(skill_volume),
             "spectator_volume_usdc": _q(spectator_volume),
+            "volume_30d_usdc": _q(skill_volume_30d + spectator_volume_30d),
+            "onchain_skill_volume_usdc": _q(onchain_skill_volume),
+            "onchain_spectator_volume_usdc": _q(onchain_spectator_volume),
+            "total_onchain_volume_usdc": _q(onchain_skill_volume + onchain_spectator_volume),
+            "onchain_volume_30d_usdc": _q(
+                onchain_skill_volume_30d + onchain_spectator_volume_30d
+            ),
         },
         "agents": out_cards,
         "matches": public_rows,

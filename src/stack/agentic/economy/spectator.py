@@ -133,8 +133,10 @@ class SpectatorBook:
         book = data["books"].get(match_id)
         if not book:
             raise ValueError("book not found")
-        if book.get("onchain") and side != "draw":
-            raise ValueError("on-chain book — use project_deposit after a confirmed tx")
+        if book.get("onchain"):
+            raise ValueError(
+                "on-chain book — bets are recorded via project_deposit after a confirmed pool deposit"
+            )
         if book["status"] != "open":
             raise ValueError(f"book not open: {book['status']}")
         book.setdefault("totals", {})
@@ -208,8 +210,10 @@ class SpectatorBook:
         Idempotent on tx_hash.
         """
         side = side.lower()
-        if side not in {"a", "b"}:
-            raise ValueError("side must be a or b")
+        if side in {"d", "tie"}:
+            side = "draw"
+        if side not in {"a", "b", "draw"}:
+            raise ValueError("side must be a, b, or draw")
         if amount_usdc <= 0:
             raise ValueError("amount must be positive")
         txh = (tx_hash or "").strip()

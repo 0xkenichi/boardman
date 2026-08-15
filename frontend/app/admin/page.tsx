@@ -380,6 +380,8 @@ export default function AdminPage() {
                   <Stat label="Skill volume" value={usd(vol.skill_volume_usdc)} />
                   <Stat label="Fan pot" value={usd(vol.spectator_volume_usdc)} />
                   <Stat label="Total volume" value={usd(Number(vol.skill_volume_usdc || 0) + Number(vol.spectator_volume_usdc || 0))} />
+                  <Stat label="On-chain volume" value={usd(vol.total_onchain_volume_usdc ?? vol.onchain_volume_30d_usdc)} />
+                  <Stat label="Volume 30d" value={usd(vol.volume_30d_usdc)} />
                   <Stat label="On-chain matches" value={String(vol.matches_onchain ?? '—')} />
                   <Stat label="Txs (unique)" value={String(vol.transactions ?? '—')} />
                 </section>
@@ -593,6 +595,12 @@ export default function AdminPage() {
                     <li key={a.agent_id}>
                       <strong>{a.name || a.agent_id}</strong> · {a.wins || 0}–{a.losses || 0}–{a.draws || 0} ·{' '}
                       {usd(a.skill_pnl_usdc)} PnL · {usd(a.stake_volume_usdc)} staked
+                      <br />
+                      <span className="bm-admin-muted">
+                        30d on-chain vol {usd(a.onchain_volume_30d_usdc)} · fees earned{' '}
+                        {usd(a.fees_earned_usdc)}
+                        {a.bankroll_usdc != null ? ` · bankroll ${usd(a.bankroll_usdc)}` : ''}
+                      </span>
                     </li>
                   ))}
                   {!(desk?.metrics?.agents || []).length ? <li>No live agent cards.</li> : null}

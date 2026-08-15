@@ -75,6 +75,8 @@ class AgentLPPool:
         *,
         lp_id: str,
         amount_usdc: Decimal,
+        pull_tx_hash: str = "",
+        pull_tx_explorer: str = "",
     ) -> dict[str, Any]:
         amount = _q(_d(amount_usdc))
         if amount <= 0:
@@ -93,6 +95,9 @@ class AgentLPPool:
             "realized_pnl": "0",
         }
         pos["amount"] = str(_q(_d(pos["amount"]) + amount))
+        if pull_tx_hash:
+            pos["last_tx_hash"] = str(pull_tx_hash)[:80]
+            pos["last_tx_explorer"] = str(pull_tx_explorer or "")[:200]
         pool["positions"][lp_id] = pos
         pool["total_lp_usdc"] = str(_q(_d(pool["total_lp_usdc"]) + amount))
         pool["history"].append(
@@ -101,6 +106,7 @@ class AgentLPPool:
                 "type": "deposit",
                 "lp_id": lp_id,
                 "amount": str(amount),
+                "tx_hash": str(pull_tx_hash)[:80] if pull_tx_hash else "",
             }
         )
         pool["history"] = pool["history"][-200:]
@@ -140,6 +146,8 @@ class AgentLPPool:
         agent_bankroll: Decimal,
         reserve_bps: int,
         locked_usdc: Decimal = Decimal("0"),
+        withdraw_tx_hash: str = "",
+        withdraw_tx_explorer: str = "",
     ) -> dict[str, Any]:
         amount = _q(_d(amount_usdc))
         max_w = self.withdrawable(
@@ -155,6 +163,9 @@ class AgentLPPool:
         pool = data["pools"][agent_id]
         pos = pool["positions"][lp_id]
         pos["amount"] = str(_q(_d(pos["amount"]) - amount))
+        if withdraw_tx_hash:
+            pos["last_tx_hash"] = str(withdraw_tx_hash)[:80]
+            pos["last_tx_explorer"] = str(withdraw_tx_explorer or "")[:200]
         pool["total_lp_usdc"] = str(_q(_d(pool["total_lp_usdc"]) - amount))
         pool["history"].append(
             {
@@ -162,6 +173,7 @@ class AgentLPPool:
                 "type": "withdraw",
                 "lp_id": lp_id,
                 "amount": str(amount),
+                "tx_hash": str(withdraw_tx_hash)[:80] if withdraw_tx_hash else "",
             }
         )
         pool["history"] = pool["history"][-200:]

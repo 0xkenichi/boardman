@@ -19,7 +19,13 @@ contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
 
     uint16 public constant PLATFORM_FEE_BPS = 300;
     uint16 public constant CREATOR_BPS = 200;
+    /// @notice Of the 2% creator pool, the winner's creator gets this % (75),
+    ///         the loser's creator the rest. Draws split 50/50.
+    uint16 public constant WINNER_CREATOR_PCT = 75;
     uint16 public constant BPS_DENOM = 10_000;
+    /// @notice Resolve sentinel for a draw outcome (winnerSide = -2). Draw
+    ///         tickets win the entire pot; A/B tickets lose.
+    int8 public constant DRAW_SIDE = -2;
 
     IERC20 public immutable usdc;
     address public feeRecipient;
@@ -53,11 +59,18 @@ contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
         uint8 sideCount;
         int8 winnerSide;
         BookStatus status;
+        // v2 draw book — appended so getBook positions 0..18 stay stable.
+        address seedPayerDrawA;
+        address seedPayerDrawB;
+        uint256 seedDrawA;
+        uint256 seedDrawB;
+        uint256 totalDraw;
     }
 
     mapping(bytes32 => Book) public books;
     mapping(bytes32 => mapping(address => uint256)) public fanDepositA;
     mapping(bytes32 => mapping(address => uint256)) public fanDepositB;
+    mapping(bytes32 => mapping(address => uint256)) public fanDepositDraw;
     mapping(bytes32 => mapping(address => bool)) public claimed;
 
     event BookOpened(
@@ -146,10 +159,30 @@ contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
     }
 
     function seed(bytes32 matchId, uint8 side, uint256 amount) external whenNotPaused nonReentrant {
-        if (side > 1) revert InvalidSide();
+        if (side > 2) revert InvalidSide();
         if (amount == 0) revert ZeroAmount();
         Book storage b = books[matchId];
         if (b.status != BookStatus.Open) revert BookNotOpen();
+        if (side == 2) {
+            // Draw book: either agent may seed; each may seed once.
+            if (msg.sender != b.agentWalletA && msg.sender != b.agentWalletB) revert NotAgentWallet();
+            if (msg.sender == b.agentWalletA) {
+                if (b.seedPayerDrawA != address(0)) revert AlreadySeeded();
+                b.seedPayerDrawA = msg.sender;
+                b.seedDrawA = amount;
+            } else {
+                if (b.seedPayerDrawB != address(0)) revert AlreadySeeded();
+                b.seedPayerDrawB = msg.sender;
+                b.seedDrawB = amount;
+            }
+            b.totalDraw += amount;
+            if (_pot(b) > b.potCap) {
+                revert PotFull();
+            }
+            usdc.safeTransferFrom(msg.sender, address(this), amount);
+            emit Seeded(matchId, side, msg.sender, amount);
+            return;
+        }
         address expected = side == 0 ? b.agentWalletA : b.agentWalletB;
         if (msg.sender != expected) revert NotAgentWallet();
         if (side == 0) {
@@ -173,6 +206,7 @@ contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
     }
 
     /// @notice Frozen ABI: deposit(bytes32,uint256,uint8). Fan signs; USDC from msg.sender.
+    ///         side: 0 = agent A, 1 = agent B, 2 = draw.
     function deposit(bytes32 matchId, uint256 amount, uint8 side) external whenNotPaused nonReentrant {
         _creditDeposit(matchId, msg.sender, amount, side);
         usdc.safeTransferFrom(msg.sender, address(this), amount);
@@ -180,6 +214,7 @@ contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
     }
 
     /// @notice House custodial path. Resolver pulls USDC from itself and credits `user`.
+    ///         side: 0 = agent A, 1 = agent B, 2 = draw.
     function depositFor(bytes32 matchId, address user, uint256 amount, uint8 side)
         external
         onlyResolver
@@ -203,6 +238,8 @@ contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
         emit BookClosed(matchId);
     }
 
+    /// @notice winnerSide: 0 = agent A, 1 = agent B, -2 = draw (DRAW_SIDE).
+    ///         Draw tickets win the whole pot; A/B tickets lose.
     function resolve(bytes32 matchId, int8 winnerSide) external onlyResolver {
         _resolve(matchId, winnerSide, false);
     }
@@ -236,6 +273,8 @@ contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
         Book storage b = books[matchId];
         if (user == b.seedPayerA) amt += b.seedA;
         if (user == b.seedPayerB) amt += b.seedB;
+        if (user == b.seedPayerDrawA) amt += b.seedDrawA;
+        if (user == b.seedPayerDrawB) amt += b.seedDrawB;
     }
 
     function claimable(bytes32 matchId, address user) public view returns (uint256) {
@@ -245,11 +284,18 @@ contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
             uint256 dep = fanDepositOf(matchId, user, uint8(uint8(b.winnerSide)));
             return (dep * b.distributable) / b.fanWin;
         }
+        if (b.status == BookStatus.Resolved && b.winnerSide == DRAW_SIDE && b.fanWin > 0) {
+            uint256 dep = fanDepositDraw[matchId][user];
+            return (dep * b.distributable) / b.fanWin;
+        }
         if (
             (b.status == BookStatus.Resolved || b.status == BookStatus.Cancelled)
                 && (b.winnerSide < 0 || b.fanWin == 0)
         ) {
-            return fanDepositA[matchId][user] + fanDepositB[matchId][user] + seedOf(matchId, user);
+            return fanDepositA[matchId][user]
+                + fanDepositB[matchId][user]
+                + fanDepositDraw[matchId][user]
+                + seedOf(matchId, user);
         }
         return 0;
     }
@@ -279,11 +325,11 @@ contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
     }
 
     function _pot(Book storage b) internal view returns (uint256) {
-        return b.totalA + b.totalB;
+        return b.totalA + b.totalB + b.totalDraw;
     }
 
     function _creditDeposit(bytes32 matchId, address user, uint256 amount, uint8 side) internal {
-        if (side > 1) revert InvalidSide();
+        if (side > 2) revert InvalidSide();
         if (amount == 0) revert ZeroAmount();
         Book storage b = books[matchId];
         if (b.status != BookStatus.Open) revert BookNotOpen();
@@ -291,9 +337,12 @@ contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
         if (side == 0) {
             fanDepositA[matchId][user] += amount;
             b.totalA += amount;
-        } else {
+        } else if (side == 1) {
             fanDepositB[matchId][user] += amount;
             b.totalB += amount;
+        } else {
+            fanDepositDraw[matchId][user] += amount;
+            b.totalDraw += amount;
         }
     }
 
@@ -303,15 +352,24 @@ contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
         if (b.status == BookStatus.Resolved || b.status == BookStatus.Cancelled) {
             revert AlreadyResolved();
         }
-        if (winnerSide < -1 || winnerSide > 1) revert InvalidSide();
+        if (winnerSide < -2 || winnerSide > 1) revert InvalidSide();
 
         uint256 pot = _pot(b);
-        if (winnerSide < 0 || pot == 0) {
+        if ((winnerSide < 0 && winnerSide != DRAW_SIDE) || pot == 0) {
             _markRefund(matchId, b, asCancel, pot);
             return;
         }
 
-        uint256 fanWin_ = winnerSide == 0 ? b.totalA - b.seedA : b.totalB - b.seedB;
+        uint256 fanWin_;
+        int8 storedSide;
+        if (winnerSide == DRAW_SIDE) {
+            // Draw outcome: draw tickets win the whole pot; A/B tickets lose.
+            fanWin_ = b.totalDraw - b.seedDrawA - b.seedDrawB;
+            storedSide = DRAW_SIDE;
+        } else {
+            fanWin_ = winnerSide == 0 ? b.totalA - b.seedA : b.totalB - b.seedB;
+            storedSide = winnerSide;
+        }
         if (fanWin_ == 0) {
             _markRefund(matchId, b, asCancel, pot);
             return;
@@ -321,7 +379,7 @@ contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
         uint256 creatorPool = (pot * CREATOR_BPS) / BPS_DENOM;
         uint256 distributable_ = pot - platformFee - creatorPool;
 
-        b.winnerSide = winnerSide;
+        b.winnerSide = storedSide;
         b.distributable = distributable_;
         b.fanWin = fanWin_;
         b.status = BookStatus.Resolved;
@@ -329,13 +387,41 @@ contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
         if (platformFee > 0) {
             usdc.safeTransfer(feeRecipient, platformFee);
         }
-        uint256 half = creatorPool / 2;
-        if (half > 0) {
-            usdc.safeTransfer(b.creatorA == address(0) ? feeRecipient : b.creatorA, half);
-            usdc.safeTransfer(b.creatorB == address(0) ? feeRecipient : b.creatorB, half);
+        if (creatorPool > 0) {
+            _payCreators(b, creatorPool, storedSide);
         }
 
-        emit BookResolved(matchId, winnerSide, pot, platformFee, creatorPool, distributable_, fanWin_);
+        emit BookResolved(matchId, storedSide, pot, platformFee, creatorPool, distributable_, fanWin_);
+    }
+
+    /// @notice Winner's creator takes WINNER_CREATOR_PCT of the creator pool
+    ///         (the losing side's money flows to the winning agent); the other
+    ///         creator takes the rest. Draws split 50/50. Zero addresses fall
+    ///         back to feeRecipient.
+    function _payCreators(Book storage b, uint256 creatorPool, int8 winnerSide) internal {
+        address winCreator;
+        address loseCreator;
+        if (winnerSide == DRAW_SIDE) {
+            winCreator = b.creatorA;
+            loseCreator = b.creatorB;
+        } else if (winnerSide == 0) {
+            winCreator = b.creatorA;
+            loseCreator = b.creatorB;
+        } else {
+            winCreator = b.creatorB;
+            loseCreator = b.creatorA;
+        }
+        uint256 winShare;
+        if (winnerSide == DRAW_SIDE) {
+            winShare = creatorPool / 2; // draw: both creators split evenly
+        } else {
+            winShare = (creatorPool * WINNER_CREATOR_PCT) / 100;
+        }
+        uint256 loseShare = creatorPool - winShare;
+        usdc.safeTransfer(winCreator == address(0) ? feeRecipient : winCreator, winShare);
+        if (loseShare > 0) {
+            usdc.safeTransfer(loseCreator == address(0) ? feeRecipient : loseCreator, loseShare);
+        }
     }
 
     function _markRefund(bytes32 matchId, Book storage b, bool asCancel, uint256 pot) internal {

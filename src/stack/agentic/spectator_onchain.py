@@ -111,6 +111,12 @@ SPECTATOR_ABI = [
             {"name": "sideCount", "type": "uint8"},
             {"name": "winnerSide", "type": "int8"},
             {"name": "status", "type": "uint8"},
+            # v2 draw book (appended — indices 0..18 unchanged)
+            {"name": "seedPayerDrawA", "type": "address"},
+            {"name": "seedPayerDrawB", "type": "address"},
+            {"name": "seedDrawA", "type": "uint256"},
+            {"name": "seedDrawB", "type": "uint256"},
+            {"name": "totalDraw", "type": "uint256"},
         ],
     },
     {
@@ -168,7 +174,9 @@ def side_to_idx(side: str) -> int:
         return 0
     if s in {"b", "1"}:
         return 1
-    raise SpectatorOnchainError("side must be a or b")
+    if s in {"draw", "d", "tie", "2"}:
+        return 2
+    raise SpectatorOnchainError("side must be a, b, or draw")
 
 
 def _pool_cfg(chain_id: str = "arc") -> dict[str, Any]:
@@ -237,6 +245,10 @@ def read_book(match_id: str, chain_id: str = "arc") -> dict[str, Any]:
         "winner_side": int(raw[17]),
         "status": status,
         "status_name": BOOK_STATUS.get(status, str(status)),
+        # v2 draw book
+        "seed_draw_a": int(raw[21]),
+        "seed_draw_b": int(raw[22]),
+        "total_draw": int(raw[23]),
         "pool": cfg["pool"],
         "chain_id": chain_id,
     }
@@ -272,6 +284,9 @@ def open_book_onchain(match: dict[str, Any], *, chain_id: str = "arc") -> dict[s
         cap = Decimal("20")
 
     zero = "0x0000000000000000000000000000000000000000"
+    # creatorA/creatorB = the agent wallets: the pool pays them the 2%
+    # creator pool on resolve (winner-weighted 75/25 in v2), so the agents
+    # earn a slice of every fan market on their own match.
     tx = pool.functions.openBook(
         match_id_to_bytes32(match_id),
         match_id_to_bytes32(str(match.get("game_id") or "agentic.chess_standard")),
@@ -279,8 +294,8 @@ def open_book_onchain(match: dict[str, Any], *, chain_id: str = "arc") -> dict[s
         match_id_to_bytes32(str(match.get("agent_b_id") or "")),
         w3.to_checksum_address(wallet_a),
         w3.to_checksum_address(wallet_b),
-        w3.to_checksum_address(zero),
-        w3.to_checksum_address(zero),
+        w3.to_checksum_address(wallet_a),
+        w3.to_checksum_address(wallet_b),
         usdc_to_raw(cap),
     ).build_transaction({"from": acct.address})
     h = _send_pool(w3, acct, tx, cfg, "openBook")
@@ -345,6 +360,7 @@ def deposit_for(
     ).build_transaction({"from": acct.address})
     h = _send_pool(w3, acct, tx, cfg, "depositFor")
     logger.info("[spectator.onchain] depositFor match=%s user=%s tx=%s", mid, user, h)
+    side_label = {0: "a", 1: "b", 2: "draw"}.get(side_idx, str(side_idx))
     return {
         "success": True,
         "tx_hash": h,
@@ -353,12 +369,51 @@ def deposit_for(
         "match_id": mid,
         "match_id_bytes32": match_id_hex(mid),
         "user": user,
-        "side": "a" if side_idx == 0 else "b",
+        "side": side_label,
         "side_idx": side_idx,
         "amount_usdc": str(amount_usdc),
         "pool": cfg["pool"],
         "chain_id": chain_id,
         "step": "depositFor",
+    }
+
+
+def refund_float_to_user(
+    user_address: str,
+    amount_usdc: Decimal,
+    *,
+    chain_id: str = "arc",
+) -> dict[str, Any]:
+    """Return USDC from the House float (resolver key) to a user wallet.
+
+    Used when a pulled bet deposit fails — never leave user money stranded.
+    """
+    if amount_usdc <= 0:
+        raise SpectatorOnchainError("refund amount must be positive")
+    user = (user_address or "").strip()
+    if not user.startswith("0x") or len(user) != 42:
+        raise SpectatorOnchainError("user address required for refund")
+    cfg = _pool_cfg(chain_id)
+    w3 = _w3(cfg)
+    usdc, _ = _contracts(w3, cfg)
+    acct = _account(load_resolver_key())
+    raw = usdc_to_raw(amount_usdc)
+    bal = usdc.functions.balanceOf(acct.address).call()
+    if bal < raw:
+        raise SpectatorOnchainError(
+            f"House float {acct.address} has {bal / 1e6} USDC, need {amount_usdc}"
+        )
+    tx = usdc.functions.transfer(
+        w3.to_checksum_address(user), raw
+    ).build_transaction({"from": acct.address})
+    h = _send(w3, acct, tx, "refund_float")
+    logger.info("[spectator.onchain] refund_float user=%s amt=%s tx=%s", user, amount_usdc, h)
+    return {
+        "success": True,
+        "tx_hash": h,
+        "explorer": _explorer(cfg, h),
+        "amount_usdc": str(amount_usdc),
+        "user": user,
     }
 
 
@@ -388,9 +443,11 @@ def resolve_book(
     acct = _account(load_resolver_key())
     mid_b = match_id_to_bytes32(mid)
     if winner_side is None:
-        tx = pool.functions.cancel(mid_b).build_transaction({"from": acct.address})
-        label = "cancel"
-        idx = -1
+        # Draw is a real outcome in v2: draw tickets win the whole pot.
+        # The contract refunds when there are no draw fans (fanWin == 0).
+        tx = pool.functions.resolve(mid_b, -2).build_transaction({"from": acct.address})
+        label = "resolve"
+        idx = -2
     else:
         idx = side_to_idx(winner_side)
         tx = pool.functions.resolve(mid_b, idx).build_transaction({"from": acct.address})

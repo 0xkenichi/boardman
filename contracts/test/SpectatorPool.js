@@ -226,4 +226,62 @@ describe("SpectatorPool", function () {
     await pool.connect(resolver).resolve(matchId, 0);
     await pool.connect(fan1).claim(matchId);
   });
+
+  it("v2: draw side deposits win the whole pot; A/B tickets lose", async function () {
+    await open();
+    await pool.connect(agentA).seed(matchId, 0, 200_000n);
+    await pool.connect(agentB).seed(matchId, 1, 200_000n);
+    await pool.connect(agentA).seed(matchId, 2, 150_000n);
+    await pool.connect(agentB).seed(matchId, 2, 150_000n);
+    await pool.connect(fan1).deposit(matchId, 1_000_000n, 0); // A side — loses
+    await pool.connect(fan2).deposit(matchId, 500_000n, 2); // draw — wins
+    // pot = 2.2e6; fee 3% = 66_000; creator 2% = 44_000; dist = 2_090_000
+    // fanWin = draw deposits only = 500_000; fan2 claim = 2_090_000
+    await pool.connect(resolver).resolve(matchId, -2);
+    const b = await pool.getBook(matchId);
+    expect(b.status).to.equal(3);
+    expect(b.winnerSide).to.equal(-2);
+    expect(b.fanWin).to.equal(500_000n);
+    expect(b.distributable).to.equal(2_090_000n);
+    expect(await pool.claimable(matchId, fan2.address)).to.equal(2_090_000n);
+    expect(await pool.claimable(matchId, fan1.address)).to.equal(0);
+    expect(await pool.claimable(matchId, agentA.address)).to.equal(0); // seeds sink into pot
+    await pool.connect(fan2).claim(matchId);
+  });
+
+  it("v2: creator pool is winner-weighted (75/25) with creator wallets set", async function () {
+    // openBook with creatorA = agentA, creatorB = agentB
+    await pool.connect(resolver).openBook(
+      matchId,
+      gameId,
+      agentIdA,
+      agentIdB,
+      agentA.address,
+      agentB.address,
+      agentA.address,
+      agentB.address,
+      20_000_000n
+    );
+    await pool.connect(fan1).deposit(matchId, 1_000_000n, 0);
+    await pool.connect(fan2).deposit(matchId, 1_000_000n, 1);
+    // pot = 2e6; platform 3% = 60_000; creator 2% = 40_000 (A 75% = 30_000, B 25% = 10_000)
+    await pool.connect(resolver).resolve(matchId, 0);
+    expect(await usdc.balanceOf(agentA.address)).to.equal(1_000_000_000n + 30_000n);
+    expect(await usdc.balanceOf(agentB.address)).to.equal(1_000_000_000n + 10_000n);
+    expect(await usdc.balanceOf(fee.address)).to.equal(60_000n);
+  });
+
+  it("v2: draw seeds return to both agents on cancel", async function () {
+    await open();
+    await pool.connect(agentA).seed(matchId, 2, 300_000n);
+    await pool.connect(agentB).seed(matchId, 2, 300_000n);
+    await pool.connect(fan1).deposit(matchId, 400_000n, 2);
+    await pool.connect(resolver).cancel(matchId);
+    expect(await pool.claimable(matchId, agentA.address)).to.equal(300_000n);
+    expect(await pool.claimable(matchId, agentB.address)).to.equal(300_000n);
+    expect(await pool.claimable(matchId, fan1.address)).to.equal(400_000n);
+    await pool.connect(agentA).claim(matchId);
+    await pool.connect(agentB).claim(matchId);
+    await pool.connect(fan1).claim(matchId);
+  });
 });

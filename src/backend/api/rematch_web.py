@@ -236,25 +236,14 @@ async def _apply_approved_spectator_bet(
     try:
         from gaming.src.stack.agentic.house import get_house
 
-        book = get_house().take_bet(
-            match_id,
-            bettor_id=profile_id,
-            side=side,
-            amount_usdc=Decimal(str(amount)),
-        )
         pulled = False
         try:
-            await _pull_play_usdc(profile_id, amount)
-            pulled = True
-        except Exception as exc:
-            logger.exception("[RematchWeb] play-wallet pull failed; booking the lock")
-            pull_err = str(exc)
-        if not pulled:
-            from gaming.src.backend.services.play_adjust import add_adjust
-
-            add_adjust(profile_id, -amount, reason=f"bet:{match_id}:{side}")
-        if spectator_onchain_enabled() and pulled:
-            try:
+            if spectator_onchain_enabled():
+                # Chain is the book: pull to the House float, deposit into the
+                # SpectatorPool, then project the confirmed tx. No take_bet —
+                # place_bet refuses demo book entries on on-chain books.
+                await _pull_play_usdc(profile_id, amount)
+                pulled = True
                 chain_tx = await _deposit_spectator_onchain(
                     profile_id=profile_id,
                     match_id=match_id,
@@ -264,9 +253,43 @@ async def _apply_approved_spectator_bet(
                 )
                 if chain_tx.get("book"):
                     book = chain_tx.get("book")
-            except Exception as exc:
-                logger.exception("[RematchWeb] on-chain deposit after book failed")
-                pull_err = (pull_err + " | " if pull_err else "") + str(exc)
+            else:
+                book = get_house().take_bet(
+                    match_id,
+                    bettor_id=profile_id,
+                    side=side,
+                    amount_usdc=Decimal(str(amount)),
+                )
+                await _pull_play_usdc(profile_id, amount)
+                pulled = True
+        except Exception as exc:
+            logger.exception("[RematchWeb] spectator pull/deposit failed")
+            if pulled and spectator_onchain_enabled():
+                # Money safety: the pull landed but the pool deposit didn't —
+                # push the USDC back to the user's wallet, never strand it.
+                refund_h = ""
+                try:
+                    from gaming.src.stack.agentic.spectator_onchain import (
+                        refund_float_to_user,
+                    )
+
+                    refund = await asyncio.to_thread(
+                        refund_float_to_user,
+                        str(summary.get("address") or ""),
+                        Decimal(str(amount)),
+                    )
+                    refund_h = str(refund.get("tx_hash") or "")
+                except Exception:
+                    logger.exception("[RematchWeb] refund of pulled bet failed")
+                pull_err = f"on-chain deposit failed — {exc}"
+                if refund_h:
+                    pull_err += f" · ${amount} refunded to your wallet (tx {refund_h[:12]})"
+            else:
+                pull_err = str(exc)
+        if not pulled and not chain_tx:
+            from gaming.src.backend.services.play_adjust import add_adjust
+
+            add_adjust(profile_id, -amount, reason=f"bet:{match_id}:{side}")
         try:
             ledger = float((summary or {}).get("ledger_usdc") or 0)
             if ledger + 1e-9 >= amount:
@@ -280,6 +303,17 @@ async def _apply_approved_spectator_bet(
             "pending": False,
             "error": "spectator_book_failed",
             "message": str(exc),
+        }
+
+    if spectator_onchain_enabled() and pull_err and not chain_tx.get("tx_hash"):
+        # On-chain bet: no pool deposit tx means the bet did NOT land.
+        # (If the pull landed first, the refund path already pushed it back.)
+        return {
+            "success": False,
+            "pending": False,
+            "error": "spectator_deposit_failed",
+            "message": pull_err,
+            "refunded": "refunded to your wallet" in pull_err,
         }
 
     from gaming.src.backend.services.clawstation_circle import get_usdc_balance
@@ -366,9 +400,11 @@ async def _apply_approved_lp(
                 "message": "Not enough USDC on your Boardman wallet.",
             }
         pulled = False
+        pull_tx = ""
         try:
-            await _pull_play_usdc(profile_id, amount)
+            pull_res = await _pull_play_usdc(profile_id, amount)
             pulled = True
+            pull_tx = str(pull_res.get("tx_hash") or pull_res.get("transaction_id") or "")
         except Exception as exc:
             logger.exception("[RematchWeb] LP Circle pull failed; locking on the book")
             pull_err = str(exc)
@@ -382,6 +418,7 @@ async def _apply_approved_lp(
             agent_id,
             lp_id=profile_id,
             amount_usdc=Decimal(str(amount)),
+            pull_tx_hash=pull_tx,
         )
     except Exception as exc:
         logger.exception("[RematchWeb] LP apply failed")
@@ -954,6 +991,134 @@ async def web_spectator_lp(
     except Exception as exc:
         logger.exception("[RematchWeb] spectator LP failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/spectator/lp/withdraw")
+async def web_spectator_lp_withdraw(
+    body: dict,
+    x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
+    x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
+    authorization: Optional[str] = Header(default=None),
+):
+    """
+    LP withdraw: send REAL USDC from the House float to the LP's play wallet.
+    Only free capital above reserve + open escrow locks is withdrawable.
+    Requires a Telegram Yes (same approval rail as deposits).
+    """
+    _require_key(x_rematch_key, x_stack_key, authorization)
+    profile_id = str(body.get("profile_id") or "").strip()
+    try:
+        amount = float(body.get("amount") or 0)
+    except (TypeError, ValueError):
+        amount = 0.0
+    agent_id = str(body.get("agent_id") or "").strip().lower()
+    agent_id = _AGENT_ID_ALIASES.get(agent_id, agent_id)
+
+    if not profile_id:
+        raise HTTPException(status_code=400, detail="profile_id required")
+    if not agent_id:
+        raise HTTPException(status_code=400, detail="agent_id required")
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="amount must be positive")
+
+    import asyncio
+
+    from gaming.src.backend.services.safety import is_paused
+    from gaming.src.backend.services.tx_approval import start_approval
+
+    if is_paused():
+        raise HTTPException(status_code=503, detail="platform_paused")
+
+    from gaming.src.backend.services.clawstation_circle import get_balance_summary
+    from gaming.src.stack.agentic import ledger
+    from gaming.src.stack.agentic.economy.lp import AgentLPPool
+    from gaming.src.stack.agentic.registry import AgentRegistry
+
+    summary = await get_balance_summary(profile_id)
+    agent = AgentRegistry().get_agent(agent_id) or {}
+    agent_wallet = str(agent.get("wallet_address") or "").strip()
+    if not agent_wallet:
+        raise HTTPException(status_code=400, detail="agent not found or no wallet")
+    eco = agent.get("economy") or {}
+    try:
+        reserve_bps = int(eco.get("reserve_bps") or 2000)
+    except (TypeError, ValueError):
+        reserve_bps = 2000
+
+    bankroll = ledger.balance(agent_wallet)
+    escrows = ledger._load().get("escrows") or {}
+    locked_usdc = Decimal("0")
+    aw = agent_wallet.lower()
+    for esc in escrows.values():
+        if esc.get("settled_at") is None and esc.get("status") in {"open", "partial_lock", "locked"}:
+            if str(esc.get("agent_a_wallet") or "").lower() == aw or str(
+                esc.get("agent_b_wallet") or ""
+            ).lower() == aw:
+                locked_usdc += Decimal(str(esc.get("stake_usdc") or "0"))
+
+    pool = AgentLPPool()
+    max_w = pool.withdrawable(
+        agent_id,
+        lp_id=profile_id,
+        agent_bankroll=bankroll,
+        reserve_bps=reserve_bps,
+        locked_usdc=locked_usdc,
+    )
+    if Decimal(str(amount)) > max_w + Decimal("0.000001"):
+        return {
+            "success": False,
+            "error": "withdrawable_cap",
+            "max": str(max_w),
+            "message": f"Only ${max_w} is withdrawable right now (reserve + escrow locks).",
+        }
+
+    decision = await start_approval(
+        profile_id,
+        "lp_withdraw",
+        {"amount": amount, "agent_id": agent_id},
+    )
+    if decision.get("status") in ("denied", "expired", "telegram_unreachable"):
+        return {
+            "success": False,
+            "error": f"approval_{decision['status']}",
+            "message": decision.get("message") or "Approval failed. Nothing was sent.",
+        }
+
+    try:
+        from gaming.src.stack.agentic.spectator_onchain import refund_float_to_user
+
+        user_wallet = str(summary.get("address") or "").strip()
+        if not user_wallet.startswith("0x") or len(user_wallet) != 42:
+            raise HTTPException(status_code=400, detail="no on-chain wallet on this profile")
+        tx = await asyncio.to_thread(
+            refund_float_to_user,
+            user_wallet,
+            Decimal(str(amount)),
+        )
+        pool.withdraw(
+            agent_id,
+            lp_id=profile_id,
+            amount_usdc=Decimal(str(amount)),
+            agent_bankroll=bankroll,
+            reserve_bps=reserve_bps,
+            locked_usdc=locked_usdc,
+            withdraw_tx_hash=str(tx.get("tx_hash") or ""),
+            withdraw_tx_explorer=str(tx.get("explorer") or ""),
+        )
+    except Exception as exc:
+        logger.exception("[RematchWeb] LP withdraw failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return {
+        "success": True,
+        "profile_id": profile_id,
+        "agent_id": agent_id,
+        "amount": amount,
+        "tx_hash": tx.get("tx_hash"),
+        "explorer": tx.get("explorer"),
+        "address": user_wallet,
+        "message": f"${amount} sent to your play wallet.",
+    }
 
 
 @router.get("/matches")

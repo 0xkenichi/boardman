@@ -1666,13 +1666,20 @@
             (r && r.error) || (n && n.error) || "both balanceOf failed"
           );
         }
-        // Lifetime on-chain transfer volume per agent wallet (best-effort)
-        const onchain = (data.volume && data.volume.onchain) || {};
+        // 30-day on-chain volume per agent from the House public metrics
+        // (authoritative — matches.json on-chain locks + spectator pool pots).
+        const metrics30d = (data.volume && data.volume.metrics30d) || {};
         const rajaId = AGENTS.raja.strategy.agent_id;
         const neroId = AGENTS.nero.strategy.agent_id;
         const setVol = (side, key) => {
-          const v = onchain[key];
-          if (v && !v.error) vol[side] = { in: Number(v.in_usdc) || 0, out: Number(v.out_usdc) || 0 };
+          const mv = metrics30d[key];
+          if (mv && mv.total_30d_usdc != null) {
+            vol[side] = { total30d: Number(mv.total_30d_usdc) || 0 };
+            return;
+          }
+          const v = (data.volume && data.volume.onchain) || {};
+          const cv = v[key];
+          if (cv && !cv.error) vol[side] = { in: Number(cv.in_usdc) || 0, out: Number(cv.out_usdc) || 0 };
         };
         setVol("raja", rajaId);
         setVol("nero", neroId);
@@ -2943,10 +2950,11 @@
         "balNero",
         bal.nero.toFixed(2) + " USDC · " + srcTag + " · " + shortAddr(AGENTS.nero.wallet)
       );
-      const fmtVol = (v) =>
-        v === null
-          ? "—"
-          : "$ " + (v.in + v.out).toFixed(2) + " · in " + v.in.toFixed(2) + " / out " + v.out.toFixed(2);
+      const fmtVol = (v) => {
+        if (v === null) return "—";
+        if (v.total30d != null) return "$" + v.total30d.toFixed(2) + " on-chain";
+        return "$ " + (v.in + v.out).toFixed(2) + " · in " + v.in.toFixed(2) + " / out " + v.out.toFixed(2);
+      };
       setText("volRaja", fmtVol(vol.raja));
       setText("volNero", fmtVol(vol.nero));
       setText("stakeLabel", "$" + (matchStake || 0).toFixed(2));
