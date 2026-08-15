@@ -10,10 +10,11 @@ Settlement:
   platform takes spectator_fee_bps
   creators of BOTH agents split creator_spectator_bps of pot (or of fee)
   remainder goes pro-rata to bettors who picked the winning agent
-  draw side-book → refund A/B bets + side seeds
+  draw → A/B tickets LOSE (not a push); draw tickets win the whole pool
   draw book (separate): both agents seed the same $; fans bet "draw"
     decisive game → agents split public draw bets 50/50 and get seeds back
-    actual draw → draw bettors take public draw + both agent seeds
+    actual draw → draw bettors take everything (side bets + side seeds +
+                  public draw + both agent draw seeds); side bettors lose
 
 Demo ledger only (same file store as agentic). On-chain pools later.
 """
@@ -397,38 +398,58 @@ class SpectatorBook:
             }
 
         if winner_side is None:
-            side_refunds = [
-                {"bettor_id": b["bettor_id"], "amount": b["amount"], "reason": "refund"}
-                for b in book.get("bets") or []
-                if str(b.get("side") or "") in {"a", "b"}
-            ]
-            draw_book = _draw_book_payouts(game_drawn=True)
+            # Draw is a real outcome — NOT a push. A/B side tickets LOSE; draw
+            # tickets win the entire pool (side stakes + side seeds + draw
+            # stakes + house draw seed), minus platform/creator fees.
+            draw_pot = pot + public_draw + house_draw
+            d_fee = _bps(draw_pot, platform_fee_bps)
+            d_creator_pool = _bps(draw_pot, creator_bps)
+            d_c_each = (d_creator_pool / 2).quantize(Decimal("0.000001"))
+            d_distributable = draw_pot - d_fee - d_creator_pool
+            draw_winners = []
+            if public_draw > 0 and d_distributable > 0:
+                for b in book.get("bets") or []:
+                    if str(b.get("side") or "") != "draw":
+                        continue
+                    share = _d(b["amount"]) / public_draw * d_distributable
+                    draw_winners.append(
+                        {
+                            "bettor_id": b["bettor_id"],
+                            "amount": str(share.quantize(Decimal("0.000001"))),
+                            "reason": "draw_win",
+                        }
+                    )
+            creators = []
+            if d_c_each > 0:
+                if book.get("creator_a_id"):
+                    creators.append(
+                        {
+                            "creator_id": book["creator_a_id"],
+                            "amount": str(d_c_each),
+                            "reason": "creator_spectator_fee",
+                        }
+                    )
+                if book.get("creator_b_id"):
+                    creators.append(
+                        {
+                            "creator_id": book["creator_b_id"],
+                            "amount": str(d_c_each),
+                            "reason": "creator_spectator_fee",
+                        }
+                    )
             book["status"] = "settled"
             book["settled_at"] = _now()
             book["payouts"] = {
-                "mode": "refund" if winner_side is None else "empty",
-                "pot": str(pot),
-                "bettors": side_refunds,
-                "seed_refunds": [
-                    {
-                        "side": "a",
-                        "agent_id": book.get("agent_a_id"),
-                        "wallet": book.get("agent_a_wallet"),
-                        "amount": str(seed_a),
-                        "reason": "seed_refund_draw",
-                    },
-                    {
-                        "side": "b",
-                        "agent_id": book.get("agent_b_id"),
-                        "wallet": book.get("agent_b_wallet"),
-                        "amount": str(seed_b),
-                        "reason": "seed_refund_draw",
-                    },
-                    *draw_book.get("seed_refunds", []),
-                ],
-                "draw_book": draw_book,
-                "creators": [],
-                "platform_fee": "0",
+                "mode": "draw_hits",
+                "winner_side": None,
+                "pot": str(draw_pot),
+                "platform_fee": str(d_fee),
+                "creator_pool": str(d_creator_pool),
+                "distributable": str(d_distributable),
+                "bettors": draw_winners,
+                "creators": creators,
+                "draw_book": {},
+                "seed_refunds": [],
             }
             data["books"][match_id] = book
             self._save(data)

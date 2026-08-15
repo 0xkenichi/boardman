@@ -62,7 +62,7 @@ def test_fee_split_math():
     )
 
 
-def test_spectator_pot_cap_and_seed_refund(tmp_path, monkeypatch):
+def test_spectator_pot_cap_and_draw_no_refund(tmp_path, monkeypatch):
     import gaming.src.stack.agentic.economy.spectator as spec_mod
     import gaming.src.stack.agentic.store as store_mod
 
@@ -96,10 +96,12 @@ def test_spectator_pot_cap_and_seed_refund(tmp_path, monkeypatch):
         pass
 
     settled = book.settle(mid, winner_side=None)
-    assert settled["payouts"]["mode"] == "refund"
-    seeds = settled["payouts"]["seed_refunds"]
-    assert len(seeds) == 2
-    assert Decimal(seeds[0]["amount"]) == Decimal("0.5")
+    # Draw is a real outcome: A/B tickets are NOT refunded. With no draw
+    # bettors the pot has no winners — house keeps it.
+    assert settled["payouts"]["mode"] == "draw_hits"
+    assert settled["payouts"]["bettors"] == []
+    assert settled["payouts"]["seed_refunds"] == []
+    assert settled["payouts"]["pot"] == "2.9"
 
 
 def test_draw_book_hits_and_misses():
@@ -120,10 +122,13 @@ def test_draw_book_hits_and_misses():
     )
     book.place_bet(mid, bettor_id="fan_d", side="draw", amount_usdc=Decimal("1"))
     hit = book.settle(mid, winner_side=None)
-    db = hit["payouts"]["draw_book"]
-    assert db["mode"] == "draw_hits"
-    assert Decimal(db["bettors"][0]["amount"]) > 0
-    assert not db["agent_split"]
+    assert hit["payouts"]["mode"] == "draw_hits"
+    assert hit["payouts"]["draw_book"] == {}
+    assert hit["payouts"]["seed_refunds"] == []
+    # pot = side seeds 1.0 + public draw 1 + house draw 0.5 = 2.5
+    # distributable = 2.5 - 3% - 2% = 2.375 → the draw bettor wins it all
+    assert len(hit["payouts"]["bettors"]) == 1
+    assert Decimal(hit["payouts"]["bettors"][0]["amount"]) == Decimal("2.375")
 
     mid2 = "test_draw_book_2"
     data = book._load()

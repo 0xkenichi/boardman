@@ -15,7 +15,8 @@ Quick-tunnel URLs change on every restart, so the live site shows
 
 | Option | Cost | 24/7? | Effort | Notes |
 |---|---|---|---|---|
-| **Fly.io** | Free tier (3 small VMs) | ✅ yes | Low | Config already in repo (`deploy/fly.toml`). Recommended. |
+| **Railway** (chosen) | Hobby ~$5/mo | ✅ yes | Low | `railway.toml` + `Dockerfile.akash` already in repo; volume for `data/agentic`. See `docs/RAILWAY_DEPLOY.md`. |
+| **Fly.io** | Free tier (3 small VMs) | ✅ yes | Low | Config already in repo (`deploy/fly.toml`). |
 | **Akash** | Cheap (~$2–5/mo in AKT) | ✅ yes | Medium | Image auto-built on push; deploy via console. |
 | **Render free** | Free | ⚠️ sleeps after idle | Low | Needs an external pinger (cron-job.org) to stay awake. |
 | **Hetzner VPS** | ~€5/mo | ✅ yes | Medium | Classic `DEPLOY.md` path: Docker Compose + Caddy. |

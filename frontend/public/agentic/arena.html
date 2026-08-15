@@ -2059,32 +2059,28 @@
     async function settleSpectator(winnerSide) {
       const pot = spectator.a + spectator.b;
       if (!winnerSide || pot <= 0) {
-        let refund = 0;
+        // Draw is a real outcome, not a push: A/B tickets LOSE; draw tickets
+        // win the whole pool (side stakes+seeds, draw stakes, house draw seed).
         let drawStake = 0;
         for (const b of spectator.bets) {
-          if (!b.paid) continue;
           if (b.side === "draw") drawStake += b.amount;
-          else refund += b.amount;
         }
         if (drawStake > 0) {
+          const pid = myProfileId();
+          const mine = spectator.bets
+            .filter((b) => b.side === "draw" && (!pid || String(b.bettor_id || "") === String(pid)))
+            .reduce((s, b) => s + Number(b.amount || 0), 0);
           const houseD = 2 * Number(spectator.seedDraw || 0);
-          const poolD = drawStake + houseD;
-          const you = poolD * 0.97;
+          const poolD = pot + drawStake + houseD;
+          const dist = poolD * 0.95; // 3% platform + 2% creators
+          const you = mine > 0 ? (mine / drawStake) * dist : 0;
           const ok = await creditWallet(you, "draw_win");
           log(ok ? `Draw hit · credited $${you.toFixed(2)}` : `Draw win $${you.toFixed(2)} pending`);
         }
-        if (refund > 0) {
-          const ok = await creditWallet(refund, "spectator_refund_draw");
-          log(
-            ok
-              ? `Refunded $${refund.toFixed(2)} to your Boardman wallet`
-              : `Draw refund $${refund.toFixed(2)} pending (API offline)`
-          );
-        }
         spectator.status = "settled";
         renderMarket();
-        log("Spectator pot refunded (draw)");
-        setStatus("Draw — bets refunded", true);
+        log("Draw — draw tickets win the pot, A/B tickets lost");
+        setStatus("Draw — draw tickets win, A/B tickets lost", true);
         return;
       }
       const platform = pot * 0.03;
@@ -2588,7 +2584,7 @@
       if (!out) return;
       const pay = spectator.payouts;
       if (pay && (pay.mode || pay.winner_side)) {
-        const win = pay.winner_side === "a" ? "Raja" : pay.winner_side === "b" ? "Nero" : pay.mode || "result";
+        const win = pay.winner_side === "a" ? "Raja" : pay.winner_side === "b" ? "Nero" : "Draw";
         const minePay = (pay.bettors || []).filter((p) => {
           const pid = myProfileId();
           return !pid || String(p.bettor_id || "") === String(pid);
@@ -2600,8 +2596,10 @@
         } else if (got > 0) {
           out.textContent =
             "Result: " + win + " · you get $" + got.toFixed(2) + " back on $" + staked.toFixed(2) + " staked.";
+        } else if (pay.mode === "draw_hits") {
+          out.textContent = "Draw — draw tickets win; A/B tickets lost.";
         } else if (pay.mode === "refund") {
-          out.textContent = "Draw — A/B tickets refunded.";
+          out.textContent = "Draw — A/B tickets refunded (legacy book).";
         } else {
           out.textContent = "Result: " + win + " · your ticket lost $" + staked.toFixed(2) + ".";
         }
