@@ -176,6 +176,31 @@ def main() -> int:
                     if st in ("cancelled", "error", "lock_failed", "settle_failed"):
                         print(f"  table ended as {st} — continuing")
                         break
+                    # If the table is still locked with zero moves and its bet
+                    # window has passed, nobody else is driving it (the arena
+                    # browser closed). Play it ourselves so games keep flowing.
+                    if st in ("locked", "open", "partial_lock", "queued") and not (cur or {}).get("moves"):
+                        bw = (cur or {}).get("bet_window_ends_at") or ""
+                        past = True
+                        if bw:
+                            try:
+                                from datetime import datetime as _dt, timezone as _tz
+
+                                past = _dt.fromisoformat(bw.replace("Z", "+00:00")) <= _dt.now(_tz.utc)
+                            except Exception:
+                                past = True
+                        if past:
+                            print("  table idle past its bet window — driving it now")
+                            try:
+                                house.play(mid, move_delay_sec=args.delay, wait=True)
+                                m = svc.get(mid) or {}
+                                print(
+                                    f"  drove to: status={m.get('status')} result={m.get('result')} "
+                                    f"winner={m.get('winner_agent_id')}"
+                                )
+                                break
+                            except Exception as exc:
+                                print(f"  drive failed: {exc}")
                 if m.get("status") != "settled" and mid:
                     print("  table did not resolve — releasing the lock and continuing")
                     try:
