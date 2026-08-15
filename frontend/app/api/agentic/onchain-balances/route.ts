@@ -57,17 +57,15 @@ export async function GET(req: NextRequest) {
   const days = Number(sp.get('days') || 30)
   const volume = await (async () => {
     try {
-      const [chainVol, metrics] = await Promise.all([
-        rematchApiFetch(
-          `/api/stack/agentic/agents/onchain_volume?chain=1&days=${days}`,
-          { signal: AbortSignal.timeout(2500) }
-        ).catch(() => ({ ok: false })),
-        rematchApiFetch(`/api/stack/agentic/public/metrics?limit=100`, {
-          signal: AbortSignal.timeout(3000),
-        }).catch(() => ({ ok: false })),
-      ])
-      const j = chainVol.ok ? chainVol.data || {} : {}
-      const m = metrics.ok && metrics.data?.success ? metrics.data : null
+      const chainVol = await rematchApiFetch(
+        `/api/stack/agentic/agents/onchain_volume?chain=1&days=${days}`,
+        { signal: AbortSignal.timeout(2500) }
+      ).catch(() => null)
+      const metrics = await rematchApiFetch(`/api/stack/agentic/public/metrics?limit=100`, {
+        signal: AbortSignal.timeout(3000),
+      }).catch(() => null)
+      const j = chainVol?.ok ? (chainVol.data as any) || {} : {}
+      const m = metrics?.ok && (metrics.data as any)?.success ? (metrics.data as any) : null
       const byAgent: Record<string, any> = {}
       for (const a of m?.agents || []) {
         const v = Number(a.onchain_volume_30d_usdc || 0)
