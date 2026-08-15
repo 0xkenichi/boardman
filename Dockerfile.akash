@@ -16,6 +16,7 @@ RUN python -m venv /app/.venv \
 
 COPY src /app/src
 COPY config /app/config
+COPY scripts/run_house_session.py /app/scripts/run_house_session.py
 COPY deploy/start_akash.sh /app/deploy/start_akash.sh
 COPY deploy/start_akash.py /app/deploy/start_akash.py
 

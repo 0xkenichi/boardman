@@ -116,6 +116,31 @@ def main() -> int:
     )
 
     procs = [api, bot]
+    house = None
+
+    # Continuous Raja vs Nero house session — the real match path (lock → bet
+    # window → play → settle), not the browser's client-side show. Runs
+    # back-to-back forever; if it dies the watchdog restarts the container and
+    # rescue_orphans re-seats the interrupted table. Disable with
+    # BOARDMAN_HOUSE_SESSION=0.
+    if os.environ.get("BOARDMAN_HOUSE_SESSION", "1") not in {"0", "false", "False", "no"}:
+        print("[akash] starting house session (continuous Raja vs Nero)", flush=True)
+        house = subprocess.Popen(
+            [
+                sys.executable,
+                "scripts/run_house_session.py",
+                "--games",
+                os.environ.get("BOARDMAN_HOUSE_GAMES", "0"),
+                "--delay",
+                os.environ.get("BOARDMAN_HOUSE_MOVE_DELAY", "0.05"),
+                "--pause",
+                os.environ.get("BOARDMAN_HOUSE_PAUSE", "2"),
+            ],
+            env=env,
+        )
+        procs.append(house)
+    else:
+        print("[akash] house session disabled (BOARDMAN_HOUSE_SESSION=0)", flush=True)
 
     def shutdown(signum: int | None = None, _frame=None) -> None:
         print(f"[akash] shutting down (signal={signum})", flush=True)
@@ -136,7 +161,7 @@ def main() -> int:
     signal.signal(signal.SIGINT, shutdown)
 
     while True:
-        for name, p in (("api", api), ("bot", bot)):
+        for name, p in (("api", api), ("bot", bot), ("house", house) if len(procs) > 2 else ()):
             code = p.poll()
             if code is not None:
                 print(
