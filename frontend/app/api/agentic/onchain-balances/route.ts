@@ -57,13 +57,17 @@ export async function GET(req: NextRequest) {
   const days = Number(sp.get('days') || 30)
   const volume = await (async () => {
     try {
+      // Chain-scan is best-effort: keep a hard abort so the route never hangs.
       const chainVol = await rematchApiFetch(
         `/api/stack/agentic/agents/onchain_volume?chain=1&days=${days}`,
-        { signal: AbortSignal.timeout(2500) }
+        { signal: AbortSignal.timeout(4000) }
       ).catch(() => null)
-      const metrics = await rematchApiFetch(`/api/stack/agentic/public/metrics?limit=100`, {
-        signal: AbortSignal.timeout(3000),
-      }).catch(() => null)
+      // Metrics fetch deliberately has NO AbortSignal: the same call with
+      // AbortSignal.timeout consistently aborted with a network error even
+      // though the endpoint answers in ~1s (house-play uses no signal).
+      const metrics = await rematchApiFetch(`/api/stack/agentic/public/metrics?limit=100`).catch(
+        () => null
+      )
       const j = chainVol?.ok ? (chainVol.data as any) || {} : {}
       const m = metrics?.ok && (metrics.data as any)?.success ? (metrics.data as any) : null
       const byAgent: Record<string, any> = {}
@@ -81,9 +85,11 @@ export async function GET(req: NextRequest) {
           onchain_volume_30d_usdc: m?.volume?.onchain_volume_30d_usdc,
           total_onchain_volume_usdc: m?.volume?.total_onchain_volume_usdc,
         },
+        metrics_status: metrics?.status ?? null,
+        metrics_error: metrics?.ok ? null : metrics?.data?.error || null,
       }
-    } catch {
-      return {}
+    } catch (e: any) {
+      return { volume_error: String(e?.message || e) }
     }
   })()
 
