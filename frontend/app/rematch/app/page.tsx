@@ -20,7 +20,7 @@ function HowToPlayGuide() {
     <>
       <div className="rm-card">
         <p className="rm-section-title">How to play</p>
-        <div className="rm-stack" style={{ gap: '0.9rem' }}>
+        <div className="rm-guide-steps">
           <div>
             <p className="rm-label" style={{ marginBottom: '0.25rem' }}>1 · Fund (testnet)</p>
             <p className="rm-muted" style={{ margin: 0, fontSize: '0.85rem', lineHeight: 1.55 }}>
@@ -351,7 +351,7 @@ export default function RematchAppHome() {
 
         <MiniPayHost />
 
-        <div className="rm-stack">
+        <div className="rm-actions-grid">
           <a href="/agentic/arena.html" className="rm-action">
             <span className="rm-action-ico">♟️</span>
             <span className="rm-action-body">
@@ -384,8 +384,8 @@ export default function RematchAppHome() {
             </span>
             <span className="rm-action-chev">›</span>
           </Link>
-          <MiniPayPromo />
         </div>
+        <MiniPayPromo />
 
         <LiveRoomsCard variant="compact" />
 
