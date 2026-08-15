@@ -622,7 +622,8 @@ class HouseRuntime:
         pair = {agent_a_id, agent_b_id}
         out: list[dict[str, Any]] = []
         for m in get_match_service().list_matches(200):
-            if m.get("status") not in {
+            st = m.get("status")
+            if st not in {
                 "open",
                 "locked",
                 "partial_lock",
@@ -633,11 +634,27 @@ class HouseRuntime:
                 continue
             if {m.get("agent_a_id"), m.get("agent_b_id")} != pair:
                 continue
+            # A settle_failed table whose escrow already settled (e.g. a deploy
+            # swap killed the process after the money moved) only needs its
+            # record flipped to settled so the pair can rematch.
+            if st == "settle_failed" and m.get("result") and (m.get("escrow") or {}).get("status") == "settled":
+                from gaming.src.stack.agentic.store import load_json, save_json
+
+                mid = str(m.get("match_id") or "")
+                data = load_json("matches.json", {"matches": {}})
+                rec = data["matches"].get(mid) or {}
+                rec["status"] = "settled"
+                rec["settle_error"] = ""
+                data["matches"][mid] = rec
+                save_json("matches.json", data)
+                logger.info("[house] re-marked completed table %s as settled", mid)
+                out.append({"match_id": mid, "action": "re-marked_settled"})
+                continue
             if m.get("result"):
                 continue
             # abort_never_started refuses playing tables; settle_failed locks
             # without a result are safe to release so the pair can rematch.
-            if m.get("status") == "playing":
+            if st == "playing":
                 continue
             out.append(self.abort_never_started(m["match_id"], reason="never_started"))
         return out
