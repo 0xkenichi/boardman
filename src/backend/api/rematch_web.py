@@ -7,6 +7,7 @@ only the Next.js BFF may use it.
 """
 from __future__ import annotations
 
+import asyncio
 import hmac
 import logging
 import os
@@ -746,12 +747,57 @@ async def web_spectator_bet(
         try:
             from gaming.src.stack.agentic.house import get_house
 
-            book = get_house().take_bet(
-                match_id,
-                bettor_id=profile_id,
-                side=side,
-                amount_usdc=Decimal(str(amount)),
-            )
+            pulled = False
+            try:
+                if spectator_onchain_enabled():
+                    # Chain is the book — no take_bet (place_bet refuses demo
+                    # entries on on-chain books). Pull → deposit → project.
+                    await _pull_play_usdc(profile_id, amount)
+                    pulled = True
+                    chain_tx = await _deposit_spectator_onchain(
+                        profile_id=profile_id,
+                        match_id=match_id,
+                        side=side,
+                        amount=amount,
+                        user_address=str(summary.get("address") or ""),
+                    )
+                    if chain_tx.get("book"):
+                        book = chain_tx.get("book")
+                else:
+                    book = get_house().take_bet(
+                        match_id,
+                        bettor_id=profile_id,
+                        side=side,
+                        amount_usdc=Decimal(str(amount)),
+                    )
+                    await _pull_play_usdc(profile_id, amount)
+                    pulled = True
+            except Exception as exc:
+                logger.exception("[RematchWeb] spectator pull/deposit failed match=%s", match_id)
+                if pulled and spectator_onchain_enabled():
+                    # Money safety: the pull landed but the pool deposit didn't
+                    # — push the USDC back to the user's wallet.
+                    refund_h = ""
+                    try:
+                        import asyncio
+
+                        from gaming.src.stack.agentic.spectator_onchain import (
+                            refund_float_to_user,
+                        )
+
+                        refund = await asyncio.to_thread(
+                            refund_float_to_user,
+                            str(summary.get("address") or ""),
+                            Decimal(str(amount)),
+                        )
+                        refund_h = str(refund.get("tx_hash") or "")
+                    except Exception:
+                        logger.exception("[RematchWeb] refund of pulled bet failed")
+                    pull_err = f"on-chain deposit failed — {exc}"
+                    if refund_h:
+                        pull_err += f" · ${amount} refunded to your wallet (tx {refund_h[:12]})"
+                else:
+                    pull_err = str(exc)
         except Exception:
             logger.exception("[RematchWeb] house take_bet failed match=%s", match_id)
             return {
@@ -761,27 +807,26 @@ async def web_spectator_bet(
                 "match_id": match_id,
                 "address": summary.get("address") or "",
             }
-        if spectator_onchain_enabled():
-            try:
-                await _pull_play_usdc(profile_id, amount)
-                chain_tx = await _deposit_spectator_onchain(
-                    profile_id=profile_id,
-                    match_id=match_id,
-                    side=side,
-                    amount=amount,
-                    user_address=str(summary.get("address") or ""),
-                )
-                if chain_tx.get("book"):
-                    book = chain_tx.get("book")
-            except Exception as exc:
-                logger.exception("[RematchWeb] on-chain deposit after book failed")
-                pull_err = str(exc)
+        if not pulled and not chain_tx:
+            from gaming.src.backend.services.play_adjust import add_adjust
+
+            add_adjust(profile_id, -amount, reason=f"bet:{match_id}:{side}")
         try:
             ledger = float(summary.get("ledger_usdc") or 0)
             if ledger + 1e-9 >= amount:
                 await debit_wallet(profile_id, amount)
         except Exception:
             logger.warning("[RematchWeb] ledger sync after book failed", exc_info=True)
+
+        if spectator_onchain_enabled() and pull_err and not chain_tx.get("tx_hash"):
+            return {
+                "success": False,
+                "error": "spectator_deposit_failed",
+                "message": pull_err,
+                "refunded": "refunded to your wallet" in pull_err,
+                "match_id": match_id,
+                "address": summary.get("address") or "",
+            }
 
         from gaming.src.backend.services.clawstation_circle import get_usdc_balance
 
