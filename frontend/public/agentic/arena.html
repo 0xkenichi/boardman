@@ -1247,6 +1247,22 @@
       }
     }
 
+    /** Clear the previous match's book state when joining a new table.
+     *  Otherwise stale ply/payouts/bets from the last settled match leak into
+     *  the new one and the market shows "closed" during the betting window. */
+    function resetSpectatorBook() {
+      spectator.status = "open";
+      spectator.ply = 0;
+      spectator.payouts = null;
+      spectator.bets = [];
+      spectator.closedReason = "";
+      spectator.betWindowEndsAt = null;
+      spectator.lastEval = null;
+      spectator.a = 0;
+      spectator.b = 0;
+      spectator.draw = 0;
+    }
+
     function renderMarket() {
       maybeClosePot();
       const stake = matchStake || 0;
@@ -2652,6 +2668,7 @@
       playing = true;
       houseClockMode = true;
       houseApplied = 0;
+      resetSpectatorBook();
       game = new Chess();
       lastFrom = lastTo = null;
       fallen = [];
@@ -2750,6 +2767,7 @@
         const d = await r.json();
         if (d && d.match_id && d.last_settled && d.match) {
           houseMatchId = d.match_id;
+          resetSpectatorBook();
           game = new Chess();
           houseApplied = 0;
           const moves = d.match.moves || [];
