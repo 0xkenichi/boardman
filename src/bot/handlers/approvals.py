@@ -14,6 +14,7 @@ from aiogram.filters import Command
 
 from gaming.src.backend.services.tx_approval import (
     get_approval_mode,
+    get_approval_row,
     resolve_approval,
     set_approval_mode,
 )
@@ -74,6 +75,43 @@ def _callback_data_parts(callback: types.CallbackQuery) -> list[str]:
     return (callback.data or "").split(":")
 
 
+def _telegram_owns_approval(tg_user_id: int, approval_id: str) -> bool:
+    """Only the profile owner may tap Yes/No/Always on an approval prompt.
+
+    Telegram inline buttons survive message forwarding, and callback data
+    carries the approval id — without this check an attacker who obtains
+    someone else's approval prompt could approve and spend their wallet.
+    """
+    try:
+        from backend.supabase_client import get_supabase
+
+        row = get_approval_row(approval_id) or {}
+        pid = str(row.get("profile_id") or "")
+        if not pid:
+            return False
+        r = (
+            get_supabase()
+            .table("profiles")
+            .select("telegram_id, gaming_telegram_chat_id")
+            .eq("id", pid)
+            .limit(1)
+            .execute()
+        )
+        rec = (r.data or [None])[0] or {}
+        allowed: set[int] = set()
+        for v in (rec.get("telegram_id"), rec.get("gaming_telegram_chat_id")):
+            if v in (None, ""):
+                continue
+            try:
+                allowed.add(int(v))
+            except (TypeError, ValueError):
+                continue
+        return tg_user_id in allowed
+    except Exception:
+        logger.warning("[approvals] identity check failed id=%s", approval_id, exc_info=True)
+        return False
+
+
 @router.callback_query(F.data.startswith("approve:yes:"))
 @router.callback_query(F.data.startswith("approve:no:"))
 @router.callback_query(F.data.startswith("approve:always:"))
@@ -86,6 +124,14 @@ async def cb_approval(callback: types.CallbackQuery) -> None:
     approval_id = parts[2]
     always = decision == "always"
     action = "yes" if decision != "no" else "no"
+
+    user = callback.from_user
+    if not user or not _telegram_owns_approval(user.id, approval_id):
+        await callback.answer(
+            "This approval is for a different Telegram account.",
+            show_alert=True,
+        )
+        return
 
     res = resolve_approval(approval_id, action, always=always)
     if not res.get("ok"):

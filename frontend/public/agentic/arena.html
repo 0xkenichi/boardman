@@ -750,7 +750,7 @@
             <div>
               <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted)">Pot</div>
               <div class="pot-total" id="potTotal">$0.00</div>
-              <div class="pot-sub" id="potCapLabel">Pick a side and an amount</div>
+              <div class="pot-sub" id="potCapLabel">Pari-mutuel — the pot is the pot after 5%</div>
               <div class="pot-sub" id="skillLockLabel"></div>
             </div>
             <span class="pill" id="potStatus">open</span>
@@ -781,14 +781,14 @@
         <div class="bet-card">
           <div class="name">Raja <span id="wrA" style="color:var(--muted);font-weight:600"></span></div>
           <div class="odds-big" id="decA">—</div>
-          <div class="payout-hint">Pays <span id="netA">—</span> · <span id="probA"></span></div>
+          <div class="payout-hint">If you bet now, pot pays about <span id="netA">—</span> · <span id="probA"></span></div>
           <button type="button" id="betA">Bet Raja</button>
           <button type="button" id="btnStakeRaja" hidden></button>
         </div>
         <div class="bet-card">
           <div class="name">Nero <span id="wrB" style="color:var(--muted);font-weight:600"></span></div>
           <div class="odds-big" id="decB">—</div>
-          <div class="payout-hint">Pays <span id="netB">—</span> · <span id="probB"></span></div>
+          <div class="payout-hint">If you bet now, pot pays about <span id="netB">—</span> · <span id="probB"></span></div>
           <button type="button" id="betB">Bet Nero</button>
           <button type="button" id="btnStakeNero" hidden></button>
         </div>
@@ -1295,8 +1295,21 @@
       const pB = 1 - pA;
       const take = 0.05;
       const payoutPool = tot * (1 - take);
-      const decA = tot > 0 && ta > 0 ? Math.min(50, Math.max(1.01, payoutPool / ta)) : (1 - take) / Math.max(pA, 0.02);
-      const decB = tot > 0 && tb > 0 ? Math.min(50, Math.max(1.01, payoutPool / tb)) : (1 - take) / Math.max(pB, 0.02);
+      const stakeAmt = Math.max(0.25, betAmount || 1);
+      // Quote AFTER this bet sits in the pot. Posted 35× on a $1 seed is a lie.
+      function quote(sideNow, otherNow, bet) {
+        const side = Math.max(0, Number(sideNow) || 0) + bet;
+        const other = Math.max(0, Number(otherNow) || 0);
+        const pool = (side + other) * (1 - take);
+        if (side <= 0) return { dec: 1.01, pay: bet };
+        const pay = pool * (bet / side);
+        const dec = pay / bet;
+        return { dec: Math.max(1.01, dec), pay: Math.max(0, pay) };
+      }
+      const qA = quote(ta, tb, stakeAmt);
+      const qB = quote(tb, ta, stakeAmt);
+      const decA = qA.dec;
+      const decB = qB.dec;
       const edgeA = pA * decA - 1;
       const edgeB = pB * decB - 1;
 
@@ -1341,10 +1354,8 @@
       setText("probB", (pB * 100).toFixed(0) + "%");
       setText("decA", decA.toFixed(2) + "×");
       setText("decB", decB.toFixed(2) + "×");
-      // Payout for current stake size (stake included)
-      const stakeAmt = Math.max(0.25, betAmount || 1);
-      setText("netA", "$" + (decA * stakeAmt).toFixed(2));
-      setText("netB", "$" + (decB * stakeAmt).toFixed(2));
+      setText("netA", "$" + qA.pay.toFixed(2));
+      setText("netB", "$" + qB.pay.toFixed(2));
       setText("edgeA", (edgeA >= 0 ? "+" : "") + (edgeA * 100).toFixed(1) + "% EV");
       setText("edgeB", (edgeB >= 0 ? "+" : "") + (edgeB * 100).toFixed(1) + "% EV");
       const ea = el("edgeA");

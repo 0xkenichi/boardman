@@ -78,10 +78,10 @@ async def test_approve_and_create_match_approves_and_calls_create_match(monkeypa
         "transaction_id": "tx_approve",
         "tx_hash": "0xApproveHash",
     }
-    mock_circle.wait_for_transaction.return_value = {
-        "success": True,
-        "tx_hash": "0xCreateHash",
-    }
+    # The service awaits wait_for_transaction_async directly (approve + create)
+    mock_circle.wait_for_transaction_async = AsyncMock(
+        return_value={"success": True, "tx_hash": "0xCreateHash"}
+    )
     mock_circle.execute_contract_function.return_value = {
         "success": True,
         "transaction_id": "tx_create",
@@ -115,16 +115,15 @@ async def test_approve_and_create_match_approves_and_calls_create_match(monkeypa
 
     assert result["success"] is True
     assert result["create_tx_id"] == "tx_create"
+    # The service calls Circle methods positionally via asyncio.to_thread
     mock_circle.approve_usdc_transfer.assert_called_once_with(
-        wallet_id="user_wallet",
-        amount_usdc=5.0,
-        spender_address=_ESCROW,
+        "user_wallet", 5.0, _ESCROW
     )
     mock_circle.execute_contract_function.assert_called_once()
-    call_kwargs = mock_circle.execute_contract_function.call_args.kwargs
-    assert call_kwargs["wallet_id"] == "user_wallet"
-    assert call_kwargs["contract_address"] == _ESCROW
-    assert call_kwargs["function_signature"] == "createMatch(bytes32,uint256)"
+    call_args = mock_circle.execute_contract_function.call_args
+    assert call_args.args[0] == "user_wallet"
+    assert call_args.args[1] == _ESCROW
+    assert call_args.args[2] == "createMatch(bytes32,uint256)"
 
 
 @pytest.mark.asyncio
@@ -140,10 +139,10 @@ async def test_approve_and_join_match_approves_and_calls_join_match(monkeypatch)
         "transaction_id": "tx_approve",
         "tx_hash": "0xApproveHash",
     }
-    mock_circle.wait_for_transaction.return_value = {
-        "success": True,
-        "tx_hash": "0xJoinHash",
-    }
+    # The service awaits wait_for_transaction_async directly (approve + join)
+    mock_circle.wait_for_transaction_async = AsyncMock(
+        return_value={"success": True, "tx_hash": "0xJoinHash"}
+    )
     mock_circle.execute_contract_function.return_value = {
         "success": True,
         "transaction_id": "tx_join",
@@ -179,8 +178,10 @@ async def test_approve_and_join_match_approves_and_calls_join_match(monkeypatch)
     assert result["success"] is True
     assert result["join_tx_id"] == "tx_join"
     mock_circle.execute_contract_function.assert_called_once()
-    call_kwargs = mock_circle.execute_contract_function.call_args.kwargs
-    assert call_kwargs["function_signature"] == "joinMatch(bytes32)"
+    call_args = mock_circle.execute_contract_function.call_args
+    assert call_args.args[0] == "opp_wallet"
+    assert call_args.args[1] == _ESCROW
+    assert call_args.args[2] == "joinMatch(bytes32)"
 
 
 @pytest.mark.asyncio

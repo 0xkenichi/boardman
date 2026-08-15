@@ -7,6 +7,7 @@ only the Next.js BFF may use it.
 """
 from __future__ import annotations
 
+import hmac
 import logging
 import os
 from decimal import Decimal
@@ -37,7 +38,7 @@ def _require_key(
         x_stack_key=x_stack_key,
         authorization=authorization,
     )
-    if got != expected:
+    if not hmac.compare_digest(got.encode("utf-8"), expected.encode("utf-8")):
         raise HTTPException(status_code=401, detail="invalid rematch api key")
     return got
 
@@ -241,9 +242,19 @@ async def _apply_approved_spectator_bet(
             side=side,
             amount_usdc=Decimal(str(amount)),
         )
-        if spectator_onchain_enabled():
+        pulled = False
+        try:
+            await _pull_play_usdc(profile_id, amount)
+            pulled = True
+        except Exception as exc:
+            logger.exception("[RematchWeb] play-wallet pull failed; booking the lock")
+            pull_err = str(exc)
+        if not pulled:
+            from gaming.src.backend.services.play_adjust import add_adjust
+
+            add_adjust(profile_id, -amount, reason=f"bet:{match_id}:{side}")
+        if spectator_onchain_enabled() and pulled:
             try:
-                await _pull_play_usdc(profile_id, amount)
                 chain_tx = await _deposit_spectator_onchain(
                     profile_id=profile_id,
                     match_id=match_id,
@@ -255,7 +266,7 @@ async def _apply_approved_spectator_bet(
                     book = chain_tx.get("book")
             except Exception as exc:
                 logger.exception("[RematchWeb] on-chain deposit after book failed")
-                pull_err = str(exc)
+                pull_err = (pull_err + " | " if pull_err else "") + str(exc)
         try:
             ledger = float((summary or {}).get("ledger_usdc") or 0)
             if ledger + 1e-9 >= amount:
@@ -344,6 +355,7 @@ async def _apply_approved_lp(
     try:
         from gaming.src.stack.agentic.economy.lp import AgentLPPool
 
+        pull_err = ""
         ledger = float((summary or {}).get("ledger_usdc") or 0)
         spendable = float((summary or {}).get("spendable_usdc") or 0)
         if max(ledger, spendable) + 1e-9 < amount:
@@ -353,6 +365,17 @@ async def _apply_approved_lp(
                 "error": "insufficient_balance",
                 "message": "Not enough USDC on your Boardman wallet.",
             }
+        pulled = False
+        try:
+            await _pull_play_usdc(profile_id, amount)
+            pulled = True
+        except Exception as exc:
+            logger.exception("[RematchWeb] LP Circle pull failed; locking on the book")
+            pull_err = str(exc)
+        if not pulled:
+            from gaming.src.backend.services.play_adjust import add_adjust
+
+            add_adjust(profile_id, -amount, reason=f"lp:{agent_id}")
         if ledger + 1e-9 >= amount:
             await debit_wallet(profile_id, amount)
         pool = AgentLPPool().deposit(

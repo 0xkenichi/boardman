@@ -47,16 +47,24 @@ def verify_circle_signature(raw_body: bytes, signature_header: Optional[str]) ->
     Circle sends the signature in the ``x-circle-signature`` header, typically
     prefixed with ``v1=``. The secret is read from ``CIRCLE_WEBHOOK_SECRET``.
 
-    If the secret is not configured in development, verification is skipped
-    and a warning is logged.
+    A missing secret **fails closed** — the webhook credits user balances, so
+    an unverified request must never be accepted. Local dev can opt out
+    explicitly with ``CIRCLE_WEBHOOK_SKIP_VERIFY=1``.
     """
     secret = os.getenv(CIRCLE_WEBHOOK_SECRET_ENV)
     if not secret:
-        logger.warning(
-            "[%s] not set; skipping Circle webhook signature verification (dev mode)",
+        if os.getenv("CIRCLE_WEBHOOK_SKIP_VERIFY") == "1":
+            logger.warning(
+                "[%s] not set; CIRCLE_WEBHOOK_SKIP_VERIFY=1 — skipping verification (dev only)",
+                CIRCLE_WEBHOOK_SECRET_ENV,
+            )
+            return True
+        logger.error(
+            "[%s] not set; rejecting unverified Circle webhook (set the secret or "
+            "CIRCLE_WEBHOOK_SKIP_VERIFY=1 for local dev)",
             CIRCLE_WEBHOOK_SECRET_ENV,
         )
-        return True
+        return False
 
     if not signature_header:
         return False
@@ -160,7 +168,8 @@ async def _find_user_by_deposit_address(address: str) -> Optional[str]:
         .maybe_single()
         .execute()
     )
-    return result.data["id"] if result.data else None
+    data = getattr(result, "data", None)
+    return data["id"] if data else None
 
 
 async def _credit_via_asyncpg(user_id: str, amount_usdc: Decimal, tx_hash: str) -> bool:

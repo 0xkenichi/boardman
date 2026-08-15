@@ -45,12 +45,12 @@ export async function GET(req: Request) {
       : null
   const apiOther = api.ok ? Number(api.data?.other_balance ?? 0) : 0
 
-  // Bot welcome = spendable + other. Prefer a live Arc read of the play address.
+  // One number everywhere: House spendable (on-chain plus booked locks/payouts).
   const spendable =
-    onchain != null && Number.isFinite(onchain)
-      ? onchain
-      : apiSpend != null && Number.isFinite(apiSpend)
-        ? apiSpend
+    apiSpend != null && Number.isFinite(apiSpend)
+      ? apiSpend
+      : onchain != null && Number.isFinite(onchain)
+        ? onchain
         : ledger
   const other = apiOther > 0.009 ? apiOther : 0
   const display = spendable + other

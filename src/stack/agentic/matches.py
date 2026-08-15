@@ -20,6 +20,48 @@ ARCHIVE_FILE = "matches_archive.json"
 HOT_SETTLED = 8
 
 
+def _notify_spectator_payouts(
+    match_id: str, winner_side: Optional[str], pays: list[dict[str, Any]]
+) -> None:
+    """Telegram DM after the book settles. Does not block the table."""
+    import threading
+
+    def _run() -> None:
+        try:
+            import asyncio
+
+            from gaming.src.bot.utils.notify import notify_user
+
+            who = "Raja" if winner_side == "a" else "Nero" if winner_side == "b" else "draw"
+
+            async def _send() -> None:
+                for bt in pays:
+                    bid = str(bt.get("bettor_id") or "")
+                    amt = bt.get("amount") or "0"
+                    reason = str(bt.get("reason") or "win")
+                    if not bid:
+                        continue
+                    if reason == "refund":
+                        text = (
+                            f"↩️ <b>Refund ${float(amt):,.2f}</b>\n\n"
+                            f"The table was a draw. Your ticket is back on the play wallet.\n"
+                            f"<code>{match_id}</code>"
+                        )
+                    else:
+                        text = (
+                            f"💰 <b>Paid ${float(amt):,.2f}</b>\n\n"
+                            f"{who} hit. Same number on Telegram and the website.\n"
+                            f"<code>{match_id}</code>"
+                        )
+                    await notify_user(bid, text)
+
+            asyncio.run(_send())
+        except Exception:
+            logger.warning("[agentic] spectator payout notify failed", exc_info=True)
+
+    threading.Thread(target=_run, name="spec-payout-dm", daemon=True).start()
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -807,6 +849,25 @@ class AgentMatchService:
                 amt = Decimal(str(bt.get("amount") or "0"))
                 if bid and amt > 0:
                     ledger.credit(str(bid), amt, reason="draw_win", ref=match_id)
+            fan_pays = list((spec.get("payouts") or {}).get("bettors") or [])
+            for bt in fan_pays:
+                bid = str(bt.get("bettor_id") or "")
+                amt = Decimal(str(bt.get("amount") or "0"))
+                if not bid or amt <= 0:
+                    continue
+                reason = str(bt.get("reason") or "win")
+                try:
+                    ledger.credit(bid, amt, reason=f"spectator_{reason}", ref=match_id)
+                except Exception:
+                    logger.warning("[agentic] spectator credit failed %s", bid, exc_info=True)
+                try:
+                    from gaming.src.backend.services.play_adjust import add_adjust
+
+                    add_adjust(bid, amt, reason=f"payout:{match_id}:{reason}")
+                except Exception:
+                    logger.warning("[agentic] play_adjust payout failed %s", bid, exc_info=True)
+            if fan_pays:
+                _notify_spectator_payouts(match_id, winner_side, fan_pays)
         except Exception as exc:
             logger.warning("[agentic] spectator settle: %s", exc)
 

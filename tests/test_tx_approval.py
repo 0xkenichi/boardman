@@ -28,19 +28,29 @@ class _FakeSB:
     def __init__(self):
         self.rows = {}  # id -> row
         self.modes = {}  # (profile_id, action) -> mode
+        self._filters = []
+        self._limit = None
 
     # -- tx_approvals table emulation ------------------------------------
     def insert(self, row):
         rid = row["id"]
         self.rows[rid] = dict(row)
+        self._filters = []
         return self
 
     def select(self, *cols):
         self._cols = cols
+        self._filters = []
+        self._limit = None
         return self
 
     def eq(self, col, val):
-        self._eq = (col, val)
+        # Chained filters (e.g. .eq("id", x).eq("status", "pending")) must
+        # accumulate — the old single-filter fake silently skipped updates.
+        self._filters.append((col, val))
+        return self
+
+    def order(self, *a, **k):
         return self
 
     def limit(self, n):
@@ -49,21 +59,24 @@ class _FakeSB:
 
     def update(self, patch):
         self._patch = patch
+        self._filters = []
         return self
+
+    def _matches(self, row):
+        return all(row.get(col) == val for col, val in getattr(self, "_filters", []))
 
     def execute(self):
         if hasattr(self, "_patch"):  # update path
-            col, val = getattr(self, "_eq", (None, None))
-            if col == "id" and val in self.rows:
-                self.rows[val].update(self._patch)
+            for row in self.rows.values():
+                if self._matches(row):
+                    row.update(self._patch)
             del self._patch
             return _Res([])
         # select path
-        col, val = getattr(self, "_eq", (None, None))
-        rows = list(self.rows.values())
-        if col == "id":
-            rows = [r for r in rows if r.get("id") == val]
-        return _Res(rows[: getattr(self, "_limit", len(rows))])
+        rows = [r for r in self.rows.values() if self._matches(r)]
+        if self._limit is not None:
+            rows = rows[: self._limit]
+        return _Res(rows)
 
     def schema(self, name):
         return self

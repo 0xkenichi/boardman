@@ -79,7 +79,10 @@ class _MockQuery:
         self.filters: list[tuple] = []
 
     def select(self, columns: str | None = None):
-        self.operation = "select"
+        # PostgREST supports .insert().select() — keep the insert so the row
+        # is recorded and returned instead of being treated as a plain select.
+        if self.operation != "insert":
+            self.operation = "select"
         return self
 
     def insert(self, data: dict):
@@ -104,6 +107,29 @@ class _MockQuery:
         self.filters.append(("lt", col, val))
         return self
 
+    def gte(self, col: str, val):
+        self.filters.append(("gte", col, val))
+        return self
+
+    def lte(self, col: str, val):
+        self.filters.append(("lte", col, val))
+        return self
+
+    def ilike(self, col: str, val):
+        self.filters.append(("ilike", col, val))
+        return self
+
+    def in_(self, col: str, vals):
+        self.filters.append(("in", col, vals))
+        return self
+
+    def limit(self, n: int):
+        self.limit_n = n
+        return self
+
+    def order(self, col: str, desc: bool = False):
+        return self
+
     def maybe_single(self):
         return self
 
@@ -120,11 +146,11 @@ class _MockQuery:
             if self.operation == "select":
                 for kind, col, val in self.filters:
                     if kind == "eq" and col == "telegram_id" and val in sb._profile_by_telegram:
-                        return MagicMock(data=sb._profile_by_telegram[val])
+                        return MagicMock(data=[sb._profile_by_telegram[val]])
                     if kind == "eq" and col == "gaming_tag" and val in sb._profile_by_tag:
-                        return MagicMock(data=sb._profile_by_tag[val])
+                        return MagicMock(data=[sb._profile_by_tag[val]])
                     if kind == "eq" and col == "id" and val in sb._profile_by_id:
-                        return MagicMock(data=sb._profile_by_id[val])
+                        return MagicMock(data=[sb._profile_by_id[val]])
                 return MagicMock(data=None)
             if self.operation == "insert":
                 data = dict(self.data)
@@ -230,21 +256,35 @@ def _patch_supabase(monkeypatch):
 @pytest.fixture(autouse=True)
 def _patch_circle(monkeypatch):
     """Stub Circle wallet helpers so handlers never call the Circle API."""
-    async def _ensure(user_id):
+    async def _ensure(user_id, chain_id=None):
         return {
             "wallet_id": f"wallet_{user_id}",
             "address": "0x" + "a" * 40,
             "blockchain": "BASE-SEPOLIA",
+            "chain_id": chain_id or "base",
         }
 
-    async def _balance(user_id):
+    async def _balance(user_id, chain_id=None):
         return Decimal("100.00")
+
+    async def _summary(user_id, chain_id=None):
+        return {
+            "spendable_usdc": Decimal("100.00"),
+            "other_usdc": Decimal("0"),
+            "other_address": "",
+            "ledger_usdc": Decimal("100.00"),
+            "address": "0x" + "a" * 40,
+            "chain_id": "base",
+            "balance_error": None,
+        }
 
     targets = {
         "gaming.src.backend.services.clawstation_circle.ensure_user_wallet": _ensure,
         "gaming.src.backend.services.clawstation_circle.get_usdc_balance": _balance,
+        "gaming.src.backend.services.clawstation_circle.get_balance_summary": _summary,
         "gaming.src.bot.handlers.start.ensure_user_wallet": _ensure,
-        "gaming.src.bot.handlers.balance.get_usdc_balance": _balance,
+        "gaming.src.bot.handlers.send.ensure_user_wallet": _ensure,
+        "gaming.src.bot.handlers.balance.get_balance_summary": _summary,
         "gaming.src.bot.handlers.challenge.get_usdc_balance": _balance,
         "gaming.src.bot.handlers.send.get_usdc_balance": _balance,
     }
@@ -315,7 +355,11 @@ def _make_message(
     msg.text = text
     msg.from_user = _make_user(user_id, first_name, username)
     msg.chat.id = chat_id
+    msg.photo = None  # MagicMock attrs are truthy; handlers gate on these
+    msg.document = None
+    msg.reply_to_message = None
     msg.answer = AsyncMock()
+    msg.answer_photo = AsyncMock()
     msg.reply = AsyncMock()
     msg.bot = AsyncMock()
     return msg
@@ -353,9 +397,15 @@ async def test_start_creates_profile_and_wallet(mock_supabase):
     # The inserted profile is assigned an id by the mock execute() path.
     stored_profile = next(iter(mock_supabase._profile_by_id.values()))
     assert stored_profile["gaming_telegram_chat_id"] == 67890
-    msg.answer.assert_awaited_once()
-    text = msg.answer.await_args.args[0]
-    assert "Welcome to ClawStation" in text
+    # /start acks immediately, then sends the welcome via answer_photo (or a
+    # plain answer fallback when the welcome image is missing).
+    msg.answer.assert_awaited()
+    texts = []
+    if msg.answer.await_count:
+        texts.append(str(msg.answer.await_args.args[0]))
+    if msg.answer_photo.await_count:
+        texts.append(str(msg.answer_photo.await_args.kwargs.get("caption") or ""))
+    assert any("Welcome to Boardman" in t for t in texts)
 
 
 # ── /balance tests ───────────────────────────────────────────────────────────
@@ -369,14 +419,23 @@ async def test_balance_shows_usdc_and_tier(mock_supabase, monkeypatch):
             "gaming_tag": "sq_rich",
             "gaming_tier": "gold",
             "gaming_reputation_score": 1500,
+            "play_points": 2000,
         }
     )
-    async def _fake_balance(user_id, chain_id=None):
-        return Decimal("250.50")
+    async def _fake_summary(user_id, chain_id=None):
+        return {
+            "spendable_usdc": Decimal("250.50"),
+            "other_usdc": Decimal("0"),
+            "other_address": "",
+            "ledger_usdc": Decimal("250.50"),
+            "address": "0x" + "a" * 40,
+            "chain_id": "base",
+            "balance_error": None,
+        }
 
     monkeypatch.setattr(
-        "gaming.src.bot.handlers.balance.get_usdc_balance",
-        _fake_balance,
+        "gaming.src.bot.handlers.balance.get_balance_summary",
+        _fake_summary,
     )
 
     msg = _make_message(text="/balance", user_id=222)
@@ -396,7 +455,7 @@ async def test_profile_self(mock_supabase):
             "id": _TEST_USER_ID,
             "telegram_id": 333,
             "display_name": "Self Gamer",
-            "gaming_tag": "sq_self",
+            "gaming_tag": "selfgamer",
             "gaming_tier": "silver",
             "gaming_reputation_score": 1200,
         }
@@ -408,7 +467,7 @@ async def test_profile_self(mock_supabase):
     msg.answer.assert_awaited_once()
     text = msg.answer.await_args.args[0]
     assert "Self Gamer" in text
-    assert "sq_self" in text
+    assert "selfgamer" in text
 
 
 @pytest.mark.asyncio
@@ -462,14 +521,14 @@ async def test_challenge_creates_row(mock_supabase, monkeypatch):
         _fake_balance,
     )
 
-    msg = _make_message(text='/challenge @sq_opponent 50 "EA FC" private', user_id=666)
+    msg = _make_message(text='/challenge @sq_opponent 20 "EA FC" private', user_id=666)
     await cmd_challenge(msg)
 
     insert_calls = mock_supabase.find_calls(table="challenges", operation="insert")
     assert len(insert_calls) == 1
     record = insert_calls[0].data
     # Live gaming.challenges columns (legacy names + escrow fields).
-    assert record["stake_amount"] == 50.0
+    assert record["stake_amount"] == 20.0
     assert record["game_type"] == "EA FC"
     assert record["theme"] == "private"
     assert record["issuer_id"] == _TEST_USER_ID
@@ -495,7 +554,7 @@ async def test_challenge_insufficient_balance(mock_supabase, monkeypatch):
         _fake_balance,
     )
 
-    msg = _make_message(text='/challenge @sq_opponent 50 "EA FC" private', user_id=888)
+    msg = _make_message(text='/challenge @sq_opponent 15 "EA FC" private', user_id=888)
     await cmd_challenge(msg)
 
     insert_calls = mock_supabase.find_calls(table="challenges", operation="insert")
@@ -739,7 +798,9 @@ async def test_send_to_tag_success(mock_supabase, mock_fsm, monkeypatch):
     )
 
     def _mock_transfer(self, from_wallet_id, to_address, amount_usdc):
-        assert from_wallet_id == "wallet_sender"
+        # _patch_circle's ensure_user_wallet stub derives the wallet id from the
+        # profile id ("wallet_{uuid}"), not the stored circle_wallet_id column.
+        assert from_wallet_id == f"wallet_{sender_id}"
         return {
             "success": True,
             "transaction_id": "tx_123",
@@ -798,7 +859,7 @@ async def test_send_self_not_allowed(mock_supabase, mock_fsm, monkeypatch):
     await send_confirm_password(msg3, mock_fsm)
 
     text = msg3.answer.await_args.args[0]
-    assert "cannot send to yourself" in text.lower()
+    assert "withdraw to yourself" in text.lower()
 
 
 @pytest.mark.asyncio
@@ -1160,7 +1221,7 @@ async def test_submit_score_stores_creator_score(mock_supabase):
     )
 
     msg = _make_message(text=f"/submit_score {challenge_id} 3", user_id=9200)
-    await cmd_submit_score(msg)
+    await cmd_submit_score(msg, msg.bot)
 
     update_calls = mock_supabase.find_calls(table="challenges", operation="update")
     update = next((c for c in update_calls if c.row_id == challenge_id), None)
@@ -1202,7 +1263,7 @@ async def test_submit_score_transitions_to_submitted_when_both_scores_present(mo
     )
 
     msg = _make_message(text=f"/submit_score {challenge_id} 1", user_id=9301)
-    await cmd_submit_score(msg)
+    await cmd_submit_score(msg, msg.bot)
 
     update_calls = mock_supabase.find_calls(table="challenges", operation="update")
     update = next((c for c in update_calls if c.row_id == challenge_id), None)

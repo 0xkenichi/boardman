@@ -324,8 +324,15 @@ async def get_usdc_balance(user_id: str, chain_id: Optional[str] = None) -> Deci
     bal, err = await get_usdc_balance_strict(user_id, chain_id=chain_id)
     if err:
         logger.warning("[Circle] balance fail user=%s: %s", user_id[:8], err)
-        return Decimal("0")
-    return bal or Decimal("0")
+        chain = Decimal("0")
+    else:
+        chain = bal or Decimal("0")
+    try:
+        from gaming.src.backend.services.play_adjust import get_adjust
+
+        return max(Decimal("0"), chain + get_adjust(user_id))
+    except Exception:
+        return chain
 
 
 async def get_usdc_balance_strict(
@@ -452,8 +459,20 @@ async def get_balance_summary(
         logger.warning("[Circle] other-address scan failed", exc_info=True)
 
     ledger = await get_ledger_balance_usdc(user_id)
+    adjust = Decimal("0")
+    try:
+        from gaming.src.backend.services.play_adjust import get_adjust
+
+        adjust = get_adjust(user_id)
+    except Exception:
+        pass
+    shown = spendable + adjust
+    if shown < 0:
+        shown = Decimal("0")
     return {
-        "spendable_usdc": spendable,
+        "spendable_usdc": shown,
+        "chain_usdc": spendable,
+        "adjust_usdc": adjust,
         "other_usdc": other_usdc,
         "other_address": other_address,
         "ledger_usdc": ledger,

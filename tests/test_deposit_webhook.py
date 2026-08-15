@@ -41,10 +41,14 @@ def client(monkeypatch):
     return TestClient(app)
 
 
-def _make_signature(payload: dict) -> str:
-    # FastAPI's TestClient serializes JSON with compact separators; match that
-    # so the HMAC is computed over the exact bytes the endpoint receives.
-    body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+def _make_body(payload: dict) -> bytes:
+    # The endpoint verifies the HMAC over ``request.body()`` — the exact bytes
+    # sent. Post raw ``content=`` so the test controls those bytes precisely
+    # (TestClient's ``json=`` re-serializes with spaces, which breaks the HMAC).
+    return json.dumps(payload, separators=(",", ":")).encode("utf-8")
+
+
+def _make_signature(body: bytes) -> str:
     digest = hmac.new(_TEST_SECRET.encode("utf-8"), body, "sha256").hexdigest()
     return f"v1={digest}"
 
@@ -75,6 +79,20 @@ def _make_transfer_payload(
     }
 
 
+class _AwaitableClient(MagicMock):
+    """Supabase client mock that is also await-able.
+
+    Some producers use ``await get_supabase()`` (async wrapper) while others
+    call it synchronously; a plain MagicMock breaks the ``await`` path.
+    """
+
+    def __await__(self):
+        async def _inner():
+            return self
+
+        return _inner().__await__()
+
+
 @pytest.fixture
 def _mock_services(monkeypatch):
     """Mock Supabase and Circle so tests never hit real infrastructure."""
@@ -89,7 +107,7 @@ def _mock_services(monkeypatch):
     }
 
     def _get_supabase():
-        sb = MagicMock()
+        sb = _AwaitableClient()
 
         def _table(name: str):
             tbl = MagicMock()
@@ -128,9 +146,9 @@ def _mock_services(monkeypatch):
                 return chain
 
             def _execute():
+                eq_col = getattr(chain, "eq_col", None)
+                eq_val = getattr(chain, "eq_val", None)
                 if name == "wallet_credit_audit":
-                    eq_col = getattr(chain, "eq_col", None)
-                    eq_val = getattr(chain, "eq_val", None)
                     if eq_col == "user_id" and eq_val is not None:
                         items = [
                             r
@@ -143,11 +161,17 @@ def _mock_services(monkeypatch):
                             if r["tx_hash"] == eq_val:
                                 return MagicMock(data={"id": r["id"]})
                         return MagicMock(data=None)
+                if name == "profiles" and eq_col == "id" and eq_val is not None:
+                    profile = _profiles.get(eq_val)
+                    return MagicMock(data=[profile] if profile else None)
                 return MagicMock(data=None)
 
             def _insert(data: dict):
-                data["id"] = str(uuid.uuid4())
-                _audit.append(data)
+                # Only credit-audit inserts are under test; notification-failure
+                # rows (missing telegram chat id) must not pollute _audit.
+                if name == "wallet_credit_audit":
+                    data["id"] = str(uuid.uuid4())
+                    _audit.append(data)
                 return MagicMock(execute=lambda: MagicMock(data=[data]))
 
             def _update(data: dict):
@@ -204,11 +228,12 @@ def _mock_services(monkeypatch):
 class TestCircleWebhook:
     def test_webhook_credits_once(self, client, _mock_services, monkeypatch):
         payload = _make_transfer_payload()
-        signature = _make_signature(payload)
+        body = _make_body(payload)
+        signature = _make_signature(body)
 
         resp = client.post(
             "/webhooks/circle",
-            json=payload,
+            content=body,
             headers={"X-Circle-Signature": signature},
         )
         assert resp.status_code == 200, resp.text
@@ -223,12 +248,13 @@ class TestCircleWebhook:
 
     def test_duplicate_webhook_is_noop(self, client, _mock_services, monkeypatch):
         payload = _make_transfer_payload()
-        signature = _make_signature(payload)
+        body = _make_body(payload)
+        signature = _make_signature(body)
 
         # First delivery
         resp1 = client.post(
             "/webhooks/circle",
-            json=payload,
+            content=body,
             headers={"X-Circle-Signature": signature},
         )
         assert resp1.status_code == 200
@@ -237,7 +263,7 @@ class TestCircleWebhook:
         # Second delivery (same tx_hash)
         resp2 = client.post(
             "/webhooks/circle",
-            json=payload,
+            content=body,
             headers={"X-Circle-Signature": signature},
         )
         assert resp2.status_code == 200
@@ -250,7 +276,7 @@ class TestCircleWebhook:
         payload = _make_transfer_payload()
         resp = client.post(
             "/webhooks/circle",
-            json=payload,
+            content=_make_body(payload),
             headers={"X-Circle-Signature": "v1=deadbeef"},
         )
         assert resp.status_code == 401

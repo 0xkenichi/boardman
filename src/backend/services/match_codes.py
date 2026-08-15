@@ -14,7 +14,9 @@ import logging
 import os
 import re
 import secrets
+import threading
 import uuid
+from pathlib import Path
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -27,12 +29,36 @@ _UUID_RE = re.compile(
 )
 
 
+_secret_lock = threading.Lock()
+
+
+def _persisted_secret() -> str:
+    """Stable per-deploy random secret so derived display codes survive restarts.
+
+    Prefer explicit env (``MATCH_CODE_SECRET`` / ``CIRCLE_ENTITY_SECRET``). When
+    neither is set, generate a random secret once and persist it under ``data/``
+    instead of reusing ``SUPABASE_SERVICE_ROLE_KEY`` or a public hardcoded string.
+    """
+    path = Path(__file__).resolve().parents[3] / "data" / "match_code_secret"
+    with _secret_lock:
+        if path.is_file():
+            val = path.read_text(encoding="utf-8").strip()
+            if val:
+                return val
+        val = secrets.token_hex(32)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(val, encoding="utf-8")
+        except Exception:
+            logger.warning("[MatchCodes] could not persist match-code secret", exc_info=True)
+        return val
+
+
 def _secret() -> bytes:
     raw = (
         os.getenv("MATCH_CODE_SECRET")
         or os.getenv("CIRCLE_ENTITY_SECRET")
-        or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-        or "clawstation-dev-match-codes"
+        or _persisted_secret()
     )
     return raw.encode("utf-8")
 

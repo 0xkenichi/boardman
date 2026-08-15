@@ -42,6 +42,7 @@ contracts/coverage.json
 
 # Waitlist local dumps
 data/waitlist.json
+data/match_code_secret
 data/boardman-waitlist.json
 
 # Boardman agentic demo state
@@ -87,3 +88,4 @@ docs/grants/
 docs/BOARDMAN_HOUSE_AGENT.md
 docs/AGENTIC_ECONOMY_V2.md
 docs/GRANTS_AND_NETWORKS.md
+docs/BOARDMAN_X_POSTING_PACK.txt

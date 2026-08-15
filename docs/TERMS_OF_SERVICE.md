@@ -9,17 +9,17 @@
 
 ## 1. Acceptance of Terms
 
-By accessing or using ClawStation (the "Platform"), you agree to be bound by
+By accessing or using Boardman (the "Platform"), you agree to be bound by
 these Terms of Service ("Terms"). If you do not agree, do not use the Platform.
 
 ## 2. Description of Service
 
-ClawStation is a technology platform that facilitates peer-to-peer skill-based
+Boardman is a technology platform that facilitates peer-to-peer skill-based
 gaming competitions. sideQuest does not act as a bookmaker, casino, or gambling
 operator. We provide:
 
 - A Telegram bot interface for matchmaking.
-- A non-custodial smart contract escrow (ClawEscrow on Base).
+- A non-custodial smart contract escrow (BoardmanEscrow on Base).
 - AI-assisted screenshot verification.
 - Admin dispute resolution tools.
 
@@ -48,7 +48,7 @@ We reserve the right to modify this list at any time.
 
 ## 5. Skill-Based Nature
 
-ClawStation matches are intended to be predominantly skill-based. However, you
+Boardman matches are intended to be predominantly skill-based. However, you
 acknowledge that game mechanics may include elements of chance or randomness,
 and that local laws may classify this activity differently.
 
@@ -126,10 +126,10 @@ JURISDICTION].
 
 ## 15. Contact
 
-For support or questions, contact us through the ClawStation Telegram bot or
+For support or questions, contact us through the Boardman Telegram bot or
 [INSERT EMAIL].
 
 ---
 
-By using ClawStation, you acknowledge that you have read, understood, and agree
+By using Boardman, you acknowledge that you have read, understood, and agree
 to these Terms and the associated risk disclosures.
