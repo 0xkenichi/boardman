@@ -344,7 +344,8 @@ async def start_approval(
 
 async def poll_approval(approval_id: str, timeout_sec: int) -> dict:
     """Poll Supabase until the bot resolves the approval or it expires."""
-    deadline = asyncio.get_event_loop().time() + timeout_sec
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_sec
     while True:
         row = await asyncio.to_thread(get_approval_row, approval_id)
         status = (row or {}).get("status") or "pending"
@@ -354,7 +355,7 @@ async def poll_approval(approval_id: str, timeout_sec: int) -> dict:
                 "approval_id": approval_id,
                 "mode": "ask",
             }
-        if asyncio.get_event_loop().time() >= deadline:
+        if loop.time() >= deadline:
             await asyncio.to_thread(_mark_status, approval_id, "expired")
             fresh = await asyncio.to_thread(get_approval_row, approval_id) or {}
             st = str(fresh.get("status") or "expired")

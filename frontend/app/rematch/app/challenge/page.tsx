@@ -129,7 +129,7 @@ export default function ChallengePage() {
               autoCorrect="off"
             />
             <p className="rm-muted" style={{ marginTop: '0.65rem', marginBottom: 0 }}>
-              They must have opened Rematch (bot or app) once.
+              They must have opened Boardman (bot or app) once.
             </p>
             <button
               type="button"

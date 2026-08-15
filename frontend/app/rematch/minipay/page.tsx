@@ -16,7 +16,7 @@ export default function MiniPayLandingPage() {
         Celo · MiniPay · Proof-of-Ship
       </p>
       <h1 className="rm-h1" style={{ marginBottom: '0.5rem' }}>
-        Rematch on MiniPay
+        Boardman on MiniPay
       </h1>
       <p className="rm-muted" style={{ marginBottom: '1.25rem' }}>
         1v1 skill matches with dual-lock USDC, screenshot settle, and a simple Balance $ UX —
@@ -27,7 +27,7 @@ export default function MiniPayLandingPage() {
 
       <div className="rm-stack" style={{ marginTop: '1rem' }}>
         <Link href="/app?host=minipay" className="rm-btn rm-btn-primary">
-          Launch Rematch mini-app
+          Launch Boardman mini-app
         </Link>
         <a href={REMATCH_BOT_URL} target="_blank" rel="noreferrer" className="rm-btn rm-btn-ghost">
           Telegram bot (same accounts)

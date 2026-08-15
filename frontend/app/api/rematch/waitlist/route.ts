@@ -186,7 +186,6 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     product: 'Boardman by sideQuest',
-    formerly: 'Rematch by sideQuest',
     launch: '2026-09-16',
     settlement: 'Arc mainnet',
   })

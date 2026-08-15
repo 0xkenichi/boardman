@@ -227,7 +227,7 @@ export default function RematchLeaderboardPage() {
 
         <p style={{ textAlign: 'center', margin: 0 }}>
           <Link href="/" className="rm-muted" style={{ fontSize: '0.8rem' }}>
-            About Rematch
+            About Boardman
           </Link>
         </p>
       </div>

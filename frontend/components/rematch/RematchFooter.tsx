@@ -49,18 +49,6 @@ export function RematchFooter() {
           </span>{' '}
           by sideQuest
         </p>
-        <p
-          style={{
-            margin: 0,
-            fontSize: '0.68rem',
-            color: '#4b5563',
-            textAlign: 'center',
-            lineHeight: 1.4,
-            maxWidth: '22rem',
-          }}
-        >
-          {BRAND.formerlyNote}
-        </p>
         <div
           style={{
             display: 'flex',

@@ -13,6 +13,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from gaming.src.backend.services.clawstation_escrow import (  # noqa: E402
+    EscrowError,
     approve_and_create_match,
     approve_and_join_match,
     cancel_match,
@@ -47,6 +48,13 @@ def _mock_supabase(monkeypatch, execute_results):
 
     monkeypatch.setattr("gaming.src.backend.services.clawstation_escrow.get_supabase", lambda: mock)
     return mock
+
+
+def _row(data):
+    """Execute result whose ``.data`` is set (list or dict)."""
+    r = MagicMock()
+    r.data = data
+    return r
 
 
 @pytest.fixture(autouse=True)
@@ -182,6 +190,220 @@ async def test_approve_and_join_match_approves_and_calls_join_match(monkeypatch)
     assert call_args.args[0] == "opp_wallet"
     assert call_args.args[1] == _ESCROW
     assert call_args.args[2] == "joinMatch(bytes32)"
+
+
+# ── wait path (wait_for_transaction_async) ───────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_create_match_approve_wait_failure_raises(monkeypatch):
+    """Approve tx never confirms -> EscrowError, createMatch is not sent."""
+    mock_ensure = AsyncMock(return_value={"wallet_id": "user_wallet", "address": _USER})
+    monkeypatch.setattr(
+        "gaming.src.backend.services.clawstation_escrow.ensure_user_wallet", mock_ensure
+    )
+
+    mock_circle = MagicMock()
+    mock_circle.approve_usdc_transfer.return_value = {
+        "success": True,
+        "transaction_id": "tx_approve",
+    }
+    mock_circle.wait_for_transaction_async = AsyncMock(
+        return_value={"success": False, "error": "approve timeout"}
+    )
+    monkeypatch.setattr(
+        "gaming.src.backend.services.clawstation_escrow.CircleWalletService",
+        lambda **kwargs: mock_circle,
+    )
+
+    _mock_supabase(
+        monkeypatch,
+        [
+            _row(
+                {
+                    "id": "challenge_1",
+                    "creator_id": "user_1",
+                    "opponent_id": None,
+                    "status": "accepted",
+                    "amount_usdc": 5.0,
+                    "settlement_chain": "base",
+                }
+            ),
+            _row([]),
+            MagicMock(),
+            MagicMock(),
+        ],
+    )
+
+    with pytest.raises(EscrowError, match="approve not confirmed"):
+        await approve_and_create_match("user_1", "challenge_1", Decimal("5.0"))
+    mock_circle.wait_for_transaction_async.assert_awaited_once_with(
+        "tx_approve", max_wait_seconds=90
+    )
+    mock_circle.execute_contract_function.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_match_create_wait_failure_raises(monkeypatch):
+    """createMatch tx never confirms -> EscrowError."""
+    mock_ensure = AsyncMock(return_value={"wallet_id": "user_wallet", "address": _USER})
+    monkeypatch.setattr(
+        "gaming.src.backend.services.clawstation_escrow.ensure_user_wallet", mock_ensure
+    )
+
+    mock_circle = MagicMock()
+    mock_circle.approve_usdc_transfer.return_value = {
+        "success": True,
+        "transaction_id": "tx_approve",
+    }
+    mock_circle.wait_for_transaction_async = AsyncMock(
+        side_effect=[
+            {"success": True, "tx_hash": "0xApproveHash"},
+            {"success": False, "error": "create timeout"},
+        ]
+    )
+    mock_circle.execute_contract_function.return_value = {
+        "success": True,
+        "transaction_id": "tx_create",
+        "tx_hash": "0xCreateHash",
+    }
+    monkeypatch.setattr(
+        "gaming.src.backend.services.clawstation_escrow.CircleWalletService",
+        lambda **kwargs: mock_circle,
+    )
+
+    _mock_supabase(
+        monkeypatch,
+        [
+            _row(
+                {
+                    "id": "challenge_1",
+                    "creator_id": "user_1",
+                    "opponent_id": None,
+                    "status": "accepted",
+                    "amount_usdc": 5.0,
+                    "settlement_chain": "base",
+                }
+            ),
+            _row([]),
+            MagicMock(),
+            MagicMock(),
+        ],
+    )
+
+    with pytest.raises(EscrowError, match="createMatch not confirmed"):
+        await approve_and_create_match("user_1", "challenge_1", Decimal("5.0"))
+    mock_circle.wait_for_transaction_async.assert_awaited_with(
+        "tx_create", max_wait_seconds=120
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_match_skips_wait_when_approve_has_no_transaction_id(monkeypatch):
+    """No approve transaction_id -> wait skipped; only the create tx is polled."""
+    mock_ensure = AsyncMock(return_value={"wallet_id": "user_wallet", "address": _USER})
+    monkeypatch.setattr(
+        "gaming.src.backend.services.clawstation_escrow.ensure_user_wallet", mock_ensure
+    )
+
+    mock_circle = MagicMock()
+    mock_circle.approve_usdc_transfer.return_value = {"success": True}  # already confirmed
+    mock_circle.wait_for_transaction_async = AsyncMock(
+        return_value={"success": True, "tx_hash": "0xCreateHash"}
+    )
+    mock_circle.execute_contract_function.return_value = {
+        "success": True,
+        "transaction_id": "tx_create",
+        "tx_hash": "0xCreateHash",
+    }
+    monkeypatch.setattr(
+        "gaming.src.backend.services.clawstation_escrow.CircleWalletService",
+        lambda **kwargs: mock_circle,
+    )
+
+    _mock_supabase(
+        monkeypatch,
+        [
+            _row(
+                {
+                    "id": "challenge_1",
+                    "creator_id": "user_1",
+                    "opponent_id": None,
+                    "status": "accepted",
+                    "amount_usdc": 5.0,
+                    "settlement_chain": "base",
+                }
+            ),
+            _row([]),
+            MagicMock(),
+            MagicMock(),
+        ],
+    )
+
+    result = await approve_and_create_match("user_1", "challenge_1", Decimal("5.0"))
+
+    assert result["success"] is True
+    assert result["create_tx_id"] == "tx_create"
+    # Only the create wait is polled — the approve wait is skipped
+    mock_circle.wait_for_transaction_async.assert_awaited_once_with(
+        "tx_create", max_wait_seconds=120
+    )
+
+
+@pytest.mark.asyncio
+async def test_join_match_join_wait_failure_raises(monkeypatch):
+    """joinMatch tx never confirms -> EscrowError."""
+    mock_ensure = AsyncMock(return_value={"wallet_id": "opp_wallet", "address": _OPP})
+    monkeypatch.setattr(
+        "gaming.src.backend.services.clawstation_escrow.ensure_user_wallet", mock_ensure
+    )
+
+    mock_circle = MagicMock()
+    mock_circle.approve_usdc_transfer.return_value = {
+        "success": True,
+        "transaction_id": "tx_approve",
+    }
+    mock_circle.wait_for_transaction_async = AsyncMock(
+        side_effect=[
+            {"success": True, "tx_hash": "0xApproveHash"},
+            {"success": False, "error": "join timeout"},
+        ]
+    )
+    mock_circle.execute_contract_function.return_value = {
+        "success": True,
+        "transaction_id": "tx_join",
+        "tx_hash": "0xJoinHash",
+    }
+    monkeypatch.setattr(
+        "gaming.src.backend.services.clawstation_escrow.CircleWalletService",
+        lambda **kwargs: mock_circle,
+    )
+
+    _mock_supabase(
+        monkeypatch,
+        [
+            _row(
+                {
+                    "id": "challenge_1",
+                    "creator_id": "user_1",
+                    "opponent_id": "user_2",
+                    "status": "creator_locked",
+                    "amount_usdc": 5.0,
+                    "creator_lock_tx_id": "tx_create",
+                    "settlement_chain": "base",
+                }
+            ),
+            _row([]),
+            MagicMock(),
+            MagicMock(),
+        ],
+    )
+
+    with pytest.raises(EscrowError, match="joinMatch not confirmed"):
+        await approve_and_join_match("user_2", "challenge_1", Decimal("5.0"))
+    mock_circle.wait_for_transaction_async.assert_awaited_with(
+        "tx_join", max_wait_seconds=120
+    )
 
 
 @pytest.mark.asyncio

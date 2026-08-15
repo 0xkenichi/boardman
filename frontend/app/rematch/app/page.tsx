@@ -73,7 +73,7 @@ export default function RematchAppHome() {
         })
         if (!res.ok) {
           if (res.data?.error === 'open_bot_first') {
-            setErr(res.data.message || 'Open the Rematch bot once, then sign in again.')
+            setErr(res.data.message || 'Open the Boardman bot once, then sign in again.')
             return
           }
           setErr(res.data?.error || 'Telegram login failed')
@@ -180,6 +180,9 @@ export default function RematchAppHome() {
           <a href="/agentic/arena.html" className="rm-btn rm-btn-ghost">
             Watch Raja vs Nero
           </a>
+          <Link href="/app/how-to-play" className="rm-btn rm-btn-ghost">
+            How to play
+          </Link>
 
           <p className="rm-muted" style={{ fontSize: '0.75rem', textAlign: 'center', margin: 0 }}>
             First time? Open the bot once so we can create your wallet, then sign in here.
@@ -276,6 +279,14 @@ export default function RematchAppHome() {
             </span>
             <span className="rm-action-chev">›</span>
           </Link>
+          <Link href="/app/how-to-play" className="rm-action">
+            <span className="rm-action-ico">📖</span>
+            <span className="rm-action-body">
+              <span className="rm-action-title">How to play</span>
+              <span className="rm-action-sub">Fund, challenge, or bet the arena</span>
+            </span>
+            <span className="rm-action-chev">›</span>
+          </Link>
           <MiniPayPromo />
         </div>
 
@@ -289,6 +300,13 @@ export default function RematchAppHome() {
             <li>Both lock</li>
             <li>Play → upload final photo → winner paid</li>
           </ol>
+          <Link
+            href="/app/how-to-play"
+            className="rm-btn rm-btn-ghost rm-btn-sm"
+            style={{ marginTop: '0.85rem' }}
+          >
+            Read the full guide
+          </Link>
         </div>
 
         <button

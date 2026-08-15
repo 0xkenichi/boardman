@@ -2,7 +2,7 @@ const ORG = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
   name: 'Boardman by sideQuest',
-  alternateName: ['Boardman', 'sideQuest', 'Rematch by sideQuest'],
+  alternateName: ['Boardman', 'sideQuest'],
   url: 'https://boardman.playingsidequest.fun',
   logo: 'https://boardman.playingsidequest.fun/boardman-logo.png',
   sameAs: ['https://github.com/playingsidequest-dotplay/boardman'],

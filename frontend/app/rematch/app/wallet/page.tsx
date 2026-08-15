@@ -75,7 +75,7 @@ export default function WalletPage() {
             {copied ? '✓ Copied' : 'Copy address'}
           </button>
           <p className="rm-muted" style={{ marginTop: '0.75rem', marginBottom: 0, fontSize: '0.8rem' }}>
-            Send Arc testnet USDC here only. This is the address Rematch stakes from.
+            Send Arc testnet USDC here only. This is the address Boardman stakes from.
           </p>
         </div>
 

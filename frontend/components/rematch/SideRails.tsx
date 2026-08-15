@@ -27,7 +27,7 @@ const RIGHT_GAMES = [
 ]
 
 const FLOAT_CHIPS_L = ['Lock in', '1v1', 'Arc', 'Screenshot', 'PLAY']
-const FLOAT_CHIPS_R = ['Settle', 'Rematch', 'Telegram', 'Stake', 'Win']
+const FLOAT_CHIPS_R = ['Settle', 'Boardman', 'Telegram', 'Stake', 'Win']
 
 function GameCard({
   emoji,
