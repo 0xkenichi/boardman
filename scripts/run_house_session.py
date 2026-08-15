@@ -148,9 +148,44 @@ def main() -> int:
             )
             if m.get("onchain_settle"):
                 print(f"  settle_tx={m['onchain_settle'].get('tx_hash')}")
+            mid = str(m.get("match_id") or "")
             if m.get("status") != "settled":
-                print("  STOP — match did not settle; pair is reserved until this is resolved")
-                return 1
+                # Never die on a live table: the arena browser may be driving it
+                # (attached), or it is mid bet-window. Wait for it to resolve,
+                # then start the next game. Only give up after a long timeout so
+                # a genuinely stuck lock cannot block the session forever.
+                from gaming.src.stack.agentic.matches import get_match_service
+
+                svc = get_match_service()
+                print(
+                    f"  match not settled ({m.get('status')}) — waiting for the table to resolve…"
+                )
+                waited = 0
+                while waited < 1500:  # up to 25 minutes
+                    time.sleep(15)
+                    waited += 15
+                    cur = svc.get(mid) if mid else {}
+                    st = (cur or {}).get("status")
+                    if st == "settled":
+                        m = cur
+                        print(
+                            f"  resolved: result={m.get('result')} winner={m.get('winner_agent_id')} "
+                            f"mode={m.get('settlement_mode')}"
+                        )
+                        break
+                    if st in ("cancelled", "error", "lock_failed", "settle_failed"):
+                        print(f"  table ended as {st} — continuing")
+                        break
+                if m.get("status") != "settled" and mid:
+                    print("  table did not resolve — releasing the lock and continuing")
+                    try:
+                        ab = house.abort_never_started(mid, reason="house_session_timeout")
+                        print(f"  aborted: {ab.get('status')}")
+                    except Exception as exc:
+                        print(f"  abort failed: {exc}")
+                if m.get("status") != "settled":
+                    # Keep the session alive; the next rematch clears stale locks.
+                    continue
             if args.pause > 0 and (args.games <= 0 or n < args.games):
                 time.sleep(args.pause)
     except KeyboardInterrupt:
