@@ -2,21 +2,29 @@
 # These are already included in backend/requirements.txt
 # This file exists for Dockerfiles that reference it directly
 
-fastapi>=0.115.0
+# 2026-08 security bump: fastapi>=0.141 pulls starlette 1.x (PYSEC-2026-161/248/249/2280/2281 fixed)
+fastapi>=0.141.0
+starlette>=1.3.1
 uvicorn[standard]>=0.32.0
 supabase>=2.0.0
 python-dotenv>=1.0.0
 pydantic>=2.9.2
 httpx>=0.24.0,<0.28.0
+h2>=4.4.1  # PYSEC-2026-3628 (HTTP/2 flood via httpx)
 aiohttp>=3.11.18
 web3>=6.15.0
 aiogram>=3.15.0
 python-multipart>=0.0.18
 PyJWT>=2.8.0
 python-jose[cryptography]>=3.3.0
+# ecdsa 0.19.2 (python-jose dep) has PYSEC-2026-1325 with NO published fix —
+# python-jose pins ecdsa<2, so monitor upstream; do not force-upgrade ecdsa.
 passlib[bcrypt]>=1.7.4
 aiofiles>=24.1.0
 requests>=2.32.2
+urllib3>=2.7.0  # PYSEC-2026-141/142 (requests dep)
+click>=8.3.3  # PYSEC-2026-2132
+cryptography>=50.0.0  # PYSEC-2026-3552
 openai>=1.3.0
 Pillow>=11.1.0
 redis>=5.0.1

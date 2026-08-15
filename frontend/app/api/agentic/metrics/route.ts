@@ -111,7 +111,7 @@ function emptyCard(id: string) {
 function aggregateFromFile(limit: number) {
   const file = findMatchesPath();
   if (!file) return null;
-  const store = JSON.parse(fs.readFileSync(file, "utf8"));
+  const store = JSON.parse(fs.readFileSync(/*turbopackIgnore: true*/ file, "utf8"));
   const rows: any[] = Object.values(store.matches || {});
   rows.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
 

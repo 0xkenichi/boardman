@@ -2,6 +2,7 @@
   "name": "boardman-contracts",
   "version": "1.0.0",
   "description": "BoardmanEscrow (V1) for Boardman by sideQuest — ClawEscrow is V0 archive",
+  "type": "module",
   "scripts": {
     "deploy:spectator:arc": "hardhat run scripts/deploy_spectator_pool.js --network arcTestnet",
     "deploy:boardman:arc": "hardhat run scripts/deploy_boardman_escrow.js --network arcTestnet",
@@ -13,9 +14,9 @@
     "compile": "hardhat compile"
   },
   "devDependencies": {
-    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@nomicfoundation/hardhat-toolbox": "^7.0.0",
     "@openzeppelin/contracts": "^5.6.1",
     "dotenv": "^16.4.0",
-    "hardhat": "^2.19.0"
+    "hardhat": "^3.13.0"
   }
 }

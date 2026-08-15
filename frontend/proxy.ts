@@ -72,7 +72,7 @@ function redirectTo(req: NextRequest, cleanPath: string) {
   return securityHeaders(NextResponse.redirect(url, 308))
 }
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname
 
   // Domain verification & ACME — plain files, no rewrites

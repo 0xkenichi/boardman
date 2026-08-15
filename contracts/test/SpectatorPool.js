@@ -1,5 +1,5 @@
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
+import { expect } from "chai";
+import { ethers } from "hardhat";
 
 describe("SpectatorPool", function () {
   let usdc, pool, owner, resolver, fee, agentA, agentB, fan1, fan2;

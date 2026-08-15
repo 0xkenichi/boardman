@@ -6,9 +6,9 @@
  *   FEE_RECIPIENT_ADDRESS / BOARDMAN_FEE_RECIPIENT
  *   RESOLVER_ADDRESS / BOARDMAN_FEE_RECIPIENT
  */
-const hre = require("hardhat");
-const fs = require("fs");
-const path = require("path");
+import hre from "hardhat";
+import fs from "fs";
+import path from "path";
 
 const USDC = {
   baseSepolia: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",

@@ -1,3 +1,5 @@
+'use client'
+
 import dynamic from 'next/dynamic'
 
 const BoardmanDeskScene = dynamic(() => import('@/components/rematch/BoardmanDeskScene'), {

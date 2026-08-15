@@ -11,7 +11,7 @@ from typing import Any, Optional
 
 from gaming.src.stack.agentic import ledger
 from gaming.src.stack.agentic.registry import get_registry
-from gaming.src.stack.agentic.store import load_json, save_json
+from gaming.src.stack.agentic.store import data_dir, load_json, save_json
 
 logger = logging.getLogger(__name__)
 
@@ -67,16 +67,23 @@ def _now() -> str:
 
 
 class AgentMatchService:
-    _mem: dict[str, Any] = {"t": 0.0, "data": None}
+    def __init__(self) -> None:
+        self._mem: dict[str, Any] = {"data": None, "mtime": None}
 
     def _load(self) -> dict[str, Any]:
-        now = time.time()
+        # Cache the parsed file, but only while the file on disk is unchanged —
+        # writers that go through the store directly (status setters, tests)
+        # must be visible immediately. stat() is far cheaper than re-parsing.
+        try:
+            mtime = (data_dir() / MATCHES_FILE).stat().st_mtime_ns
+        except OSError:
+            mtime = None
         cached = self._mem.get("data")
-        if cached is not None and now - float(self._mem.get("t") or 0) < 0.25:
+        if cached is not None and self._mem.get("mtime") == mtime:
             return cached
         data = load_json(MATCHES_FILE, {"matches": {}})
         self._mem["data"] = data
-        self._mem["t"] = now
+        self._mem["mtime"] = mtime
         return data
 
     def _archive_cold(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -108,7 +115,10 @@ class AgentMatchService:
         data = self._archive_cold(data)
         save_json(MATCHES_FILE, data, compact=True)
         self._mem["data"] = data
-        self._mem["t"] = time.time()
+        try:
+            self._mem["mtime"] = (data_dir() / MATCHES_FILE).stat().st_mtime_ns
+        except OSError:
+            self._mem["mtime"] = None
         mid = upsert_id
         if not mid:
             return

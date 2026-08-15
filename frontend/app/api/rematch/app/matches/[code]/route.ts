@@ -12,11 +12,12 @@ function demoStore(): Map<string, any> {
 
 export async function GET(
   req: Request,
-  { params }: { params: { code: string } }
+  { params }: { params: Promise<{ code: string }> }
 ) {
   const auth = requireSession(req)
   if ('error' in auth) return auth.error
-  const code = decodeURIComponent(params.code)
+  const { code: codeParam } = await params
+  const code = decodeURIComponent(codeParam)
 
   if (stackConfigured()) {
     const res = await stackFetch(`/api/stack/v1/matches/${encodeURIComponent(code)}`)
@@ -50,7 +51,7 @@ export async function GET(
 
 export async function POST(
   req: Request,
-  { params }: { params: { code: string } }
+  { params }: { params: Promise<{ code: string }> }
 ) {
   const limited = rateLimitRequest(req, 'match-act', 20)
   if (limited) return limited
@@ -58,7 +59,8 @@ export async function POST(
   const auth = requireSession(req)
   if ('error' in auth) return auth.error
   const { session: s } = auth
-  const code = decodeURIComponent(params.code)
+  const { code: codeParam } = await params
+  const code = decodeURIComponent(codeParam)
 
   let body: any = {}
   try {

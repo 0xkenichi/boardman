@@ -42,7 +42,7 @@ def create_app() -> FastAPI:
         # Health / docs always open. Server-to-server Rematch BFF calls use
         # X-Rematch-Key and must not be blocked by edge geo (Vercel, tunnels).
         path = request.url.path or ""
-        if path in {"/", "/docs", "/openapi.json", "/redoc"} or path.startswith(
+        if path in {"/docs", "/openapi.json", "/redoc"} or path.startswith(
             ("/api/health", "/docs", "/redoc")
         ):
             return await call_next(request)

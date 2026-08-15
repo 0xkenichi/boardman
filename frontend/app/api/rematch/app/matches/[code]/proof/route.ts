@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 
 export async function POST(
   req: Request,
-  { params }: { params: { code: string } }
+  { params }: { params: Promise<{ code: string }> }
 ) {
   const limited = rateLimitRequest(req, 'proof', 10)
   if (limited) return limited
@@ -14,7 +14,8 @@ export async function POST(
   const auth = requireSession(req)
   if ('error' in auth) return auth.error
   const { session: s } = auth
-  const code = decodeURIComponent(params.code)
+  const { code: codeParam } = await params
+  const code = decodeURIComponent(codeParam)
 
   const form = await req.formData()
   const file = form.get('file')
