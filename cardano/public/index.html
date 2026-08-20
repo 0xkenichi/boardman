@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Boardman — CIP-0170 Mint</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:system-ui;background:#0a0a0f;color:#e0e0e0;padding:2rem;max-width:700px;margin:0 auto}
+    h1{font-size:2rem;margin-bottom:.5rem;background:linear-gradient(135deg,#8b5cf6,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    .card{background:#1a1a2e;border:1px solid #2a2a4a;border-radius:12px;padding:1.5rem;margin:1rem 0}
+    .card h2{font-size:1.1rem;color:#8b5cf6;margin-bottom:1rem}
+    button{padding:1rem 2rem;border-radius:8px;border:none;font-size:1.1rem;font-weight:600;cursor:pointer;background:linear-gradient(135deg,#8b5cf6,#06b6d4);color:#fff;margin:.5rem 0}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    .status{padding:1rem;border-radius:8px;margin-top:1rem;font-family:monospace;font-size:.85rem;white-space:pre-wrap;word-break:break-all}
+    .ok{background:#0a2a1a;border:1px solid #22c55e;color:#22c55e}
+    .err{background:#2a0a0a;border:1px solid #ef4444;color:#ef4444}
+    .info{background:#1a1a3e;border:1px solid #333}
+    a{color:#8b5cf6}
+  </style>
+</head>
+<body>
+  <h1>Boardman — CIP-0170 Mint</h1>
+  <p style="color:#888">Cardano Preview testnet — Raja identity attestation</p>
+
+  <div class="card">
+    <h2>1. Connect Lace Wallet</h2>
+    <button id="btn1" onclick="doConnect()">Connect Lace</button>
+    <div id="s1"></div>
+  </div>
+
+  <div class="card" id="step2" style="display:none">
+    <h2>2. Sign & Submit</h2>
+    <p style="color:#aaa;margin-bottom:1rem">This transaction attaches a CIP-0170 identity attestation (label 674) to your address on Cardano Preview testnet.</p>
+    <button id="btn2" onclick="doSign()">Sign in Lace & Submit</button>
+    <div id="s2"></div>
+  </div>
+
+  <div class="card" id="step3" style="display:none">
+    <h2>✅ Confirmed</h2>
+    <div id="s3"></div>
+  </div>
+
+  <script>
+    var wallet = null;
+    var txHex = "84a600d9010281825820cb00c836c3133ae77b1d64a62a8b6ec10f27cd5b09a0577edd27777bb77c367900018282583900ff1a8bcef5e8f33d5cbb0a53fabcd50d7f6b147bba9d9a1cb06cd318a61c0788705c3d98dd6d63a71c093b955ab8da1d68895e812586b40a1a001e848082583900ff1a8bcef5e8f33d5cbb0a53fabcd50d7f6b147bba9d9a1cb06cd318a61c0788705c3d98dd6d63a71c093b955ab8da1d68895e812586b40a1b0000000253ea8acf021a0002d4b10300075820a1b2b75fded432d25af0a1ce7a63df7a3a12a139d78de9a5949a7d93550972ed0ed9010281581cff1a8bcef5e8f33d5cbb0a53fabcd50d7f6b147bba9d9a1cb06cd318a0f5a11902a2a163363734a76a6167656e745f6e616d656452616a616a6167656e745f7479706565636865737368706c6174666f726d68626f6172646d616e6a6172635f77616c6c6574782a3078444231333161344238384143413739633239443561444633433344663033333935344433363032396b6465736372697074696f6e781f4167677265737369766520746163746963616c206368657373206167656e746b706572666f726d616e6365a368706e6c5f75736463006e6d6174636865735f706c61796564006c6c6173745f757064617465647818323032362d30382d32305430343a30303a33332e3031305a6b6174746573746174696f6ea36669737375657268626f6172646d616e6974696d657374616d707818323032362d30382d32305430343a30303a33332e3031305a6776657273696f6e63312e30";
+
+    function doConnect() {
+      var s = document.getElementById("s1");
+      var btn = document.getElementById("btn1");
+      if (!window.cardano || !window.cardano.lace) {
+        s.innerHTML = '<div class="status err">Lace not found. Install from lace.io</div>';
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = "Connecting...";
+      window.cardano.lace.enable().then(function(w) {
+        wallet = w;
+        return w.getUsedAddresses();
+      }).then(function(addrs) {
+        var addr = addrs[0];
+        s.innerHTML = '<div class="status ok">Connected!\n' + addr.slice(0,30) + '...\nTX: ' + txHex.length + ' chars loaded</div>';
+        document.getElementById("step2").style.display = "block";
+      }).catch(function(e) {
+        s.innerHTML = '<div class="status err">' + e.message + '</div>';
+      }).finally(function() {
+        btn.disabled = false;
+        btn.textContent = "Connect Lace";
+      });
+    }
+
+    function doSign() {
+      var s = document.getElementById("s2");
+      var btn = document.getElementById("btn2");
+      if (!wallet) { s.innerHTML = '<div class="status err">Connect wallet first</div>'; return; }
+      btn.disabled = true;
+      btn.textContent = "Waiting for Lace...";
+      s.innerHTML = '<div class="status info">Approve the transaction in the Lace popup.</div>';
+      wallet.signTx(txHex).then(function(signed) {
+        s.innerHTML = '<div class="status info">Signed! Submitting...</div>';
+        return wallet.submitTx(signed);
+      }).then(function(hash) {
+        s.innerHTML = '<div class="status ok">✅ SUBMITTED!\n\nTx: ' + hash + '\n\nhttps://preview.cardanoscan.io/transaction/' + hash + '</div>';
+        document.getElementById("step3").style.display = "block";
+        document.getElementById("s3").innerHTML = '<a href="https://preview.cardanoscan.io/transaction/' + hash + '" target="_blank">View on Cardanoscan →</a>';
+      }).catch(function(e) {
+        s.innerHTML = '<div class="status err">' + e.message + '</div>';
+      }).finally(function() {
+        btn.disabled = false;
+        btn.textContent = "Sign in Lace & Submit";
+      });
+    }
+  </script>
+</body>
+</html>

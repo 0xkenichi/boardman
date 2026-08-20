@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html><head><title>Debug CIP-30</title></head>
+<body style="font-family:monospace;background:#111;color:#0f0;padding:2rem">
+<h2>CIP-30 Debug</h2>
+<pre id="out">Checking window.cardano...</pre>
+<script>
+var out = document.getElementById("out");
+out.textContent = "window.cardano = " + JSON.stringify(Object.keys(window.cardano || {})) + "\n";
+out.textContent += "window.lace = " + (typeof window.lace) + "\n";
+out.textContent += "navigator.wallets = " + (typeof navigator.wallets) + "\n";
+if (window.cardano) {
+  for (var k in window.cardano) {
+    out.textContent += "cardano." + k + " = " + typeof window.cardano[k] + "\n";
+  }
+}
+if (window.cardano && window.cardano.lace) {
+  out.textContent += "\nLACE FOUND! Calling enable...\n";
+  window.cardano.lace.enable().then(function(w) {
+    out.textContent += "ENABLED! Methods: " + Object.keys(w).join(", ") + "\n";
+  }).catch(function(e) {
+    out.textContent += "ENABLE ERROR: " + e.message + "\n";
+  });
+}
+</script>
+</body></html>

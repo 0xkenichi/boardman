@@ -1,0 +1,22 @@
+{
+  "name": "boardman-cardano",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "node src/setup_wallet.js",
+    "mint:agent-identity": "node src/mint_agent_identity.js",
+    "deploy:cip113": "node src/deploy_cip113.js",
+    "bridge:usdm": "node src/bridge_usdm.js",
+    "test": "node --test src/*.test.js"
+  },
+  "dependencies": {
+    "@blockfrost/blockfrost-js": "^5.5.0",
+    "@emurgo/cardano-serialization-lib-browser": "^13.2.1",
+    "@emurgo/cardano-serialization-lib-nodejs": "^13.2.1",
+    "@scure/bip32": "^2.3.0",
+    "@scure/bip39": "^2.3.0",
+    "blake2b": "^2.1.4",
+    "cbor": "^10.0.12"
+  }
+}
