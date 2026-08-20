@@ -161,7 +161,10 @@ def main() -> int:
     signal.signal(signal.SIGINT, shutdown)
 
     while True:
-        for idx, (name, p) in enumerate(("api", api), ("bot", bot), ("house", house) if len(procs) > 2 else ()):
+        checks = [("api", api), ("bot", bot)]
+        if len(procs) > 2 and house is not None:
+            checks.append(("house", house))
+        for name, p in checks:
             code = p.poll()
             if code is not None:
                 if name == "bot":
