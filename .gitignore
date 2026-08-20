@@ -91,3 +91,7 @@ docs/GRANTS_AND_NETWORKS.md
 docs/BOARDMAN_X_POSTING_PACK.txt
 cardano/.env
 cardano/node_modules/
+
+# Wallet keys and secrets
+cardano/public/wallet.key
+cardano/.env
