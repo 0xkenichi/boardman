@@ -100,6 +100,7 @@ const BOT_COMMANDS = [
 
 const SECTIONS = [
   ['overview', 'Overview'],
+  ['platform', 'Platform'],
   ['match', 'Match control'],
   ['status', 'System status'],
   ['waitlist', 'Waitlist'],
@@ -148,6 +149,7 @@ export default function AdminPage() {
   const [acting, setActing] = useState(false)
   const [burstN, setBurstN] = useState(5)
   const [, setTick] = useState(0)
+  const [platformMetrics, setPlatformMetrics] = useState<any>(null)
 
   const refresh = useCallback(async (opts?: { quiet?: boolean }) => {
     if (!opts?.quiet) setBusy(true)
@@ -173,16 +175,18 @@ export default function AdminPage() {
         setStatus(null)
         return
       }
-      const [m, w, sc, st] = await Promise.all([
+      const [m, w, sc, st, pm] = await Promise.all([
         fetch('/api/agentic/admin/summary', { credentials: 'include', cache: 'no-store' }),
         fetch('/api/agentic/admin/waitlist', { credentials: 'include', cache: 'no-store' }),
         fetch('/api/agentic/admin/schedule', { credentials: 'include', cache: 'no-store' }),
         fetch('/api/agentic/admin/status', { credentials: 'include', cache: 'no-store' }),
+        fetch('/api/agentic/admin/metrics-detail', { credentials: 'include', cache: 'no-store' }).catch(() => null),
       ])
       const mj = await m.json()
       const wj = await w.json().catch(() => ({}))
       const scj = await sc.json().catch(() => ({}))
       const stj = await st.json().catch(() => ({}))
+      const pmj = pm ? await pm.json().catch(() => null) : null
       if (!m.ok) {
         setErr(mj.error || 'Could not load admin desk')
         return
@@ -191,6 +195,7 @@ export default function AdminPage() {
       if (w.ok) setWaitlist(wj)
       if (sc.ok) setSchedule(scj)
       if (st.ok) setStatus(stj)
+      if (pmj?.success) setPlatformMetrics(pmj)
     } catch (e: any) {
       if (!opts?.quiet) setErr(String(e?.message || e))
     } finally {
@@ -399,6 +404,72 @@ export default function AdminPage() {
                       : '—'}
                   </p>
                 </section>
+              </>
+            )}
+
+            {section === 'platform' && (
+              <>
+                {platformMetrics ? (
+                  <>
+                    <section className="bm-admin-card">
+                      <h2>Platform Summary</h2>
+                      <p className="bm-admin-muted">All-time totals since first transaction</p>
+                      <div className="bm-admin-grid">
+                        <Stat label="Total matches" value={String(platformMetrics.summary?.total_matches ?? 0)} />
+                        <Stat label="Settled" value={String(platformMetrics.summary?.total_settled ?? 0)} />
+                        <Stat label="Live now" value={String(platformMetrics.summary?.total_live ?? 0)} />
+                        <Stat label="Total transactions" value={String(platformMetrics.summary?.total_transactions ?? 0)} />
+                        <Stat label="Total volume" value={usd(platformMetrics.summary?.total_volume_usdc)} />
+                        <Stat label="Skill volume" value={usd(platformMetrics.summary?.total_skill_volume_usdc)} />
+                        <Stat label="Spectator volume" value={usd(platformMetrics.summary?.total_spectator_volume_usdc)} />
+                        <Stat label="On-chain volume" value={usd(platformMetrics.summary?.total_onchain_volume_usdc)} />
+                        <Stat label="Unique bettors" value={String(platformMetrics.summary?.unique_bettors ?? 0)} />
+                        <Stat label="First match" value={platformMetrics.summary?.first_match_at?.slice(0, 10) ?? '—'} />
+                        <Stat label="Last match" value={platformMetrics.summary?.last_match_at?.slice(0, 10) ?? '—'} />
+                      </div>
+                    </section>
+
+                    <section className="bm-admin-card">
+                      <h2>Human vs Agent</h2>
+                      <div className="bm-admin-grid">
+                        <Stat label="Human matches" value={String(platformMetrics.human_vs_agent?.human?.matches ?? 0)} />
+                        <Stat label="Human skill volume" value={usd(platformMetrics.human_vs_agent?.human?.skill_volume_usdc)} />
+                        <Stat label="Human bet volume" value={usd(platformMetrics.human_vs_agent?.human?.bet_volume_usdc)} />
+                        <Stat label="Agent matches" value={String(platformMetrics.human_vs_agent?.agent?.matches ?? 0)} />
+                        <Stat label="Agent skill volume" value={usd(platformMetrics.human_vs_agent?.agent?.skill_volume_usdc)} />
+                        <Stat label="Agent bet volume" value={usd(platformMetrics.human_vs_agent?.agent?.bet_volume_usdc)} />
+                      </div>
+                    </section>
+
+                    <section className="bm-admin-card">
+                      <h2>Wallet Balances</h2>
+                      <div className="bm-admin-grid">
+                        {Object.entries(platformMetrics.wallet_balances || {}).map(([aid, w]: [string, any]) => (
+                          <Stat key={aid} label={`${w.name} (${w.wallet?.slice(0, 8)}…)`} value={usd(w.balance_usdc)} />
+                        ))}
+                      </div>
+                    </section>
+
+                    <section className="bm-admin-card">
+                      <h2>Liquidity Pools</h2>
+                      <div className="bm-admin-grid">
+                        <Stat label="Total LP deposited" value={usd(platformMetrics.total_lp_deposited_usdc)} />
+                        {Object.entries(platformMetrics.lp_pools || {}).map(([aid, pool]: [string, any]) => (
+                          <Stat key={aid} label={`${aid.slice(6, 20)}…`} value={`${usd(pool.total_deposited)} deposited · ${pool.positions} LPs`} />
+                        ))}
+                      </div>
+                    </section>
+
+                    <section className="bm-admin-card">
+                      <h2>Spectator Pools</h2>
+                      <div className="bm-admin-grid">
+                        <Stat label="Total spectator pool" value={usd(platformMetrics.spectator_pool_total_usdc)} />
+                      </div>
+                    </section>
+                  </>
+                ) : (
+                  <p className="bm-admin-muted">Loading platform metrics…</p>
+                )}
               </>
             )}
 

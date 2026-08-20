@@ -1115,6 +1115,153 @@ async def public_metrics(limit: int = 100):
     return _metrics(limit=cap)
 
 
+@router.get("/admin/metrics-detail")
+async def admin_metrics_detail():
+    """Detailed admin metrics: human vs agent volume, wallet balances, user count, running totals."""
+    from gaming.src.stack.agentic.metrics import build_public_metrics
+    from gaming.src.stack.agentic.store import load_json
+    from decimal import Decimal
+    from datetime import datetime, timezone
+
+    metrics = build_public_metrics(limit=500)
+    vol = metrics.get("volume", {})
+    agents = metrics.get("agents", [])
+    matches = metrics.get("matches", [])
+
+    # Wallet balances
+    agent_store = load_json("agents.json", {"agents": {}})
+    agent_map = agent_store.get("agents") or {}
+    wallet_balances = {}
+    for aid, rec in agent_map.items():
+        wallet = rec.get("wallet_address") or ""
+        if wallet:
+            try:
+                from gaming.src.stack.agentic.onchain import usdc_balance
+                bal = usdc_balance(wallet)
+                wallet_balances[aid] = {
+                    "wallet": wallet,
+                    "balance_usdc": str(bal),
+                    "name": rec.get("name") or aid,
+                }
+            except Exception:
+                wallet_balances[aid] = {
+                    "wallet": wallet,
+                    "balance_usdc": "unknown",
+                    "name": rec.get("name") or aid,
+                }
+
+    # Human vs Agent volume split
+    human_volume = Decimal("0")
+    agent_volume = Decimal("0")
+    human_matches = 0
+    agent_matches = 0
+    human_bet_volume = Decimal("0")
+    agent_bet_volume = Decimal("0")
+
+    RAJA = "agent_raja_kia_alekhine"
+    NERO = "agent_nero_sicilian_french"
+    agent_ids = {RAJA, NERO}
+
+    for m in matches:
+        a = m.get("agent_a_id") or ""
+        b = m.get("agent_b_id") or ""
+        is_agent_match = a in agent_ids and b in agent_ids
+        stake = Decimal(str(m.get("stake_usdc") or "0"))
+
+        if is_agent_match:
+            agent_volume += stake * 2
+            agent_matches += 1
+            # spectator bets on agent matches
+            book = m.get("spectator_book") or {}
+            bets = book.get("bets") or []
+            for bet in bets:
+                agent_bet_volume += Decimal(str(bet.get("amount") or "0"))
+        else:
+            human_volume += stake * 2
+            human_matches += 1
+            book = m.get("spectator_book") or {}
+            bets = book.get("bets") or []
+            for bet in bets:
+                human_bet_volume += Decimal(str(bet.get("amount") or "0"))
+
+    # LP pools
+    lp_store = load_json("agent_lp_pools.json", {"pools": {}})
+    lp_pools = lp_store.get("pools") or {}
+    lp_summary = {}
+    total_lp = Decimal("0")
+    for aid, pool in lp_pools.items():
+        positions = pool.get("positions") or {}
+        pool_total = sum(Decimal(str(p.get("amount") or "0")) for p in positions.values())
+        realized = sum(Decimal(str(p.get("realized_pnl") or "0")) for p in positions.values())
+        lp_summary[aid] = {
+            "total_deposited": str(pool_total),
+            "realized_pnl": str(realized),
+            "positions": len(positions),
+        }
+        total_lp += pool_total
+
+    # Spectator books summary
+    spec_store = load_json("spectator_books.json", {"books": {}})
+    spec_books = spec_store.get("books") or {}
+    total_spectator_pool = Decimal("0")
+    for mid, book in spec_books.items():
+        totals = book.get("totals") or {}
+        book_total = sum(Decimal(str(v or "0")) for v in totals.values())
+        total_spectator_pool += book_total
+
+    # First and latest match
+    sorted_matches = sorted(matches, key=lambda x: x.get("created_at") or "")
+    first_match = sorted_matches[0] if sorted_matches else None
+    last_match = sorted_matches[-1] if sorted_matches else None
+
+    # Unique users (approximate: unique bettor IDs from spectator books)
+    uniquebettors = set()
+    for mid, book in spec_books.items():
+        bets = book.get("bets") or []
+        for bet in bets:
+            uid = bet.get("user_id") or bet.get("profile_id") or ""
+            if uid:
+                uniquebettors.add(uid)
+
+    return {
+        "success": True,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "summary": {
+            "total_matches": vol.get("matches_total", 0),
+            "total_settled": vol.get("matches_settled", 0),
+            "total_live": vol.get("games_live", 0),
+            "total_transactions": vol.get("transactions", 0),
+            "total_skill_volume_usdc": vol.get("skill_volume_usdc", "0"),
+            "total_spectator_volume_usdc": vol.get("spectator_volume_usdc", "0"),
+            "total_volume_usdc": str(
+                Decimal(str(vol.get("skill_volume_usdc", "0"))) +
+                Decimal(str(vol.get("spectator_volume_usdc", "0")))
+            ),
+            "total_onchain_volume_usdc": vol.get("total_onchain_volume_usdc", "0"),
+            "first_match_at": first_match.get("created_at") if first_match else None,
+            "last_match_at": last_match.get("created_at") if last_match else None,
+            "unique_bettors": len(uniquebettors),
+        },
+        "human_vs_agent": {
+            "human": {
+                "matches": human_matches,
+                "skill_volume_usdc": str(human_volume),
+                "bet_volume_usdc": str(human_bet_volume),
+            },
+            "agent": {
+                "matches": agent_matches,
+                "skill_volume_usdc": str(agent_volume),
+                "bet_volume_usdc": str(agent_bet_volume),
+            },
+        },
+        "wallet_balances": wallet_balances,
+        "lp_pools": lp_summary,
+        "total_lp_deposited_usdc": str(total_lp),
+        "spectator_pool_total_usdc": str(total_spectator_pool),
+        "agents": agents,
+    }
+
+
 @router.get("/football/catalog")
 async def football_catalog(
     q: Optional[str] = None,

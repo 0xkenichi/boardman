@@ -769,6 +769,12 @@
           <div class="pot-meter"><i id="potMeter"></i></div>
         </div>
 
+        <div id="volumeCounter" style="text-align:center;padding:0.6rem;background:rgba(139,92,246,0.08);border-radius:8px;border:1px solid rgba(139,92,246,0.15);margin-bottom:0.75rem">
+          <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.06em;color:#a78bfa;font-weight:600">Total Volume Moved</div>
+          <div id="volumeTotal" style="font-size:1.15rem;font-weight:700;color:#fff;margin-top:2px;font-variant-numeric:tabular-nums">—</div>
+          <div style="font-size:0.6rem;color:#6b7280;margin-top:1px">USDC settled on-chain · skill + spectator</div>
+        </div>
+
         <div class="bet-amount-box">
           <div class="amt-head">
             <span class="amt-label">Amount</span>
@@ -1683,6 +1689,17 @@
         };
         setVol("raja", rajaId);
         setVol("nero", neroId);
+        // Update volume counter
+        try {
+          const volEl = document.getElementById('volumeTotal');
+          if (volEl) {
+            const volRes = await fetch('/api/stack/agentic/public/metrics?limit=1');
+            const volData = await volRes.json();
+            const volMetrics = volData?.volume || {};
+            const totalVol = Number(volMetrics.skill_volume_usdc || 0) + Number(volMetrics.spectator_volume_usdc || 0);
+            volEl.textContent = '$' + totalVol.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          }
+        } catch {}
         renderMeta();
         return true;
       } catch (e) {
