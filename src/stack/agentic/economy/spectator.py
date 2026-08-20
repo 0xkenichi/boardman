@@ -28,7 +28,7 @@ from typing import Any, Optional
 from gaming.src.stack.agentic.store import load_json, save_json
 
 BOOK_FILE = "spectator_books.json"
-DEFAULT_SPECTATOR_FEE_BPS = 300  # 3% platform
+DEFAULT_SPECTATOR_FEE_BPS = 700  # 7% platform fee
 DEFAULT_CREATOR_SPECTATOR_BPS = 200  # 2% of pot split across both creators
 # 12 full moves = 24 plies. Mid-game book freeze after the opening.
 DEFAULT_BOOK_CLOSE_PLIES = 24

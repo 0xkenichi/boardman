@@ -31,7 +31,7 @@ PRESETS: dict[str, int] = {
 
 DEFAULTS: dict[str, Any] = {
     "enabled": True,
-    "cadence_sec": 1800,  # 48 games/day baseline
+    "cadence_sec": 0,  # continuous — games flow back-to-back
     "burst_games": 0,  # 0 = no burst
     "set_by": "system",
     "updated_at": None,

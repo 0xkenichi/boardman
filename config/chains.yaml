@@ -31,7 +31,7 @@ chains:
     gas_tank_required: false
     # BoardmanEscrow V1 (2026-08). Override: CLAW_ESCROW_ADDRESS_ARC / BOARDMAN_ESCROW_ADDRESS_ARC
     # V0 ClawEscrow archive: 0xFC44a06295d4fC58420027932A6FcB3C13D83859
-    escrow_address: "0x3cD57447490c81598Bd8CaCBe3843b24E5735A77"
+    escrow_address: "0xD8984396f12Cd0BD3C3e120858dd7eCdEeEF66Fc"
     escrow_contract: BoardmanEscrow
     # SpectatorPool V1 (2026-08). Override: SPECTATOR_ESCROW_ADDRESS
     spectator_pool_address: "0x7Dcd347fA916bF93Ad8BF3c1c8e9D17111B5313e"

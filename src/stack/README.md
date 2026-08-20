@@ -78,7 +78,7 @@ Sample server: `scripts/sample_agent_webhook.py`
 
 ## Contracts
 
-- **BoardmanEscrow** (Arc testnet): `0x3cD57447490c81598Bd8CaCBe3843b24E5735A77`  
+- **BoardmanEscrow** (Arc testnet): `0xD8984396f12Cd0BD3C3e120858dd7eCdEeEF66Fc`  
 - Source: `contracts/contracts/core/BoardmanEscrow.sol`  
 - Guide: [05 — Contracts](../../docs/developers/05-contracts.md)
 

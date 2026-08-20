@@ -554,7 +554,7 @@ def configured_escrow_address(chain_id: str = "arc") -> str:
         return env
     dep = _deployment()
     addr = ((dep.get("contracts") or {}).get("BoardmanEscrow")) or ""
-    return addr or "0x3cD57447490c81598Bd8CaCBe3843b24E5735A77"
+    return addr or "0xD8984396f12Cd0BD3C3e120858dd7eCdEeEF66Fc"
 
 
 def house_public_wallet() -> Optional[str]:
@@ -615,5 +615,5 @@ def public_policy() -> dict[str, Any]:
         "onchain_required": onchain_explicitly_enabled(),
         "ledger_fallback": allow_ledger_fallback(),
         "contract_max_stake_usdc": str(CONTRACT_MAX_STAKE_USDC),
-        "fee_bps": 300,
+        "fee_bps": 700,
     }

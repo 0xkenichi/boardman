@@ -178,7 +178,7 @@ def _chain_config(chain_id: str = "arc") -> dict[str, Any]:
             "usdc": os.getenv("ARC_USDC_ADDRESS", "0x3600000000000000000000000000000000000000"),
             "escrow": os.getenv(
                 "BOARDMAN_ESCROW_ADDRESS_ARC",
-                "0x3cD57447490c81598Bd8CaCBe3843b24E5735A77",
+                "0xD8984396f12Cd0BD3C3e120858dd7eCdEeEF66Fc",
             ),
             "explorer_tx": "https://testnet.arcscan.app/tx/",
             "evm_chain_id": 5042002,

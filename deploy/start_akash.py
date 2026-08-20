@@ -164,12 +164,25 @@ def main() -> int:
         for name, p in (("api", api), ("bot", bot), ("house", house) if len(procs) > 2 else ()):
             code = p.poll()
             if code is not None:
-                print(
-                    f"[akash] {name} exited with code {code} — stopping container",
-                    flush=True,
-                )
-                shutdown()
-                return code if code else 1
+                if name == "bot":
+                    # Bot crashed (e.g. Telegram flood) — restart it, don't kill the container
+                    print(
+                        f"[akash] bot exited with code {code} — restarting bot",
+                        flush=True,
+                    )
+                    import subprocess as _sp
+                    bot = _sp.Popen(
+                        [sys.executable, "-m", "gaming.src.bot.main"],
+                        env=env,
+                    )
+                    procs[1] = bot
+                else:
+                    print(
+                        f"[akash] {name} exited with code {code} — stopping container",
+                        flush=True,
+                    )
+                    shutdown()
+                    return code if code else 1
         time.sleep(0.5)
 
 

@@ -15,7 +15,7 @@ from typing import Any, Optional
 from gaming.src.stack.agentic.store import load_json, save_json
 
 LEDGER_FILE = "ledger.json"
-DEFAULT_FEE_BPS = 300  # 3% — align with BoardmanEscrow V1 FEE_BPS
+DEFAULT_FEE_BPS = 700  # 7% — align with BoardmanEscrow FEE_BPS
 
 
 def _now() -> str:

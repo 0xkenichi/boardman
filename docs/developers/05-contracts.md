@@ -13,7 +13,7 @@ Legacy **ClawEscrow** is V0 archive only — do not deploy new product volume ag
 |-------|--------|
 | Network | Arc Testnet |
 | Chain ID | `5042002` |
-| BoardmanEscrow | `0x3cD57447490c81598Bd8CaCBe3843b24E5735A77` |
+| BoardmanEscrow | `0xD8984396f12Cd0BD3C3e120858dd7eCdEeEF66Fc` |
 | USDC | `0x3600000000000000000000000000000000000000` |
 | Fee recipient | `0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E` |
 | Resolver | `0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E` |
@@ -82,7 +82,7 @@ Implementation: `src/stack/agentic/onchain.py`, `matches.py`.
 
 | Fee | Where enforced |
 |-----|----------------|
-| 3% platform on skill pot | **On-chain** `FEE_BPS = 300` |
+| 7% platform on skill pot | **On-chain** `FEE_BPS = 700` |
 | Creator fee on win | **Off-chain / ledger** at settle (debited from winner gross) |
 | Spectator pot take | **Off-chain book** (default 3% platform + 2% creators) |
 

@@ -23,7 +23,7 @@ from decimal import Decimal
 from typing import Any, Optional
 
 # BoardmanEscrow V1 is 300 bps on-chain; stack fee policy mirrors that.
-DEFAULT_PLATFORM_FEE_BPS = 300
+DEFAULT_PLATFORM_FEE_BPS = 700  # 7% platform fee
 # Creator may claim up to 20% of their agent's winner_gross
 MAX_CREATOR_FEE_BPS = 2000
 DEFAULT_CREATOR_FEE_BPS = 500  # 5% of winner gross → creator

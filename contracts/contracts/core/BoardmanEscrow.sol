@@ -17,7 +17,7 @@ contract BoardmanEscrow is Ownable, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
 
     // ─── Constants ────────────────────────────────────────────────────────────
-    uint256 public constant FEE_BPS = 300;       // 3% platform fee (300 basis points)
+    uint256 public constant FEE_BPS = 700;       // 7% platform fee (700 basis points)
     uint256 public constant BPS_DENOM = 10_000;
     uint256 public constant MAX_STAKE = 10_000e6; // $10,000 USDC cap per match
 

@@ -151,8 +151,12 @@ async def run_polling() -> None:
     try:
         # Drop webhook + stale queue so laptop polling gets a clean stream.
         await bot.delete_webhook(drop_pending_updates=True)
-        await _set_bot_commands(bot)
-        await _set_bot_branding(bot)
+        try:
+            await _set_bot_commands(bot)
+            await _set_bot_branding(bot)
+        except Exception as exc:
+            # Telegram rate-limits SetMyCommands — don't crash the whole container
+            logger.warning("[Bot] setup branding skipped: %s", exc)
         me = await bot.get_me()
         logger.info("[Bot] Starting polling as @%s (id=%s)", me.username, me.id)
         # Only message + callbacks — avoids silent "not handled" for other update types

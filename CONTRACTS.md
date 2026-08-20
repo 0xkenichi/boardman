@@ -23,13 +23,13 @@
 | Role | Address |
 |------|---------|
 | Ops / fee / resolver | `0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E` |
-| **BoardmanEscrow (Arc Testnet)** | `0x3cD57447490c81598Bd8CaCBe3843b24E5735A77` |
+| **BoardmanEscrow (Arc Testnet)** | `0xD8984396f12Cd0BD3C3e120858dd7eCdEeEF66Fc` |
 | BoardmanEscrow Arc Mainnet | _pending Sept 16_ |
 
 Deploy artifacts: `contracts/deployments/boardman_v1_arcTestnet.json`  
 Contract source: `contracts/contracts/core/BoardmanEscrow.sol`  
 Legacy name **ClawEscrow** = V0 archive only.
-- **Platform Fee:** 7% (`FEE_BPS = 700`)
+- **Platform Fee:** 7% (`FEE_BPS = 700`) — pending contract redeploy from V1 3%
 - **Max Stake:** $10,000 USDC per match
 
 ## Env
