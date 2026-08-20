@@ -161,7 +161,7 @@ def main() -> int:
     signal.signal(signal.SIGINT, shutdown)
 
     while True:
-        for name, p in (("api", api), ("bot", bot), ("house", house) if len(procs) > 2 else ()):
+        for idx, (name, p) in enumerate(("api", api), ("bot", bot), ("house", house) if len(procs) > 2 else ()):
             code = p.poll()
             if code is not None:
                 if name == "bot":
@@ -176,6 +176,27 @@ def main() -> int:
                         env=env,
                     )
                     procs[1] = bot
+                elif name == "house":
+                    # House session OOM or crash — restart it, don't kill the container
+                    print(
+                        f"[akash] house exited with code {code} — restarting house session",
+                        flush=True,
+                    )
+                    import subprocess as _sp
+                    house = _sp.Popen(
+                        [
+                            sys.executable,
+                            "scripts/run_house_session.py",
+                            "--games",
+                            os.environ.get("BOARDMAN_HOUSE_GAMES", "0"),
+                            "--delay",
+                            os.environ.get("BOARDMAN_HOUSE_MOVE_DELAY", "0.05"),
+                            "--pause",
+                            os.environ.get("BOARDMAN_HOUSE_PAUSE", "2"),
+                        ],
+                        env=env,
+                    )
+                    procs[2] = house
                 else:
                     print(
                         f"[akash] {name} exited with code {code} — stopping container",
