@@ -20,6 +20,17 @@ const FOOTER_LINKS = [
   { href: '/minipay', label: 'MiniPay' },
 ] as const
 
+const FOOTER_LINK_STYLE: React.CSSProperties = {
+  fontSize: '0.8rem',
+  color: '#6b7280',
+  textDecoration: 'none',
+  padding: '0.35rem 0.5rem',
+  borderRadius: '0.5rem',
+  minHeight: 36,
+  display: 'inline-flex',
+  alignItems: 'center',
+}
+
 export function RematchFooter() {
   const path = usePathname() || ''
   const isApp = path === '/app' || path.startsWith('/app/')
@@ -52,11 +63,12 @@ export function RematchFooter() {
         </p>
         <div
           style={{
-            display: 'flex',
-            flexWrap: 'wrap',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))',
+            gap: '0.25rem',
             alignItems: 'center',
-            justifyContent: 'center',
-            gap: '0.55rem',
+            justifyItems: 'center',
+            width: '100%',
           }}
         >
           {FOOTER_LINKS.map((l) =>
@@ -64,7 +76,7 @@ export function RematchFooter() {
               <a
                 key={l.href}
                 href={l.href}
-                style={{ fontSize: '0.75rem', color: '#6b7280', textDecoration: 'none' }}
+                style={FOOTER_LINK_STYLE}
               >
                 {l.label}
               </a>
@@ -72,7 +84,7 @@ export function RematchFooter() {
               <Link
                 key={l.href}
                 href={l.href}
-                style={{ fontSize: '0.75rem', color: '#6b7280', textDecoration: 'none' }}
+                style={FOOTER_LINK_STYLE}
               >
                 {l.label}
               </Link>
@@ -80,7 +92,7 @@ export function RematchFooter() {
           )}
           <a
             href={`mailto:${BRAND.email}`}
-            style={{ fontSize: '0.75rem', color: '#6b7280', textDecoration: 'none' }}
+            style={{ ...FOOTER_LINK_STYLE, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}
           >
             {BRAND.email}
           </a>
@@ -88,20 +100,20 @@ export function RematchFooter() {
             href={BOT}
             target="_blank"
             rel="noreferrer"
-            style={{ fontSize: '0.75rem', color: '#a78bfa', textDecoration: 'none', fontWeight: 700 }}
+            style={{ ...FOOTER_LINK_STYLE, color: '#a78bfa', fontWeight: 700 }}
           >
             Bot
           </a>
           <a
             href="https://playingsidequest.fun"
             style={{
-              fontSize: '0.75rem',
+              ...FOOTER_LINK_STYLE,
               fontWeight: 700,
               color: '#d1d5db',
-              textDecoration: 'none',
               border: '1px solid rgba(255,255,255,0.1)',
               borderRadius: 999,
               padding: '0.35rem 0.7rem',
+              minHeight: 36,
             }}
           >
             sideQuest

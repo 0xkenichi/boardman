@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useState } from 'react'
 
 import { telegramBotUrl } from '@/lib/telegramBot'
 
@@ -89,6 +90,7 @@ function NavLink({
 
 export function RematchNav() {
   const path = usePathname() || ''
+  const [open, setOpen] = useState(false)
 
   return (
     <header
@@ -114,7 +116,6 @@ export function RematchNav() {
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: '0.75rem',
-          flexWrap: 'wrap',
           maxWidth: 1100,
         }}
       >
@@ -146,6 +147,7 @@ export function RematchNav() {
           </span>
         </Link>
 
+        {/* Desktop nav — hidden on mobile */}
         <nav
           aria-label="Boardman"
           className="rm-desktop-nav"
@@ -204,8 +206,76 @@ export function RematchNav() {
           >
             sideQuest
           </a>
+          {/* Mobile hamburger */}
+          <button
+            type="button"
+            aria-label="Toggle menu"
+            onClick={() => setOpen((v) => !v)}
+            className="rm-nav-hamburger"
+            style={{
+              display: 'none',
+              background: 'none',
+              border: 'none',
+              padding: '0.4rem',
+              cursor: 'pointer',
+              color: '#d1d5db',
+              fontSize: '1.3rem',
+              lineHeight: 1,
+              minWidth: 44,
+              minHeight: 44,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {open ? '✕' : '☰'}
+          </button>
         </div>
       </div>
+
+      {/* Mobile dropdown nav */}
+      {open ? (
+        <nav
+          aria-label="Boardman mobile"
+          className="rm-mobile-nav"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.15rem',
+            padding: '0.5rem 1rem 0.75rem',
+            borderTop: '1px solid rgba(255,255,255,0.06)',
+            background: 'rgba(7,8,12,0.98)',
+          }}
+        >
+          {LINKS.map((l) => {
+            const active = l.match(path)
+            const linkStyle: React.CSSProperties = {
+              display: 'flex',
+              padding: '0.65rem 0.75rem',
+              borderRadius: '0.6rem',
+              fontSize: '0.9rem',
+              fontWeight: 600,
+              color: active ? '#34d399' : '#d1d5db',
+              background: active ? 'rgba(16,185,129,0.12)' : 'transparent',
+              textDecoration: 'none',
+              minHeight: 44,
+              alignItems: 'center',
+            }
+            const isExternal = 'external' in l && l.external
+            if (isExternal) {
+              return (
+                <a key={l.href} href={l.href} style={linkStyle}>
+                  {l.label}
+                </a>
+              )
+            }
+            return (
+              <Link key={l.href} href={l.href} onClick={() => setOpen(false)} style={linkStyle}>
+                {l.label}
+              </Link>
+            )
+          })}
+        </nav>
+      ) : null}
     </header>
   )
 }

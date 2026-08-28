@@ -1743,15 +1743,10 @@ a.rm-agentic-card span:last-child {
   font-weight: 700;
   text-decoration: none;
 }
-@media (max-width: 720px) {
+@media (max-width: 760px) {
+  /* Desktop nav hidden — hamburger handles mobile */
   .rm-desktop-nav {
-    order: 3;
-    width: 100%;
-    justify-content: flex-start;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 0.1rem;
+    display: none !important;
   }
 }
 
@@ -2638,5 +2633,147 @@ a.rm-agentic-card span:last-child {
     top: 28%;
     transform: translate(50%, -40%) rotateX(58deg) rotateZ(-16deg);
     width: min(240px, 62vw);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Mobile-specific fixes
+   ═══════════════════════════════════════════════════════════ */
+
+/* Hamburger — hidden on desktop */
+.rm-nav-hamburger {
+  display: none !important;
+}
+
+@media (max-width: 760px) {
+  /* Show hamburger, hide desktop scroll nav */
+  .rm-nav-hamburger {
+    display: inline-flex !important;
+  }
+
+  .rm-desktop-nav {
+    display: none !important;
+  }
+
+  /* Tighten nav bar padding */
+  .rm-nav-bar--site {
+    padding: 0.55rem 0.85rem !important;
+    gap: 0.5rem !important;
+  }
+
+  /* Better touch targets on CTA buttons */
+  .bm-btn {
+    min-height: 44px;
+    padding: 12px 18px;
+    font-size: 0.95rem;
+  }
+
+  /* Waitlist form — full-width input and button */
+  .bm-wait {
+    flex-direction: column;
+  }
+  .bm-wait input {
+    width: 100%;
+    min-height: 44px;
+    box-sizing: border-box;
+  }
+  .bm-wait button {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  /* Footer — proper grid layout */
+  .bm-footer-links-wrap {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem 1rem;
+  }
+
+  /* Hero section — tighten spacing */
+  .bm-sec-hero {
+    padding-top: 6rem !important;
+    padding-bottom: 3rem !important;
+  }
+
+  /* Section headings — clamp tighter */
+  .bm-sec h1,
+  .bm-sec h2 {
+    line-height: 0.96;
+  }
+
+  /* Sub text — slightly smaller on mobile */
+  .bm-sub {
+    font-size: 0.95rem;
+    line-height: 1.55;
+    margin-bottom: 18px;
+  }
+
+  /* Pills row — scroll if too many */
+  .bm-pills {
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .bm-pills li {
+    font-size: 0.7rem;
+    padding: 5px 9px;
+  }
+
+  /* Game cards in hero reel */
+  .bm-game {
+    flex: 0 0 130px;
+  }
+  .bm-game img {
+    height: 70px;
+  }
+
+  /* rm-btn touch targets */
+  .rm-btn {
+    min-height: 44px;
+  }
+  .rm-btn-sm {
+    min-height: 38px;
+  }
+
+  /* Tile touch targets */
+  .rm-tile {
+    min-height: 44px;
+  }
+
+  /* Nav link touch targets on mobile dropdown */
+  .rm-mobile-nav a {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+
+  /* rm-match-row better touch target */
+  .rm-match-row {
+    min-height: 56px;
+  }
+
+  /* rm-action rows better touch target */
+  .rm-action {
+    min-height: 52px;
+  }
+
+  /* Footer — vertical stack with 2-col grid */
+  footer .rm-footer-wrap {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* Very small screens (320px) */
+@media (max-width: 360px) {
+  .bm-sec {
+    padding: 5rem 1rem 2.5rem;
+  }
+  .bm-btn {
+    padding: 11px 14px;
+    font-size: 0.88rem;
+  }
+  .bm-sec h1,
+  .bm-sec h2 {
+    font-size: clamp(1.9rem, 10vw, 2.6rem);
   }
 }

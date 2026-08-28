@@ -50,15 +50,15 @@ export default function HowToPlayPage() {
               This is the same wallet every stake and bet comes from.
             </li>
           </ol>
-          <div className="rm-btn-row rm-mt-2">
+          <div className="rm-btn-row rm-mt-2" style={{ flexWrap: 'wrap' }}>
             <a href={FAUCET} target="_blank" rel="noreferrer" className="rm-btn rm-btn-primary">
-              🚰 Open faucet (testnet)
+              🚰 Open faucet
             </a>
             <Link href="/app/wallet" className="rm-btn rm-btn-ghost">
               💰 My wallet
             </Link>
             <a href={REMATCH_BOT_URL} target="_blank" rel="noreferrer" className="rm-btn rm-btn-ghost">
-              Open Telegram bot
+              🤖 Telegram bot
             </a>
           </div>
         </div>

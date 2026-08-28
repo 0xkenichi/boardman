@@ -8,9 +8,9 @@ export function VolumeCounter() {
 
   useEffect(() => {
     let alive = true
-    async function fetch() {
+    async function loadMetrics() {
       try {
-        const r = await fetch('/api/stack/agentic/public/metrics?limit=1')
+        const r = await window.fetch('/api/stack/agentic/public/metrics?limit=1')
         const d = await r.json()
         if (!alive) return
         const vol = d?.volume || {}
@@ -22,8 +22,8 @@ export function VolumeCounter() {
         if (alive) setLoading(false)
       }
     }
-    fetch()
-    const id = setInterval(fetch, 30000) // refresh every 30s
+    loadMetrics()
+    const id = setInterval(loadMetrics, 30000) // refresh every 30s
     return () => { alive = false; clearInterval(id) }
   }, [])
 
