@@ -1,0 +1,416 @@
+/* League page — Boardman design system.
+ *
+ * Tokens come from portal.css (--bm-*): charcoal surfaces, emerald accent,
+ * amber strictly for pending/near-end states, red strictly negative.
+ * Buttons mirror the portal's .fd-btn / .fd-btn.primary pair so every
+ * football page shares one control language.
+ */
+
+.league-shell {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 24px 20px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  color: var(--bm-text, #f3f4f6);
+}
+
+.league-card {
+  background: var(--bm-surface, rgba(16, 20, 28, 0.88));
+  border: 1px solid var(--bm-border, rgba(255, 255, 255, 0.07));
+  border-radius: var(--bm-radius, 12px);
+  padding: 18px 20px;
+}
+
+.league-card h2 {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--bm-muted, #9ca3af);
+}
+
+/* season header */
+.league-season-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.league-season h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.league-champ {
+  font-size: 18px;
+  color: var(--bm-amber, #fbbf24);
+}
+
+.league-sub {
+  margin: 4px 0 0;
+  color: var(--bm-muted, #9ca3af);
+  font-size: 13px;
+}
+
+.league-season-meta {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  color: var(--bm-dim, #6b7280);
+  font-size: 12px;
+}
+
+.league-status-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.league-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 4px 10px;
+  border-radius: var(--bm-radius-pill, 999px);
+  border: 1px solid var(--bm-border, rgba(255, 255, 255, 0.07));
+  color: var(--bm-text, #f3f4f6);
+  background: rgba(255, 255, 255, 0.04);
+  white-space: nowrap;
+}
+
+.league-badge.is-open {
+  color: var(--bm-green-bright, #34d399);
+  border-color: var(--bm-border-strong, rgba(52, 211, 153, 0.35));
+  background: var(--bm-green-glow, rgba(16, 185, 129, 0.18));
+}
+
+.league-badge.is-finished {
+  color: var(--bm-amber, #fbbf24);
+  border-color: rgba(251, 191, 36, 0.4);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+.league-badge-quiet {
+  color: var(--bm-muted, #9ca3af);
+}
+
+/* layout */
+.league-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .league-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* standings table */
+.league-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.league-table th {
+  text-align: left;
+  color: var(--bm-dim, #6b7280);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--bm-border, rgba(255, 255, 255, 0.07));
+}
+
+.league-table td {
+  padding: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.league-table .league-rank {
+  color: var(--bm-dim, #6b7280);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* numeric stat columns — right-aligned tabular figures like an FM table */
+.league-table .lg-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--bm-muted, #9ca3af);
+}
+
+.league-table th.lg-num {
+  color: var(--bm-dim, #6b7280);
+}
+
+.league-table .lg-zone-col {
+  width: 6px;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* zone chip — emerald title race, amber mid-table, red bottom two */
+.lg-zone {
+  display: inline-block;
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.lg-zone.top {
+  background: var(--bm-green, #10b981);
+}
+
+.lg-zone.mid {
+  background: var(--bm-amber, #fbbf24);
+}
+
+.lg-zone.bottom {
+  background: var(--bm-red, #f87171);
+}
+
+.league-legend {
+  display: flex;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 10px;
+  color: var(--bm-dim, #6b7280);
+  align-items: center;
+}
+
+.league-legend i {
+  display: inline-block;
+  width: 3px;
+  height: 10px;
+  border-radius: 1px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.league-table .league-club {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.league-table .league-pts {
+  font-weight: 800;
+  color: var(--bm-green-bright, #34d399);
+}
+
+.league-table .league-row-champ {
+  background: rgba(251, 191, 36, 0.06);
+}
+
+.league-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  margin-right: 2px;
+  vertical-align: middle;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.15);
+}
+
+.league-note {
+  color: var(--bm-dim, #6b7280);
+  font-size: 12px;
+  margin: 10px 0 0;
+}
+
+/* fixtures */
+.league-fixtures {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.league-fixture {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--bm-radius-sm, 8px);
+}
+
+.league-fixture-md {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--bm-dim, #6b7280);
+  min-width: 44px;
+}
+
+.league-fixture-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.league-fixture-clubs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.league-fixture-clubs span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.league-vs {
+  color: var(--bm-dim, #6b7280);
+  font-weight: 400;
+  font-size: 11px;
+}
+
+.league-fixture-meta {
+  font-size: 11px;
+}
+
+/* results */
+.league-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.league-result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--bm-radius-sm, 8px);
+}
+
+.league-result-top {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  font-size: 13px;
+}
+
+.league-result-stats {
+  font-size: 10.5px;
+  letter-spacing: 0.01em;
+  text-align: center;
+  color: var(--bm-muted, #9ca3af);
+  padding: 5px 6px 1px;
+  border-top: 1px dashed var(--bm-border, rgba(255, 255, 255, 0.07));
+  font-variant-numeric: tabular-nums;
+}
+
+.league-result-md {
+  color: var(--bm-dim, #6b7280);
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 44px;
+}
+
+.league-result-score {
+  font-weight: 800;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  min-width: 44px;
+  text-align: center;
+}
+
+/* per-result watch-replay pill — same quiet-control language as the portal */
+.league-watch {
+  margin-left: auto;
+  padding: 0.15rem 0.55rem;
+  border-radius: 6px;
+  background: var(--bm-green-glow, rgba(16, 185, 129, 0.18));
+  border: 1px solid var(--bm-border-strong, rgba(52, 211, 153, 0.35));
+  color: var(--bm-green-bright, #34d399);
+  font-size: 0.75rem;
+  text-decoration: none;
+  line-height: 1.4;
+  transition: background 0.15s ease;
+}
+.league-watch:hover {
+  background: rgba(16, 185, 129, 0.3);
+}
+
+/* actions — mirrors .fd-btn / .fd-btn.primary on the portal */
+.league-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.league-btn {
+  display: inline-block;
+  background: var(--bm-green, #10b981);
+  border: 1px solid var(--bm-green, #10b981);
+  color: #05221a;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 9px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.league-btn:hover:not(:disabled) {
+  background: var(--bm-green-bright, #34d399);
+  border-color: var(--bm-green-bright, #34d399);
+}
+
+.league-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.league-btn-quiet {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+.league-msg {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--bm-green-bright, #34d399);
+}
+
+.league-empty {
+  text-align: center;
+  padding: 48px 24px;
+}
+
+.league-empty-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.league-empty p {
+  color: var(--bm-muted, #9ca3af);
+  font-size: 13px;
+  margin: 0 0 18px;
+}

@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 /**
- * Mint a CIP-0170 agent identity NFT on Cardano Preview testnet.
+ * Mint an agent identity NFT on Cardano Preview testnet.
  *
  * Derives the signing key from the wallet mnemonic, builds a
- * minting transaction with CIP-0170 metadata, signs, and submits.
+ * minting transaction with identity metadata (CIP-20 label 674),
+ * signs, and submits.
+ *
+ * TODO: Migrate to CIP-0170 (label 170) for proper identity standard.
  */
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { mnemonicToSeedSync } from "@scure/bip39";
@@ -63,7 +66,7 @@ function buildMintScript(pubKeyHash) {
   );
 }
 
-// ── CIP-0170 metadata ───────────────────────────────────────
+// ── Agent identity metadata (CIP-20 label 674) ──────────────
 function buildMetadata(agent) {
   const now = new Date().toISOString();
   const agentMeta = {
@@ -93,7 +96,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`\n🏷️  Minting CIP-0170 identity for ${agent.name} on Cardano Preview testnet\n`);
+  console.log(`\n🏷️  Minting agent identity for ${agent.name} on Cardano Preview testnet\n`);
 
   // 1. Derive key
   console.log("1️⃣  Deriving signing key...");
@@ -136,7 +139,7 @@ async function main() {
 
   // 4. Build metadata
   const metadata = buildMetadata(agent);
-  console.log("   Metadata: CIP-0170 label 674 ✓");
+  console.log("   Metadata: CIP-20 label 674 ✓");
 
   // 5. Build transaction body
   console.log("\n4️⃣  Building transaction...");
@@ -241,7 +244,7 @@ async function main() {
     console.log(`   Explorer: https://preview.cardanoscan.io/transaction/${resultHash}`);
     console.log(`   Agent: ${agent.name}`);
     console.log(`   Token: policy.${assetName}`);
-    console.log(`   Metadata: CIP-0170 label 674\n`);
+    console.log(`   Metadata: CIP-20 label 674\n`);
   } catch (e) {
     console.error(`\n❌ Submit failed: ${e.message}`);
 

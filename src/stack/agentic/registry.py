@@ -204,6 +204,25 @@ class AgentRegistry:
         bind_known_agents(self, live=False)
         return [self.get_agent(a["agent_id"]) or a for a in out]
 
+    def set_webhook(self, agent_id: str, webhook_url: Optional[str]) -> dict[str, Any]:
+        """Update the webhook URL a builder hosts for an agent (None clears it)."""
+        data = self._agents()
+        a = data["agents"].get(agent_id)
+        if not a:
+            raise KeyError(agent_id)
+        url = (webhook_url or "").strip()
+        a["webhook_url"] = url or None
+        rt = dict(a.get("runtime") or {})
+        if url:
+            rt["webhook_url"] = url
+        else:
+            rt.pop("webhook_url", None)
+        a["runtime"] = rt
+        a["updated_at"] = _now()
+        data["agents"][agent_id] = a
+        save_json(AGENTS_FILE, data)
+        return a
+
     def credit_creator_fee(self, agent_id: str, amount: str) -> None:
         data = self._agents()
         a = data["agents"].get(agent_id)

@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 /**
- * Build unsigned CIP-0170 metadata transaction on Cardano Preview testnet.
+ * Build unsigned metadata transaction on Cardano Preview testnet.
  * Outputs CBOR hex that can be signed via Lace CIP-30.
+ *
+ * Uses CIP-20 label 674 for transaction metadata.
+ * TODO: Migrate to CIP-0170 (label 170) for proper identity standard.
  */
 import * as CSL from "@emurgo/cardano-serialization-lib-nodejs";
 import { getAddressUtxos, getLatestBlock } from "./blockfrost.js";
@@ -57,7 +60,7 @@ async function main() {
   const agent = AGENTS[NAME];
   if (!agent) { console.error("Unknown agent"); process.exit(1); }
 
-  console.log(`\n🏷️  Building CIP-0170 tx for ${agent.name}\n`);
+  console.log(`\n🏷️  Building identity tx for ${agent.name}\n`);
 
   // 1. UTXOs
   const utxos = await getAddressUtxos(WALLET);
@@ -100,7 +103,7 @@ async function main() {
   metaWrap.insert(bn(674), metadata);
   builder.set_metadata(metaWrap);
 
-  console.log(`Metadata: CIP-0170 label 674 ✓`);
+  console.log(`Metadata: CIP-20 label 674 ✓`);
 
   // Build
   const tx = builder.build_tx();

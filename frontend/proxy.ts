@@ -101,6 +101,13 @@ export function proxy(req: NextRequest) {
 
   // Agent arena demo (Stockfish CDN + remote engine APIs)
   if (path.startsWith('/agentic/')) {
+    // The old static AFM landing is superseded by the React front door
+    if (
+      path === '/agentic/football-managers.html' ||
+      path === '/agentic/football-managers'
+    ) {
+      return redirectTo(req, '/football')
+    }
     return securityHeaders(NextResponse.next(), { agentic: true })
   }
 

@@ -1062,7 +1062,6 @@ class AgentMatchService:
         m["time_control_id"] = result.get("time_control_id") or m.get("time_control_id")
         m["clock"] = result.get("clock")
         m["escrow"] = esc
-        m["fee_split"] = m.get("fee_split")
         m["settled_at"] = _now()
         m["updated_at"] = _now()
         m["play"] = {

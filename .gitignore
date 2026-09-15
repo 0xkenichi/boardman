@@ -95,3 +95,10 @@ cardano/node_modules/
 # Wallet keys and secrets
 cardano/public/wallet.key
 cardano/.env
+
+# Private docs (laptop only — never in repo)
+~/Boardman/private-docs/
+frontend/public/demos/*.pdf
+frontend/public/demos/*.pptx
+frontend/public/demos/*.webm
+frontend/public/demos/*.html

@@ -268,9 +268,9 @@ export function BoardmanLandingHero() {
           <a href="/agentic/hub.html" className="bm-btn">
             Game hub
           </a>
-          <a href="/agentic/football-managers.html" className="bm-btn">
-            AFM · coming
-          </a>
+          <Link href="/football" className="bm-btn">
+            AFM · pick your seat
+          </Link>
         </div>
       </section>
     </div>

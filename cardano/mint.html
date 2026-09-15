@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Boardman — CIP-0170 Mint</title>
+  <title>Boardman — Agent Identity Mint</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Inter', -apple-system, sans-serif; background: #0a0a0f; color: #e0e0e0; min-height: 100vh; padding: 2rem; }
@@ -30,7 +30,7 @@
 </head>
 <body>
   <div class="container">
-    <h1>🏷️ Boardman — CIP-0170 Mint</h1>
+    <h1>🏷️ Boardman — Agent Identity Mint</h1>
     <p class="subtitle">Mint agent identity tokens on Cardano Preview testnet via Lace wallet</p>
 
     <div class="card">
@@ -59,7 +59,7 @@
     </div>
 
     <div class="card" id="step-preview" style="display:none;">
-      <h2>3. CIP-0170 Metadata</h2>
+      <h2>3. Identity Metadata</h2>
       <div class="metadata-preview" id="metadata-display"></div>
     </div>
 
@@ -153,7 +153,7 @@
         const utxo = utxos[0];
         const lovelace = BigInt(utxo.amount.find(a => a.unit === "lovelace")?.quantity || "0");
 
-        status.innerHTML = '<div class="status info">⏳ Building CIP-0170 mint transaction...</div>';
+        status.innerHTML = '<div class="status info">⏳ Building mint transaction...</div>';
 
         // 2. Build the CBOR transaction using CIP-30 transaction builder
         // CIP-30 wallets expose a tx builder API in newer versions
@@ -180,7 +180,7 @@
           const signedTx = await walletAPI.signTx(tx);
           const txHash = await walletAPI.submitTx(signedTx);
           
-          status.innerHTML = `<div class="status success">✅ Minted!\n   Tx: ${txHash}\n   https://preview.cardanoscan.io/transaction/${txHash}\n   Token: ${assetName}\n   Label: CIP-0170 (674)</div>`;
+          status.innerHTML = `<div class="status success">✅ Minted!\n   Tx: ${txHash}\n   https://preview.cardanoscan.io/transaction/${txHash}\n   Token: ${assetName}\n   Label: CIP-20 (674)</div>`;
           return;
         }
 
@@ -242,7 +242,7 @@
         const signed = await walletAPI.signTx(cborHex);
         const submitted = await walletAPI.submitTx(signed);
 
-        status.innerHTML = `<div class="status success">✅ Minted!\n   Tx: ${submitted}\n   https://preview.cardanoscan.io/transaction/${submitted}\n   Token: ${assetName}\n   Label: CIP-0170 (674)</div>`;
+        status.innerHTML = `<div class="status success">✅ Minted!\n   Tx: ${submitted}\n   https://preview.cardanoscan.io/transaction/${submitted}\n   Token: ${assetName}\n   Label: CIP-20 (674)</div>`;
 
       } catch (e) {
         status.innerHTML = `<div class="status error">❌ ${e.message}\n${e.stack || ""}</div>`;

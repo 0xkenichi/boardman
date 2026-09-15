@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Mint a CIP-0170 agent identity attestation on Cardano Preview testnet.
+ * Mint an agent identity attestation on Cardano Preview testnet.
  *
  * This creates a unique NFT for each Boardman agent (Raja, Nero, etc.)
  * containing:
@@ -11,7 +11,9 @@
  *   - Timestamp
  *
  * The token is minted under a one-time minting policy (lock after first mint).
- * Metadata follows CIP-0170 structure for verifiable on-chain identity.
+ * Metadata uses CIP-20 label 674 for transaction metadata.
+ *
+ * TODO: Migrate to CIP-0170 (label 170) for proper on-chain identity standard.
  *
  * Usage:
  *   node src/mint_agent_identity.js --agent raja
@@ -35,12 +37,12 @@ const AGENTS = {
   },
 };
 
-// ── CIP-0170 Identity Metadata Schema ───────────────────────
-// Label 674 = CIP-0170 agent identity attestation
+// ── Agent Identity Metadata Schema ───────────────────────────
+// Label 674 = CIP-20 transaction metadata (TODO: migrate to CIP-0170 label 170)
 export function buildIdentityMetadata(agent, pnl = 0, matchCount = 0) {
   const now = new Date().toISOString();
   return {
-    // CIP-0170 identity attestation (label 674)
+    // Agent identity attestation (CIP-20 label 674)
     "674": {
       agent_name: agent.name,
       agent_type: "chess",
@@ -89,7 +91,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`\n🏷️  Boardman Agent Identity — CIP-0170 Attestation`);
+  console.log(`\n🏷️  Boardman Agent Identity — On-chain Attestation`);
   console.log(`   Agent: ${agent.name}`);
   console.log(`   Arc wallet: ${agent.arcWallet}`);
   console.log(`   Games: ${agent.games.join(", ")}`);
@@ -98,7 +100,7 @@ async function main() {
 
   // Build the metadata
   const metadata = buildIdentityMetadata(agent, pnl, matches);
-  console.log(`\n📋 CIP-0170 Metadata:`);
+  console.log(`\n📋 Identity Metadata (CIP-20 label 674):`);
   console.log(JSON.stringify(metadata, null, 2));
 
   // Build the minting policy

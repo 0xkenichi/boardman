@@ -145,7 +145,7 @@ def build_market(
     eval_pawns: Optional[float] = None,
     a_is_white: bool = True,
     ply: int = 0,
-    take_bps: int = 500,  # 3% platform + 2% creators
+    take_bps: int = 900,  # 7% platform + 2% creators (must match spectator.py defaults)
     settled: bool = False,
 ) -> MarketSnapshot:
     wr_a = win_rate_from_stats(agent_a.get("stats"))

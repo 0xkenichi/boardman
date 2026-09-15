@@ -1,0 +1,287 @@
+/**
+ * MatchBroadcast styles — the spectator seat's 2D tactical broadcast.
+ * Boardman identity: deep navy field, purple home kit, teal away kit.
+ */
+.mb-wrap {
+  --mb-bg-0: #0a1120;
+  --mb-bg-1: #0e1830;
+  --mb-bg-2: #152142;
+  --mb-line: rgba(255, 255, 255, 0.08);
+  --mb-text-0: #f3f6fb;
+  --mb-text-1: #98a2bd;
+  --mb-text-2: #5f6b8a;
+  --mb-home: #7c3aed;
+  --mb-away: #2fe0c0;
+  --mb-amber: #ffb648;
+
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--mb-bg-0);
+  color: var(--mb-text-0);
+  border: 1px solid var(--mb-line);
+  border-radius: 12px;
+  overflow: hidden;
+  font-family: var(--font-inter, -apple-system, sans-serif);
+}
+
+/* scoreboard */
+.mb-scoreboard {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  padding: 14px 20px;
+  background: var(--mb-bg-1);
+  border-bottom: 1px solid var(--mb-line);
+}
+.mb-team {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 600;
+  font-size: 15px;
+  width: 190px;
+}
+.mb-team.mb-away {
+  justify-content: flex-end;
+  flex-direction: row-reverse;
+}
+.mb-crest {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.mb-mid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.mb-score {
+  font-size: 24px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  background: var(--mb-bg-2);
+  padding: 4px 20px;
+  border-radius: 6px;
+  min-width: 70px;
+  text-align: center;
+}
+.mb-clock {
+  font-size: 11px;
+  color: var(--mb-text-1);
+  margin-top: 5px;
+  letter-spacing: 0.3px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* momentum */
+.mb-momentum {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 20px;
+  background: var(--mb-bg-0);
+  border-bottom: 1px solid var(--mb-line);
+  font-size: 11px;
+  color: var(--mb-text-1);
+}
+.mb-mom-lbl {
+  width: 34px;
+  text-align: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mb-mom-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  background: var(--mb-bg-2);
+}
+.mb-mom-home {
+  background: var(--mb-home);
+  transition: width 1.5s ease;
+}
+.mb-mom-away {
+  background: var(--mb-away);
+  transition: width 1.5s ease;
+}
+
+/* body */
+.mb-body {
+  display: flex;
+  gap: 14px;
+  padding: 16px 20px;
+  align-items: flex-start;
+}
+.mb-lineup {
+  width: 190px;
+  flex-shrink: 0;
+  background: var(--mb-bg-1);
+  border: 1px solid var(--mb-line);
+  border-radius: 10px;
+  padding: 12px;
+}
+.mb-lineup h4 {
+  font-size: 12px;
+  margin: 0 0 2px;
+}
+.mb-formation {
+  font-size: 10px;
+  color: var(--mb-text-2);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.mb-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 0;
+  font-size: 11px;
+  color: var(--mb-text-1);
+  border-bottom: 1px solid var(--mb-line);
+}
+.mb-row:last-child {
+  border-bottom: none;
+}
+.mb-num {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--mb-bg-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--mb-text-1);
+  flex-shrink: 0;
+}
+.mb-row.mb-active {
+  color: var(--mb-text-0);
+  font-weight: 700;
+}
+.mb-row.mb-active .mb-num {
+  background: var(--mb-amber);
+  color: #2a0d05;
+}
+
+/* pitch */
+.mb-pitch {
+  position: relative;
+  flex: 1;
+  aspect-ratio: 100 / 64;
+  background: repeating-linear-gradient(90deg, #0e3b21 0 5%, #123f26 5% 10%);
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+.mb-pitch.mb-flip {
+  transform: scale(-1, -1);
+}
+.mb-pitch-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.mb-player {
+  position: absolute;
+  width: 5.4%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  transition: left 1.7s ease-in-out, top 1.7s ease-in-out;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+.mb-player-home {
+  background: var(--mb-home);
+  color: #fff;
+}
+.mb-player-away {
+  background: var(--mb-away);
+  color: #062820;
+}
+.mb-player.mb-has-ball {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.65), 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+.mb-ball {
+  position: absolute;
+  width: 1.6%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #fff;
+  transform: translate(-50%, -50%);
+  transition: left 1.7s ease-in-out, top 1.7s ease-in-out;
+  box-shadow: 0 0 5px rgba(255, 255, 255, 0.8);
+  z-index: 5;
+}
+
+/* ticker */
+.mb-ticker {
+  padding: 13px 20px;
+  text-align: center;
+  font-size: 13px;
+  background: var(--mb-bg-1);
+  border-top: 1px solid var(--mb-line);
+  border-bottom: 1px solid var(--mb-line);
+  min-height: 18px;
+  transition: opacity 0.3s;
+}
+
+/* controls */
+.mb-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px;
+}
+.mb-btn {
+  background: var(--mb-bg-1);
+  border: 1px solid var(--mb-line);
+  color: var(--mb-text-1);
+  padding: 7px 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.mb-btn:hover {
+  background: var(--mb-bg-2);
+  color: var(--mb-text-0);
+}
+.mb-btn.mb-active {
+  background: var(--mb-home);
+  border-color: var(--mb-home);
+  color: #fff;
+}
+.mb-icon-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+/* responsive: stack lineups under the pitch on narrow screens */
+@media (max-width: 900px) {
+  .mb-body {
+    flex-direction: column;
+  }
+  .mb-lineup {
+    width: 100%;
+  }
+}

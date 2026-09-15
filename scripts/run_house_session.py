@@ -8,6 +8,11 @@ not touch BoardmanEscrow. This script is the real money path.
   PYTHONPATH=. python3 scripts/run_house_session.py --games 0   # until Ctrl-C
   PYTHONPATH=. python3 scripts/run_house_session.py --delay 0.05
   PYTHONPATH=. python3 scripts/run_house_session.py --stake 5 --delay 0.05
+
+Plays round the clock. The only pause is funding: when an agent's play
+balance drops below BOARDMAN_HOUSE_MIN_STAKE (default 1 USDC) the loop
+waits quietly (BOARDMAN_HOUSE_POLL_NO_FUNDS_SEC, default 60s) and resumes
+automatically once the wallets are topped up.
 """
 from __future__ import annotations
 
@@ -15,6 +20,7 @@ import argparse
 import os
 import sys
 import time
+from decimal import Decimal
 from pathlib import Path
 
 
@@ -115,6 +121,20 @@ def main() -> int:
     nero = agents["nero"]
     house = get_house()
 
+    def play_balance(agent: dict) -> Decimal:
+        """Real Arc USDC when on-chain mode is on, else the demo ledger."""
+        w = agent.get("wallet_address") or ""
+        if onchain_enabled() and w:
+            try:
+                bal = usdc_balance(w, chain_id="arc")
+                if bal > 0:
+                    return bal
+            except Exception:
+                pass
+        from gaming.src.stack.agentic import ledger
+
+        return ledger.balance(w) if w else Decimal("0")
+
     print("Boardman House session")
     print(f"  onchain = {onchain_enabled()}")
     print(
@@ -127,6 +147,20 @@ def main() -> int:
     n = 0
     try:
         while args.games <= 0 or n < args.games:
+            # 24/7 except when there is no fund: pause quietly and resume
+            # automatically once wallets are topped up.
+            min_stake = Decimal(
+                str(float(os.environ.get("BOARDMAN_HOUSE_MIN_STAKE", "1")))
+            )
+            bal_a = play_balance(raja)
+            bal_b = play_balance(nero)
+            if bal_a < min_stake or bal_b < min_stake:
+                print(
+                    f"  no fund — raja={bal_a} USDC nero={bal_b} USDC below "
+                    f"{min_stake} USDC floor; waiting for funding…"
+                )
+                time.sleep(int(os.environ.get("BOARDMAN_HOUSE_POLL_NO_FUNDS_SEC", "60")))
+                continue
             n += 1
             white = raja if n % 2 else nero
             print(f"\n── game {n}  white={white['name']} ──")
@@ -144,6 +178,17 @@ def main() -> int:
                 # Never let a blocked/stale table kill the session (the watchdog
                 # would restart the whole container). Clear the pair's stale
                 # locks and try the next game.
+                msg = str(exc).lower()
+                no_fund = any(
+                    k in msg
+                    for k in (
+                        "insufficient",
+                        "cannot stake",
+                        "no funds",
+                        "underfunded",
+                        "negotiation failed",
+                    )
+                )
                 print(f"  rematch failed: {exc}")
                 try:
                     released = house.release_stale_pair(
@@ -152,7 +197,7 @@ def main() -> int:
                     print(f"  cleared {len(released)} stale locks for the pair")
                 except Exception as exc2:
                     print(f"  stale-lock cleanup failed: {exc2}")
-                time.sleep(2)
+                time.sleep(60 if no_fund else 2)
                 continue
             m = out["match"]
             dt = time.time() - t0

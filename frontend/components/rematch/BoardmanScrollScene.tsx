@@ -42,7 +42,7 @@ export default function BoardmanScrollScene() {
 
     let dead = false
     let raf = 0
-    let renderer: { dispose: () => void; forceContextLoss?: () => void } | null = null
+    let renderer: { dispose: () => void } | null = null
     const cleanups: Array<() => void> = []
 
     ;(async () => {
@@ -57,12 +57,23 @@ export default function BoardmanScrollScene() {
       const look = new THREE.Vector3(-0.4, 0.35, 0)
       camera.lookAt(look)
 
-      const gl = new THREE.WebGLRenderer({
-        canvas,
-        antialias: true,
-        alpha: true,
-        powerPreference: 'high-performance',
-      })
+      const gl = (() => {
+        try {
+          return new THREE.WebGLRenderer({
+            canvas,
+            antialias: true,
+            alpha: true,
+            powerPreference: 'high-performance',
+          })
+        } catch {
+          // WebGL unavailable, or this canvas's context was lost (e.g. a
+          // StrictMode remount reusing a force-lost context). Fall back to
+          // the CSS board instead of crashing the page.
+          canvas.dataset.fallback = '1'
+          return null
+        }
+      })()
+      if (!gl) return
       renderer = gl
       gl.setClearColor(0x000000, 0)
       gl.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
@@ -540,7 +551,9 @@ export default function BoardmanScrollScene() {
       cancelAnimationFrame(raf)
       cleanups.forEach((fn) => fn())
       try {
-        renderer?.forceContextLoss?.()
+        // No forceContextLoss() here: it permanently loses the canvas's
+        // context, and a StrictMode dev remount reusing the same canvas then
+        // crashes Three.js on the null 'precision' read. dispose() suffices.
         renderer?.dispose()
       } catch {
         /* ignore */

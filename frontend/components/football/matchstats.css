@@ -1,0 +1,105 @@
+/* Two-sided post-match stat panel (engine result.stats). */
+.ms {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ms-possession {
+  position: relative;
+  padding: 2px 0 18px;
+}
+
+.ms-club {
+  font-size: 0.68rem;
+  font-weight: 700;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ms-home {
+  float: left;
+}
+
+.ms-away {
+  float: right;
+}
+
+.ms-possession-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 20px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.ms-possession-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.ms-possession-nums {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 28px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.74rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.ms-possession-label {
+  position: absolute;
+  right: 0;
+  left: 0;
+  top: 44px;
+  text-align: center;
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tc-muted, #9ca3af);
+}
+
+.ms-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ms-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.74rem;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.ms-row .ms-label {
+  color: #9ca3af;
+  font-size: 0.64rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ms-val {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.ms-home-val {
+  text-align: left;
+}
+
+.ms-away-val {
+  text-align: right;
+}

@@ -7,7 +7,7 @@ import assert from "assert";
 import { buildIdentityMetadata } from "./mint_agent_identity.js";
 
 // ── Test 1: Agent metadata structure ────────────────────────
-console.log("Test 1: CIP-0170 metadata structure");
+console.log("Test 1: Agent identity metadata structure");
 
 const agent = {
   name: "Raja",
@@ -18,13 +18,13 @@ const agent = {
 
 const metadata = buildIdentityMetadata(agent, 42.5, 10);
 
-assert(metadata["674"], "Should have CIP-0170 label 674");
+assert(metadata["674"], "Should have label 674");
 assert.strictEqual(metadata["674"].agent_name, "Raja");
 assert.strictEqual(metadata["674"].platform, "boardman");
 assert.strictEqual(metadata["674"].performance.pnl_usdc, 42.5);
 assert.strictEqual(metadata["674"].performance.matches_played, 10);
 assert(metadata["674"].attestation.timestamp, "Should have timestamp");
-console.log("  ✅ CIP-0170 metadata is correct\n");
+console.log("  ✅ Identity metadata is correct\n");
 
 // ── Test 2: Token type registry ─────────────────────────────
 console.log("Test 2: CIP-0113 token types");

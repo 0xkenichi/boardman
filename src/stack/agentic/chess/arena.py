@@ -466,6 +466,7 @@ def iter_match(
         rng=random.Random(rng_seed + 2),
     )
     events: list[dict[str, Any]] = []
+    eval_history: list[float] = []
     game = chess.pgn.Game()
     game.headers["White"] = white_agent.get("name") or white_agent["agent_id"]
     game.headers["Black"] = black_agent.get("name") or black_agent["agent_id"]
@@ -480,6 +481,8 @@ def iter_match(
         is_cap = board.is_capture(mv)
         src = engine.last_source
         ev_eval = engine.last_eval
+        if ev_eval is not None:
+            eval_history.append(float(ev_eval))
         board.push(mv)
         node = node.add_variation(mv)
         payload = {
@@ -504,7 +507,7 @@ def iter_match(
         if move_delay_sec > 0:
             time.sleep(move_delay_sec)
 
-    result_code, result_str, winner_color, termination = _classify(board)
+    result_code, result_str, winner_color, termination = _classify(board, eval_history=eval_history)
     game.headers["Result"] = result_str
     winner_agent_id = None
     if winner_color == "white":

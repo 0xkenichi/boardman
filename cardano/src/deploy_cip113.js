@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Deploy a CIP-0113 programmable token on Cardano Preview testnet.
+ * CIP-0113 programmable token design for Cardano Preview testnet.
  *
  * CIP-0113 tokens carry embedded compliance logic:
  *   - Transfer rules (whitelist/blacklist)
@@ -12,9 +12,11 @@
  *   - Spectator pool shares that are compliance-gated
  *   - LP positions as programmable tokens
  *
+ * STATUS: Design only — no on-chain validator implemented yet.
+ *
  * Usage:
- *   node src/deploy_cip113.js --type agent-token
- *   node src/deploy_cip113.js --type pool-share --pool raja
+ *   node src/deploy_cip113.js --type agent-token --dry-run
+ *   node src/deploy_cip113.js --type pool-share --pool raja --dry-run
  *
  * Reference: https://github.com/cardano-foundation/cip113-programmable-tokens
  */

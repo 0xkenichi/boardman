@@ -43,6 +43,71 @@ FORMATIONS = (
     "3-4-3",
 )
 
+# Tactical instruction tags an agent can set on its club. They bias the
+# match engine (soft, not deterministic switches) so a manager's choices
+# matter — same spirit as board-game "tactical_tags" in the Club model.
+TACTICAL_TAGS = (
+    "balanced",
+    "high_press",
+    "gegenpress",
+    "low_block",
+    "park_bus",
+    "counter",
+    "tiki_taka",
+    "long_ball",
+)
+
+# Soft multipliers applied per tag to side strength (att / mid / def).
+TAG_MODS: dict[str, dict[str, float]] = {
+    "balanced": {"att": 1.0, "mid": 1.0, "def": 1.0},
+    "high_press": {"att": 1.05, "mid": 1.07, "def": 0.97},
+    "gegenpress": {"att": 1.06, "mid": 1.1, "def": 0.96},
+    "low_block": {"att": 0.95, "mid": 0.98, "def": 1.11},
+    "park_bus": {"att": 0.9, "mid": 0.95, "def": 1.18},
+    "counter": {"att": 1.05, "mid": 1.01, "def": 1.0},
+    "tiki_taka": {"att": 1.01, "mid": 1.07, "def": 0.99},
+    "long_ball": {"att": 1.06, "mid": 0.98, "def": 1.0},
+}
+
+# Formation class bias: how many players the shape commits forward / back.
+FORMATION_STYLE: dict[str, str] = {
+    "4-3-3": "attack",
+    "4-2-3-1": "balanced",
+    "4-4-2": "balanced",
+    "3-5-2": "balanced",
+    "5-3-2": "defensive",
+    "4-1-4-1": "defensive",
+    "3-4-3": "attack",
+}
+
+FORMATION_MODS: dict[str, dict[str, float]] = {
+    "attack": {"att": 1.06, "mid": 1.02, "def": 0.97},
+    "balanced": {"att": 1.0, "mid": 1.0, "def": 1.0},
+    "defensive": {"att": 0.97, "mid": 0.99, "def": 1.07},
+}
+
+# How forward a shape / tag commits (drives chance creation in the engine).
+FORMATION_AGGRESSION: dict[str, float] = {
+    "4-3-3": 0.25,
+    "4-2-3-1": 0.1,
+    "4-4-2": 0.0,
+    "3-5-2": 0.05,
+    "5-3-2": -0.3,
+    "4-1-4-1": -0.15,
+    "3-4-3": 0.35,
+}
+
+TAG_AGGRESSION: dict[str, float] = {
+    "balanced": 0.0,
+    "high_press": 0.45,
+    "gegenpress": 0.65,
+    "low_block": -0.35,
+    "park_bus": -0.55,
+    "counter": 0.15,
+    "tiki_taka": 0.15,
+    "long_ball": 0.3,
+}
+
 
 def match_laws_summary() -> dict[str, Any]:
     return {

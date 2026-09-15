@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Sign and submit CIP-0170 metadata tx using our generated wallet.
+ * Sign and submit agent identity metadata tx using our generated wallet.
+ * Uses CIP-20 label 674. TODO: Migrate to CIP-0170 (label 170).
  */
 import * as CSL from "@emurgo/cardano-serialization-lib-nodejs";
 import { getAddressUtxos, getLatestBlock, submitTx } from "./blockfrost.js";
@@ -40,7 +41,7 @@ const block = await getLatestBlock();
 builder.set_ttl_bignum(CSL.BigNum.from_str(String(block.slot + 7200)));
 builder.add_required_signer(keyHash);
 
-// CIP-0170 Metadata (label 674)
+// Agent identity metadata (CIP-20 label 674)
 const t = (s) => CSL.TransactionMetadatum.new_text(String(s).slice(0, 64));
 const n = (i) => CSL.TransactionMetadatum.new_int(CSL.Int.new(CSL.BigNum.from_str(String(i))));
 const now = new Date().toISOString();
@@ -94,7 +95,7 @@ try {
   console.log("\n✅ SUCCESS!");
   console.log("Tx Hash:", hash);
   console.log("Explorer: https://preview.cardanoscan.io/transaction/" + hash);
-  console.log("Metadata: CIP-0170 label 674 (agent identity attestation)");
+  console.log("Metadata: CIP-20 label 674 (agent identity attestation)");
 } catch (e) {
   console.error("\n❌ Submit failed:", e.message);
   console.error("Full error:", JSON.stringify(e));

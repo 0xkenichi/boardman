@@ -1291,3 +1291,722 @@ async def football_catalog(
         "meta": catalog_meta(),
         "players": players[off : off + cap],
     }
+
+
+class FootballSimBody(BaseModel):
+    """A one-off AFM friendly: two XIs from the catalog (public demo route)."""
+
+    home_name: Optional[str] = None
+    away_name: Optional[str] = None
+    home_xi: list[str]
+    away_xi: list[str]
+    match_id: Optional[str] = None  # pass to reproduce the exact seeded match
+    home_tactics: Optional[dict] = None  # {formation?, tags?} — what the club set
+    away_tactics: Optional[dict] = None
+
+
+class FootballLineupBody(BaseModel):
+    """afm_set_lineup: a club's formation + legal XI + bench (+ tactical tags)."""
+
+    formation: Optional[str] = None
+    starters: Optional[list[str]] = None
+    bench: Optional[list[str]] = None
+    tactical_tags: Optional[list[str]] = None
+
+
+class FootballSeasonJoinBody(BaseModel):
+    agent_id: str
+
+
+class FootballSeasonOpenBody(BaseModel):
+    agent_ids: Optional[list[str]] = None
+    start_at: Optional[str] = None  # ISO timestamp
+    force: bool = False
+
+
+@router.post("/football/simulate")
+async def football_simulate(body: FootballSimBody):
+    """Run the AFM match engine on two submitted XIs (watchable friendly sim).
+
+    The engine stays authoritative server-side: same seeded `simulate_match`
+    used by future league fixtures. Response is MatchResult.to_dict() — score,
+    outcome and the minute-by-minute feed the 3D broadcast animates.
+    """
+    import random as _random
+    import time as _time
+
+    from gaming.src.stack.agentic.games.football_managers.catalog import get_player
+    from gaming.src.stack.agentic.games.football_managers.match_engine import (
+        simulate_match,
+    )
+
+    def _xi(label: str, ids: list[str]) -> list[str]:
+        out: list[str] = []
+        for pid in ids:
+            p = get_player(pid)
+            if not p:
+                raise HTTPException(status_code=400, detail=f"unknown player {pid}")
+            out.append(pid)
+        if not out:
+            raise HTTPException(status_code=400, detail=f"{label} XI is empty")
+        return out
+
+    home = _xi("home", body.home_xi)
+    away = _xi("away", body.away_xi)
+    overlap = set(home) & set(away)
+    if overlap:
+        raise HTTPException(
+            status_code=400,
+            detail=f"one copy of each player — XI overlap: {sorted(overlap)}",
+        )
+
+    mid = (body.match_id or "").strip() or f"afm_friendly_{int(_time.time() * 1000)}_{_random.randrange(10_000)}"
+    result = simulate_match(
+        mid,
+        home_agent_id=body.home_name or "Home FC",
+        away_agent_id=body.away_name or "Away FC",
+        home_xi=home,
+        away_xi=away,
+        home_tactics=body.home_tactics,
+        away_tactics=body.away_tactics,
+    )
+    return {
+        "success": True,
+        "match_id": mid,
+        "tactics": {
+            "home": body.home_tactics or {"formation": "4-3-3", "tags": ["balanced"]},
+            "away": body.away_tactics or {"formation": "4-3-3", "tags": ["balanced"]},
+        },
+        "result": result.to_dict(),
+    }
+
+
+@router.get("/football/clubs")
+async def football_clubs():
+    """Agent-owned AFM clubs: formation, tactics, roster + locked lineup."""
+    from gaming.src.stack.agentic.games.football_managers.club_store import (
+        list_clubs,
+        seed_demo_clubs,
+    )
+
+    seed_demo_clubs()
+    return {"success": True, "clubs": list_clubs()}
+
+
+@router.get("/football/clubs/{agent_id}")
+async def football_club(agent_id: str):
+    from gaming.src.stack.agentic.games.football_managers.club_store import (
+        get_club,
+        seed_demo_clubs,
+        squad_view,
+    )
+
+    seed_demo_clubs()
+    club = get_club(agent_id)
+    if not club:
+        raise HTTPException(status_code=404, detail=f"no AFM club for agent {agent_id}")
+    return {"success": True, "club": club, "squad": squad_view(agent_id)}
+
+
+@router.put("/football/clubs/{agent_id}/lineup")
+async def football_club_lineup(agent_id: str, body: FootballLineupBody):
+    """Set a club's lineup + tactics (agent afm_set_lineup / board Save)."""
+    from gaming.src.stack.agentic.games.football_managers.club_store import (
+        seed_demo_clubs,
+        set_lineup,
+    )
+
+    seed_demo_clubs()
+    try:
+        club = set_lineup(
+            agent_id,
+            formation=body.formation,
+            starters=body.starters,
+            bench=body.bench,
+            tactical_tags=body.tactical_tags,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {"success": True, "club": club}
+
+
+# ---------------------------------------------------------------- AFM season
+
+
+@router.get("/football/owner/{agent_id}")
+async def football_owner_dashboard(agent_id: str):
+    """Owner seat, step 5 — follow one club: results, the agent's decisions,
+    table position, the spending log and suspension/injury news."""
+    from gaming.src.stack.agentic.games.football_managers.club_store import (
+        seed_demo_clubs,
+    )
+    from gaming.src.stack.agentic.games.football_managers.dashboard import (
+        owner_dashboard,
+    )
+
+    seed_demo_clubs()
+    try:
+        dash = owner_dashboard(agent_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return {"success": True, "dashboard": dash}
+
+
+@router.get("/football/report/{agent_id}")
+async def football_agent_report(agent_id: str, matchday: Optional[int] = None):
+    """Agent FM post-match report — ratings, xG, errors for the club's latest
+    (or a given) played fixture. The "why we lost" file the agent reads."""
+    from gaming.src.stack.agentic.games.football_managers.club_store import seed_demo_clubs
+    from gaming.src.stack.agentic.games.football_managers import report as R
+
+    seed_demo_clubs()
+    try:
+        if matchday is not None:
+            from gaming.src.stack.agentic.games.football_managers.season import _state
+
+            s = _state().get("season")
+            if not s:
+                raise HTTPException(status_code=404, detail="no season running")
+            info = (s.get("matchdays") or {}).get(str(matchday)) or {}
+            for r in info.get("results") or []:
+                if agent_id in (r.get("home_agent_id"), r.get("away_agent_id")):
+                    rep = R.match_report(int(s["season_no"]), matchday, r["home_agent_id"], r["away_agent_id"])
+                    rep["my_side"] = "home" if r["home_agent_id"] == agent_id else "away"
+                    rep["my"] = rep[rep["my_side"]]
+                    return {"success": True, "report": rep}
+            raise HTTPException(status_code=404, detail=f"no result for {agent_id} on matchday {matchday}")
+        rep = R.latest_report_for_agent(agent_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return {"success": True, "report": rep}
+
+
+@router.get("/football/season/report")
+async def football_match_report(season_no: int, matchday: int, home: str, away: str):
+    """Full FM post-match report for one recorded fixture (both sides):
+    per-player ratings, xG, error attribution and the "why" headline lines."""
+    from gaming.src.stack.agentic.games.football_managers import report as R
+
+    try:
+        rep = R.match_report(int(season_no), int(matchday), home, away)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return {"success": True, "report": rep}
+
+
+@router.get("/football/season")
+async def football_season():
+    """Season state for humans + agents (afm_view_season): standings, fixtures,
+    recent results, pot, next matchday deadline."""
+    from gaming.src.stack.agentic.games.football_managers.season import get_season
+
+    return {"success": True, "season": get_season()}
+
+
+@router.post("/football/season/join")
+async def football_season_join(body: FootballSeasonJoinBody):
+    """afm_join_season — queue the club for the next season."""
+    from gaming.src.stack.agentic.games.football_managers.season import join_season
+
+    try:
+        return {"success": True, **join_season(body.agent_id)}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.post("/football/season/open")
+async def football_season_open(body: FootballSeasonOpenBody):
+    """Open a season: collect USDC entries, build schedule, zero standings."""
+    from datetime import datetime
+
+    from gaming.src.stack.agentic.games.football_managers.season import open_season
+
+    start = datetime.fromisoformat(body.start_at) if body.start_at else None
+    try:
+        snap = open_season(body.agent_ids, start_at=start, force=body.force)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {"success": True, "season": snap}
+
+
+@router.post("/football/season/tick")
+async def football_season_tick():
+    """Advance the season clock: open due matchdays, resolve past deadlines.
+    Called by the daily scheduler (and by the standings page's watch button)."""
+    from gaming.src.stack.agentic.games.football_managers.season import tick
+
+    return {"success": True, **tick()}
+
+
+@router.post("/football/season/reset")
+async def football_season_reset():
+    """Dev/ops: drop the current season state (no money moves)."""
+    from gaming.src.stack.agentic.games.football_managers.season import reset_season
+
+    return {"success": True, **reset_season()}
+
+
+@router.get("/football/season/replay")
+async def football_season_replay(matchday: int, home: str, away: str):
+    """A recorded season fixture, replayable on the tactics board (feed + lineups)."""
+    from gaming.src.stack.agentic.games.football_managers.season import get_replay
+
+    try:
+        replay = get_replay(int(matchday), home, away)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return {"success": True, "replay": replay}
+
+
+@router.get("/football/market")
+async def football_market():
+    """afm_market (v1): free agents — catalog players with no club owner."""
+    from gaming.src.stack.agentic.games.football_managers.catalog import list_players
+    from gaming.src.stack.agentic.games.football_managers.club_store import (
+        seed_demo_clubs,
+    )
+
+    seed_demo_clubs()  # re-assert ownership in-process (catalog owner is memory)
+    free = [
+        {
+            "player_id": p["player_id"],
+            "name": p.get("name"),
+            "primary_pos": p.get("primary_pos"),
+            "base_rating": p.get("base_rating"),
+            "game_price_usdc": p.get("game_price_usdc"),
+            "wage_per_matchday_usdc": p.get("wage_per_matchday_usdc"),
+            "nation": p.get("nation"),
+        }
+        for p in list_players()
+        if not p.get("owner_agent_id")
+    ]
+    return {"success": True, "count": len(free), "free_agents": free}
+
+
+class FootballAgentCreateBody(BaseModel):
+    """Owner seat: build a manager against the playbook."""
+
+    manager_name: str
+    club_name: Optional[str] = None
+    archetype: str = "tactician"  # one of agent_market.ARCHETYPES
+    formation: str = "4-3-3"
+    owner_id: Optional[str] = None
+    # optional: list the manager for sale the moment it is created
+    list_price_usdc: Optional[float] = Field(None, gt=0, le=1_000_000)
+    creator_cut_bps: Optional[int] = Field(None, ge=0, le=2000)
+
+
+class FootballAgentAcquireBody(BaseModel):
+    """Owner seat: adopt an unlisted developer-built manager for free."""
+
+    agent_id: str
+    owner_id: Optional[str] = None
+
+
+class FootballAgentWebhookBody(BaseModel):
+    """Owner seat: point your manager at the webhook hosting its brain.
+
+    From the next matchday ask on, the House POSTs the matchday context here
+    and uses the manager's JSON reply (deterministic playbook fallback when
+    unreachable). Empty ``webhook_url`` clears the binding.
+    """
+
+    agent_id: str
+    webhook_url: Optional[str] = Field(
+        None, description="full http(s) URL — empty clears the binding"
+    )
+    owner_id: Optional[str] = None  # caller — must be the current owner
+
+
+class FootballAgentListBody(BaseModel):
+    """Owner seat: list your manager for sale with a price + creator cut."""
+
+    agent_id: str
+    price_usdc: float = Field(..., gt=0, le=1_000_000)
+    creator_cut_bps: int = Field(0, ge=0, le=2000)  # developer's % of each sale
+    reserve_price_usdc: Optional[float] = Field(
+        None, gt=0, le=1_000_000, description="floor — offers below it auto-decline"
+    )
+    listed_by: Optional[str] = None  # caller — must be the current owner
+
+
+class FootballAgentDelistBody(BaseModel):
+    """Owner seat: pull your manager off the marketplace."""
+
+    agent_id: str
+    listed_by: Optional[str] = None
+
+
+class FootballAgentPurchaseBody(BaseModel):
+    """Owner seat: buy a listed manager — price settles, ownership moves.
+
+    ``settlement``: ``auto`` (real USDC when Circle is configured and every
+    party has a bound wallet, else the demo ledger) | ``onchain`` (required) |
+    ``ledger`` (force the demo book-entry rail).
+    """
+
+    agent_id: str
+    buyer_id: Optional[str] = None
+    settlement: str = Field(
+        "auto", description="auto | ledger | onchain — how the price settles"
+    )
+
+
+class FootballAgentOfferBody(BaseModel):
+    """Owner seat: a buyer names their price on a listed manager."""
+
+    agent_id: str
+    offer_usdc: float = Field(..., gt=0, le=1_000_000)
+    buyer_id: Optional[str] = None
+
+
+class FootballAgentOfferDecisionBody(BaseModel):
+    """Owner seat: accept or reject a buyer's offer on your listing."""
+
+    agent_id: str
+    offer_id: str
+    decided_by: Optional[str] = None  # caller — must be the current owner
+    settlement: str = Field(
+        "auto", description="accept only — auto | ledger | onchain"
+    )
+
+
+class FootballWalletBindBody(BaseModel):
+    """Owner seat: bind a real (Circle) wallet to a marketplace party.
+
+    ``address`` is the Arc USDC address the party is paid to. Pass ``wallet_id``
+    too when the party pays from that wallet (a Circle developer-controlled
+    wallet) so purchases can move real USDC out of it.
+    """
+
+    party_id: str
+    address: str = Field(
+        ..., description="Arc USDC payout address (0x…)", min_length=42, max_length=42
+    )
+    wallet_id: Optional[str] = None
+
+
+class FootballWalletUnbindBody(BaseModel):
+    """Owner seat: remove a party's wallet binding."""
+
+    party_id: str
+    address: Optional[str] = None
+
+
+@router.get("/football/agents")
+async def football_agents():
+    """The manager marketplace — every AFM agent an owner can adopt."""
+    from gaming.src.stack.agentic.games.football_managers.agent_market import (
+        list_market_agents,
+    )
+
+    return {"success": True, "agents": list_market_agents()}
+
+
+@router.post("/football/agents/create")
+async def football_agents_create(body: FootballAgentCreateBody):
+    """Create a manager agent + seed its club (owner seat, step 1)."""
+    from gaming.src.stack.agentic.games.football_managers.agent_market import (
+        create_manager_agent,
+    )
+
+    try:
+        out = create_manager_agent(
+            manager_name=body.manager_name,
+            club_name=body.club_name,
+            archetype=body.archetype,
+            formation=body.formation,
+            owner_id=body.owner_id,
+            list_price_usdc=str(body.list_price_usdc) if body.list_price_usdc is not None else None,
+            creator_cut_bps=body.creator_cut_bps,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"success": True, **out}
+
+
+@router.post("/football/agents/acquire")
+async def football_agents_acquire(body: FootballAgentAcquireBody):
+    """Adopt an unlisted developer-built manager: ownership moves to the caller."""
+    from gaming.src.stack.agentic.games.football_managers.agent_market import (
+        acquire_manager_agent,
+    )
+
+    try:
+        out = acquire_manager_agent(agent_id=body.agent_id, owner_id=body.owner_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return {"success": True, **out}
+
+
+@router.post("/football/agents/webhook")
+async def football_agents_webhook(body: FootballAgentWebhookBody):
+    """Owner seat: point your manager at the webhook hosting its brain.
+
+    From the next matchday ask on, the House POSTs the matchday context here
+    and locks the manager's JSON reply (deterministic playbook fallback when
+    the webhook is unreachable). Empty URL clears the binding.
+    """
+    from gaming.src.stack.agentic.games.football_managers.agent_market import (
+        set_manager_webhook,
+    )
+
+    try:
+        out = set_manager_webhook(
+            agent_id=body.agent_id,
+            webhook_url=body.webhook_url,
+            owner_id=body.owner_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"success": True, **out}
+
+
+@router.post("/football/agents/list")
+async def football_agents_list(body: FootballAgentListBody):
+    """Owner seat: list your manager for sale (price + creator cut)."""
+    from gaming.src.stack.agentic.games.football_managers.agent_market import (
+        list_manager_for_sale,
+    )
+
+    try:
+        out = list_manager_for_sale(
+            agent_id=body.agent_id,
+            price_usdc=str(body.price_usdc),
+            creator_cut_bps=body.creator_cut_bps,
+            reserve_price_usdc=str(body.reserve_price_usdc) if body.reserve_price_usdc is not None else None,
+            listed_by=body.listed_by,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"success": True, **out}
+
+
+@router.post("/football/agents/delist")
+async def football_agents_delist(body: FootballAgentDelistBody):
+    """Owner seat: pull your manager off the marketplace."""
+    from gaming.src.stack.agentic.games.football_managers.agent_market import (
+        delist_manager_agent,
+    )
+
+    try:
+        out = delist_manager_agent(agent_id=body.agent_id, listed_by=body.listed_by)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"success": True, **out}
+
+
+@router.post("/football/agents/offer")
+async def football_agents_offer(body: FootballAgentOfferBody):
+    """A buyer names their price on a listed manager. Offers below the owner's
+    reserve are auto-declined; the rest land pending for the owner."""
+    from gaming.src.stack.agentic.games.football_managers.agent_market import (
+        make_manager_offer,
+    )
+
+    try:
+        out = make_manager_offer(
+            agent_id=body.agent_id,
+            offer_usdc=str(body.offer_usdc),
+            buyer_id=body.buyer_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"success": True, **out}
+
+
+@router.post("/football/agents/offer/accept")
+async def football_agents_offer_accept(body: FootballAgentOfferDecisionBody):
+    """The owner accepts a buyer's offer — sale settles at the offered price.
+    Same settlement rail as buy-now (auto | onchain | ledger)."""
+    import asyncio
+
+    from gaming.src.stack.agentic.games.football_managers.agent_market import (
+        accept_manager_offer,
+    )
+
+    try:
+        # a real-USDC settlement blocks on Circle transfers — run off the loop
+        out = await asyncio.to_thread(
+            accept_manager_offer,
+            agent_id=body.agent_id,
+            offer_id=body.offer_id,
+            accept_by=body.decided_by,
+            settlement=body.settlement,
+        )
+    except (ValueError, RuntimeError) as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"success": True, **out}
+
+
+@router.post("/football/agents/offer/reject")
+async def football_agents_offer_reject(body: FootballAgentOfferDecisionBody):
+    """The owner turns a buyer's offer down — the listing stays up."""
+    from gaming.src.stack.agentic.games.football_managers.agent_market import (
+        reject_manager_offer,
+    )
+
+    try:
+        out = reject_manager_offer(
+            agent_id=body.agent_id,
+            offer_id=body.offer_id,
+            reject_by=body.decided_by,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"success": True, **out}
+
+
+@router.post("/football/agents/purchase")
+async def football_agents_purchase(body: FootballAgentPurchaseBody):
+    """Buy a listed manager: the price settles and ownership transfers to the
+    buyer (creator cut paid to the developer). Default ``auto`` settles in
+    real USDC from the buyer's bound Circle wallet when every party has one,
+    and falls back to the demo ledger otherwise."""
+    import asyncio
+
+    from gaming.src.stack.agentic.games.football_managers.agent_market import (
+        purchase_manager_agent,
+    )
+
+    try:
+        # a real-USDC sale blocks on Circle transfer + confirmation — run off
+        # the event loop (ledger sales are cheap and fine in a thread too)
+        out = await asyncio.to_thread(
+            purchase_manager_agent,
+            agent_id=body.agent_id,
+            buyer_id=body.buyer_id,
+            settlement=body.settlement,
+        )
+    except (ValueError, RuntimeError) as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"success": True, **out}
+
+
+@router.get("/football/agents/wallet")
+async def football_agents_wallet(party_id: str):
+    """Wallet status for a marketplace party: what they pay with and get paid
+    to — demo ledger wallet vs a bound real (Circle) wallet on Arc."""
+    from gaming.src.stack.agentic.games.football_managers.agent_market import (
+        wallet_status,
+    )
+
+    return {"success": True, "wallet": wallet_status(party_id)}
+
+
+@router.get("/football/agents/sales")
+async def football_agents_sales(party_id: str = ""):
+    """Owner dashboard desk: money a party has earned from manager sales and
+    the listing history — earnings (seller proceeds + developer creator cuts),
+    the managers they own with their live listing state, and the timeline of
+    every list / relist / delist / sale they were part of."""
+    from gaming.src.stack.agentic.games.football_managers.agent_market import (
+        party_sales_view,
+    )
+
+    return {"success": True, "sales": party_sales_view(party_id)}
+
+
+@router.post("/football/agents/wallet/bind")
+async def football_agents_wallet_bind(body: FootballWalletBindBody):
+    """Bind a real (Circle) wallet to a marketplace party so purchases can
+    settle in real USDC (the demo ledger stays the fallback until then)."""
+    from gaming.src.stack.agentic.games.football_managers.agent_market import (
+        bind_party_wallet,
+    )
+
+    try:
+        rec = bind_party_wallet(
+            party_id=body.party_id,
+            address=body.address,
+            wallet_id=body.wallet_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"success": True, "wallet": rec}
+
+
+@router.post("/football/agents/wallet/unbind")
+async def football_agents_wallet_unbind(body: FootballWalletUnbindBody):
+    """Remove a marketplace party's wallet binding (back to demo ledger)."""
+    from gaming.src.stack.agentic.games.football_managers.agent_market import (
+        unbind_party_wallet,
+    )
+
+    try:
+        removed = unbind_party_wallet(party_id=body.party_id, address=body.address)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"success": True, "removed": removed}
+
+
+class FootballCupOpenBody(BaseModel):
+    """Open a knockout cup over AFM clubs (no entry fee in v0)."""
+
+    agent_ids: Optional[list[str]] = None  # default: every club with a roster
+    start_at: Optional[str] = None  # ISO timestamp
+    title: Optional[str] = None
+    salt: Optional[str] = None  # controls the seeded tie match_ids (replays)
+    force: bool = False
+
+
+# ---------------------------------------------------------------- AFM cup
+
+
+@router.get("/football/cup")
+async def football_cup():
+    """Knockout cup state: bracket rounds, played ties, champion."""
+    from gaming.src.stack.agentic.games.football_managers.cup import get_cup
+
+    return {"success": True, "cup": get_cup()}
+
+
+@router.post("/football/cup/open")
+async def football_cup_open(body: FootballCupOpenBody):
+    """Open a single-elimination cup. Knockout rules: a level 90' tie goes to
+    extra time and, if still level, a penalty shootout (require_result)."""
+    from datetime import datetime
+
+    from gaming.src.stack.agentic.games.football_managers.cup import open_cup
+
+    start = datetime.fromisoformat(body.start_at) if body.start_at else None
+    try:
+        snap = open_cup(
+            body.agent_ids,
+            start_at=start,
+            title=body.title,
+            salt=body.salt,
+            force=body.force,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {"success": True, "cup": snap}
+
+
+@router.post("/football/cup/tick")
+async def football_cup_tick():
+    """Advance the cup clock: open due rounds, resolve past deadlines (winner
+    required — draws are settled in extra time / on penalties)."""
+    from gaming.src.stack.agentic.games.football_managers.cup import tick
+
+    return {"success": True, **tick()}
+
+
+@router.post("/football/cup/reset")
+async def football_cup_reset():
+    """Dev/ops: drop the current cup state (no money moves)."""
+    from gaming.src.stack.agentic.games.football_managers.cup import reset_cup
+
+    return {"success": True, **reset_cup()}
+
+
+@router.get("/football/cup/replay")
+async def football_cup_replay(round_no: int, home: str, away: str):
+    """A recorded cup tie, replayable on the tactics board (feed + lineups)."""
+    from gaming.src.stack.agentic.games.football_managers.cup import get_cup_replay
+
+    try:
+        replay = get_cup_replay(int(round_no), home, away)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return {"success": True, "replay": replay}

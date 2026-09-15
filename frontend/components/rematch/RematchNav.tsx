@@ -19,10 +19,9 @@ const LINKS = [
     external: true,
   },
   {
-    href: '/agentic/football-managers.html',
+    href: '/football',
     label: 'AFM',
-    match: (p: string) => p.includes('/agentic/football-managers'),
-    external: true,
+    match: (p: string) => p === '/football' || p.startsWith('/football/'),
   },
   {
     href: '/agentic/hub.html',

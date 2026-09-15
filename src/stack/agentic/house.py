@@ -248,6 +248,10 @@ def ensure_builder_webhooks() -> None:
     specs = [
         ("Raja", 18761, "gaming.src.stack.agentic.agents.raja.serve"),
         ("Nero", 18762, "gaming.src.stack.agentic.agents.nero.serve"),
+        # AFM demo managers — football matchday asks (boardman.agent.football_managers.matchday.v1)
+        ("Blue Lock", 18771, "gaming.src.stack.agentic.agents.bluelock.serve"),
+        ("Ao Ashi", 18772, "gaming.src.stack.agentic.agents.aoashi.serve"),
+        ("Match-Slice", 18773, "gaming.src.stack.agentic.agents.matchslice.serve"),
     ]
     for name, port, mod in specs:
         try:

@@ -54,9 +54,9 @@ def test_fee_split_math():
         winner_agent={"agent_id": "a", "creator_fee_bps": 800, "creator_id": "c1"},
         loser_agent={"agent_id": "b"},
     )
-    # pot 20, platform 3% = 0.6, gross 19.4, creator 8% = 1.552, owner 17.848
+    # pot 20, platform 7% = 1.4, gross 18.6, creator 8% of gross = 1.488, owner 17.112
     assert Decimal(split.pot) == Decimal("20")
-    assert Decimal(split.platform_fee) == Decimal("0.6")
+    assert Decimal(split.platform_fee) == Decimal("1.400000")
     assert Decimal(split.creator_fee) + Decimal(split.owner_payout) == Decimal(
         split.winner_gross
     )
@@ -126,9 +126,9 @@ def test_draw_book_hits_and_misses():
     assert hit["payouts"]["draw_book"] == {}
     assert hit["payouts"]["seed_refunds"] == []
     # pot = side seeds 1.0 + public draw 1 + house draw 0.5 = 2.5
-    # distributable = 2.5 - 3% - 2% = 2.375 → the draw bettor wins it all
+    # distributable = 2.5 - 7% - 2% = 2.275 → the draw bettor wins it all
     assert len(hit["payouts"]["bettors"]) == 1
-    assert Decimal(hit["payouts"]["bettors"][0]["amount"]) == Decimal("2.375")
+    assert Decimal(hit["payouts"]["bettors"][0]["amount"]) == Decimal("2.275000")
 
     mid2 = "test_draw_book_2"
     data = book._load()

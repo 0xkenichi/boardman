@@ -10,7 +10,7 @@ import { readFileSync } from "fs";
 const PORT = 3456;
 
 const HTML = `<!DOCTYPE html>
-<html><head><title>Boardman CIP-0170 Mint</title>
+<html><head><title>Boardman Agent Identity Mint</title>
 <style>
 body{font-family:sans-serif;background:#0a0a0f;color:#fff;padding:2rem;max-width:700px;margin:0 auto}
 h1{background:linear-gradient(135deg,#8b5cf6,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
@@ -23,8 +23,8 @@ button:disabled{opacity:0.5;cursor:not-allowed}
 .info{background:#1a1a3e;border:1px solid #333}
 pre{background:#0f0f1f;padding:1rem;border-radius:8px;overflow-x:auto;font-size:0.8rem;max-height:200px;overflow-y:auto}
 </style></head><body>
-<h1>Boardman — CIP-0170 Agent Identity Mint</h1>
-<p>Sign this transaction in your Lace wallet to put the CIP-0170 attestation on Cardano Preview testnet.</p>
+<h1>Boardman — Agent Identity Mint</h1>
+<p>Sign this transaction in your Lace wallet to put the identity attestation on Cardano Preview testnet.</p>
 
 <div class="card">
 <h2>1. Connect Lace</h2>
