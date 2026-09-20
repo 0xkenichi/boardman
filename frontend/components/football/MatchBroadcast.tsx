@@ -2,21 +2,22 @@
 /**
  * MatchBroadcast — the spectator seat's 2D tactical broadcast.
  *
- * A top-down pitch with 22 numbered player dots + the ball, a scoreboard,
- * a momentum bar, both lineups, a live commentary ticker and 1x/2x/3x /
- * pause / flip controls. Driven by `buildBroadcastFrames` over a recorded
- * replay (feed + locked lineups) — deterministic, no hidden state.
+ * A top-down pitch with 22 named player dots + the ball, a scoreboard with a
+ * running score, a momentum bar from the possession stats, both lineups, a
+ * live commentary ticker and pause / speed / flip controls. Driven by
+ * `buildBroadcastFrames` over a recorded replay (feed + locked lineups) —
+ * deterministic, no hidden state.
  *
- * This is the "realistic v1" of the broadcast view the PRD flagged: full
- * 3D/VR comes later. It plays a scripted sequence and loops; deep-linked
- * replay fixtures can be passed in to run a real recorded match.
+ * Pass `replay` to broadcast a real recorded fixture; with `replay={null}`
+ * the component plays its scripted demo sequence (kickoff → foul → corner →
+ * goal) so the board is never empty.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   buildBroadcastFrames,
+  buildPhaseFrames,
   type BroadcastFrame,
   type MatchdayReplay,
-  layoutSlots,
 } from '@/lib/afm'
 
 const KITS = {
@@ -30,7 +31,7 @@ interface Props {
   awayLabel?: string
 }
 
-/** Base pitch positions in % (home attacks left→right) for the fallback demo. */
+/** Demo roster for the scripted fallback sequence (ids prefixed "h" / "a"). */
 const DEMO_HOME = [
   { id: 'h1', num: 1, name: 'J. Reyes', role: 'GK', x: 6, y: 50 },
   { id: 'h2', num: 2, name: 'S. Kilic', role: 'RB', x: 20, y: 14 },
@@ -57,46 +58,123 @@ const DEMO_AWAY = [
   { id: 'a10', num: 10, name: 'S. Lindqvist', role: 'RW', x: 50, y: 80 },
   { id: 'a11', num: 11, name: 'M. Torres', role: 'LW', x: 50, y: 20 },
 ]
-
 /** Build a scripted demo sequence: kickoff → buildup → foul → corner → goal. */
 function demoFrames(): BroadcastFrame[] {
-  const toFrame = (minute: number, text: string, type: string, side: 'home' | 'away' | undefined, ball: { x: number; z: number }, active: string[], possession: 'home' | 'away', score: string): BroadcastFrame & { score?: string } => {
-    const players = [...DEMO_HOME, ...DEMO_AWAY].map((p) => ({
+  const toFrame = (minute: number, text: string, type: string, side: 'home' | 'away' | undefined, ball: { x: number; z: number }, active: string[], possession: 'home' | 'away'): BroadcastFrame => ({
+    idx: 0,
+    minute,
+    text,
+    eventType: type,
+    ball,
+    possession,
+    players: [...DEMO_HOME, ...DEMO_AWAY].map((p) => ({
       player_id: p.id,
       x: (p.x / 100) * 105 - 52.5,
       z: (p.y / 100) * 68 - 34,
       active: active.includes(p.id),
-    }))
-    return { idx: 0, minute, text, eventType: type, ball, possession, players, score }
+    })),
+  })
+  return [
+    toFrame(0, 'Kickoff — Trafford FC get us underway.', 'kickoff', undefined, { x: 0, z: 0 }, [], 'home'),
+    toFrame(3, 'Okafor steps into space and starts the move.', 'pass', 'home', { x: -20, z: 0 }, [], 'home'),
+    toFrame(5, 'Petrov gets to the byline down the right.', 'pass', 'home', { x: 30, z: 15 }, ['h10', 'h9', 'h7'], 'home'),
+    toFrame(8, 'Blake goes in late on Novak — yellow card for the visitor.', 'yellow', 'away', { x: 20, z: 8 }, ['a7', 'h7'], 'home'),
+    toFrame(9, 'Corner to Trafford FC after Marsh deflects it behind.', 'corner', 'home', { x: 48, z: -24 }, ['h10', 'h9', 'h4'], 'home'),
+    toFrame(9, 'Petrov whips it in towards the far post…', 'cross', 'home', { x: 44, z: -12 }, ['h10', 'h9', 'h4'], 'home'),
+    toFrame(9, 'GOAL! Martinez powers a header past Farrow. Trafford FC lead!', 'goal', 'home', { x: 46, z: -20 }, ['h9'], 'home'),
+    toFrame(90, 'Full time — Trafford FC 1-0 Ashbury Town.', 'full_time', undefined, { x: 0, z: 0 }, [], 'home'),
+  ]
+}
+
+/** The broadcast's uniform view of a side — demo or real replay. */
+interface SideView {
+  formation: string
+  rows: { player_id: string; num: number | string; name: string; role: string }[]
+}
+
+function replaySideView(side: MatchdayReplay['home']): SideView {
+  return {
+    formation: side.formation,
+    rows: side.xi.map((p, i) => ({ player_id: p.player_id, num: i + 1, name: p.name, role: p.slot })),
   }
-  const frames: (BroadcastFrame & { score?: string })[] = []
-  frames.push(toFrame(0, 'Kickoff — Trafford FC get us underway.', 'kickoff', undefined, { x: 0, z: 0 }, [], 'home', '0 – 0'))
-  frames.push(toFrame(3, 'Okafor steps into space and starts the move.', 'pass', 'home', { x: -20, z: 0 }, [], 'home', '0 – 0'))
-  frames.push(toFrame(5, 'Petrov gets to the byline down the right.', 'pass', 'home', { x: 30, z: 15 }, ['h10', 'h9', 'h7'], 'home', '0 – 0'))
-  frames.push(toFrame(8, 'Blake goes in late on Novak — yellow card for the visitor.', 'yellow', 'away', { x: 20, z: 8 }, ['a7', 'h7'], 'home', '0 – 0'))
-  frames.push(toFrame(9, 'Corner to Trafford FC after Marsh deflects it behind.', 'corner', 'home', { x: 48, z: -24 }, ['h10', 'h9', 'h4'], 'home', '0 – 0'))
-  frames.push(toFrame(9, 'Petrov whips it in towards the far post…', 'cross', 'home', { x: 44, z: -12 }, ['h10', 'h9', 'h4'], 'home', '0 – 0'))
-  frames.push(toFrame(9, 'GOAL! Martinez powers a header past Farrow. Trafford FC lead!', 'goal', 'home', { x: 46, z: -20 }, ['h9'], 'home', '1 – 0'))
-  return frames
+}
+
+function demoSideView(which: 'home' | 'away'): SideView {
+  const roster = which === 'home' ? DEMO_HOME : DEMO_AWAY
+  return {
+    formation: '4-3-3',
+    rows: roster.map((p) => ({ player_id: p.id, num: p.num, name: p.name, role: p.role })),
+  }
 }
 
 export default function MatchBroadcast({ replay, homeLabel = 'Home', awayLabel = 'Away' }: Props) {
   const frames = useMemo(() => {
-    if (replay) return buildBroadcastFrames(replay)
+    if (replay) {
+      // Prefer the engine's own phase stream (real positions per event);
+      // fall back to the client-side movement model for replays recorded
+      // before the spatial engine, then to the scripted demo.
+      const phaseFrames = buildPhaseFrames(replay)
+      if (phaseFrames.length) return phaseFrames
+      return buildBroadcastFrames(replay)
+    }
     return demoFrames()
   }, [replay])
+
+  /** True when this replay is being played from the engine phase stream. */
+  const phaseDriven = useMemo(
+    () => !!replay && (replay.result.phases?.length ?? 0) > 0,
+    [replay],
+  )
+
+  const homeView = useMemo(
+    () => (replay ? replaySideView(replay.home) : demoSideView('home')),
+    [replay],
+  )
+  const awayView = useMemo(
+    () => (replay ? replaySideView(replay.away) : demoSideView('away')),
+    [replay],
+  )
+  const rowById = useMemo(() => {
+    const m = new Map<string, SideView['rows'][number]>()
+    for (const r of [...homeView.rows, ...awayView.rows]) m.set(r.player_id, r)
+    return m
+  }, [homeView, awayView])
+  const homeIds = useMemo(() => new Set(homeView.rows.map((r) => r.player_id)), [homeView])
 
   const [idx, setIdx] = useState(0)
   const [paused, setPaused] = useState(false)
   const [speed, setSpeed] = useState(2)
   const [flipped, setFlipped] = useState(false)
-  const [flipApplied, setFlipApplied] = useState(false)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const frame = frames[idx] ?? frames[0]
-  const score = replay
-    ? `${replay.result.home_goals} – ${replay.result.away_goals}`
-    : (frame as any)?.score ?? '0 – 0'
+  // A new replay resets playback to kickoff.
+  useEffect(() => {
+    setIdx(0)
+  }, [replay])
+
+  const frame = frames[Math.min(idx, frames.length - 1)] ?? frames[0]
+
+  // Running score: goals up to and including the current frame — from the
+  // feed for a real replay, from the scripted demo's own goal frames else.
+  const score = useMemo(() => {
+    const events = replay
+      ? replay.result.feed.slice(0, idx + 1).map((ev) => ({ type: ev.type, side: ev.side }))
+      : frames.slice(0, idx + 1).map((f) => ({ type: f.eventType, side: f.possession as 'home' | 'away' | undefined }))
+    let h = 0
+    let a = 0
+    for (const ev of events) {
+      if (ev.type === 'goal') {
+        if (ev.side === 'away') a++
+        else h++
+      }
+    }
+    return `${h} – ${a}`
+  }, [replay, frames, idx])
+
+  // Momentum: live possession split from the engine stats, 50/50 until they land.
+  const possession = replay?.result?.stats?.possession_home
+  const homePct = typeof possession === 'number' ? Math.round(possession) : 50
+  const awayPct = 100 - homePct
 
   useEffect(() => {
     if (paused) return
@@ -110,6 +188,29 @@ export default function MatchBroadcast({ replay, homeLabel = 'Home', awayLabel =
 
   // flip is a CSS transform on the container — no need to re-render positions
   const pitchClass = flipped ? 'mb-pitch mb-flip' : 'mb-pitch'
+
+  const lineup = (view: SideView, active: (id: string) => boolean) => (
+    <div className="mb-rows">
+      {view.rows.map((r) => (
+        <div key={r.player_id} className={`mb-row ${active(r.player_id) ? 'mb-active' : ''}`}>
+          <span className="mb-num">{r.num}</span>
+          <span className="mb-row-name">{r.name}</span>
+          <span className="mb-row-role">{r.role}</span>
+        </div>
+      ))}
+    </div>
+  )
+
+  // Active highlight: movement-model frames carry it explicitly; phase-driven
+  // frames derive it from geometry — the engine snaps the phase's actor exactly
+  // onto the ball, so "on the ball" is the actor.
+  const isActive = (id: string) => {
+    const p = frame.players.find((q) => q.player_id === id)
+    if (!p) return false
+    return phaseDriven
+      ? Math.abs(p.x - frame.ball.x) < 0.5 && Math.abs(p.z - frame.ball.z) < 0.5
+      : p.active
+  }
 
   return (
     <div className="mb-wrap">
@@ -131,33 +232,21 @@ export default function MatchBroadcast({ replay, homeLabel = 'Home', awayLabel =
         </div>
       </div>
 
-      {/* momentum bar */}
+      {/* momentum bar — possession split from the engine stats */}
       <div className="mb-momentum">
-        <span className="mb-mom-lbl">58</span>
+        <span className="mb-mom-lbl">{homePct}</span>
         <div className="mb-mom-track">
-          <div className="mb-mom-home" style={{ width: '58%' }} />
-          <div className="mb-mom-away" style={{ width: '42%' }} />
+          <div className="mb-mom-home" style={{ width: `${homePct}%` }} />
+          <div className="mb-mom-away" style={{ width: `${awayPct}%` }} />
         </div>
-        <span className="mb-mom-lbl">42</span>
+        <span className="mb-mom-lbl">{awayPct}</span>
       </div>
 
       <div className="mb-body">
         <div className="mb-lineup">
           <h4>{homeLabel}</h4>
-          <div className="mb-formation">{replay?.home.formation ?? '4-3-3'}</div>
-          <div className="mb-rows">
-            {frame.players
-              .filter((p) => p.player_id.startsWith('h'))
-              .map((p) => {
-                const pl = DEMO_HOME.find((d) => d.id === p.player_id)
-                return (
-                  <div key={p.player_id} className={`mb-row ${p.active ? 'mb-active' : ''}`}>
-                    <span className="mb-num">{pl?.num ?? '–'}</span>
-                    <span>{pl?.name ?? p.player_id}</span>
-                  </div>
-                )
-              })}
-          </div>
+          <div className="mb-formation">{homeView.formation}</div>
+          {lineup(homeView, isActive)}
         </div>
 
         <div className={pitchClass}>
@@ -181,24 +270,22 @@ export default function MatchBroadcast({ replay, homeLabel = 'Home', awayLabel =
           />
           {/* 22 dots */}
           {frame.players.map((p) => {
-            const isHome = p.player_id.startsWith('h')
-            const pl = isHome
-              ? DEMO_HOME.find((d) => d.id === p.player_id)
-              : DEMO_AWAY.find((d) => d.id === p.player_id)
+            const row = rowById.get(p.player_id)
+            const isHome = homeIds.has(p.player_id)
             const kit = isHome ? KITS.home : KITS.away
             return (
               <div
                 key={p.player_id}
-                className={`mb-player ${isHome ? 'mb-player-home' : 'mb-player-away'} ${p.active ? 'mb-has-ball' : ''}`}
+                className={`mb-player ${isHome ? 'mb-player-home' : 'mb-player-away'} ${isActive(p.player_id) ? 'mb-has-ball' : ''}`}
                 style={{
                   left: `${((p.x + 52.5) / 105) * 100}%`,
                   top: `${((p.z + 34) / 68) * 100}%`,
                   background: isHome ? kit.dot : kit.dotDark,
                   color: isHome ? '#fff' : '#062820',
                 }}
-                title={`${pl?.name ?? p.player_id} (${pl?.role ?? ''})`}
+                title={row ? `${row.name} (${row.role})` : p.player_id}
               >
-                {pl?.num ?? '·'}
+                {row ? row.num : '·'}
               </div>
             )
           })}
@@ -206,20 +293,8 @@ export default function MatchBroadcast({ replay, homeLabel = 'Home', awayLabel =
 
         <div className="mb-lineup mb-lineup-away">
           <h4>{awayLabel}</h4>
-          <div className="mb-formation">{replay?.away.formation ?? '4-3-3'}</div>
-          <div className="mb-rows">
-            {frame.players
-              .filter((p) => p.player_id.startsWith('a'))
-              .map((p) => {
-                const pl = DEMO_AWAY.find((d) => d.id === p.player_id)
-                return (
-                  <div key={p.player_id} className={`mb-row ${p.active ? 'mb-active' : ''}`}>
-                    <span className="mb-num">{pl?.num ?? '–'}</span>
-                    <span>{pl?.name ?? p.player_id}</span>
-                  </div>
-                )
-              })}
-          </div>
+          <div className="mb-formation">{awayView.formation}</div>
+          {lineup(awayView, isActive)}
         </div>
       </div>
 

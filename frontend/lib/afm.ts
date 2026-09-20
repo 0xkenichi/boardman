@@ -348,6 +348,12 @@ export interface FeedEvent {
   side?: 'home' | 'away'
   score?: string
   text: string
+  /** Spatial extras from the engine overlay (present in recorded feeds). */
+  actor_id?: string
+  x?: number
+  y?: number
+  z?: number
+  facing?: number
 }
 
 /** Post-match stat summary from the engine — a pure fold over the feed. */
@@ -387,6 +393,8 @@ export interface MatchResult {
   outcome: 'home_win' | 'away_win' | 'draw'
   stats?: MatchStats
   engine?: string
+  /** Engine phase stream (phases.py) — one phase per feed event. */
+  phases?: ReplayPhase[]
 }
 
 export interface SimResponse {
@@ -649,6 +657,68 @@ export interface MatchdayReplay {
   decisions: Record<string, { formation: string; tags: string[] }>
 }
 
+/* ------------------------------------------------------- phase-driven frames
+ *
+ * The engine ships a per-event phase stream (`phases.py`): one phase per feed
+ * event carrying 22 tokens at real pitch coordinates (metres, x = length from
+ * the home goal line, y = width), the ball position, sub-minute clock `t` and
+ * an optional `action` (pass/carry/shot/cross). `buildPhaseFrames` maps a
+ * replay's phases onto the broadcast frame shape so the board plays the
+ * engine's own positions instead of the client-side movement model — with
+ * home/away flips applied, home attacks +x throughout.
+ */
+
+/** One token in the engine phase stream (22 per phase — both starting XIs). */
+export interface ReplayPhasePlayer {
+  id: string
+  side: 'home' | 'away'
+  x: number
+  y: number
+  facing: number
+}
+
+/** One phase of the engine phase stream (one per spatial feed event). */
+export interface ReplayPhase {
+  /** Match clock in minutes with a sub-minute fraction, strictly increasing. */
+  t: number
+  minute: number
+  type?: string
+  event?: number
+  ball: { x: number; y: number; z: number }
+  players: ReplayPhasePlayer[]
+  action?: 'pass' | 'carry' | 'shot' | 'cross'
+  note?: string
+}
+
+/**
+ * Convert the engine phase stream into broadcast frames. Phases are already
+ * per-event (indexed like the feed), so frames map 1:1 and the running score,
+ * minute and ticker text come straight off the phase — no correlation needed.
+ *
+ * Coordinates: the engine measures metres from the home goal corner (home
+ * attacks +x, away is pre-mirrored in the stream), the board centres the
+ * pitch at 0 — so both axes just shift by half a pitch. No flips.
+ */
+export function buildPhaseFrames(replay: MatchdayReplay): BroadcastFrame[] {
+  const phases = replay.result.phases ?? []
+  if (phases.length === 0) return []
+  return phases.map((ph, idx) => ({
+    idx,
+    minute: ph.minute,
+    text: ph.note ?? '',
+    eventType: ph.type ?? '',
+    ball: { x: ph.ball.x - HALF_W, z: ph.ball.y - HALF_D },
+    // the engine gives no possession — side of the ball's x (home attacks +x)
+    possession: ph.ball.x >= HALF_W ? 'home' : 'away',
+    players: ph.players.map((p) => ({
+      player_id: p.id,
+      x: p.x - HALF_W,
+      z: p.y - HALF_D,
+      active: false,
+    })),
+  }))
+}
+
 /** Fetch a recorded season fixture (feed + locked lineups) for the board. */
 export async function fetchSeasonReplay(
   matchday: number,
@@ -661,6 +731,89 @@ export async function fetchSeasonReplay(
   const data = (await res.json()) as { success?: boolean; replay?: MatchdayReplay }
   if (!data?.replay) throw new Error('no replay available for this fixture')
   return data.replay
+}
+
+/* ------------------------------------------------------------ watch hub
+ *
+ * The spectator seat's "what's on today" picker: upcoming fixtures (from the
+ * season snapshot) and recent results with one-click deep links into the
+ * broadcast. Pure client reads over the existing /football/season payload.
+ */
+
+/** A recent result as returned by the season snapshot's `recent` array. */
+export interface SeasonRecentResult {
+  matchday: number
+  match_id: string
+  home_agent_id: string
+  away_agent_id: string
+  home_goals: number
+  away_goals: number
+  outcome: string
+  score: string
+  match_stats?: Record<string, number>
+}
+
+/** Broadcast deep link for a fixture (?md&home&away). */
+export function broadcastHref(md: number, home: string, away: string): string {
+  const q = new URLSearchParams({ md: String(md), home, away })
+  return `/football/watch/broadcast?${q.toString()}`
+}
+
+/** Pre-match board deep link for a fixture (?md&home&away). */
+export function prematchHref(md: number, home: string, away: string): string {
+  const q = new URLSearchParams({ md: String(md), home, away })
+  return `/football/watch/prematch?${q.toString()}`
+}
+
+/**
+ * A pre-committed half-time contingency plan (v1.4): what the manager plans
+ * to switch to if trailing / level / leading at the break. Formation + tags
+ * + mentality only — spectator-safe by construction.
+ */
+export interface HtPlan {
+  formation?: string
+  tags?: string[]
+  mentality?: string
+}
+
+/** One side of the pre-match board. */
+export interface PrematchSide {
+  agent_id: string
+  club_name: string
+  formation: string
+  tags: string[]
+  /** the manager's own words, when it answered via webhook */
+  instructions?: string | null
+  /** where the plan came from: the manager's webhook or the playbook auto */
+  source?: 'webhook' | 'auto' | null
+  /** pre-committed half-time plans keyed by game state */
+  plans: Record<string, HtPlan>
+  xi: { player_id: string; name: string; slot: string }[]
+  /** ban / injury news beside the team sheet */
+  news: { type: 'suspension' | 'injury'; player_id: string; name: string; detail: string }[]
+  decided: boolean
+}
+
+/** The pre-match board payload (mirrors season.prematch_view). */
+export interface PrematchView {
+  matchday: number
+  season_no: number
+  status: string
+  home: PrematchSide
+  away: PrematchSide
+  open_at: string
+  deadline_at: string
+  resolved_at: string | null
+}
+
+/** Fetch the pre-match board for one fixture. */
+export async function fetchPrematch(md: number, home: string, away: string): Promise<PrematchView> {
+  const q = new URLSearchParams({ matchday: String(md), home, away })
+  const res = await fetch(`/api/agentic/football/season/prematch?${q.toString()}`)
+  if (!res.ok) throw new Error(`pre-match fetch failed (${res.status})`)
+  const data = (await res.json()) as { prematch?: PrematchView }
+  if (!data?.prematch) throw new Error('no pre-match data for this fixture')
+  return data.prematch
 }
 
 /** A role the player can play in their position, with FM-style suitability. */
@@ -825,6 +978,12 @@ export const MANAGER_ARCHETYPES = [
     name: 'The Possession Coach',
     blurb:
       'Keep the ball: tiki-taka shapes (4-3-3 / 4-1-4-1), patient buildup, counter only when chased.',
+  },
+  {
+    id: 'balanced',
+    name: 'The Mid-Block Brain',
+    blurb:
+      'Pragmatic balance: holds the 4-3-3 base, adds a second pivot (4-2-3-1) against stronger sides, counters when pressed or chased.',
   },
 ] as const
 

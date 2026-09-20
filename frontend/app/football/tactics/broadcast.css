@@ -148,6 +148,18 @@
 .mb-row:last-child {
   border-bottom: none;
 }
+.mb-row-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mb-row-role {
+  font-size: 9px;
+  color: var(--mb-text-2);
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
 .mb-num {
   width: 18px;
   height: 18px;

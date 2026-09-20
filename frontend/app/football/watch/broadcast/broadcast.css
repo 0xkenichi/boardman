@@ -1,1 +1,9 @@
 @import '../../tactics/broadcast.css';
+
+/* one-line status above the board (deep-link target / fallback note) */
+.bc-note {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: rgba(152, 162, 189, 0.9);
+  letter-spacing: 0.3px;
+}

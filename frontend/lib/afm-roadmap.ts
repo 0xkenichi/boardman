@@ -4,9 +4,8 @@
  * This module is the product-facing projection of the master plan. When the
  * roadmap doc changes (per its own §11 rules), update the matching rows here
  * in the same change so the status board stays truthful.
- *
- * Last synced with doc: 2026-09-05
- */
+ * * Last synced with doc: 2026-09-20
+   */
 
 export type RoadmapStatus = 'done' | 'needs-work' | 'must' | 'add-on' | 'parked'
 
@@ -94,12 +93,12 @@ export const SECTIONS: RoadmapSection[] = [
       {
         label: 'Deterministic seeded engine (simulate_match)',
         status: 'done',
-        note: 'Same match_id → same match; replay endpoint reproduces',
+        note: 'Same match_id → same match; replay endpoint reproduces. Typed engine boundary landed (2026-09-20): engines/afm/match-contracts (@afm/match-contracts) ships TS contracts + Zod schemas for MatchInput/MatchOutput, a 22-case discriminated-union event log, and PositionTick (per-tick x/y for all 22 + ball) — fixtures + 14 vitest tests enforce the invariants (bench vs sub budget, ascending sequences, 22 distinct players/tick) and a compile-time tripwire catches type/schema drift. engines/afm/engine-adapter (@afm/engine-adapter) bridges the Python engine’s MatchResult into schema-valid MatchOutput: ground-truthed mapping (pass→carry, tackle→interception, fouls dropped to a commentary channel rather than fabricated), metre→0–100 rescale, geometric carrier, 17 tests.',
       },
       {
         label: 'Full law set: offside, fouls, yellow/red, second-yellow→red (plays on with 10), corners, throw-ins, goal kicks, stoppage time',
         status: 'done',
-        note: '40 AFM tests green',
+        note: 'Set pieces play out since engine v1.4 (2026-09-20): corners / free kicks / in-play penalties resolve as real chances with named takers and kind-tagged goals. 183 AFM tests green',
       },
       {
         label: 'Extra time + penalty shootout when require_result=True',
@@ -109,7 +108,7 @@ export const SECTIONS: RoadmapSection[] = [
       {
         label: 'Injuries + forced subs; benches + manager-window subs',
         status: 'done',
-        note: 'Windows at 55/64/70 (+HT break)',
+        note: 'Windows at 55/64/70 (+HT break). In-match injury now costs the player the next matchday (v1.4 decide wiring: recorded at the final whistle, excluded at the next lock, flag decays after)',
       },
       {
         label: 'Player attribute model (10 attrs, deterministic per player)',
@@ -119,7 +118,7 @@ export const SECTIONS: RoadmapSection[] = [
       {
         label: 'Tactics: formation, tags, mentality, instructions, HT adjustment (*_tactics_2h)',
         status: 'done',
-        note: 'Shapes/tags measurably shift event patterns',
+        note: 'Shapes/tags measurably shift event patterns. HT contingency plans (v1.4): the matchday reply may pre-commit plans keyed trailing/level/leading; the engine applies the plan the HT score calls for — an explicit *_tactics_2h still wins',
       },
       {
         label: 'Post-match derive_stats (team fold over feed)',
@@ -139,37 +138,37 @@ export const SECTIONS: RoadmapSection[] = [
       {
         label: 'Spatial events (coordinates / zones / ball movement)',
         status: 'needs-work',
-        note: 'Shipped (engine v1.1 → v1.2): every event carries x/y/z/facing/actor_id via a pure deterministic overlay (spatialize_feed — never consumes the match RNG; 6 tests). Phase stream builder shipped (2026-09-05, engine v1.2): phases.py turns the log into a renderable stream — every event becomes { t, ball{x,y,z}, players[22], action? (pass/carry/shot/cross), note? } with strictly increasing t, the actor snapped to the ball, deterministic in-formation positioning for both XIs; every match result now carries phases (9 tests, replay-safe). Still needs: per-shot xG (own row) and renderer consumption (P2).',
+        note: 'Shipped (engine v1.1 → v1.2): every event carries x/y/z/facing/actor_id via a pure deterministic overlay (spatialize_feed — never consumes the match RNG; 6 tests). Phase stream builder shipped (2026-09-05, engine v1.2): phases.py turns the log into a renderable stream — every event becomes { t, ball{x,y,z}, players[22], action? (pass/carry/shot/cross), note? } with strictly increasing t, the actor snapped to the ball, deterministic in-formation positioning for both XIs; every match result now carries phases (9 tests, replay-safe). Renderer consumption shipped (2026-09-20): the 2D broadcast plays the phase stream directly (buildPhaseFrames — real per-event positions, actor-on-ball highlight derived from geometry); the movement model remains the fallback for pre-spatial replays.',
       },
       {
         label: 'Player-layer decide(game_state) sandbox (optional, heavier)',
         status: 'add-on',
-        note: 'AgentPitch-style: each outfield role runs a sandboxed decide(game_state) (pass/shoot/press/hold). Default is a cheap stats engine for the 90′ — LLMs only on the manager. The sanctioned answer to “players with a mind of their own.”',
+        note: 'AgentPitch-style: each outfield role runs a sandboxed decide(game_state) (pass/shoot/press/hold). Default is a cheap stats engine for the 90′ — LLMs only on the manager. The sanctioned answer to “players with a mind of their own.” Ratified (2026-09-20, tech architecture doc): the two AI layers never conflate — the LLM belongs on the manager agent only; the in-match movement/behavior layer (steering/potential fields, FSM or behavior trees) is classical game AI and is tracked work, not deferred indefinitely.',
       },
       {
         label: 'xG per shot',
-        status: 'must',
-        note: 'Shots carry on_target only. Need per-shot xG from position/angle/defensive pressure.',
+        status: 'done',
+        note: 'Shipped (engine v1.3, 2026-09-06): every shot/goal carries per-shot xG from finishing vs keeper, position and pressure — deterministic, same hash stream as the spatial overlay.',
       },
       {
         label: 'Per-player post-match ratings',
-        status: 'must',
-        note: 'No ratings anywhere. Feed has player_id per event, so a fold is feasible — but the manifesto needs ratings, xG, heat, and “errors that cost the game.”',
+        status: 'done',
+        note: 'Shipped (engine v1.3, 2026-09-06): MatchResult.player_stats folds the spatialized feed per actor (minutes, shots, goals, xG, tackles, cards, passes) into a 0–99 rating.',
       },
       {
         label: 'Error attribution (“why we lost”)',
-        status: 'must',
-        note: 'Post-match file for the next agent turn: which mistakes/events cost the match',
+        status: 'done',
+        note: 'Shipped (engine v1.3, 2026-09-06): per-player high-xG misses + match-level critical errors; report.py turns them into one-line “why” attributions.',
       },
       {
         label: 'Manager action transcript',
-        status: 'must',
-        note: 'Decisions exist as a plan dict only (decide.py). Need a discrete logged action log: set_shape 4-3-3, role ST press_forward, instruction defensive_line high, xi [11 ids], sub 67′ 9 off 21 on. Every action becomes commentary fuel + the “why we lost” file.',
+        status: 'done',
+        note: 'Shipped (2026-09-06): per-matchday action log (formation/tags/XI/instructions/source + press conference) exposed via get_matchday_transcript; sub events logged in the feed.',
       },
       {
         label: 'Individual player skill drives outcomes (not only team aggregates)',
-        status: 'needs-work',
-        note: 'Shot/goal odds mostly use team aggregates; player skill selects the actor and shootout kicker. Needs per-actor resolution so “a 6.4-rated midfielder can score a worldie, rarely.”',
+        status: 'done',
+        note: 'Shipped (engine v1.3, 2026-09-06): shot/goal odds are per-actor — the shooter’s finishing/positioning vs the opposing keeper anchors _shot_xg. v1.4 (2026-09-20): chances are weighted across the attacking pool — movement finds chances, finishing turns up more often — so chance distribution follows the squad instead of funneling to one best attacker.',
       },
       {
         label: 'Role/duty-level instructions',
@@ -178,18 +177,23 @@ export const SECTIONS: RoadmapSection[] = [
       },
       {
         label: 'Persistent tiredness across fixtures',
-        status: 'needs-work',
-        note: 'In-match fitness exists; fatigue that makes N+1 decisions harder doesn’t yet',
+        status: 'done',
+        note: 'Shipped (engine v1.3, 2026-09-06): simulate_match takes home/away fatigue and returns MatchResult.fatigue — the season stores it per club, feeds it into the next fixture with FATIGUE_RECOVERY rest, and surfaces it on the squad screen + the manager ask (own squad only). decide v2 (2026-09-20): auto XI selection is condition-aware — exhausted stars rotate to the bench while the XI stays legal (test_afm_decide_v2.py).',
       },
       {
         label: 'Substitution choice realism',
-        status: 'needs-work',
-        note: 'Known bug: engine subbed Mbappé off for a GK while winning 2-0 (pure fitness rotation). Needs match-type subs (defensive/holding sub when leading, attacking when chasing) + position-sane replacement',
+        status: 'done',
+        note: 'Fixed (engine v1.3, 2026-09-06): the Mbappé-for-GK bug is gone — subs are match-type aware (chasing → attackers on; protecting → fresh legs in defence/midfield; injuries replace like-for-like) and position-sane (a keeper only ever replaces a keeper). Every sub event carries kind + match_type. Tested across seeds (test_afm_subs_fatigue.py).',
       },
       {
         label: 'Assist / save attribution',
-        status: 'add-on',
-        note: 'For FM report depth later',
+        status: 'needs-work',
+        note: 'Assists shipped (engine v1.4, 2026-09-20): ~62% of open-play goals carry an assister, folded into player_stats + the FM report; assist-only records are deliberately not created (minutes=0 would poison the rating sort). Save attribution still open',
+      },
+      {
+        label: 'Dedicated set-piece subsystem (corners, free kicks, penalties)',
+        status: 'needs-work',
+        note: 'Half-shipped (engine v1.4, 2026-09-20): corners / free kicks / in-play penalties now resolve as real chances — named takers from tactics.set_pieces, kind-tagged goals — but still through the open-play probability chain; the distinct attribute mix (jumping/heading/technique) + assigned targets remain the plan',
       },
     ],
   },
@@ -210,13 +214,13 @@ export const SECTIONS: RoadmapSection[] = [
       },
       {
         label: 'Pre-kickoff: set formation + roles + team instructions, submit XI',
-        status: 'must',
-        note: 'decide.py does this automatically; the agent has no tool to express its own plan',
+        status: 'done',
+        note: 'Shipped (2026-09-05): the manager protocol — the House asks each manager for its matchday plan (webhook POST) with the observable context (own squad + record + wallet, the opposition’s full lineup — never hidden sliders — and the legal rules); the manager replies {formation, xi, bench, tactical_tags, instructions}. Validated; dead webhook → deterministic decide_matchday fallback, source recorded. 18 tests (test_afm_manager_protocol.py)',
       },
       {
         label: 'Manager protocol mirrors chess /move (webhook ask→JSON reply)',
-        status: 'needs-work',
-        note: 'Pattern exists (runtime/webhook.py + decide_matchday); not exposed as an ask→reply contract: Boardman asks for lineup/tactics, the agent replies JSON. Same shape as the chess move loop.',
+        status: 'done',
+        note: 'Shipped (2026-09-05): manager_protocol.py — build_matchday_ask / request_matchday_plan / validate_matchday_plan, wired into season._agents_decide (webhook first, fallback recorded). Owner-set webhook via POST /football/agents/webhook. Plans extension (v1.4, 2026-09-20): the reply may carry optional plans {trailing|level|leading} — validated against the whitelists, persisted at lock, handed to the engine with the lineup.',
       },
       {
         label: 'See opposition lineup (not their sliders)',
@@ -226,7 +230,7 @@ export const SECTIONS: RoadmapSection[] = [
       {
         label: 'In-match tools at natural breaks (HT, 60′, red card, injury): sub, change_instruction, change_shape',
         status: 'must',
-        note: 'Engine consumes *_tactics_2h; no tool surface + no action log',
+        note: 'Engine consumes *_tactics_2h; no tool surface + no action log. NB: v1.4 HT contingency plans are pre-committed at lock, not live in-match tools — this row stays open',
       },
       {
         label: 'Inbox: board, press, player unrest, next fixture',
@@ -235,8 +239,8 @@ export const SECTIONS: RoadmapSection[] = [
       },
       {
         label: 'Post-match report: ratings, xG, heat, errors that cost the game',
-        status: 'must',
-        note: 'Depends on engine ratings/xG (see engine section)',
+        status: 'done',
+        note: 'Shipped (2026-09-06, engine v1.3 data): report.py folds the stored player_stats into a per-fixture FM report — per-player ratings, team xG, top/worst performer, error lists + one-line “why” attributions. Agent surface: GET /football/report/{agent_id} (+ season/report for both sides); owner dashboard result rows carry a report summary. v1.4 (2026-09-20): assists + true minutes-on-pitch flow into the report. Heat maps: not yet (needs spatial event density per player). 7 tests (test_afm_report.py)',
       },
       {
         label: 'Transfer list, shortlist, bids, wage structure',
@@ -272,18 +276,18 @@ export const SECTIONS: RoadmapSection[] = [
       },
       {
         label: '“What’s on today” → pick a match → watch',
-        status: 'needs-work',
-        note: 'Watch hub is a journey shell; league page lists fixtures but there’s no one-click “watch this now” into a live board',
+        status: 'done',
+        note: 'Shipped (2026-09-20): the watch hub opens on the picker — upcoming fixtures (lock time + lineups-in state, deep-linking the pre-match board) and latest results (score + stats line, one-click replay). League/owner result rows also link one-click into the broadcast',
       },
       {
         label: '2D pitch board: scorebug, named players moving, ball',
-        status: 'must',
-        note: 'The focus build. Depends on engine spatial events. 2D first — 3D is parked as physics. Visual target (ratified): the Evans/DEvansData tactics board — Three.js, not EA FC, not FM dots: a phase player (22 tokens on a 3D pitch), named players, pass height + body facing, Broadcast/Top/Goal/Side/Follow-ball cameras, play/loop/speed. Tokens with kits look more “football” than bad rigs. Lightweight ref: fobal-simulator (AI-vs-AI 2.5D in one HTML file).',
+        status: 'needs-work',
+        note: 'Shipped V1 (2026-09-20): MatchBroadcast at /football/watch/broadcast — top-down 2D pitch, 22 named player dots + ball, scorebug with running score replayed from the feed, possession bar from the engine stats, commentary ticker, both lineups (name + slot), play/pause/speed/flip. Plays real recorded replays driven by the engine phase stream (buildPhaseFrames — real per-event positions from phases.py, actor-on-ball highlight from geometry); movement-model fallback for pre-spatial replays; deep-link ?md&home&away, auto-picks the latest finished fixture, league/owner watch pills link straight in; scripted demo when nothing resolves. Architecture ratified (2026-09-20): this DOM/CSS board is the wireframe — the shipping client is PixiJS (+ pixi-viewport / pixi-particles) per AFM_TECHNICAL_ARCHITECTURE.md §2, fed by the same phase stream, with the config-driven pacing layer (§7) compressing the full log to a 1–5 min broadcast. Still open: Pixi client, cameras, goal replay loop. 2D first — 3D parked as physics.',
       },
       {
         label: 'Pre-match tactics board (“how this manager wants to play”)',
-        status: 'must',
-        note: 'Tactics App (DEvansData) as reference UI for this middle layer — coach tool, not stadium sim (no physics, no 90′ play, no bot API). Driven by the agent’s plan (decide_matchday already outputs formation + XI): 4-3-3, press triggers, set-piece shape, half-space boxes. Animated clips of the plan = better spectator content than a raw text feed, cheaper than 22 LLM players. Free path: canvas/SVG pitch in the spectator page (same language as the chess board).',
+        status: 'done',
+        note: 'Shipped (2026-09-20): PreMatchBoard at /football/watch/prematch — both managers’ locked plans from season.prematch_view: formation shapes with named XI dots on a 2D pitch, tags, pre-committed HT contingency plans (trailing/level/leading), manager instructions + webhook/auto chip, ban/injury news. Spectator-safe by construction (no numbers, no edit controls). Backed by GET /football/season/prematch (7 tests). Tactics App remains the reference for richer animation later',
       },
       {
         label: 'Analyst skin (optional, for humans after kickoff / in review)',
@@ -308,7 +312,7 @@ export const SECTIONS: RoadmapSection[] = [
       {
         label: 'Remove attribute numbers + edit controls from any human surface',
         status: 'needs-work',
-        note: 'Today the only match view is the 3D theater, which shows rating chips on players, hover “X rated”, and full FM editing. Theater stays as a dev sandbox only. Guard (ratified): humans never draw tactics that change the live match — that breaks settlement. Numbers hidden on the broadcast unless a graphic is opened.',
+        note: 'Today the only match view is the 3D theater, which shows rating chips on players, hover “X rated”, and full FM editing. Theater stays as a dev sandbox only. Guard (ratified): humans never draw tactics that change the live match — that breaks settlement. Numbers hidden on the broadcast unless a graphic is opened. The 2D broadcast (2026-09-20) is leak-free by construction — names, slots and shirt numbers only.',
       },
       {
         label: 'Form guide, table, transfer rumours around the match',
@@ -407,7 +411,7 @@ export const SECTIONS: RoadmapSection[] = [
       {
         label: 'AFM API server responsiveness',
         status: 'needs-work',
-        note: 'Ops flag: Python API on :8000 was listening but unresponsive to season/clubs probes (state is file-based; engine fine). Needs restart check before pages show live data.',
+        note: 'Ops flag: Python API on :8000 was listening but unresponsive to season/clubs probes (state is file-based; engine fine). Needs restart check before pages show live data. Ratified shape (2026-09-20, tech architecture §4/§8): spectators move from polling to WebSockets over the persisted event+position log (late joiners fetch log-so-far, then subscribe); a world-clock service becomes the single canonical schedule source agents query (GET /world-clock) — never agent-computed.',
       },
       {
         label: 'On-chain agent identity + escrow contracts',
@@ -417,7 +421,7 @@ export const SECTIONS: RoadmapSection[] = [
       {
         label: 'Live league breadth',
         status: 'needs-work',
-        note: 'Only 2 agent clubs in the live season (Season 4) — a league isn’t a league yet. More clubs/agent minds needed.',
+        note: 'Only 2 agent clubs in the live season (Season 4) — a league isn’t a league yet. More clubs/agent minds needed. Ratified path (2026-09-20, scheduling doc §7): publish the playbook/API ahead of launch and run a qualifying/builder period (sandbox exhibitions) to organically reach the 10–20 agent floor.',
       },
       {
         label: 'Human loop (alerts, “match starting now”, watch together)',
@@ -435,7 +439,7 @@ export const BUILD_ORDER: BuildPhase[] = [
     scope:
       'Emit the ratified phase stream: tick/event log (minute, type, actor_id, x, y, z, facing) feeding Phase = {t, ball, players[], action?, note?}; xG per shot; per-player post-match ratings + errors; manager action transcript; sub-choice fix; expose the manager webhook ask→reply contract',
     done:
-      'Feed events carry x/y/z + facing and every match result ships a deterministic phases stream (done v1.2); shots carry xG; MatchResult gains per-player ratings derived from the feed; a stored action log exists; the /move-style manager protocol accepts a JSON lineup/tactics reply; determinism tests still green; G4 tiredness carries into next lock',
+      'Feed events carry x/y/z + facing and every match result ships a deterministic phases stream (done v1.2); shots carry xG; MatchResult gains per-player ratings derived from the feed; a stored action log exists; the /move-style manager protocol accepts a JSON lineup/tactics reply; determinism tests still green; G4 tiredness carries into next lock. Extended by engine v1.4 + decide v2 (2026-09-20): chance spread, assists, set pieces that play out, score-state modelling, HT contingency plans, true minutes, injury carry-over — 183 AFM tests green',
   },
   {
     id: 'P2',
@@ -443,7 +447,7 @@ export const BUILD_ORDER: BuildPhase[] = [
     scope:
       'Watch flow end-to-end: what’s-on-today → pre-match tactics board (agent plan: formation, press triggers, set-pieces) → match on the Evans-style board (phase player, Broadcast cam + scorebug + minute, named players, goal replay loop) + lineup graphic + “manager said”; analyst skin (Top/Side/Follow, phase list, pass arrows) optional; strip every attribute number & edit control off human surfaces',
     done:
-      'A spectator with no context can open /football/watch, watch a match unfold, and say who won and why — and a stranger watching the board can say “that was a counter, not a corner grind” (mute-the-labels test passes on the broadcast)',
+      'A spectator with no context can open /football/watch, watch a match unfold, and say who won and why — and a stranger watching the board can say “that was a counter, not a corner grind” (mute-the-labels test passes on the broadcast). Progress (2026-09-20): the 2D board is live, plays real recorded replays from the engine phase stream (/football/watch/broadcast); the watch-hub picker + pre-match tactics board shipped the same day (/football/watch/prematch from season.prematch_view) — still open: PixiJS client + pacing layer (per the ratified tech architecture), goal replay loop, “manager said”',
   },
   {
     id: 'P3',

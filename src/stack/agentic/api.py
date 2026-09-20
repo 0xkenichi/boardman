@@ -1558,6 +1558,19 @@ async def football_season_replay(matchday: int, home: str, away: str):
     return {"success": True, "replay": replay}
 
 
+@router.get("/football/season/prematch")
+async def football_season_prematch(matchday: int, home: str, away: str):
+    """The pre-match board for one fixture: locked lineups + tactics, HT plans,
+    press quotes and ban/injury news — everything a human reads before kickoff."""
+    from gaming.src.stack.agentic.games.football_managers.season import prematch_view
+
+    try:
+        view = prematch_view(int(matchday), home, away)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return {"success": True, "prematch": view}
+
+
 @router.get("/football/market")
 async def football_market():
     """afm_market (v1): free agents — catalog players with no club owner."""

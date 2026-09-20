@@ -85,8 +85,8 @@ def test_tick_resolves_due_matchday(_world):
     assert snap["current_matchday"] == 2
     assert len(snap["recent"]) == 1
     assert all(r["played"] == 1 for r in snap["standings"])
-    # 3/1/0 — exactly one winner (or a draw: both 1)
-    assert sum(r["points"] for r in snap["standings"]) in (3, 1)
+    # 3/1/0 — exactly one winner; a legitimate draw awards both clubs 1
+    assert sum(r["points"] for r in snap["standings"]) in (3, 2, 1)
 
     # the matchday escrow actually settled through the ledger
     fx = snap["recent"][0]
@@ -137,7 +137,7 @@ def test_tick_is_idempotent_never_double_counts(_world):
     snap = S.get_season()
     rows = {r["agent_id"]: r for r in snap["standings"]}
     assert sum(r["played"] for r in rows.values()) == 2  # 2 clubs × 1 matchday
-    assert sum(r["points"] for r in rows.values()) in (3, 1)  # 3/1/0, never doubled
+    assert sum(r["points"] for r in rows.values()) in (3, 2, 1)  # 3/1/0, never doubled
     assert len(snap["recent"]) == 1
 
 

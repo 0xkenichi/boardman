@@ -41,6 +41,7 @@ __all__ = [
     "reset_season",
     "get_season",
     "news_feed",
+    "prematch_view",
     "replay_press_conference",
     "transcript_for_fixture",
     "get_matchday_transcript",
@@ -675,7 +676,10 @@ def _agents_decide(s: dict[str, Any], matchday: int) -> None:
     lineup — the auto-fallback in `_resolve_matchday` still guarantees a
     legal XI, so a club can never be defaulted for a bad decision.
     """
-    from gaming.src.stack.agentic.games.football_managers.club_store import set_lineup
+    from gaming.src.stack.agentic.games.football_managers.club_store import (
+        set_ht_plans,
+        set_lineup,
+    )
     from gaming.src.stack.agentic.games.football_managers.manager_protocol import (
         ask_matchday_plan,
         build_press_conference_ask,
@@ -701,6 +705,10 @@ def _agents_decide(s: dict[str, Any], matchday: int) -> None:
                 bench=plan["bench"],
                 tactical_tags=plan["tags"],
             )
+            # v1.4: persist half-time contingency plans so the lock can hand
+            # them to the engine (webhook managers may supply their own)
+            if plan.get("plans"):
+                set_ht_plans(aid, plan["plans"])
             decisions[aid] = {
                 "formation": plan["formation"],
                 "tags": list(plan["tags"]),
@@ -708,9 +716,12 @@ def _agents_decide(s: dict[str, Any], matchday: int) -> None:
                 "xi": list(plan["starters"]),
                 "bench": list(plan["bench"]),
                 "source": out.get("source") or "auto",
-                "instructions": out.get("instructions"),
+                "instructions": out.get("instructions") or plan.get("instructions"),
                 "asked": out.get("asked", False),
                 "note": out.get("error"),
+                # v1.4: the pre-committed HT plans ride along so the pre-match
+                # board can show how the manager intends to react at half-time
+                "plans": dict(plan.get("plans") or {}),
             }
         except Exception as exc:
             decisions[aid] = {"error": str(exc)}
@@ -806,6 +817,16 @@ def _resolve_matchday(s: dict[str, Any], matchday: int) -> None:
         request_press_conference_answer,
     )
     from gaming.src.stack.agentic.games.football_managers.match_engine import simulate_match
+    from gaming.src.stack.agentic.games.football_managers.club_store import (
+        current_condition,
+        decay_injuries,
+        get_ht_plans,
+        record_match_fatigue,
+        record_match_injuries,
+    )
+    # v1.4: injuries from the previous matchday clear at this lock — a player
+    # hurt on MD N sat out MD N+1 and is available again from MD N+2
+    decay_injuries()
 
     no = int(s["season_no"])
     key = str(matchday)
@@ -841,6 +862,7 @@ def _resolve_matchday(s: dict[str, Any], matchday: int) -> None:
             "banned": sorted(banned),
             "formation": club.get("formation") or "4-3-3",
             "tags": list(club.get("tactical_tags") or ["balanced"]),
+            "plans": get_ht_plans(aid),
             "wage": _club_wage(club),
         }
     info["auto"] = sorted(set(auto))
@@ -857,10 +879,6 @@ def _resolve_matchday(s: dict[str, Any], matchday: int) -> None:
     fixtures = sched[matchday - 1]
     table = _standings_from(s)
     results: list[dict[str, Any]] = []
-    from gaming.src.stack.agentic.games.football_managers.club_store import (
-        current_condition,
-        record_match_fatigue,
-    )
 
     for fx in fixtures:
         h, a = fx.home_agent_id, fx.away_agent_id
@@ -875,9 +893,24 @@ def _resolve_matchday(s: dict[str, Any], matchday: int) -> None:
             away_bench=lineups[a].get("bench") or [],
             home_tactics={"formation": lineups[h]["formation"], "tags": lineups[h]["tags"]},
             away_tactics={"formation": lineups[a]["formation"], "tags": lineups[a]["tags"]},
+            home_plans=lineups[h].get("plans") or None,
+            away_plans=lineups[a].get("plans") or None,
             home_fatigue=current_condition(h),
             away_fatigue=current_condition(a),
         ).to_dict()
+        # v1.4: an injury that forced a sub now costs the player the next
+        # matchday — derived from the feed so the engine stays a pure function
+        def _injured(feed: list[dict[str, Any]]) -> list[str]:
+            seen: list[str] = []
+            for ev in feed or []:
+                if ev.get("type") == "substitution" and ev.get("kind") == "injury" and ev.get("off"):
+                    if ev["off"] not in seen:
+                        seen.append(str(ev["off"]))
+            return seen
+
+        injured_pids = _injured(res.get("feed") or [])
+        if injured_pids:
+            record_match_injuries(injured_pids)
         # tiredness carries: store the condition each squad leaves the match
         # with so the next matchday's lock (and the squad screen) sees it
         cond_home = (res.get("fatigue") or {}).get("home") or {}
@@ -891,10 +924,12 @@ def _resolve_matchday(s: dict[str, Any], matchday: int) -> None:
         res["lineups"] = {
             h: {"xi": lineups[h]["xi"], "bench": lineups[h].get("bench") or [],
                 "banned": list(lineups[h].get("banned") or []),
-                "formation": lineups[h]["formation"], "tags": lineups[h]["tags"]},
+                "formation": lineups[h]["formation"], "tags": lineups[h]["tags"],
+                "plans": lineups[h].get("plans") or {}},
             a: {"xi": lineups[a]["xi"], "bench": lineups[a].get("bench") or [],
                 "banned": list(lineups[a].get("banned") or []),
-                "formation": lineups[a]["formation"], "tags": lineups[a]["tags"]},
+                "formation": lineups[a]["formation"], "tags": lineups[a]["tags"],
+                "plans": lineups[a].get("plans") or {}},
         }
         table = apply_result(table, fx, res["home_goals"], res["away_goals"])
         results.append(res)
@@ -1100,6 +1135,127 @@ def transcript_for_fixture(matchday: int, home: str, away: str) -> dict[str, Any
     }
 
 
+def prematch_view(matchday: int, home: str, away: str) -> dict[str, Any]:
+    """The pre-match board for one upcoming or open fixture (spectator-safe).
+
+    Everything a human reads before kickoff, and nothing the managers keep
+    hidden: both clubs' locked formation, tactical tags and the named XI,
+    the pre-committed half-time contingency plans (trailing/level/leading —
+    formations and tags only, never numbers), the pre-match press-conference
+    quotes, ban/injury news, and the window timestamps.
+
+    Works from the day the matchday opens (managers decide at open, so the
+    lineup exists from that moment) and stays available after resolution —
+    a viewer landing on an old link reads the shape the match was actually
+    played in.
+
+    For an un-opened matchday the window is projected from the season
+    schedule and both sides come back empty ("awaiting lineups"), so the
+    fixture can be listed before its managers have decided.
+    """
+    s = _state().get("season")
+    if not s:
+        raise ValueError("no season running")
+    sched = _schedule_for(s)
+    if not 0 < matchday <= len(sched):
+        raise ValueError(f"matchday {matchday} out of range")
+    fx = next(
+        (
+            f
+            for f in sched[matchday - 1]
+            if {f.home_agent_id, f.away_agent_id} == {home, away}
+        ),
+        None,
+    )
+    if fx is None:
+        raise ValueError(
+            f"no fixture MD {matchday}: {home} vs {away}"
+        )
+
+    info = s.get("matchdays", {}).get(str(matchday)) or {}
+    decisions = info.get("decisions") or {}
+    from gaming.src.stack.agentic.games.football_managers.club_store import injuries_map
+
+    injuries = injuries_map()
+
+    def side(aid: str, opp_id: str) -> dict[str, Any]:
+        from gaming.src.stack.agentic.games.football_managers.catalog import get_player
+        from gaming.src.stack.agentic.games.football_managers.club_store import get_club
+
+        d = decisions.get(aid) or {}
+        xi_ids = list(d.get("xi") or d.get("starters") or [])
+        formation = d.get("formation") or ""
+        tags = list(d.get("tags") or [])
+        if not xi_ids and info.get("status") == "played":
+            # old replayed matchday with no stored decisions: read the shape
+            # the match was actually played in from the club's held lineup
+            club = get_club(aid) or {}
+            xi_ids = [str(p.get("player_id") or "") for p in club.get("starters") or []]
+            formation = formation or club.get("formation") or ""
+            tags = tags or list(club.get("tactical_tags") or [])
+        xi = []
+        for pid in xi_ids:
+            p = get_player(pid) or {}
+            xi.append(
+                {
+                    "player_id": pid,
+                    "name": p.get("name") or pid,
+                    "slot": str(p.get("slot") or "").upper(),
+                }
+            )
+        # news the broadcast can show beside the team sheet: who is banned
+        # (red last matchday) and who is injured (sits this one out)
+        banned = sorted(_suspended_players(s, aid))
+        news = []
+        for pid in banned:
+            p = get_player(pid) or {}
+            news.append(
+                {
+                    "type": "suspension",
+                    "player_id": pid,
+                    "name": p.get("name") or pid,
+                    "detail": "Suspended — sent off last matchday",
+                }
+            )
+        for pid, left in sorted(injuries.items()):
+            if pid in xi_ids:
+                continue  # on the sheet — not this player's news
+            p = get_player(pid) or {}
+            if not p:
+                continue
+            news.append(
+                {
+                    "type": "injury",
+                    "player_id": pid,
+                    "name": p.get("name") or pid,
+                    "detail": f"Injured — out for {left} more matchday",
+                }
+            )
+        return {
+            "agent_id": aid,
+            "club_name": _club_display(aid),
+            "formation": formation,
+            "tags": tags,
+            "instructions": d.get("instructions"),
+            "source": d.get("source"),
+            "plans": dict(d.get("plans") or {}),
+            "xi": xi,
+            "news": news,
+            "decided": bool(d),
+        }
+
+    return {
+        "matchday": matchday,
+        "season_no": int(s["season_no"]),
+        "status": info.get("status") or "scheduled",
+        "home": side(fx.home_agent_id, fx.away_agent_id),
+        "away": side(fx.away_agent_id, fx.home_agent_id),
+        "open_at": info.get("open_at") or _iso(_open_at(s, matchday)),
+        "deadline_at": info.get("deadline_at") or _iso(_deadline(s, matchday)),
+        "resolved_at": info.get("resolved_at"),
+    }
+
+
 def _reconstruct_replay(
     s: dict[str, Any],
     matchday: int,
@@ -1118,7 +1274,11 @@ def _reconstruct_replay(
             lineups = r["lineups"]
             break
     if not lineups:
-        # oldest format: nothing stored — fall back to what the club holds
+        # oldest format: nothing stored — fall back to what the club holds.
+        # HT plans live in the club store too; without them the replay would
+        # skip half-time changes and diverge from the original result.
+        from gaming.src.stack.agentic.games.football_managers.club_store import get_ht_plans
+
         for aid in (home, away):
             club = get_club(aid) or {}
             starters = _ids(club.get("starters"))
@@ -1129,6 +1289,7 @@ def _reconstruct_replay(
                 "bench": _ids(club.get("bench")),
                 "formation": club.get("formation") or "4-3-3",
                 "tags": list(club.get("tactical_tags") or ["balanced"]),
+                "plans": get_ht_plans(aid),
             }
     if home not in lineups or away not in lineups:
         return None
@@ -1142,6 +1303,8 @@ def _reconstruct_replay(
         away_bench=list(lineups[away].get("bench") or []),
         home_tactics={"formation": lineups[home]["formation"], "tags": lineups[home]["tags"]},
         away_tactics={"formation": lineups[away]["formation"], "tags": lineups[away]["tags"]},
+        home_plans=lineups[home].get("plans") or None,
+        away_plans=lineups[away].get("plans") or None,
     ).to_dict()
     res["home_club"] = _club_display(home)
     res["away_club"] = _club_display(away)

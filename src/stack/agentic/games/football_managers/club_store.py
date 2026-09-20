@@ -31,6 +31,7 @@ from gaming.src.stack.agentic.games.football_managers.rules import (
     TACTICAL_TAGS,
     WAGE_RUNWAY_MATCHDAYS,
 )
+from gaming.src.stack.agentic.games.football_managers import catalog
 from gaming.src.stack.agentic.store import load_json, save_json
 
 STATE_FILE = "afm_clubs.json"
@@ -113,9 +114,109 @@ def current_condition(agent_id: str) -> dict[str, float]:
     }
 
 
+# ------------------------------------------------------- injuries (v1.4)
+
+_INJURY_NOTE = "knock — out 1 matchday"
+
+
+def _injuries_state() -> dict[str, Any]:
+    """The persisted injuries map {player_id: matchdays_remaining}.
+
+    Deliberately stored in the clubs store (not the catalog): the catalog is
+    a static seed artifact shared by every test/club, and runtime mutations
+    there leak across isolated sessions on disk.
+    """
+    state = _state()
+    inj = state.get("injuries")
+    if not isinstance(inj, dict):
+        inj = {}
+        state["injuries"] = inj
+    return inj
+
+
+def record_match_injuries(pids: list[str]) -> int:
+    """Mark players as injured with a 1-matchday layoff after a fixture.
+
+    An in-match injury forced a sub; v1.4 makes it real: the player misses
+    the next matchday and is cleared by `decay_injuries` at the following
+    lock. Already-injured players are ignored. Returns the count newly set.
+    """
+    changed = 0
+    with _lock:
+        state = _state()  # load once, mutate, save once — _state() returns a copy
+        inj = state.get("injuries")
+        if not isinstance(inj, dict):
+            inj = {}
+            state["injuries"] = inj
+        for pid in pids:
+            pid = str(pid)
+            if not pid or inj.get(pid):
+                continue
+            if not get_player(pid):
+                continue
+            inj[pid] = 1
+            changed += 1
+        if changed:
+            _save(state)
+    return changed
+
+
+def decay_injuries() -> int:
+    """Clear 1-matchday injuries at a matchday lock.
+
+    Called once per resolved matchday (by the season tick) so a player
+    injured on MD N sits out MD N+1 and is available again from MD N+2.
+    Returns the number of players updated.
+    """
+    changed = 0
+    with _lock:
+        state = _state()  # load once, mutate, save once
+        inj = state.get("injuries")
+        if not isinstance(inj, dict):
+            inj = {}
+            state["injuries"] = inj
+        for pid in list(inj.keys()):
+            left = int(inj[pid]) - 1
+            if left <= 0:
+                del inj[pid]
+            else:
+                inj[pid] = left
+            changed += 1
+        if changed:
+            _save(state)
+    return changed
+
+
+def injuries_map() -> dict[str, int]:
+    """Read-only view: {player_id: matchdays remaining} for injured players."""
+    return dict(_injuries_state())
+
+
 def _resolve(player_id: str) -> Optional[dict[str, Any]]:
     p = get_player(player_id)
     return p if p else None
+
+
+def set_ht_plans(agent_id: str, plans: Optional[dict[str, Any]]) -> None:
+    """Store a manager's half-time contingency plans (v1.4).
+
+    Keyed by game state: {"trailing": {...}, "level": {...}, "leading":
+    {...}}. The season reads them back at lock and hands them to the engine,
+    which applies the plan the half-time score calls for.
+    """
+    with _lock:
+        state = _state()  # load once, mutate, save once — _state() returns a copy
+        club = state.get("clubs", {}).get(agent_id)
+        if club is None:
+            return
+        club["ht_plans"] = dict(plans or {})
+        _save(state)
+
+
+def get_ht_plans(agent_id: str) -> dict[str, Any]:
+    """The club's stored half-time contingency plans (empty when none)."""
+    club = _state().get("clubs", {}).get(agent_id)
+    return dict((club or {}).get("ht_plans") or {})
 
 
 def _club_for_agent(agent_id: str) -> Optional[dict[str, Any]]:
@@ -358,12 +459,18 @@ def seed_demo_clubs(*, force: bool = False) -> list[dict[str, Any]]:
 
 def _club_out(aid: str, club: dict[str, Any]) -> dict[str, Any]:
     players = {p["player_id"]: p for p in list_players()}
+    injuries = _injuries_state()
+
     def resolve(ids: list[str]) -> list[dict[str, Any]]:
         out = []
         for pid in ids:
             p = players.get(pid)
             if p:
-                out.append(copy.deepcopy(p))
+                p = copy.deepcopy(p)
+                # v1.4: runtime injuries overlay the static catalog row
+                if injuries.get(str(pid)):
+                    p["injury"] = _INJURY_NOTE
+                out.append(p)
         return out
 
     spend = sum(
@@ -425,7 +532,7 @@ def set_lineup(
             unknown = [p for p in ids if p not in roster]
             if unknown:
                 raise ValueError(f"starters not owned by this club: {unknown}")
-            injured = [p for p in ids if (_resolve(p) or {}).get("injury")]
+            injured = [p for p in ids if (_resolve(p) or {}).get("injury") or injuries_map().get(str(p))]
             banned = [p for p in ids if int((_resolve(p) or {}).get("suspension_matches") or 0) > 0]
             if injured:
                 raise ValueError(f"injured players cannot start: {injured}")

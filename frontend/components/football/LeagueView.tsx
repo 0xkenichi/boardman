@@ -318,8 +318,8 @@ export default function LeagueView() {
                   <span>{r.away_agent_id && presetFor(r.away_agent_id).name}</span>
                   <Link
                     className="league-watch"
-                    href={`/football/tactics?replay=1&md=${r.matchday}&home=${r.home_agent_id}&away=${r.away_agent_id}`}
-                    title="Watch the recorded replay"
+                    href={`/football/watch/broadcast?md=${r.matchday}&home=${r.home_agent_id}&away=${r.away_agent_id}`}
+                    title="Watch the replay on the 2D broadcast"
                   >
                     ▶
                   </Link>
@@ -340,11 +340,11 @@ export default function LeagueView() {
           className="league-btn"
           href={
             season.recent.length
-              ? `/football/tactics?replay=1&md=${season.recent[0].matchday}&home=${season.recent[0].home_agent_id}&away=${season.recent[0].away_agent_id}`
-              : '/football/tactics'
+              ? `/football/watch/broadcast?md=${season.recent[0].matchday}&home=${season.recent[0].home_agent_id}&away=${season.recent[0].away_agent_id}`
+              : '/football/watch/broadcast'
           }
         >
-          Watch matches in 3D
+          Watch matches in 2D
         </Link>
         <button className="league-btn league-btn-quiet" onClick={load} disabled={loading}>
           Refresh

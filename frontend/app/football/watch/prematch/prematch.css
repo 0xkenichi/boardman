@@ -1,0 +1,312 @@
+/**
+ * PreMatchBoard styles — the pre-match tactics board.
+ * Reuses the broadcast's Boardman identity (deep navy, purple home, teal
+ * away) with its own pb- prefix so the two boards stay independent.
+ */
+.pb-wrap {
+  --pb-bg-0: #0a1120;
+  --pb-bg-1: #0e1830;
+  --pb-bg-2: #152142;
+  --pb-line: rgba(255, 255, 255, 0.08);
+  --pb-text-0: #f3f6fb;
+  --pb-text-1: #98a2bd;
+  --pb-text-2: #5f6b8a;
+  --pb-home: #7c3aed;
+  --pb-away: #2fe0c0;
+  --pb-amber: #ffb648;
+
+  display: flex;
+  flex-direction: column;
+  background: var(--pb-bg-0);
+  color: var(--pb-text-0);
+  border: 1px solid var(--pb-line);
+  border-radius: 12px;
+  overflow: hidden;
+  font-family: var(--font-inter, -apple-system, sans-serif);
+}
+
+/* scoreboard */
+.pb-scoreboard {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  padding: 14px 20px;
+  background: var(--pb-bg-1);
+  border-bottom: 1px solid var(--pb-line);
+}
+.pb-team {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 600;
+  font-size: 15px;
+  width: 220px;
+}
+.pb-team.pb-away {
+  justify-content: flex-end;
+  flex-direction: row-reverse;
+}
+.pb-crest {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.pb-mid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.pb-kickoff {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--pb-text-1);
+  background: var(--pb-bg-2);
+  padding: 4px 20px;
+  border-radius: 6px;
+}
+.pb-md {
+  font-size: 11px;
+  color: var(--pb-text-1);
+  margin-top: 5px;
+  letter-spacing: 0.3px;
+}
+.pb-status {
+  margin: 0;
+  padding: 8px 20px;
+  font-size: 12px;
+  color: var(--pb-text-1);
+  background: var(--pb-bg-0);
+  border-bottom: 1px solid var(--pb-line);
+}
+
+/* body: team panel | pitch | team panel */
+.pb-body {
+  display: grid;
+  grid-template-columns: 260px 1fr 260px;
+  gap: 0;
+}
+@media (max-width: 900px) {
+  .pb-body {
+    grid-template-columns: 1fr;
+  }
+  .pb-side {
+    order: 2;
+  }
+  .pb-pitch {
+    order: 1;
+    min-height: 300px;
+  }
+}
+
+/* team panels */
+.pb-side {
+  padding: 14px;
+  border-right: 1px solid var(--pb-line);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.pb-side-away {
+  border-right: none;
+  border-left: 1px solid var(--pb-line);
+}
+.pb-side-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.pb-src {
+  margin-left: auto;
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--pb-text-2);
+  border: 1px solid var(--pb-line);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.pb-src.is-webhook {
+  color: var(--pb-away);
+  border-color: rgba(47, 224, 192, 0.4);
+}
+.pb-src.is-auto {
+  color: var(--pb-text-1);
+}
+.pb-formation {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 1px;
+}
+.pb-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pb-tag {
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid;
+  color: var(--pb-text-0);
+  background: rgba(255, 255, 255, 0.04);
+}
+.pb-quote {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--pb-text-1);
+  font-style: italic;
+  border-left: 2px solid var(--pb-line);
+  padding-left: 10px;
+}
+.pb-plans {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.pb-plan {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  align-items: baseline;
+}
+.pb-plan-state {
+  flex-shrink: 0;
+  width: 68px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--pb-amber);
+  font-weight: 600;
+}
+.pb-plan-detail {
+  color: var(--pb-text-1);
+}
+.pb-news {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.pb-news li {
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: rgba(255, 182, 72, 0.08);
+  color: var(--pb-amber);
+}
+.pb-news li.pb-news-injury {
+  background: rgba(255, 92, 92, 0.1);
+  color: #ff8f8f;
+}
+
+/* pitch */
+.pb-pitch {
+  position: relative;
+  background:
+    radial-gradient(ellipse at center, #10233f 0%, #0a1526 75%);
+  min-height: 420px;
+  overflow: hidden;
+}
+.pb-pitch-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.pb-flip {
+  transform: scaleX(-1);
+}
+.pb-flip .pb-dot {
+  transform: scaleX(-1);
+}
+.pb-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 18%;
+  background: linear-gradient(180deg, rgba(124, 58, 237, 0.05), rgba(124, 58, 237, 0.01));
+  pointer-events: none;
+}
+.pb-zone-l {
+  left: 18%;
+}
+.pb-zone-r {
+  right: 18%;
+  background: linear-gradient(180deg, rgba(47, 224, 192, 0.05), rgba(47, 224, 192, 0.01));
+}
+.pb-dot {
+  position: absolute;
+  width: 34px;
+  height: 20px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+.pb-dot-home {
+  background: var(--pb-home);
+  color: #fff;
+}
+.pb-dot-away {
+  background: #159d85;
+  color: #062820;
+}
+
+/* controls */
+.pb-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--pb-line);
+  background: var(--pb-bg-1);
+}
+.pb-btn {
+  background: var(--pb-bg-2);
+  color: var(--pb-text-0);
+  border: 1px solid var(--pb-line);
+  border-radius: 6px;
+  width: 34px;
+  height: 28px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.pb-btn:hover {
+  background: #1b2a52;
+}
+.pb-pending {
+  font-size: 12px;
+  color: var(--pb-text-1);
+  font-style: italic;
+}
+
+/* note row above the board */
+.bc-note-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.bc-watch-link {
+  font-size: 12px;
+  color: var(--fd-accent, #7c3aed);
+  text-decoration: none;
+  font-weight: 600;
+}
+.bc-watch-link:hover {
+  text-decoration: underline;
+}

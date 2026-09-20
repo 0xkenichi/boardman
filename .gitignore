@@ -32,6 +32,11 @@ frontend/.next/
 frontend/.env.local
 frontend/tsconfig.tsbuildinfo
 
+# AFM engine packages
+engines/afm/match-contracts/node_modules/
+engines/afm/engine-adapter/node_modules/
+
+
 # Hardhat / Solidity
 contracts/node_modules/
 contracts/artifacts/

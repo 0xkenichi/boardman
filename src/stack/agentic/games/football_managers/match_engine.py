@@ -56,7 +56,13 @@ from gaming.src.stack.agentic.games.football_managers.rules import (
     TAG_MODS,
 )
 
-ENGINE_VERSION = "afm-engine-v1.3"  # event-log schema version — bump deliberately (v1.3: +fatigue in/out)
+# v1.4: weighted chance distribution (shots spread across the attacking pool,
+# not one best attacker), assists + key passes, set-piece chances (corner
+# headers, direct free kicks, in-play penalties), score-state adjustments
+# (chasing sides push late, leaders manage the game), and half-time
+# contingency plans (trailing/level/leading → the season passes the manager's
+# pre-committed plan and the engine applies the one the HT score calls for).
+ENGINE_VERSION = "afm-engine-v1.4"  # event-log schema version — bump deliberately
 
 # Pitch model for the spatial overlay: x runs the length (home attacks toward
 # x=100, away toward x=0), y runs the width, z is ball height in metres.
@@ -624,6 +630,8 @@ def derive_player_stats(
     away_agent_id: str,
     home_goals: int,
     away_goals: int,
+    home_xi: Optional[list[str]] = None,
+    away_xi: Optional[list[str]] = None,
 ) -> dict[str, Any]:
     """Per-player post-match performance — a pure fold over the spatialized feed.
 
@@ -660,6 +668,7 @@ def derive_player_stats(
     yellows: dict[str, int] = defaultdict(int)
     reds: dict[str, int] = defaultdict(int)
     passes: dict[str, int] = defaultdict(int)
+    assists: dict[str, int] = defaultdict(int)
     errors: dict[str, list[dict[str, Any]]] = defaultdict(list)
 
     team_xg: dict[str, float] = {"home": 0.0, "away": 0.0}
@@ -733,6 +742,10 @@ def derive_player_stats(
                     if st in ("home", "away"):
                         team_xg[st] += xv
                 # goals are not errors; they are the positive end of the xG chain
+                asst = ev.get("assist")
+                if asst:
+                    assists[asst] += 1
+                    key_passes[asst] += 1  # the goal-leading pass is a key pass
             continue
         # cards/fulls already handled above; anything else is neutral for stats
 
@@ -794,11 +807,51 @@ def derive_player_stats(
                 ),
             })
 
+    # true minutes on pitch: reconstructed from the starting XIs plus
+    # substitution / red-card events. Event-presence alone credits a 90-minute
+    # starter only with the minutes something happened *near* him (a quiet
+    # centre-back could show "13 minutes") — the lineup timeline fixes that.
+    def _minutes_on_pitch() -> dict[str, int]:
+        if home_xi is None and away_xi is None:
+            return {pid: len(m) for pid, m in minutes_seen.items()}
+        ft_minute = max((int(ev.get("minute") or 0) for ev in feed), default=90)
+        entry: dict[str, int] = {}
+        exit_at: dict[str, int] = {}
+        for pid in (home_xi or []):
+            entry[str(pid)] = 0
+        for pid in (away_xi or []):
+            entry[str(pid)] = 0
+        for ev in feed:
+            typ = ev.get("type")
+            m = int(ev.get("minute") or 0)
+            if typ == "substitution":
+                off, on = ev.get("off"), ev.get("on")
+                if off and str(off) not in exit_at:
+                    exit_at[str(off)] = m  # first exit wins (off then red, etc.)
+                if on:
+                    entry.setdefault(str(on), m)
+            elif typ == "red" and ev.get("player_id"):
+                exit_at.setdefault(str(ev["player_id"]), m)
+        return {pid: max(0, exit_at.get(pid, ft_minute) - ent)
+                for pid, ent in entry.items()}
+
+    minutes_on_pitch = _minutes_on_pitch()
+
     # build per-player records
-    all_pids: set[str] = set(minutes_seen) | set(shots) | set(goals) | set(xg) | set(key_passes) | set(tackles) | set(interceptions) | set(fouls_committed) | set(yellows) | set(reds) | set(passes)
+    # NB: assists deliberately do NOT create recs on their own — an assister
+    # virtually always has other attributed events; an assist-only rec would
+    # carry minutes=0 and poison the report's rating sort.
+    all_pids: set[str] = (set(minutes_seen) | set(shots) | set(goals) | set(xg)
+                          | set(tackles) | set(interceptions) | set(fouls_committed)
+                          | set(yellows) | set(reds) | set(passes)
+                          | set(minutes_on_pitch))  # every XI player gets a rec
     out: dict[str, dict[str, Any]] = {}
     for pid in all_pids:
-        mins = len(minutes_seen.get(pid, set()))
+        mins = minutes_on_pitch.get(pid, len(minutes_seen.get(pid, set())))
+        if mins <= 0:
+            # attributed events but never on the pitch in the reconstructed
+            # timeline — drop the rec rather than poison the rating sort
+            continue
         rating = _player_rating(
             pid=pid,
             goals=goals.get(pid, 0),
@@ -838,6 +891,7 @@ def derive_player_stats(
             "reds": reds.get(pid, 0),
             "cards": yellows.get(pid, 0) + reds.get(pid, 0),
             "passes": passes.get(pid, 0),
+            "assists": assists.get(pid, 0),
             "rating": rating,
             "errors": sorted(perrors, key=lambda e: -(e.get("xG", 0.0) or 0.0)),
         }
@@ -1000,6 +1054,8 @@ def simulate_match(
     require_result: bool = False,
     home_fatigue: Optional[dict[str, float]] = None,
     away_fatigue: Optional[dict[str, float]] = None,
+    home_plans: Optional[dict[str, Any]] = None,
+    away_plans: Optional[dict[str, Any]] = None,
 ) -> MatchResult:
     """Simulate a full match, deterministic per `match_id`.
 
@@ -1011,6 +1067,12 @@ def simulate_match(
       require_result            — a draw must be settled: extra time + shootout
       home_fatigue / away_fatigue — carried condition (0..1) per player from
                                     the previous fixture (default: fresh legs)
+      home_plans / away_plans   — half-time contingency plans keyed by game
+                                    state: {"trailing": {...}, "level": {...},
+                                    "leading": {...}}; the engine applies the
+                                    plan the HT score calls for (an explicit
+                                    ``*_tactics_2h`` still wins when both are
+                                    given)
     """
     rng = random.Random(_seed_int(match_id))
     home = _make_side(home_agent_id, list(home_xi), list(home_bench or []), home_tactics, rng,
@@ -1065,7 +1127,7 @@ def simulate_match(
     def possession_prob() -> float:
         w_h = home.mid * 0.62 + home.att * 0.25 + home.stance["tempo"] * 16 + home.stance["press"] * 5
         w_a = away.mid * 0.62 + away.att * 0.25 + away.stance["tempo"] * 16 + away.stance["press"] * 5
-        return _clamp(w_h / (w_h + w_a + 1e-9), 0.33, 0.67)
+        return _clamp(w_h / (w_h + w_a + 1e-9), 0.28, 0.72)
 
     def advance_possession() -> None:
         nonlocal holder
@@ -1106,28 +1168,125 @@ def simulate_match(
         pool.sort(key=lambda pid: (s.profiles.get(pid) or {}).get("shooting", 70.0), reverse=True)
         return pool[0]
 
+    def chance_taker(s: _SideState) -> Optional[str]:
+        """Who takes THIS chance — weighted across the attacking pool.
+
+        Real teams do not funnel every shot through their best shooter: off-ball
+        movement (positioning), finishing quality and how advanced the player's
+        group is decide who finds the ball in a shooting position. Forwards get
+        the lion's share, midfielders a real slice — so a 6.4-rated midfielder
+        can arrive late and snag one, and a marked-out star has teammates who
+        shoot too. Weighted draw through the match RNG: deterministic per seed.
+        """
+        pool = [pid for pid in s.on_pitch
+                if (s.profiles.get(pid) or {}).get("group") in ("FWD", "MID")]
+        if not pool:
+            pool = list(s.on_pitch)
+        if not pool:
+            return None
+        weights: list[float] = []
+        for pid in pool:
+            prof = s.profiles.get(pid) or {}
+            g = prof.get("group", "MID")
+            w = 1.0 if g == "FWD" else 0.38
+            # movement finds chances; finishing quality turns up more often too
+            w *= 0.55 + prof.get("positioning", 70.0) / 130.0
+            w *= 0.65 + (prof.get("shooting", 70.0) - 60.0) / 180.0
+            w = max(0.05, w)
+            weights.append(w)
+        return rng.choices(pool, weights=weights, k=1)[0]
+
+    def best_passer(s: _SideState) -> Optional[str]:
+        """The side's most reliable distributor on the pitch (set-piece taker
+        fallback: corners and free kicks go to the best passer on the pitch
+        unless the manager named one in tactics.set_pieces)."""
+        pool = [pid for pid in s.on_pitch
+                if (s.profiles.get(pid) or {}).get("group") != "GK"]
+        if not pool:
+            pool = list(s.on_pitch)
+        if not pool:
+            return None
+        pool.sort(key=lambda pid: group_skill(s.profiles.get(pid, {}), "passing", "technical", "decision_making"),
+                  reverse=True)
+        return pool[0]
+
+    def _named_taker(s: _SideState, kind: str) -> Optional[str]:
+        """The manager's named set-piece taker when they're on the pitch."""
+        named = (s.tactics.get("set_pieces") or {}).get(kind)
+        if named and named in s.on_pitch:
+            return str(named)
+        return None
+
+    def game_state_shift(minute: int) -> float:
+        """Score-state adjustment to the holder's appetite (chasing → push,
+        leading late → manage). Deliberately small: it bends the game, it does
+        not take it over."""
+        my = hg if holder == "home" else ag
+        opp = ag if holder == "home" else hg
+        if my - opp <= -1:
+            return 0.045 if minute >= 60 else 0.025
+        if my - opp >= 1 and minute >= 60:
+            return -0.025
+        return 0.0
+
+    def assist_for(atk: _SideState, scorer: Optional[str]) -> Optional[str]:
+        """The assister on an open-play goal (~62% of them have one).
+
+        Weighted toward creators (passing/technical) and never the scorer
+        himself; the last passer before the finish."""
+        if rng.random() >= 0.62:
+            return None
+        pool = [pid for pid in atk.on_pitch
+                if pid != scorer and (atk.profiles.get(pid) or {}).get("group") != "GK"]
+        if not pool:
+            return None
+        weights: list[float] = []
+        for pid in pool:
+            prof = atk.profiles.get(pid) or {}
+            w = 0.6 + group_skill(prof, "passing", "technical", "decision_making") / 100.0
+            g = prof.get("group", "MID")
+            if g == "MID":
+                w *= 1.25  # creators feed the finish
+            weights.append(max(0.1, w))
+        return rng.choices(pool, weights=weights, k=1)[0]
+
     def best_defender(s: _SideState) -> Optional[str]:
+        """Who commits this foul / makes this defensive action (v1.4).
+
+        Weighted, not deterministic: the best tackler is the most *likely*
+        offender but every defender/midfielder shares the load — a fixed
+        funnel heaped every foul on one player and produced phantom
+        two-yellow sendings-off inside ten minutes.
+        """
         pool = [pid for pid in s.on_pitch
                 if (s.profiles.get(pid) or {}).get("group") in ("DEF", "MID")]
         if not pool:
             pool = list(s.on_pitch)
         if not pool:
             return None
-        pool.sort(key=lambda pid: group_skill(s.profiles.get(pid, {}), "tackling", "physicality"),
-                  reverse=True)
-        return pool[0]
+        weights: list[float] = []
+        for pid in pool:
+            prof = s.profiles.get(pid) or {}
+            w = 0.5 + group_skill(prof, "tackling", "physicality") / 100.0
+            if prof.get("group") == "DEF":
+                w *= 1.35
+            weights.append(max(0.1, w))
+        return rng.choices(pool, weights=weights, k=1)[0]
 
     def score_goal(minute: int, scorer: Optional[str], scoring_side: str,
-                  shot_xg: float = 0.0) -> None:
+                  shot_xg: float = 0.0, assister: Optional[str] = None,
+                  kind: str = "open_play") -> None:
         nonlocal hg, ag
         if scoring_side == "home":
             hg += 1
         else:
             ag += 1
+        extra: dict[str, Any] = {"score": _fmt(hg, ag), "xG": round(shot_xg, 3), "kind": kind}
+        if assister and assister != scorer:
+            extra["assist"] = assister
         emit(minute, "goal",
              f"{minute}' · GOAL ({scoring_side}) · {pname(scorer)} · {_fmt(hg, ag)}",
-             side=scoring_side, player_id=scorer,
-             extra={"score": _fmt(hg, ag), "xG": round(shot_xg, 3)})
+             side=scoring_side, player_id=scorer, extra=extra)
 
     def give_card(minute: int, s: _SideState, pid: Optional[str], kind: str, why: str) -> None:
         """Book a player; second yellow or a straight red sends them off (10 men)."""
@@ -1235,10 +1394,11 @@ def simulate_match(
 
     def run_regular_minute(minute: int, phase: str) -> None:
         """One minute of open play: fouls/cards, a possession, possibly an attack."""
+        nonlocal holder
         # injuries first (forced changes)
         for s in (home, away):
             if rng.random() < 0.0026:
-                pid = best_attacker(s) or (s.on_pitch[0] if s.on_pitch else None)
+                pid = chance_taker(s) or (s.on_pitch[0] if s.on_pitch else None)
                 if pid:
                     emit(minute, "injury",
                          f"{minute}' · injury ({side_of(s)}): {pname(pid)} needs treatment",
@@ -1259,9 +1419,18 @@ def simulate_match(
                 give_card(minute, s, pid, "yellow", "tactical foul")
             elif r < 0.165 + max(0.0, s.stance["agg"]) * 0.06:
                 give_card(minute, s, pid, "red", "serious foul play")
+            elif side_of(s) != holder and rng.random() < 0.06:
+                # fouled the side in possession in a promising spot — a
+                # dangerous free kick plays out (v1.4)
+                resolve_set_piece(minute, "free_kick", holder_side(), s)
 
-        # the minute's possession
-        advance_possession()
+        # the minute's possession — appetite bends with the game state
+        shift = game_state_shift(minute)
+        p_base = possession_prob() + shift
+        if holder == "home":
+            holder = "home" if rng.random() < p_base + 0.16 else "away"
+        else:
+            holder = "away" if rng.random() < (1.0 - p_base) + 0.16 else "home"
         emit(minute, "possession",
              f"{minute}' · {home_agent_id if holder == 'home' else away_agent_id} in possession",
              side=holder)
@@ -1273,7 +1442,7 @@ def simulate_match(
                 if s.subs_used < s.max_subs and rng.random() < p_sub:
                     attempt_sub(s, minute)
 
-        if rng.random() >= attack_likely():
+        if rng.random() >= min(0.68, attack_likely() + shift):
             # quiet minute — occasionally a midfielder keeps it ticking
             if rng.random() < 0.18:
                 pid = best_attacker(holder_side()) or (holder_side().on_pitch[0] if holder_side().on_pitch else None)
@@ -1286,14 +1455,16 @@ def simulate_match(
         dfn = other_of(atk)
         atk_tag, dfn_tag = holder, side_of(dfn)
 
-        # build-up passes
+        # build-up passes (the last passer may become the assister's story)
         rr = rng.random()
         n_pass = 1 if rr < 0.4 else 2 if rr < 0.62 else 0
+        last_passer: Optional[str] = None
         for _ in range(n_pass):
-            pid = best_attacker(atk) or (atk.on_pitch[0] if atk.on_pitch else None)
+            pid = best_passer(atk) or (atk.on_pitch[0] if atk.on_pitch else None)
             if pid:
                 emit(minute, "pass", f"{minute}' · {pname(pid)} works it forward",
                      side=atk_tag, player_id=pid)
+                last_passer = pid
 
         # 1) defending side wins it back?
         p_turn = _clamp(0.16 + (dfn.dfn - atk.att) / 1100.0 + dfn.stance["press"] * 0.11
@@ -1311,11 +1482,19 @@ def simulate_match(
                        + (dfn.stance["line"] - 0.45) * 0.09 + dfn.stance["press"] * 0.03,
                        0.012, 0.2)
         if rng.random() < p_off:
-            pid = best_attacker(atk) or (atk.on_pitch[0] if atk.on_pitch else None)
+            pid = chance_taker(atk) or (atk.on_pitch[0] if atk.on_pitch else None)
             emit(minute, "offside",
                  f"{minute}' · offside ({atk_tag}) — {pname(pid)} caught ahead of the line",
                  side=atk_tag, player_id=pid)
             set_holder(dfn_tag)
+            return
+
+        # 3a) a spot kick? A foul in the box stops play and hands the
+        #     referee the biggest single chance in football (rare, ~1/match)
+        if rng.random() < 0.010:
+            emit(minute, "foul", f"{minute}' · foul ({dfn_tag}) in the box — PENALTY!",
+                 side=dfn_tag, player_id=best_defender(dfn))
+            take_in_play_penalty(minute, atk, dfn)
             return
 
         # 3) cynical foul on the break?
@@ -1324,19 +1503,28 @@ def simulate_match(
             emit(minute, "foul", f"{minute}' · foul ({dfn_tag}): {pname(pid)} stops the break",
                  side=dfn_tag, player_id=pid)
             r = rng.random()
-            if r < 0.13 + max(0.0, dfn.stance["agg"]) * 0.04:
+            agg = max(0.0, dfn.stance["agg"])
+            if r < 0.13 + agg * 0.04:
                 give_card(minute, dfn, pid, "yellow", "professional foul")
-            elif r < 0.145 + max(0.0, dfn.stance["agg"]) * 0.05:
+            elif r < 0.145 + agg * 0.05:
                 give_card(minute, dfn, pid, "red", "last-man foul")
+            elif r < 0.215 + agg * 0.05:
+                # dangerous territory: a direct free kick plays out (v1.4).
+                # The band sits fully above the card bands (both of which
+                # stretch with aggression) so it can never be eaten by them.
+                resolve_set_piece(minute, "free_kick", atk, dfn)
+                return
             return
 
-        # 4) the shot — per-shot xG attached to the event (flattened to the
-        #    event by emit's extra= handling, same as on_target / blocked)
-        shooter = best_attacker(atk) or (atk.on_pitch[0] if atk.on_pitch else None)
+        # 4) the shot — WHO takes it is weighted across the attacking pool,
+        #    not always the same star (v1.4 chance distribution)
+        shooter = chance_taker(atk) or (atk.on_pitch[0] if atk.on_pitch else None)
         ev_idx = len(feed)
         shot_xg = _shot_xg(shooter, atk, dfn, atk_tag, ev_idx, match_id)
         if rng.random() < goal_odds(atk, dfn):
-            score_goal(minute, shooter, atk_tag, shot_xg)
+            assister = last_passer if (last_passer and last_passer != shooter and rng.random() < 0.55) \
+                else assist_for(atk, shooter)
+            score_goal(minute, shooter, atk_tag, shot_xg, assister=assister)
             set_holder(dfn_tag)
             return
         r = rng.random()
@@ -1347,6 +1535,8 @@ def simulate_match(
                 emit(minute, "corner",
                      f"{minute}' · corner ({atk_tag}) — {pname(shooter)}'s shot deflected",
                      side=atk_tag, player_id=shooter)
+                resolve_set_piece(minute, "corner", atk, dfn)
+                return
             else:
                 emit(minute, "shot", f"{minute}' · shot blocked ({atk_tag}) · {pname(shooter)}",
                      side=atk_tag, player_id=shooter,
@@ -1363,6 +1553,90 @@ def simulate_match(
                      side=restart_side)
         set_holder(dfn_tag)
 
+    def take_in_play_penalty(minute: int, atk: _SideState, dfn: _SideState) -> None:
+        """A spot kick in open play — the referee points to it, the taker
+        (manager-named or the side's best converter) walks up (v1.4)."""
+        atk_tag = side_of(atk)
+        taker = _named_taker(atk, "penalty") or best_attacker(atk) or (atk.on_pitch[0] if atk.on_pitch else None)
+        skill = group_skill(atk.profiles.get(taker, {}), "shooting", "technical", "decision_making")
+        p_make = _clamp(0.76 + (skill - dfn.gk) / 550.0, 0.55, 0.95)
+        ev_idx = len(feed)
+        # recorded xG stays inside the phase-0 invariant band (<= 0.72) even
+        # though the true conversion odds are higher
+        pen_xg = _clamp(p_make * (0.9 + _spatial_unit(match_id, ev_idx, "pen") * 0.2), 0.4, 0.72)
+        if rng.random() < p_make:
+            score_goal(minute, taker, atk_tag, pen_xg, kind="penalty")
+        else:
+            saved = rng.random() < 0.72
+            emit(minute, "shot",
+                 f"{minute}' · PENALTY ({atk_tag}) · {pname(taker)} "
+                 f"{'— saved by the keeper!' if saved else 'blazes it over!'}",
+                 side=atk_tag, player_id=taker,
+                 extra={"on_target": bool(saved), "blocked": False, "xG": round(pen_xg, 3), "kind": "penalty"})
+        set_holder(side_of(dfn))
+
+    def resolve_set_piece(minute: int, sp: str, atk: _SideState, dfn: _SideState) -> None:
+        """A corner or a dangerous free kick actually plays out (v1.4).
+
+        The taker (manager-named or the best passer) delivers; a weighted
+        attacker attacks the ball. Corner headers convert at a header's xG,
+        direct free kicks at ~0.06. Everything else recycles into open play
+        (cleared / saved) so the flow keeps moving.
+        """
+        atk_tag = side_of(atk)
+        dfn_tag = side_of(dfn)
+        if sp == "corner":
+            taker = _named_taker(atk, "corner") or best_passer(atk)
+            emit(minute, "corner_delivery",
+                 f"{minute}' · corner from {pname(taker)} ({atk_tag})",
+                 side=atk_tag, player_id=taker,
+                 extra={"set_piece": "corner"})
+            # attacking the ball: weighted across the pool, defenders crash too
+            pool = [pid for pid in atk.on_pitch
+                    if (atk.profiles.get(pid) or {}).get("group") != "GK"]
+            if not pool:
+                set_holder(dfn_tag)
+                return
+            weights: list[float] = []
+            for pid in pool:
+                prof = atk.profiles.get(pid) or {}
+                w = 0.6 + prof.get("physicality", 70.0) / 100.0
+                if prof.get("group") == "FWD":
+                    w *= 1.4
+                weights.append(max(0.1, w))
+            attacker = rng.choices(pool, weights=weights, k=1)[0]
+            prof = atk.profiles.get(attacker) or {}
+            header_xg = _clamp(0.10 + (prof.get("shooting", 70.0) - dfn.gk) / 700.0
+                               + (prof.get("physicality", 70.0) - 70.0) / 900.0, 0.03, 0.28)
+            if rng.random() < header_xg:
+                score_goal(minute, attacker, atk_tag, header_xg,
+                           assister=taker if taker != attacker else None, kind="corner")
+            elif rng.random() < 0.45:
+                emit(minute, "shot",
+                     f"{minute}' · {pname(attacker)}'s header is off target ({atk_tag})",
+                     side=atk_tag, player_id=attacker,
+                     extra={"on_target": False, "blocked": False, "xG": round(header_xg, 3), "kind": "header"})
+            else:
+                emit(minute, "pass", f"{minute}' · cleared, {dfn_tag} regroup",
+                     side=dfn_tag, player_id=best_defender(dfn))
+            set_holder(dfn_tag if rng.random() < 0.55 else atk_tag)
+        else:  # free_kick
+            taker = _named_taker(atk, "free_kick") or best_passer(atk)
+            emit(minute, "free_kick",
+                 f"{minute}' · free kick ({atk_tag}) — {pname(taker)} stands over it",
+                 side=atk_tag, player_id=taker,
+                 extra={"set_piece": "free_kick"})
+            fk_xg = _clamp(0.055 + (group_skill(atk.profiles.get(taker, {}), "shooting", "technical") - 78.0) / 550.0,
+                           0.02, 0.18)
+            if rng.random() < fk_xg:
+                score_goal(minute, taker, atk_tag, fk_xg, kind="free_kick")
+            elif rng.random() < 0.5:
+                emit(minute, "shot",
+                     f"{minute}' · {pname(taker)}'s free kick is deflected wide ({atk_tag})",
+                     side=atk_tag, player_id=taker,
+                     extra={"on_target": False, "blocked": True, "xG": round(fk_xg, 3), "kind": "free_kick"})
+            set_holder(dfn_tag if rng.random() < 0.6 else atk_tag)
+
     def added_time_passage(base_minute: int, added: int) -> None:
         """A short passage of play across the added minutes of a half."""
         for k in range(1, added + 1):
@@ -1377,11 +1651,12 @@ def simulate_match(
                  side=holder)
             if rng.random() >= attack_likely() * 0.85:
                 continue
-            shooter = best_attacker(atk) or (atk.on_pitch[0] if atk.on_pitch else None)
+            shooter = chance_taker(atk) or (atk.on_pitch[0] if atk.on_pitch else None)
             ev_idx = len(feed)
             shot_xg = _shot_xg(shooter, atk, dfn, atk_tag, ev_idx, match_id)
             if rng.random() < goal_odds(atk, dfn):
-                score_goal(base_minute, shooter, atk_tag, shot_xg)
+                score_goal(base_minute, shooter, atk_tag, shot_xg,
+                           assister=assist_for(atk, shooter))
                 set_holder_of(dfn)
             else:
                 emit(base_minute, "shot", f"{base_minute}+{k}' · late shot ({atk_tag})",
@@ -1409,14 +1684,40 @@ def simulate_match(
                      extra={"added": added1})
                 added_time_passage(45, added1)
             emit(45, "halftime", f"45' · Half-time · {_fmt(hg, ag)}", extra={"score": _fmt(hg, ag)})
-            # the in-match window: managers may change tactics for half two
-            for s, raw in ((home, home_tactics_2h), (away, away_tactics_2h)):
-                if raw is None:
+            # the in-match window: managers may change tactics for half two.
+        # v1.4 contingency plans: a manager can pre-commit a plan per HT game
+        # state (trailing/level/leading); the engine applies the one the
+        # scoreboard calls for. An explicit home_tactics_2h (the old path)
+        # still wins when both are given.
+            def _pick_2h(raw: Optional[dict[str, Any]],
+                         plans: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+                if raw is not None:
+                    return raw
+                if not plans:
+                    return None
+                if hg > ag:
+                    state = "leading"
+                elif ag > hg:
+                    state = "trailing"
+                else:
+                    state = "level"
+                return plans.get(state)
+
+            for s, raw, plans in ((home, home_tactics_2h, home_plans), (away, away_tactics_2h, away_plans)):
+                chosen = _pick_2h(raw, plans)
+                if chosen is None:
                     continue
-                s.tactics = _normalize_tactics(raw)
+                s.tactics = _normalize_tactics(chosen)
                 s.stance = _stance(s.tactics["formation"], s.tactics["tags"],
                                    s.tactics["mentality"], s.tactics["instructions"])
                 _recompute_strengths(s, jitter=True, rng=rng)
+                emit(45, "tactical_change",
+                     f"45' · {side_of(s)} change it at the break: "
+                     f"{s.tactics['formation']} ({', '.join(s.tactics['tags']) or 'no tags'})",
+                     side=side_of(s),
+                     extra={"formation": s.tactics["formation"],
+                            "tags": list(s.tactics["tags"]),
+                            "mentality": s.tactics["mentality"]})
 
     # ------------------------------------------------- second-half stoppage
     added2 = stoppage_time(feed[second_start:]) if second_start is not None else 1
@@ -1447,12 +1748,13 @@ def simulate_match(
                      side=holder)
                 if rng.random() >= attack_likely() * 0.6:
                     continue
-                shooter = best_attacker(atk) or (atk.on_pitch[0] if atk.on_pitch else None)
+                shooter = chance_taker(atk) or (atk.on_pitch[0] if atk.on_pitch else None)
                 # tired legs: shots come a touch easier in extra time
                 if rng.random() < _clamp(goal_odds(atk, dfn) * 1.12, 0.0, 0.34):
                     ev_idx = len(feed)
                     sxg = _shot_xg(shooter, atk, dfn, atk_tag, ev_idx, match_id)
-                    score_goal(minute, shooter, atk_tag, sxg)
+                    score_goal(minute, shooter, atk_tag, sxg,
+                               assister=assist_for(atk, shooter))
                     set_holder_of(dfn)
                 else:
                     ev_idx = len(feed)
@@ -1477,7 +1779,7 @@ def simulate_match(
                 total_kicks += 1
                 atk_s = home if side_k == "home" else away
                 gk_s = away if side_k == "home" else home
-                kicker = best_attacker(atk_s) or (atk_s.on_pitch[0] if atk_s.on_pitch else None)
+                kicker = _named_taker(atk_s, "penalty") or best_attacker(atk_s) or (atk_s.on_pitch[0] if atk_s.on_pitch else None)
                 skill = group_skill(atk_s.profiles.get(kicker, {}), "shooting")
                 p_make = _clamp(0.74 + (skill - gk_s.gk) / 600.0, 0.5, 0.95)
                 scored = rng.random() < p_make
@@ -1552,7 +1854,8 @@ def simulate_match(
     from gaming.src.stack.agentic.games.football_managers.phases import build_phase_stream
 
     player_stats = derive_player_stats(
-        feed, match_id, home_agent_id, away_agent_id, hg, ag
+        feed, match_id, home_agent_id, away_agent_id, hg, ag,
+        home_xi=list(home_xi), away_xi=list(away_xi),
     )
 
     # final condition per player (0..1): what the season carries into the next

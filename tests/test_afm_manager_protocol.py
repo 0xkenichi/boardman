@@ -172,7 +172,9 @@ def test_validate_accepts_a_legal_plan(_world):
     assert err == ""
     assert valid["formation"] == plan["formation"]
     assert len(valid["starters"]) == 11
-    assert valid["instructions"] is None
+    # v1.4: the deterministic decide now emits a one-line instructions note;
+    # validation passes it through unchanged
+    assert valid["instructions"] == plan.get("instructions")
 
 
 @pytest.mark.parametrize(

@@ -108,7 +108,9 @@ def test_attribute_model_drives_outcomes(_fake_players):
         strong += int(s["home_goals"])   # strong at home
         weak += int(s["away_goals"])     # weak away
     assert strong > 60, f"expected a strong home haul, got {strong}"
-    assert weak < strong / 3, f"weak side should be buried, got {strong}-{weak}"
+    # v1.4: the weak side now scores realistic set-piece goals (~0.12/match
+    # from corners), so "buried" is a 2.5x ratio rather than 3x
+    assert weak * 2.5 < strong, f"weak side should be buried, got {strong}-{weak}"
     # flip the venue — quality must win from either side of the draw
     flipped_strong = flipped_weak = 0
     for i in range(40):

@@ -377,12 +377,45 @@ def validate_matchday_plan(
     if not isinstance(tags, list) or not tags or any(t not in TACTICAL_TAGS for t in tags):
         return None, f"tactical_tags must be non-empty, one of {sorted(TACTICAL_TAGS)}"
 
+    # v1.4: optional half-time contingency plans — each state, when given,
+    # must at least name a legal formation and carry tags from the whitelist
+    plans_raw = plan.get("plans")
+    plans: dict[str, Any] = {}
+    if plans_raw is not None:
+        if not isinstance(plans_raw, dict):
+            return None, "plans must be an object keyed by trailing/level/leading"
+        for state_key, raw in plans_raw.items():
+            if state_key not in ("trailing", "level", "leading"):
+                continue
+            if not isinstance(raw, dict):
+                return None, f"plans.{state_key} must be an object"
+            pf = str(raw.get("formation") or "")
+            if pf and pf not in FORMATIONS:
+                return None, f"plans.{state_key} formation not allowed: {pf!r}"
+            ptags = raw.get("tags")
+            if ptags is not None and (
+                not isinstance(ptags, list)
+                or not ptags
+                or any(t not in TACTICAL_TAGS for t in ptags)
+            ):
+                return None, f"plans.{state_key} tags must be from {sorted(TACTICAL_TAGS)}"
+            entry: dict[str, Any] = {}
+            if pf:
+                entry["formation"] = pf
+            if isinstance(ptags, list) and ptags:
+                entry["tags"] = [str(t) for t in ptags]
+            if raw.get("mentality") in ("attacking", "balanced", "defensive"):
+                entry["mentality"] = str(raw["mentality"])
+            if entry:
+                plans[state_key] = entry
+
     return {
         "formation": formation,
         "starters": xi_ids,
         "bench": bench_ids,
         "tags": [str(t) for t in tags],
         "instructions": str(plan.get("instructions") or "").strip() or None,
+        **({"plans": plans} if plans else {}),
     }, ""
 
 
@@ -439,6 +472,7 @@ def ask_matchday_plan(
                     "starters": list(fb["starters"]),
                     "bench": list(fb["bench"]),
                     "tags": list(fb["tags"]),
+                    **({"plans": dict(fb["plans"])} if fb.get("plans") else {}),
                 }
                 source = "auto"
         except Exception as exc:

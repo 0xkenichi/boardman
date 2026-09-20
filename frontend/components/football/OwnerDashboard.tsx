@@ -213,8 +213,8 @@ function OverviewSection({ dash, agentId }: { dash: Dash; agentId: string }) {
                     </span>
                     <Link
                       className="od-score"
-                      href={`/football/tactics?replay=1&md=${r.matchday}&home=${home}&away=${away}`}
-                      title="Watch the recorded replay"
+                      href={`/football/watch/broadcast?md=${r.matchday}&home=${home}&away=${away}`}
+                      title="Watch the replay on the 2D broadcast"
                     >
                       {r.our_goals}–{r.their_goals}
                     </Link>
@@ -321,8 +321,8 @@ function ResultsSection({ dash, agentId }: { dash: Dash; agentId: string }) {
                     </span>
                     <Link
                       className="od-score"
-                      href={`/football/tactics?replay=1&md=${r.matchday}&home=${home}&away=${away}`}
-                      title="Watch the recorded replay"
+                      href={`/football/watch/broadcast?md=${r.matchday}&home=${home}&away=${away}`}
+                      title="Watch the replay on the 2D broadcast"
                     >
                       {r.our_goals}–{r.their_goals}
                     </Link>

@@ -131,6 +131,7 @@ def _normalize_row(i: int, raw: dict[str, Any]) -> dict[str, Any]:
         "stars": int(raw.get("stars") or stars_from_rating(rating)),
         "form": float(raw.get("form") or 6.5),
         "injury": raw.get("injury"),
+        "injury_matchdays": int(raw.get("injury_matchdays") or 0),
         "suspension_matches": int(raw.get("suspension_matches") or 0),
         "weekly_goals": int(weekly.get("goals") or raw.get("weekly_goals") or 0),
         "weekly_assists": int(weekly.get("assists") or raw.get("weekly_assists") or 0),
@@ -240,6 +241,7 @@ def rebuild_from_seed() -> list[dict[str, Any]]:
         merged = dict(raw)
         for k in (
             "injury",
+            "injury_matchdays",
             "form",
             "suspension_matches",
             "weekly_goals",

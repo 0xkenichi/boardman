@@ -1,7 +1,9 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { PortalNav } from '@/components/football/PortalNav'
+import WatchPicker from '@/components/football/WatchPicker'
 import '../portal.css'
+import './picker.css'
 
 export const metadata: Metadata = {
   title: 'Watch · Agentic Football Managers',
@@ -18,18 +20,21 @@ export default function WatchHub() {
       <div className="fd-hero">
         <h1 style={{ fontSize: 30 }}>The spectator seat</h1>
         <p className="fd-lede">
-          You don’t run anything — you watch a league whose managers never sleep. Here is the
-          step-by-step of a matchday from your seat.
+          You don’t run anything — you watch a league whose managers never sleep. Here is what’s
+          on today.
         </p>
       </div>
 
-      <ul className="fd-steps">
+      <WatchPicker />
+
+      <ul className="fd-steps" style={{ marginTop: 28 }}>
         <li>
           <span className="fd-num">1</span>
           <div className="fd-step-main">
             <b>See what’s on today</b>
             <span>
-              Upcoming fixtures, which matchday the league is on, and the clubs involved.
+              The matchday slate above: fixtures with their lock times, latest results with their
+              replay links.
             </span>
           </div>
           <Link href="/football/league">
@@ -39,13 +44,14 @@ export default function WatchHub() {
         <li>
           <span className="fd-num">2</span>
           <div className="fd-step-main">
-            <b>Pre-match: the lineups</b>
+            <b>Pre-match: the team sheet</b>
             <span>
-              Both agents’ XIs, formations and tactics — the shape the match will be played in.
+              Both managers’ locked formations, tactical plans, half-time contingencies and team-
+              sheet news — on the pre-match board.
             </span>
           </div>
-          <Link href="/football/tactics">
-            <span className="fd-state live">Live · match board</span>
+          <Link href="/football/watch/prematch">
+            <span className="fd-state live">Live · pre-match board</span>
           </Link>
         </li>
         <li>
@@ -98,10 +104,9 @@ export default function WatchHub() {
       </ul>
 
       <div className="fd-sect">
-        <h2>Where the action lives today</h2>
+        <h2>More of the matchday</h2>
         <p className="fd-sub">
-          The guided live-view (auto-playing broadcast with commentary) is the next build for this
-          seat. Until then, both live tools below already render the real engine output.
+          The picker above is the fast path. The full surfaces, if you want to go deeper:
         </p>
         <div className="fd-cards">
           <div className="fd-card">
@@ -112,7 +117,23 @@ export default function WatchHub() {
             </p>
           </div>
           <div className="fd-card">
-            <h4>📺 Match board</h4>
+            <h4>📺 Match broadcast</h4>
+            <p>
+              The 2D tactical broadcast: 22 named players on a top-down pitch, running score and
+              commentary — replays any recorded fixture.{' '}
+              <Link href="/football/watch/broadcast">Open the broadcast →</Link>
+            </p>
+          </div>
+          <div className="fd-card">
+            <h4>📋 Pre-match board</h4>
+            <p>
+              Team sheet + tactics: formations on the pitch, tags, HT contingency plans, manager
+              quotes and ban/injury news.{' '}
+              <Link href="/football/watch/prematch">Open the pre-match board →</Link>
+            </p>
+          </div>
+          <div className="fd-card">
+            <h4>🎮 Match board (3D sandbox)</h4>
             <p>
               The 3D tactics theater: run a friendly or replay any recorded fixture from its event
               log.{' '}

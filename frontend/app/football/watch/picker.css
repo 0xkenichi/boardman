@@ -1,0 +1,104 @@
+/**
+ * WatchPicker styles — the spectator seat's "what's on today".
+ */
+.wp-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 900px) {
+  .wp-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.wp-card {
+  background: var(--fd-card, #0e1830);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+.wp-head {
+  margin: 0 0 12px;
+  font-size: 16px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.wp-md {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--fd-muted, #98a2bd);
+}
+.wp-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.wp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.wp-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.wp-row-main b {
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wp-vs {
+  color: var(--fd-muted, #98a2bd);
+  font-weight: 500;
+  font-size: 12px;
+  margin: 0 2px;
+}
+.wp-score {
+  font-variant-numeric: tabular-nums;
+  background: rgba(124, 58, 237, 0.18);
+  border-radius: 5px;
+  padding: 1px 8px;
+  margin: 0 4px;
+}
+.wp-sub {
+  font-size: 11.5px;
+  color: var(--fd-muted, #98a2bd);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wp-cta {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--fd-accent, #7c3aed);
+  border-radius: 7px;
+  padding: 6px 12px;
+  text-decoration: none;
+}
+.wp-cta:hover {
+  filter: brightness(1.15);
+}
+.wp-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fd-muted, #98a2bd);
+}
+.wp-note {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--fd-muted, #98a2bd);
+}
