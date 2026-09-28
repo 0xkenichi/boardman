@@ -60,6 +60,7 @@ function pad(n: number) {
 export function BoardmanLifecycle() {
   const ref = useRef<HTMLDivElement | null>(null)
   const [p, setP] = useState(0)
+  const flip = useRef<{ stage: number; dir: 1 | -1 }>({ stage: 0, dir: 1 })
 
   useEffect(() => {
     let raf = 0
@@ -92,6 +93,15 @@ export function BoardmanLifecycle() {
   const settled = stage >= 3
   const chapter = CHAPTERS[stage]
 
+  // scroll direction at the moment the chapter flips — the copy block is
+  // keyed by stage so it remounts and the CSS fade actually replays, sliding
+  // along the direction you're reading (derived during render so the very
+  // first paint of a chapter already points the right way)
+  if (stage !== flip.current.stage) {
+    flip.current = { stage, dir: stage > flip.current.stage ? 1 : -1 }
+  }
+  const dir = flip.current.dir
+
   return (
     <div className="lc" ref={ref} aria-label="How a Boardman match settles">
       <div className="lc-stage">
@@ -101,8 +111,8 @@ export function BoardmanLifecycle() {
         </div>
 
         <div className="lc-grid">
-          {/* ── Copy column ─────────────────────────────────────────── */}
-          <div className="lc-copy">
+          {/* ── Copy column (keyed by stage → remount replays the fade) ── */}
+          <div className="lc-copy" key={stage} data-dir={dir === 1 ? 'fwd' : 'rev'}>
             <p className="lc-chap-n v2-mono">
               {chapter.n} · {chapter.tag}
             </p>

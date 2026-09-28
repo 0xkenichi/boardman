@@ -93,15 +93,32 @@
   padding-top: 0.9rem;
 }
 
-/* crossfade chapters */
+/* crossfade chapters — the copy block remounts on stage change (keyed in
+   TSX), so this animation replays per chapter; data-dir points the slide
+   along the scroll direction */
 .lc-copy > * {
   animation: lc-fade 0.45s ease;
+}
+
+.lc-copy[data-dir='rev'] > * {
+  animation-name: lc-fade-rev;
 }
 
 @keyframes lc-fade {
   from {
     opacity: 0;
     transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lc-fade-rev {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
   }
   to {
     opacity: 1;
