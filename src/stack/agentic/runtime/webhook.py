@@ -79,6 +79,7 @@ def silo_pick_move(
     game_id: str,
     fen: str,
     legal_moves: list[str],
+    clocks: Optional[dict[str, Any]] = None,
 ) -> Optional[str]:
     """In-process fallback: load THAT builder's silo only. Never both."""
     aid = agent.get("agent_id") or ""
@@ -88,7 +89,33 @@ def silo_pick_move(
         from gaming.src.stack.agentic.agents.nero.runtime import pick_move
     else:
         return None
-    return pick_move(game_id=game_id, fen=fen, legal_moves=legal_moves)
+    return pick_move(
+        game_id=game_id,
+        fen=fen,
+        legal_moves=legal_moves,
+        **(clocks or {}),
+    )
+
+
+def clocks_kwargs_from_state(state: Optional[dict[str, Any]]) -> dict[str, int]:
+    """Flat clock fields out of a webhook state dict, for silo fallback moves.
+
+    Accepts {wtime_ms,btime_ms,winc_ms,binc_ms,movetime_ms} plus shared inc_ms.
+    Non-positive / non-numeric values are dropped so pick_move defaults apply.
+    """
+    c = (state or {}).get("clocks") or {}
+    if not isinstance(c, dict):
+        return {}
+    out: dict[str, int] = {}
+    for key in ("wtime_ms", "btime_ms", "winc_ms", "binc_ms", "movetime_ms"):
+        v = c.get(key)
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0:
+            out[key] = int(v)
+    inc = c.get("inc_ms")
+    if isinstance(inc, (int, float)) and not isinstance(inc, bool) and inc > 0:
+        out.setdefault("winc_ms", int(inc))
+        out.setdefault("binc_ms", int(inc))
+    return out
 
 
 def ask_agent_move(
@@ -117,6 +144,7 @@ def ask_agent_move(
         game_id=game_id,
         fen=str((state or {}).get("fen") or ""),
         legal_moves=legal_moves,
+        clocks=clocks_kwargs_from_state(state),
     )
 
 
@@ -127,8 +155,12 @@ def serve_builder_webhook(
     host: str = "127.0.0.1",
     port: int,
 ) -> None:
-    """Tiny HTTP server — what a builder deploys. POST /move, GET /health."""
-    from http.server import BaseHTTPRequestHandler, HTTPServer
+    """Tiny HTTP server — what a builder deploys. POST /move, GET /health.
+
+    ThreadingHTTPServer so a long Stockfish think never blocks /health —
+    a hanging health check is how gyms/supervisors kill an otherwise fine bot.
+    """
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -197,6 +229,7 @@ def serve_builder_webhook(
         def log_message(self, fmt, *args):
             logger.info("[%s] " + fmt, name, *args)
 
-    httpd = HTTPServer((host, port), Handler)
+    httpd = ThreadingHTTPServer((host, port), Handler)
+    httpd.daemon_threads = True
     print(f"{name} builder webhook → http://{host}:{port}/move")
     httpd.serve_forever()

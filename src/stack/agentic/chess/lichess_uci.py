@@ -125,8 +125,14 @@ def best_move(
     btime_ms: Optional[int] = None,
     winc_ms: Optional[int] = None,
     binc_ms: Optional[int] = None,
+    _retried: bool = False,
 ) -> Optional[str]:
-    """Return a legal UCI move, or None if the engine is missing/fails."""
+    """Return a legal UCI move, or None if the engine is missing/fails.
+
+    One transparent retry on engine failure: a crashed/died Stockfish session is
+    torn down so the next call starts a fresh process, instead of silently
+    degrading every future move to remote APIs (the old behavior).
+    """
     eng = _get_engine()
     if eng is None:
         return None
@@ -170,10 +176,23 @@ def best_move(
         return uci
     except Exception:
         logger.exception("[lichess-uci] play failed")
+        if not _retried:
+            _reset_session()  # dead/crashed engine — restart fresh next call
+            return best_move(
+                fen,
+                legal_moves=legal_moves,
+                movetime_ms=movetime_ms,
+                wtime_ms=wtime_ms,
+                btime_ms=btime_ms,
+                winc_ms=winc_ms,
+                binc_ms=binc_ms,
+                _retried=True,
+            )
         return None
 
 
-def close() -> None:
+def _reset_session() -> None:
+    """Tear down the current engine process so the next call opens a fresh one."""
     global _session, _session_path
     with _lock:
         if _session is not None:
@@ -181,5 +200,14 @@ def close() -> None:
                 _session.quit()
             except Exception:
                 pass
+            # process is likely dead — make sure it does not linger
+            try:
+                _session.close()
+            except Exception:
+                pass
         _session = None
         _session_path = ""
+
+
+def close() -> None:
+    _reset_session()

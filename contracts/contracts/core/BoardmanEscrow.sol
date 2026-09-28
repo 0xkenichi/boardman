@@ -17,9 +17,26 @@ contract BoardmanEscrow is Ownable, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
 
     // ─── Constants ────────────────────────────────────────────────────────────
-    uint256 public constant FEE_BPS = 700;       // 7% platform fee (700 basis points)
+    // Tiered platform fee (per-player stake S, fee charged on the pot):
+    //   S <  $5    → flat $0.50 per player ($1.00 total on the pot)
+    //   $5 ≤ S ≤ $500 → FEE_BPS (default 700 = 7%)
+    //   S >  $500  → PREMIUM_FEE_BPS (default 1000 = 10%)
+    // Tiers are evaluated from stakePerPlayer at RESOLVE time; the owner may
+    // retune them between lock and resolve (owner-unlimited governance for now).
+    uint256 public constant MIN_STAKE = 2e6;        // $2 USDC minimum per player
+    uint256 public constant TIER_FLAT_MAX = 5e6;    // stakes below this → flat fee
+    uint256 public constant TIER_BPS_MAX = 500e6;   // stakes up to this → FEE_BPS; above → premium
     uint256 public constant BPS_DENOM = 10_000;
     uint256 public constant MAX_STAKE = 10_000e6; // $10,000 USDC cap per match
+
+    // ─── Fee state (owner-settable) ──────────────────────────────────────────
+    uint256 public FEE_BPS = 700;                          // mid tier (700 bps = 7%)
+    uint256 public PREMIUM_FEE_BPS = 1000;                 // top tier (1000 bps = 10%)
+    uint256 public FLAT_FEE_PER_PLAYER = 500_000;          // $0.50 per player (bottom tier)
+    // Active tier boundaries (owner-settable via setFeeTiers; initialized to
+    // mirror the constants above so _platformFee reads a single source).
+    uint256 public TIER_FLAT_MAX_OVERRIDE = 5e6;    // $5
+    uint256 public TIER_BPS_MAX_OVERRIDE = 500e6;   // $500
 
     // ─── State ────────────────────────────────────────────────────────────────
     IERC20 public immutable usdc;
@@ -55,6 +72,13 @@ contract BoardmanEscrow is Ownable, ReentrancyGuard, Pausable {
     event MatchCancelled(bytes32 indexed matchId);
     event ResolverUpdated(address indexed oldResolver, address indexed newResolver);
     event FeeRecipientUpdated(address indexed oldRecipient, address indexed newRecipient);
+    event FeeTiersUpdated(
+        uint256 flatFeePerPlayer,
+        uint256 feeBps,
+        uint256 premiumFeeBps,
+        uint256 tierFlatMax,
+        uint256 tierBpsMax
+    );
 
     // ─── Errors ───────────────────────────────────────────────────────────────
     error MatchAlreadyExists();
@@ -64,7 +88,8 @@ contract BoardmanEscrow is Ownable, ReentrancyGuard, Pausable {
     error NotResolver(address caller);
     error InvalidWinner(address winner);
     error StakeExceedsMax(uint256 stake);
-    error ZeroStake();
+    error StakeBelowMin(uint256 stake);
+    error InvalidFeeTiers();
     error ZeroAddress();
 
     // ─── Modifiers ────────────────────────────────────────────────────────────
@@ -104,6 +129,7 @@ contract BoardmanEscrow is Ownable, ReentrancyGuard, Pausable {
         whenNotPaused
     {
         if (stake == 0) revert ZeroStake();
+        if (stake < MIN_STAKE) revert StakeBelowMin(stake);
         if (stake > MAX_STAKE) revert StakeExceedsMax(stake);
         if (matches[matchId].player1 != address(0)) revert MatchAlreadyExists();
 
@@ -166,7 +192,7 @@ contract BoardmanEscrow is Ownable, ReentrancyGuard, Pausable {
             revert InvalidWinner(winner);
 
         uint256 totalPot = m.stakePerPlayer * 2;
-        uint256 fee = (totalPot * FEE_BPS) / BPS_DENOM;
+        uint256 fee = _platformFee(totalPot);
         uint256 payout = totalPot - fee;
 
         m.status = MatchStatus.RESOLVED;
@@ -233,6 +259,28 @@ contract BoardmanEscrow is Ownable, ReentrancyGuard, Pausable {
         feeRecipient = _feeRecipient;
     }
 
+    /// @notice Owner retunes the fee tiers. Unlimited for now (V2 governance);
+    ///         hard caps land when third-party builders join.
+    ///         Requirements: premium ≥ mid, flatMax ≥ MIN_STAKE, bpsMax ≥ flatMax,
+    ///         bps ≤ 100%.
+    function setFeeTiers(
+        uint256 _flatFeePerPlayer,
+        uint256 _feeBps,
+        uint256 _premiumFeeBps,
+        uint256 _tierFlatMax,
+        uint256 _tierBpsMax
+    ) external onlyOwner {
+        if (_premiumFeeBps < _feeBps) revert InvalidFeeTiers();
+        if (_feeBps > BPS_DENOM || _premiumFeeBps > BPS_DENOM) revert InvalidFeeTiers();
+        if (_tierFlatMax < MIN_STAKE || _tierBpsMax < _tierFlatMax) revert InvalidFeeTiers();
+        FLAT_FEE_PER_PLAYER = _flatFeePerPlayer;
+        FEE_BPS = _feeBps;
+        PREMIUM_FEE_BPS = _premiumFeeBps;
+        TIER_FLAT_MAX_OVERRIDE = _tierFlatMax;
+        TIER_BPS_MAX_OVERRIDE = _tierBpsMax;
+        emit FeeTiersUpdated(_flatFeePerPlayer, _feeBps, _premiumFeeBps, _tierFlatMax, _tierBpsMax);
+    }
+
     function pause() external onlyOwner { _pause(); }
     function unpause() external onlyOwner { _unpause(); }
 
@@ -244,6 +292,23 @@ contract BoardmanEscrow is Ownable, ReentrancyGuard, Pausable {
 
     function getMatchStatus(bytes32 matchId) external view returns (MatchStatus) {
         return matches[matchId].status;
+    }
+
+    /// @notice Quote the total platform fee (on the pot) for a per-player stake.
+    function quotePlatformFee(uint256 stakePerPlayer) public view returns (uint256) {
+        return _platformFee(stakePerPlayer * 2);
+    }
+
+    function _platformFee(uint256 pot) internal view returns (uint256) {
+        if (pot == 0) return 0;
+        uint256 perPlayer = pot / 2;
+        if (perPlayer < TIER_FLAT_MAX_OVERRIDE) {
+            return FLAT_FEE_PER_PLAYER * 2; // flat fee from both sides
+        }
+        if (perPlayer <= TIER_BPS_MAX_OVERRIDE) {
+            return (pot * FEE_BPS) / BPS_DENOM;
+        }
+        return (pot * PREMIUM_FEE_BPS) / BPS_DENOM;
     }
 
     function contractBalance() external view returns (uint256) {

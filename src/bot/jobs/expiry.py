@@ -1,8 +1,15 @@
-"""Background jobs: expire, settle, nudge missing reports, timeout one-sided matches."""
+"""Background jobs: expire, settle, nudge missing reports, timeout one-sided matches.
+
+Also sweeps stale ``creator_locked`` challenges (creator staked on-chain, the
+opponent never joined, expires_at passed) and auto-refunds the locked stake.
+Fund-safety: users must never have to know a cancel command exists to get
+their money back.
+"""
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+import os
+from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -35,6 +42,106 @@ async def expire_challenges() -> int:
     except Exception:
         logger.exception("[Expiry] Failed to expire stale challenges")
         return 0
+
+
+async def sweep_stale_creator_locks(*, grace_hours: float | None = None) -> int:
+    """Auto-cancel expired ``creator_locked`` challenges and refund on-chain.
+
+    Why this exists: ``expire_challenges`` only flips ``open`` challenges. A
+    ``creator_locked`` challenge (creator staked, opponent never joined) has
+    real funds sitting in escrow with no automatic path back to the user.
+
+    Safety rules:
+      • Re-check status right before refunding — an opponent may have joined
+        between the query and the cancel.
+      • ``cancel_match`` is idempotent (refund audit row), so double sweeps
+        and restarts cannot double-refund.
+      • If the on-chain refund fails, the challenge is NOT marked cancelled —
+        it stays ``creator_locked`` and is retried next sweep.
+    """
+    sb = _get_supabase()
+    if grace_hours is None:
+        try:
+            grace_hours = float(os.getenv("CREATOR_LOCK_SWEEP_GRACE_HOURS", "0") or 0)
+        except ValueError:
+            grace_hours = 0.0
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=max(0.0, grace_hours))).isoformat()
+
+    try:
+        result = (
+            sb.schema("gaming")
+            .table("challenges")
+            .select("id, issuer_id, target_id, expires_at")
+            .eq("status", "creator_locked")
+            .lt("expires_at", cutoff)
+            .limit(50)
+            .execute()
+        )
+    except Exception:
+        logger.exception("[Expiry] creator_locked sweep load failed")
+        return 0
+
+    rows = result.data or []
+    if not rows:
+        return 0
+
+    from gaming.src.backend.services.clawstation_escrow import EscrowError, cancel_match
+    from gaming.src.bot.utils.notify import notify_user
+    from gaming.src.bot.utils.text import code
+
+    swept = 0
+    for row in rows:
+        cid = row["id"]
+        try:
+            # Re-check status: opponent may have joined since the query ran.
+            fresh = (
+                sb.schema("gaming")
+                .table("challenges")
+                .select("status")
+                .eq("id", cid)
+                .limit(1)
+                .execute()
+            )
+            fresh_rows = getattr(fresh, "data", None) or []
+            current = (fresh_rows[0].get("status") or "") if fresh_rows else ""
+            if current != "creator_locked":
+                continue
+
+            try:
+                result = await cancel_match(cid)
+            except EscrowError as exc:
+                # Funds may still be locked — leave status alone, retry next sweep.
+                logger.warning("[Expiry] creator_locked refund failed %s: %s", cid, exc)
+                continue
+
+            sb.schema("gaming").table("challenges").update({"status": "cancelled"}).eq(
+                "id", cid
+            ).execute()
+            swept += 1
+
+            msg = (
+                f"⌛ Match {code(cid)} expired — your opponent never locked in.\n"
+                f"Your stake was refunded automatically."
+                + (f"\nTx: {result.get('tx_hash')}" if result.get("tx_hash") else "")
+            )
+            creator_id = row.get("creator_id") or row.get("issuer_id")
+            opponent_id = row.get("opponent_id") or row.get("target_id")
+            try:
+                await notify_user(creator_id, msg)
+                if opponent_id:
+                    await notify_user(
+                        opponent_id,
+                        f"⌛ Match {code(cid)} expired (you never locked in). "
+                        f"The creator's stake was refunded.",
+                    )
+            except Exception:
+                logger.exception("[Expiry] creator_locked notify failed %s", cid)
+        except Exception:
+            logger.exception("[Expiry] creator_locked sweep failed for %s", cid)
+
+    if swept:
+        logger.info("[Expiry] creator_locked sweep refunded %s challenge(s)", swept)
+    return swept
 
 
 async def settle_pending_challenges() -> int:
@@ -222,6 +329,22 @@ async def watch_wallet_activity() -> dict:
         return {}
 
 
+async def run_escrow_reconciliation() -> dict:
+    """DB-locked stakes vs on-chain escrow — the go-live gate's daily check.
+
+    Read-only: never mutates balances. Fails loud (CRITICAL log + ops DM)
+    on any drift, and also on its own failure (a reconcile that cannot run
+    must never report healthy).
+    """
+    try:
+        from gaming.src.backend.services.escrow_reconciliation import reconcile_escrow
+
+        return await reconcile_escrow()
+    except Exception:
+        logger.exception("[Reconcile] tick failed")
+        return {"ok": False, "error": "exception"}
+
+
 async def watch_funding_rails() -> dict:
     """Stellar Horizon (+ optional Avalanche) deposit detection for top-ups."""
     out: dict = {}
@@ -255,6 +378,16 @@ def start_expiry_scheduler(interval_minutes: int = 2) -> AsyncIOScheduler:
         replace_existing=True,
     )
     scheduler.add_job(
+        sweep_stale_creator_locks,
+        "interval",
+        minutes=interval_minutes,
+        id="clawstation_creator_lock_sweep",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=60,
+    )
+    scheduler.add_job(
         settle_pending_challenges,
         "interval",
         minutes=max(1, interval_minutes),
@@ -268,6 +401,23 @@ def start_expiry_scheduler(interval_minutes: int = 2) -> AsyncIOScheduler:
         id="clawstation_report_nudge",
         replace_existing=True,
     )
+    # Escrow reconciliation: DB locked stakes vs on-chain contract balance.
+    # Default 60min (go-live gate item). Set ESCROW_RECONCILE_INTERVAL_MIN=0 to disable.
+    try:
+        reconcile_min = int(os.getenv("ESCROW_RECONCILE_INTERVAL_MIN", "60"))
+    except ValueError:
+        reconcile_min = 60
+    if reconcile_min > 0:
+        scheduler.add_job(
+            run_escrow_reconciliation,
+            "interval",
+            minutes=max(10, reconcile_min),
+            id="clawstation_escrow_reconciliation",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=120,
+        )
     # Deposit / withdrawal detection. Default 120s (was 45s — starved Telegram handlers).
     # Set WALLET_WATCH_INTERVAL_SEC=0 to disable.
     wallet_sec = int(os.getenv("WALLET_WATCH_INTERVAL_SEC", "120"))
@@ -297,9 +447,11 @@ def start_expiry_scheduler(interval_minutes: int = 2) -> AsyncIOScheduler:
         )
     scheduler.start()
     logger.info(
-        "[Jobs] Scheduler started (expiry+settlement+nudge every %sm, wallet watch every %ss, rails every %ss)",
+        "[Jobs] Scheduler started (expiry+creator-lock-sweep+settlement+nudge every %sm, "
+        "wallet watch every %ss, rails every %ss, reconciliation every %smin)",
         interval_minutes,
         max(60, wallet_sec) if wallet_sec > 0 else 0,
         max(45, rail_sec) if rail_sec > 0 else 0,
+        max(10, reconcile_min) if reconcile_min > 0 else 0,
     )
     return scheduler

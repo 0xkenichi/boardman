@@ -72,6 +72,11 @@ def test_each_silo_returns_a_legal_chess_move():
     n = nero_pick(fen=board.fen(), legal_moves=legal)
     assert r in legal
     assert n in legal
+    # Quit the shared UCI Stockfish session so python-chess's background
+    # thread joins — without this the test process hangs at exit.
+    from gaming.src.stack.agentic.chess import lichess_uci
+
+    lichess_uci.close()
 
 
 def test_house_rejects_game_builder_did_not_ship(tmp_path, monkeypatch):

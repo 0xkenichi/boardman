@@ -459,8 +459,12 @@ async def test_resolve_match_idempotency_guard(monkeypatch):
     }
     audit_result = MagicMock()
     audit_result.data = [{"circle_tx_id": "old_tx", "tx_hash": "0xOldHash", "status": "confirmed"}]
+    # Crash-recovery convergence: the idempotent branch also flips the DB
+    # status to resolved when it finds a payout audit on a non-resolved row.
+    update_result = MagicMock()
+    update_result.data = []
 
-    _mock_supabase(monkeypatch, [challenge_result, audit_result])
+    _mock_supabase(monkeypatch, [challenge_result, audit_result, update_result])
 
     mock_bl = MagicMock()
     monkeypatch.setattr(

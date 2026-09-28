@@ -45,6 +45,25 @@ _FALLBACK_CHAINS: dict[str, Any] = {
             "gas_tank_required": False,
             "escrow_address": "0xFC44a06295d4fC58420027932A6FcB3C13D83859",
         },
+        # Arc mainnet (live Sept 2026): prepared but NOT user-facing until escrow
+        # deploy + Circle W3S token id are confirmed. Keep enabled=False.
+        "arc_mainnet": {
+            "id": "arc_mainnet",
+            "label": "Arc Mainnet",
+            "enabled": False,
+            "recommended": False,
+            "status": "prep",
+            "circle_blockchain": "ARC",
+            "chain_id": 5042,
+            "rpc_url": "https://rpc.mainnet.arc.io",
+            "explorer_tx": "https://explorer.arc.io/tx/",
+            "usdc_address": "0x3600000000000000000000000000000000000000",
+            "circle_usdc_token_id": "",
+            "gas_token": "USDC",
+            "gas_mode": "usdc_native",
+            "gas_tank_required": False,
+            "escrow_address": "",
+        },
         "avalanche": {
             "id": "avalanche",
             "label": "Avalanche Fuji",
@@ -90,12 +109,14 @@ _FALLBACK_CHAINS: dict[str, Any] = {
 # Env overrides for escrow addresses after deploy.
 _ESCROW_ENV = {
     "arc": "CLAW_ESCROW_ADDRESS_ARC",
+    "arc_mainnet": "BOARDMAN_ESCROW_ADDRESS_ARC_MAINNET",
     "base": "CLAW_ESCROW_ADDRESS_BASE_SEPOLIA",
     "avalanche": "CLAW_ESCROW_ADDRESS_AVALANCHE",
 }
 
 _TOKEN_ENV = {
     "arc": "CIRCLE_USDC_TOKEN_ID_ARC",
+    "arc_mainnet": "CIRCLE_USDC_TOKEN_ID_ARC_MAINNET",
     "base": "CIRCLE_USDC_TOKEN_ID",
     "avalanche": "CIRCLE_USDC_TOKEN_ID_AVALANCHE",
 }
@@ -103,6 +124,7 @@ _TOKEN_ENV = {
 # Circle blockchain labels → our chain id
 CIRCLE_TO_CHAIN = {
     "ARC-TESTNET": "arc",
+    "ARC": "arc_mainnet",
     "BASE-SEPOLIA": "base",
     "AVAX-FUJI": "avalanche",
 }
@@ -112,6 +134,9 @@ _ALIASES = {
     "basesepolia": "base",
     "arc_testnet": "arc",
     "arctestnet": "arc",
+    "arc_mainnet": "arc_mainnet",
+    "arcmainnet": "arc_mainnet",
+    "mainnet": "arc_mainnet",
     "avax": "avalanche",
     "avax_fuji": "avalanche",
     "fuji": "avalanche",
@@ -146,6 +171,7 @@ def load_chains_config() -> dict[str, Any]:
 
         rpc_env = {
             "arc": "ARC_TESTNET_RPC_URL",
+            "arc_mainnet": "ARC_MAINNET_RPC_URL",
             "base": "BASE_SEPOLIA_RPC_URL",
             "avalanche": "AVALANCHE_FUJI_RPC_URL",
         }.get(chain_id)
@@ -292,6 +318,7 @@ def get_circle_usdc_token_id(chain_id: str) -> str:
     # Chain-specific env, then Base-only historical default (do not use Base id on Arc).
     env_key = {
         "arc": "CIRCLE_USDC_TOKEN_ID_ARC",
+        "arc_mainnet": "CIRCLE_USDC_TOKEN_ID_ARC_MAINNET",
         "base": "CIRCLE_USDC_TOKEN_ID",
         "avalanche": "CIRCLE_USDC_TOKEN_ID_AVALANCHE",
     }.get(normalize_chain_id(chain_id))
@@ -332,7 +359,7 @@ def format_chain_help() -> str:
     ]
     # Roadmap hint without offering other chains
     disabled = list_chains(include_disabled=True)
-    upcoming = [c for c in disabled if not c.get("enabled") and c.get("status") == "next"]
+    upcoming = [c for c in disabled if not c.get("enabled") and c.get("status") in {"next", "prep"}]
     if upcoming:
         lines.append(
             "  · next: "

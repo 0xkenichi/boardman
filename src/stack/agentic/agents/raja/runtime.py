@@ -54,6 +54,7 @@ def pick_move(
         raise ValueError("Raja is chess-only — creator_raja_lab has not shipped this game")
     if not fen:
         raise ValueError("missing fen")
+    LAST_SOURCE = "thinking"  # reset per request — only report what THIS move used
     uci = lichess_uci.best_move(
         fen,
         legal_moves=legal_moves,

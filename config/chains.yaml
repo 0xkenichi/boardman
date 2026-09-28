@@ -38,6 +38,29 @@ chains:
     fee_recipient: "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E"
     notes: "Boardman V1. Gas paid in USDC. Best UX."
 
+  # Arc Mainnet — live since Sept 16 2026. Same USDC predeploy address as testnet.
+  # circle_usdc_token_id: mainnet Circle W3S token id NOT yet known — set via env
+  # CIRCLE_USDC_TOKEN_ID_ARC_MAINNET before wallet fan-out. Escrow TBD at deploy.
+  arc_mainnet:
+    id: arc_mainnet
+    label: Arc Mainnet
+    enabled: false
+    recommended: false
+    status: prep
+    circle_blockchain: ARC
+    chain_id: 5042
+    rpc_url: https://rpc.mainnet.arc.io
+    explorer_tx: https://explorer.arc.io/tx/
+    usdc_address: "0x3600000000000000000000000000000000000000"
+    circle_usdc_token_id: ""
+    gas_token: USDC
+    gas_mode: usdc_native
+    gas_tank_required: false
+    escrow_address: ""
+    escrow_contract: BoardmanEscrow
+    fee_recipient: "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E"
+    notes: "Deploy BoardmanEscrow + confirm Circle W3S token id before enabling."
+
   avalanche:
     id: avalanche
     label: Avalanche Fuji

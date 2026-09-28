@@ -43,8 +43,8 @@ export default {
 
     // ── Arc Mainnet (Sept 16 launch) ───────────────────────────────────
     arcMainnet: {
-      url: process.env.ARC_MAINNET_RPC_URL || "https://rpc.arc.network",
-      chainId: Number(process.env.ARC_MAINNET_CHAIN_ID || 5042001),
+      url: process.env.ARC_MAINNET_RPC_URL || "https://rpc.mainnet.arc.io",
+      chainId: Number(process.env.ARC_MAINNET_CHAIN_ID || 5042),
       accounts: [ADMIN_PRIVATE_KEY],
     },
 

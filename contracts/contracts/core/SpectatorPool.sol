@@ -17,7 +17,14 @@ import "@openzeppelin/contracts/utils/Pausable.sol";
 contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
 
-    uint16 public constant PLATFORM_FEE_BPS = 300;
+    // ─── Platform fee tiers (pot-level, owner-settable) ─────────────────────
+    //   pot <  $10    → flat $1.00 total platform fee (dust pots; clamped to pot)
+    //   $10 ≤ pot ≤ $1000 → PLATFORM_FEE_BPS (default 700 = 7%)
+    //   pot >  $1000  → PREMIUM_FEE_BPS (default 1000 = 10%)
+    // Evaluated on the whole pot at resolve time. Owner-unlimited governance
+    // for now; mirrors BoardmanEscrow tier mechanics.
+    uint16 public PLATFORM_FEE_BPS = 700;            // mid tier (700 bps = 7%)
+    uint16 public PREMIUM_FEE_BPS = 1000;            // top tier (1000 bps = 10%)
     uint16 public constant CREATOR_BPS = 200;
     /// @notice Of the 2% creator pool, the winner's creator gets this % (75),
     ///         the loser's creator the rest. Draws split 50/50.
@@ -26,6 +33,9 @@ contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
     /// @notice Resolve sentinel for a draw outcome (winnerSide = -2). Draw
     ///         tickets win the entire pot; A/B tickets lose.
     int8 public constant DRAW_SIDE = -2;
+    uint256 public FLAT_FEE = 1_000_000;             // $1.00 flat on dust pots
+    uint256 public TIER_FLAT_MAX = 10_000_000;       // pots below this → flat fee
+    uint256 public TIER_BPS_MAX = 1_000_000_000;     // pots up to this → PLATFORM_FEE_BPS
 
     IERC20 public immutable usdc;
     address public feeRecipient;
@@ -97,6 +107,13 @@ contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
     event Claimed(bytes32 indexed matchId, address indexed user, uint256 amount);
     event ResolverUpdated(address indexed oldResolver, address indexed newResolver);
     event FeeRecipientUpdated(address indexed oldRecipient, address indexed newRecipient);
+    event SpectatorFeeTiersUpdated(
+        uint256 flatFee,
+        uint256 feeBps,
+        uint256 premiumFeeBps,
+        uint256 tierFlatMax,
+        uint256 tierBpsMax
+    );
 
     error InvalidSide();
     error PotFull();
@@ -111,6 +128,7 @@ contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
     error ZeroAddress();
     error DuplicateAgents();
     error NotResolver(address caller);
+    error InvalidFeeTiers();
 
     modifier onlyResolver() {
         if (msg.sender != resolver && msg.sender != owner()) revert NotResolver(msg.sender);
@@ -312,6 +330,27 @@ contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
         feeRecipient = _feeRecipient;
     }
 
+    /// @notice Owner retunes the spectator fee tiers (mirrors BoardmanEscrow
+    ///         governance: unlimited now, hard caps with builder trust later).
+    ///         Requirements: premium ≥ mid, bps ≤ 100%, bpsMax ≥ flatMax.
+    function setSpectatorFeeTiers(
+        uint256 _flatFee,
+        uint16 _feeBps,
+        uint16 _premiumFeeBps,
+        uint256 _tierFlatMax,
+        uint256 _tierBpsMax
+    ) external onlyOwner {
+        if (_premiumFeeBps < _feeBps) revert InvalidFeeTiers();
+        if (_feeBps > BPS_DENOM || _premiumFeeBps > BPS_DENOM) revert InvalidFeeTiers();
+        if (_tierBpsMax < _tierFlatMax) revert InvalidFeeTiers();
+        FLAT_FEE = _flatFee;
+        PLATFORM_FEE_BPS = _feeBps;
+        PREMIUM_FEE_BPS = _premiumFeeBps;
+        TIER_FLAT_MAX = _tierFlatMax;
+        TIER_BPS_MAX = _tierBpsMax;
+        emit SpectatorFeeTiersUpdated(_flatFee, _feeBps, _premiumFeeBps, _tierFlatMax, _tierBpsMax);
+    }
+
     function pause() external onlyOwner {
         _pause();
     }
@@ -326,6 +365,15 @@ contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
 
     function _pot(Book storage b) internal view returns (uint256) {
         return b.totalA + b.totalB + b.totalDraw;
+    }
+
+    /// @notice Total platform fee on a pot, by tier. Flat fee is clamped to the
+    ///         pot so dust books can always resolve instead of reverting.
+    function _platformFee(uint256 pot) internal view returns (uint256) {
+        if (pot == 0) return 0;
+        if (pot < TIER_FLAT_MAX) return FLAT_FEE > pot ? pot : FLAT_FEE;
+        if (pot <= TIER_BPS_MAX) return (uint256(pot) * PLATFORM_FEE_BPS) / BPS_DENOM;
+        return (uint256(pot) * PREMIUM_FEE_BPS) / BPS_DENOM;
     }
 
     function _creditDeposit(bytes32 matchId, address user, uint256 amount, uint8 side) internal {
@@ -375,7 +423,7 @@ contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
             return;
         }
 
-        uint256 platformFee = (pot * PLATFORM_FEE_BPS) / BPS_DENOM;
+        uint256 platformFee = _platformFee(pot);
         uint256 creatorPool = (pot * CREATOR_BPS) / BPS_DENOM;
         uint256 distributable_ = pot - platformFee - creatorPool;
 

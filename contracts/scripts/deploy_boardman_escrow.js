@@ -15,7 +15,8 @@ const USDC = {
   baseSepolia: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
   baseMainnet: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
   arcTestnet: "0x3600000000000000000000000000000000000000",
-  // Arc mainnet — update when confirmed on explorer
+  // Arc mainnet (live Sept 16 2026): native USDC ERC-20 facade predeploy.
+  // Same vanity address on testnet + mainnet (Circle docs / arcscan). Override: ARC_MAINNET_USDC.
   arcMainnet: process.env.ARC_MAINNET_USDC || "0x3600000000000000000000000000000000000000",
   hardhat: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
 };
@@ -102,7 +103,9 @@ async function main() {
 
   console.log("\n─────────────────────────────────────────────────");
   console.log("Add to backend .env:");
-  if (network === "arcTestnet" || network.includes("arc")) {
+  if (network === "arcMainnet") {
+    console.log(`BOARDMAN_ESCROW_ADDRESS_ARC_MAINNET=${address}`);
+  } else if (network === "arcTestnet" || network.includes("arc")) {
     console.log(`CLAW_ESCROW_ADDRESS_ARC=${address}`);
     console.log(`BOARDMAN_ESCROW_ADDRESS_ARC=${address}`);
   } else if (network === "baseSepolia") {

@@ -76,6 +76,31 @@ def _get_supabase():
     return get_supabase()
 
 
+def _onchain_match_status(chain_id: str, challenge_id: str) -> Optional[dict]:
+    """Best-effort on-chain match state — None when unreadable.
+
+    Used for crash recovery: if the chain says a step already happened, a
+    replayed operation must converge instead of hitting a contract revert
+    and wedging the challenge (and reconciliation) forever.
+    """
+    try:
+        from backend.blockchain_layer import get_blockchain_layer_for_chain
+
+        return get_blockchain_layer_for_chain(chain_id).get_match_status(challenge_id)
+    except Exception:
+        logger.warning(
+            "[Escrow] on-chain status read failed for %s on %s", challenge_id, chain_id
+        )
+        return None
+
+
+def _same_stake(a: Optional[float], b: Decimal) -> bool:
+    try:
+        return abs(Decimal(str(a or 0)) - b) <= Decimal("0.000001")
+    except Exception:
+        return False
+
+
 def _load_profile_wallet(profile_id: str, chain_id: str = "base") -> tuple[str, str]:
     """Return (wallet_id, address) for a profile on a given chain.
 
@@ -308,13 +333,31 @@ async def approve_and_create_match(
         "createMatch(bytes32,uint256)",
         [match_id, str(stake_wei)],
     )
-    if not create_result.get("success"):
-        raise EscrowError(f"createMatch failed: {create_result.get('error')}")
-
     create_tx_id = create_result.get("transaction_id")
     tx_hash = create_result.get("tx_hash") or ""
+    recovered = False
+    if not create_result.get("success"):
+        # Crash recovery: a previous attempt may have created the match
+        # on-chain but died before recording it. If the chain shows this
+        # match already created by us for the same stake, converge instead
+        # of wedging on a revert forever.
+        st = _onchain_match_status(chain_id, challenge_id)
+        if (
+            st
+            and st.get("player1")
+            and (st.get("status") or "").upper() in ("OPEN", "CREATOR_LOCKED", "LOCKED", "DISPUTED")
+            and _same_stake(st.get("stake_per_player"), stake_usd)
+        ):
+            logger.warning(
+                "[Escrow] createMatch revert but match exists on-chain — recovering %s",
+                challenge_id,
+            )
+            recovered = True
+            create_tx_id = create_tx_id or f"recovered-{challenge_id}"
+        else:
+            raise EscrowError(f"createMatch failed: {create_result.get('error')}")
     create_waited = 0
-    if create_tx_id:
+    if create_tx_id and not recovered:
         create_wait = await circle.wait_for_transaction_async(
             create_tx_id, max_wait_seconds=120
         )
@@ -349,6 +392,7 @@ async def approve_and_create_match(
             "elapsed_sec": elapsed,
             "approve_wait_sec": approve_waited,
             "create_wait_sec": create_waited,
+            **({"recovered": True} if recovered else {}),
         },
     )
     _update_challenge(
@@ -446,13 +490,29 @@ async def approve_and_join_match(
         "joinMatch(bytes32)",
         [match_id],
     )
-    if not join_result.get("success"):
-        raise EscrowError(f"joinMatch failed: {join_result.get('error')}")
-
     join_tx_id = join_result.get("transaction_id")
     tx_hash = join_result.get("tx_hash") or ""
+    recovered = False
+    if not join_result.get("success"):
+        # Crash recovery: opponent may have already joined on-chain in a
+        # previous attempt that died before recording. Converge.
+        st = _onchain_match_status(chain_id, challenge_id)
+        if (
+            st
+            and st.get("player2")
+            and (st.get("status") or "").upper() in ("LOCKED", "DISPUTED")
+            and _same_stake(st.get("stake_per_player"), stake_usd)
+        ):
+            logger.warning(
+                "[Escrow] joinMatch revert but match locked on-chain — recovering %s",
+                challenge_id,
+            )
+            recovered = True
+            join_tx_id = join_tx_id or f"recovered-{challenge_id}"
+        else:
+            raise EscrowError(f"joinMatch failed: {join_result.get('error')}")
     join_waited = 0
-    if join_tx_id:
+    if join_tx_id and not recovered:
         join_wait = await circle.wait_for_transaction_async(
             join_tx_id, max_wait_seconds=120
         )
@@ -487,6 +547,7 @@ async def approve_and_join_match(
             "elapsed_sec": elapsed,
             "approve_wait_sec": approve_waited,
             "join_wait_sec": join_waited,
+            **({"recovered": True} if recovered else {}),
         },
     )
     _update_challenge(
@@ -521,6 +582,14 @@ async def resolve_match(challenge_id: str, winner_address: str) -> dict:
 
     existing = _find_existing_audit(challenge_id, "payout")
     if existing:
+        # Crash-recovery: a previous attempt may have paid on-chain but died
+        # before flipping the DB status. Converge instead of staying stuck
+        # (and tripping reconciliation drift forever).
+        if challenge.get("status") in ("locked", "submitted", "disputed"):
+            _update_challenge(
+                challenge_id,
+                {"status": "resolved", "resolved_tx_hash": existing.get("tx_hash")},
+            )
         return {
             "success": True,
             "tx_hash": existing.get("tx_hash", ""),
@@ -534,6 +603,58 @@ async def resolve_match(challenge_id: str, winner_address: str) -> dict:
         from backend.blockchain_layer import get_blockchain_layer_for_chain
 
         bl = get_blockchain_layer_for_chain(chain_id)
+
+        # Crash recovery: chain may already show RESOLVED from a previous
+        # attempt whose DB write was lost. Converge without paying again.
+        try:
+            st = bl.get_match_status(challenge_id)
+        except Exception:
+            st = None
+        if st and (st.get("status") or "").upper() == "RESOLVED":
+            logger.warning(
+                "[Escrow] resolve_match: match already RESOLVED on-chain — converging DB %s",
+                challenge_id,
+            )
+            winner_id = challenge.get("winner_id")
+            amount = Decimal(str(challenge["amount_usdc"]))
+            payout = amount * Decimal("2") * Decimal("0.93")
+            fee = amount * Decimal("2") * Decimal("0.07")
+            tx_hash = str(st.get("resolved_tx_hash") or "")
+            if not _find_existing_audit(challenge_id, "payout"):
+                _record_audit(
+                    challenge_id=challenge_id,
+                    profile_id=winner_id,
+                    movement="payout",
+                    amount=payout,
+                    idempotency_key=f"resolve-{challenge_id}",
+                    tx_hash=tx_hash,
+                    status="confirmed",
+                    metadata={"fee_usdc": float(fee), "recovered": True, "chain": chain_id},
+                )
+            if not _find_existing_audit(challenge_id, "fee"):
+                _record_audit(
+                    challenge_id=challenge_id,
+                    profile_id=None,
+                    movement="fee",
+                    amount=fee,
+                    idempotency_key=f"fee-{challenge_id}",
+                    status="confirmed",
+                    metadata={"winner_id": winner_id, "recovered": True, "chain": chain_id},
+                )
+            _update_challenge(
+                challenge_id,
+                {"status": "resolved", "resolved_tx_hash": tx_hash or None},
+            )
+            return {
+                "success": True,
+                "tx_hash": tx_hash,
+                "block": None,
+                "gas_used": None,
+                "explorer_url": get_explorer_tx(chain_id, tx_hash),
+                "chain_id": chain_id,
+                "recovered": True,
+            }
+
         result = await bl.resolve_match_onchain(challenge_id, winner_address)
 
         winner_id = challenge.get("winner_id")
@@ -601,20 +722,68 @@ async def cancel_match(challenge_id: str) -> dict:
 
     existing = _find_existing_audit(challenge_id, "refund")
     if existing:
+        # Crash-recovery: refund already landed on-chain in a previous attempt.
+        if challenge.get("status") not in ("resolved", "cancelled", "expired"):
+            _update_challenge(challenge_id, {"status": "cancelled"})
         return {"success": True, "tx_hash": existing.get("tx_hash", ""), "chain_id": chain_id}
 
     try:
         from backend.blockchain_layer import get_blockchain_layer_for_chain
 
         bl = get_blockchain_layer_for_chain(chain_id)
+
+        # Crash recovery: chain may already show CANCELLED (refunded) from a
+        # previous attempt whose DB write was lost. Converge.
+        try:
+            st = bl.get_match_status(challenge_id)
+        except Exception:
+            st = None
+        if st and (st.get("status") or "").upper() == "CANCELLED":
+            logger.warning(
+                "[Escrow] cancel_match: match already CANCELLED on-chain — converging DB %s",
+                challenge_id,
+            )
+            amount = Decimal(str(challenge["amount_usdc"]))
+            for side, profile_id, side_locked in (
+                ("creator", challenge["creator_id"], bool(challenge.get("creator_lock_tx_id"))),
+                ("opponent", challenge.get("opponent_id"), bool(challenge.get("opponent_lock_tx_id"))),
+            ):
+                if not profile_id or not side_locked:
+                    # Never record a refund for a side that never locked in.
+                    continue
+                if _find_existing_audit(
+                    challenge_id, "refund", profile_id=profile_id
+                ):
+                    continue
+                _record_audit(
+                    challenge_id=challenge_id,
+                    profile_id=profile_id,
+                    movement="refund",
+                    amount=amount,
+                    idempotency_key=f"cancel-{side}-{challenge_id}",
+                    status="confirmed",
+                    metadata={"side": side, "recovered": True, "chain": chain_id},
+                )
+            _update_challenge(challenge_id, {"status": "cancelled"})
+            return {
+                "success": True,
+                "tx_hash": "",
+                "block": None,
+                "gas_used": None,
+                "explorer_url": get_explorer_tx(chain_id, ""),
+                "chain_id": chain_id,
+                "recovered": True,
+            }
+
         result = await bl.cancel_match_onchain(challenge_id)
 
         amount = Decimal(str(challenge["amount_usdc"]))
-        for side, profile_id in (
-            ("creator", challenge["creator_id"]),
-            ("opponent", challenge.get("opponent_id")),
+        for side, profile_id, side_locked in (
+            ("creator", challenge["creator_id"], bool(challenge.get("creator_lock_tx_id"))),
+            ("opponent", challenge.get("opponent_id"), bool(challenge.get("opponent_lock_tx_id"))),
         ):
-            if not profile_id:
+            if not profile_id or not side_locked:
+                # Never record a refund for a side that never locked in.
                 continue
             _record_audit(
                 challenge_id=challenge_id,
