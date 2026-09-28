@@ -478,6 +478,18 @@ def ask_matchday_plan(
         except Exception as exc:
             error = f"deterministic fallback failed: {exc}"
 
+    if source == "webhook" and plan is not None and not plan.get("plans"):
+        # v1.4: a webhook reply without half-time contingency plans still
+        # gets the manager's playbook defaults — the engine expects them at
+        # the break and the deterministic brain derives them from the same
+        # mind, so this is the manager's own book, not the House's edit
+        try:
+            fb = decide_matchday(agent_id, season, matchday)
+            if fb and fb.get("plans"):
+                plan["plans"] = dict(fb["plans"])
+        except Exception:
+            pass  # the webhook plan stands as-is
+
     return {
         "plan": plan,
         "source": source,

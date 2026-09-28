@@ -26,6 +26,23 @@ def _isolate_store(tmp_path, monkeypatch):
         cat.set_owner(p["player_id"], None)
 
 
+@pytest.fixture(autouse=True)
+def _no_demo_webhook_servers(monkeypatch):
+    """Hermetic asks: the dev box often runs the demo manager servers on
+    18771-18773; a live Blue Lock/Ao Ashi then answers through this suite and
+    flips decisions the tests expect to be deterministic. Neutralize the fixed
+    demo webhook URLs (tests that spin their own servers bind port 0)."""
+    import gaming.src.stack.agentic.runtime.webhook as wh
+
+    real = wh.webhook_url_for
+
+    def neutral(agent):
+        url = real(agent)
+        return "" if url and ":1877" in url else url
+
+    monkeypatch.setattr(wh, "webhook_url_for", neutral)
+
+
 @pytest.fixture()
 def _world():
     from gaming.src.stack.agentic.games.football_managers.club_store import (

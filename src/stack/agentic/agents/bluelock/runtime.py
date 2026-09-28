@@ -26,5 +26,9 @@ def handle_webhook(body: dict[str, Any]) -> dict[str, Any]:
         "xi": list(plan["starters"]),
         "bench": list(plan["bench"]),
         "tactical_tags": list(plan["tags"]),
+        # v1.4: half-time contingency plans must ride along — the House stores
+        # what the webhook replied, and a reply without `plans` means the
+        # engine gets none at the lock
+        "plans": dict(plan.get("plans") or {}),
         "instructions": "Never settle for a draw — press high and outscore.",
     }
