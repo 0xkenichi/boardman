@@ -1,0 +1,541 @@
+/* ═══════════════════════════════════════════════════════════
+   Boardman Book — app pages (how-to-play, challenge, contact)
+   Same bookmaker's day-book as /v2: warm dark paper, chalk
+   ink, Big Shoulders display, Instrument Serif body, Space
+   Mono figures. Scoped under .bm-book so the rm-* glass
+   system is untouched for the rest of the app.
+   ═══════════════════════════════════════════════════════════ */
+
+.bm-book {
+  /* paper + ink (same values as .v2-page) */
+  --v2-bg: #101110;
+  --v2-bg-raised: #171816;
+  --v2-bg-card: #1a1b19;
+  --v2-line: rgba(236, 233, 223, 0.14);
+  --v2-line-strong: rgba(236, 233, 223, 0.36);
+  --v2-text: #ece9df;
+  --v2-muted: #a8a396;
+  --v2-dim: #7a756a;
+  --v2-ink: #5cb98a;
+  --v2-ink-deep: #3f8f66;
+  --v2-red: #d96a50;
+  --v2-display: 'Big Shoulders Variable', 'Arial Narrow', sans-serif;
+  --v2-serif: 'Instrument Serif', Georgia, serif;
+  --v2-mono: 'Space Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  margin: -3.5rem 0 0; /* swallow the shell's nav padding — paper starts at the top */
+  padding: calc(3.5rem + 1.2rem) 0 5rem;
+  background: var(--v2-bg);
+  color: var(--v2-text);
+  font-family: var(--v2-serif);
+  font-size: 17px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* paper grain, same as /v2 */
+.bm-book::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.06'/%3E%3C/svg%3E");
+}
+
+/* everything inside sits above the grain */
+.bm-book > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Book page head ───────────────────────────────────────── */
+
+.bk-head {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 0 1.2rem;
+}
+
+.bk-head .bk-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin: 0 0 0.9rem;
+  font-family: var(--v2-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  color: var(--v2-ink);
+}
+
+.bk-head .bk-eyebrow::before {
+  content: '';
+  width: 2.2rem;
+  height: 1px;
+  background: var(--v2-ink);
+}
+
+.bk-head h1 {
+  margin: 0 0 0.6rem;
+  font-family: var(--v2-display);
+  font-variation-settings: 'wght' 700;
+  font-size: clamp(2.6rem, 7vw, 4rem);
+  line-height: 0.92;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--v2-text);
+}
+
+.bk-head h1 em,
+.bk-bookmark h2 em {
+  font-family: var(--v2-serif);
+  font-style: italic;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--v2-ink);
+}
+
+.bk-head .bk-lede {
+  margin: 0;
+  max-width: 34rem;
+  font-size: 1.1rem;
+  line-height: 1.5;
+  color: var(--v2-muted);
+}
+
+.bk-head .bk-lede em {
+  font-style: italic;
+  color: var(--v2-text);
+}
+
+/* ── Column the rm-* pages already fill ───────────────────── */
+
+.bm-book .rm-wrap {
+  padding-top: 1.6rem;
+  padding-bottom: 3rem;
+}
+
+/* ── rm-* overrides: glass cards → ruled ledger paper ────── */
+
+.bm-book .rm-card,
+.bm-book .rm-card-hero,
+.bm-book .rm-card-warn,
+.bm-book .rm-card-danger {
+  border-radius: 3px;
+  border: 1px solid var(--v2-line-strong);
+  background: var(--v2-bg-card);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+}
+
+.bm-book .rm-card-hero {
+  border-color: var(--v2-ink);
+}
+
+.bm-book .rm-card-warn {
+  border-color: rgba(217, 106, 80, 0.55);
+}
+
+.bm-book .rm-card-danger {
+  border-color: var(--v2-red);
+}
+
+/* type inside cards */
+.bm-book .rm-section-title {
+  font-family: var(--v2-display);
+  font-variation-settings: 'wght' 640;
+  font-size: 1.35rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--v2-text);
+  margin-bottom: 0.55rem;
+}
+
+.bm-book .rm-muted,
+.bm-book .rm-err {
+  font-family: var(--v2-serif);
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--v2-muted);
+}
+
+.bm-book .rm-muted strong {
+  color: var(--v2-text);
+  font-weight: 600;
+}
+
+.bm-book .rm-muted a {
+  color: var(--v2-ink);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--v2-ink);
+}
+
+.bm-book .rm-muted a:hover {
+  color: var(--v2-text);
+}
+
+.bm-book .rm-err {
+  color: var(--v2-red);
+}
+
+/* mono code chips */
+.bm-book .rm-code {
+  font-family: var(--v2-mono);
+  font-size: 0.82em;
+  background: transparent;
+  border: 1px dashed var(--v2-line-strong);
+  border-radius: 3px;
+  padding: 0.05em 0.4em;
+  color: var(--v2-text);
+}
+
+/* inputs: ledger lines */
+.bm-book .rm-input,
+.bm-book .rm-label {
+  border-radius: 3px;
+}
+
+.bm-book .rm-input {
+  border: 0;
+  border-bottom: 2px solid var(--v2-line-strong);
+  background: transparent;
+  font-family: var(--v2-mono);
+  font-size: 0.95rem;
+  color: var(--v2-text);
+  padding: 0.7rem 0.1rem;
+}
+
+.bm-book .rm-input:focus {
+  border-color: var(--v2-ink);
+  box-shadow: none;
+}
+
+.bm-book .rm-label {
+  font-family: var(--v2-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--v2-dim);
+}
+
+/* buttons: inked chits — square, mono, uppercase */
+.bm-book .rm-btn {
+  border-radius: 2px;
+  font-family: var(--v2-mono);
+  font-size: 0.78rem;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid var(--v2-line-strong);
+  background: transparent;
+  color: var(--v2-text);
+}
+
+.bm-book .rm-btn:hover:not(:disabled) {
+  background: var(--v2-text);
+  border-color: var(--v2-text);
+  color: var(--v2-bg);
+}
+
+.bm-book .rm-btn-primary {
+  background: var(--v2-ink);
+  border-color: var(--v2-ink);
+  color: #0a1410;
+  box-shadow: none;
+}
+
+.bm-book .rm-btn-primary:hover:not(:disabled) {
+  background: var(--v2-ink-deep);
+  border-color: var(--v2-ink-deep);
+  color: #dfe6d9;
+}
+
+.bm-book .rm-btn-ghost {
+  background: transparent;
+  border: 1px solid var(--v2-line-strong);
+  color: var(--v2-text);
+}
+
+.bm-book .rm-btn-ghost:hover:not(:disabled) {
+  background: transparent;
+  border-color: var(--v2-text);
+}
+
+/* selection tiles: ruled chits */
+.bm-book .rm-tile {
+  border-radius: 3px;
+  border: 1px solid var(--v2-line-strong);
+  background: transparent;
+  font-family: var(--v2-mono);
+  font-size: 0.85rem;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: var(--v2-text);
+}
+
+.bm-book .rm-tile:hover {
+  border-color: var(--v2-text);
+  background: transparent;
+}
+
+.bm-book .rm-tile-active {
+  border-color: var(--v2-ink);
+  background: var(--v2-ink-soft, rgba(92, 185, 138, 0.14));
+  color: var(--v2-text);
+  box-shadow: none;
+}
+
+/* step rail: ticks on a margin */
+.bm-book .rm-step-dot {
+  background: transparent;
+  border: 1px solid var(--v2-line-strong);
+  border-radius: 1px;
+}
+
+.bm-book .rm-step-dot-on {
+  background: var(--v2-ink);
+  border-color: var(--v2-ink);
+}
+
+.bm-book .rm-step-label {
+  font-family: var(--v2-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--v2-dim);
+}
+
+/* skeleton keeps its shape, loses the glass */
+.bm-book .rm-skeleton {
+  background: var(--v2-bg-raised);
+}
+
+/* bottom tab bar: part of the counter, not a floating glass pill */
+.bm-book .rm-nav {
+  border-top: 1px solid var(--v2-line-strong);
+  background: var(--v2-bg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.bm-book .rm-nav a {
+  border-radius: 3px;
+  font-family: var(--v2-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--v2-dim);
+}
+
+.bm-book .rm-nav a.active {
+  color: var(--v2-ink);
+  background: var(--v2-ink-soft, rgba(92, 185, 138, 0.14));
+}
+
+/* ── Contact (bm-* scoped overrides) ──────────────────────── */
+
+.bm-book .bm-kicker {
+  font-family: var(--v2-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  color: var(--v2-ink);
+}
+
+.bm-book .bm-contact h1 {
+  font-family: var(--v2-display);
+  font-variation-settings: 'wght' 700;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--v2-text);
+}
+
+.bm-book .bm-contact-lead {
+  font-family: var(--v2-serif);
+  color: var(--v2-muted);
+}
+
+.bm-book .bm-contact-door {
+  border-radius: 3px;
+  border: 1px solid var(--v2-line-strong);
+  background: var(--v2-bg-card);
+  transform: rotate(-0.25deg);
+}
+
+.bm-book .bm-contact-door:nth-child(2n) {
+  transform: rotate(0.3deg);
+}
+
+.bm-book .bm-contact-door span {
+  color: var(--v2-dim);
+}
+
+.bm-book .bm-contact-door strong {
+  font-family: var(--v2-display);
+  font-variation-settings: 'wght' 640;
+  font-size: 1.3rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--v2-text);
+}
+
+.bm-book .bm-contact-door em {
+  font-family: var(--v2-serif);
+  font-style: italic;
+  color: var(--v2-muted);
+}
+
+.bm-book .bm-contact-note h2 {
+  font-family: var(--v2-display);
+  font-variation-settings: 'wght' 640;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.bm-book .bm-contact-note input,
+.bm-book .bm-contact-note textarea {
+  border-radius: 3px;
+  border: 0;
+  border-bottom: 2px solid var(--v2-line-strong);
+  background: transparent;
+  font-family: var(--v2-mono);
+  font-size: 0.9rem;
+  color: var(--v2-text);
+  outline: none;
+}
+
+.bm-book .bm-contact-note input:focus,
+.bm-book .bm-contact-note textarea:focus {
+  border-color: var(--v2-ink);
+}
+
+.bm-book .bm-contact-note button {
+  border-radius: 2px;
+  border: 1px solid var(--v2-ink);
+  background: var(--v2-ink);
+  color: #0a1410;
+  font-family: var(--v2-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bm-book .bm-contact-note button:hover {
+  background: var(--v2-ink-deep);
+  border-color: var(--v2-ink-deep);
+}
+
+.bm-book .bm-msg {
+  font-family: var(--v2-serif);
+  font-style: italic;
+  color: var(--v2-ink);
+}
+
+.bm-book .bm-msg-err {
+  font-family: var(--v2-mono);
+  color: var(--v2-red);
+}
+
+/* ── Book-specific pieces used by the three pages ────────── */
+
+.bk-bookmark {
+  max-width: 40rem;
+  margin: 1.6rem auto 0;
+  padding: 1.1rem 1.2rem;
+  border-top: 2px solid var(--v2-text);
+}
+
+.bk-bookmark h2 {
+  margin: 0 0 0.5rem;
+  font-family: var(--v2-display);
+  font-variation-settings: 'wght' 640;
+  font-size: 1.6rem;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--v2-text);
+}
+
+.bk-bookmark p {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.55;
+  color: var(--v2-muted);
+}
+
+/* the table slip (challenge confirm / wallet-adjacent info) */
+.bk-slip {
+  border: 1px solid var(--v2-line-strong);
+  border-radius: 3px;
+  background: var(--v2-bg-card);
+  padding: 1.1rem 1.2rem 1rem;
+  font-family: var(--v2-mono);
+  font-size: 0.74rem;
+  color: var(--v2-muted);
+  transform: rotate(-0.5deg);
+  box-shadow: 3px 4px 0 rgba(0, 0, 0, 0.35);
+}
+
+.bk-slip-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  border-bottom: 1px dashed var(--v2-line-strong);
+  padding-bottom: 0.6rem;
+  margin-bottom: 0.7rem;
+  letter-spacing: 0.12em;
+  color: var(--v2-text);
+}
+
+.bk-slip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.24rem 0;
+}
+
+.bk-slip-row strong {
+  color: var(--v2-text);
+  font-weight: 400;
+}
+
+.bk-slip-row .bk-ink {
+  color: var(--v2-ink);
+}
+
+/* rule card in how-to-play: numbered ledger rows */
+.bk-rules {
+  display: grid;
+}
+
+.bk-rules li::marker {
+  color: var(--v2-red);
+  font-family: var(--v2-mono);
+  font-size: 0.8em;
+}
+
+/* the red stamp, reused from /v2 */
+.bk-stamp {
+  display: inline-block;
+  padding: 0.4rem 0.9rem;
+  border: 2px solid var(--v2-red);
+  border-radius: 3px;
+  color: var(--v2-red);
+  font-family: var(--v2-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  transform: rotate(-3deg);
+  opacity: 0.85;
+  user-select: none;
+}
+
+/* ── Reduced motion (nothing moves, but be explicit) ─────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .bm-book * {
+    transition: none !important;
+  }
+}

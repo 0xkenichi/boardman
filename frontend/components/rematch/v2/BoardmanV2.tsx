@@ -1,12 +1,12 @@
 'use client'
 
 /**
- * Boardman /v2 — Elevated Boardman landing rebuild.
+ * Boardman /v2 — The Boardman Book.
  * Preview route (app/v2). Not wired to / until approved.
  *
- * Design language: near-monochrome precision + emerald accent, huge display
- * type, mono infra details (chain ID, escrow address, fee tiers), subtle
- * typography-first motion only.
+ * Written in the boardman's voice: the person at the table who holds
+ * the stake, pays the winner, and takes the house cut. Paper, ink,
+ * rule-lines, one rubber stamp. No glow, no gradients, no Inter.
  */
 
 import { FormEvent, useEffect, useRef, useState } from 'react'
@@ -17,19 +17,8 @@ const ESCROW_ADDRESS = '0xD382f627fB565eb96D9EFFb66B9119DD4a555847'
 const EXPLORER = 'https://testnet.arcscan.app/address/'
 const CHAIN_LABEL = 'ARC TESTNET · CHAIN 5042002 · USDC-NATIVE GAS'
 
-const TICKER = [
-  'DUAL-LOCK ESCROW',
-  'RAJA VS NERO — LIVE',
-  'SPECTATOR POOLS',
-  'USDC SETTLEMENT ON ARC',
-  'BUILDER WEBHOOKS',
-  'AUTO-REFUND SWEEPS',
-  'HOURLY RECONCILIATION',
-]
-
-const TIER_STAKES = [3, 25, 200, 900]
 const FEE_TIERS = [
-  { name: 'Dust', rule: 'stake < $5', detail: '$0.50 flat per player', k: 'FLAT' },
+  { name: 'Pocket stake', rule: 'stake < $5', detail: '$0.50 flat per player', k: 'FLAT' },
   { name: 'Standard', rule: '$5 – $500', detail: '7% of pot', k: '7%' },
   { name: 'Premium', rule: 'stake > $500', detail: '10% of pot', k: '10%' },
 ]
@@ -92,6 +81,41 @@ function LiveClock() {
   return <span className="v2-mono-dim">{now} UTC</span>
 }
 
+/** The boardman's slip — the live table, pinned next to the headline. */
+function Slip() {
+  return (
+    <aside className="v2-slip" aria-label="Live table">
+      <div className="v2-slip-head">
+        <span>THE TABLE</span>
+        <span className="v2-slip-live">LIVE</span>
+      </div>
+      <div className="v2-slip-row">
+        <span>BOARD</span>
+        <strong>RAJA v NERO · MOVE 24</strong>
+      </div>
+      <div className="v2-slip-row">
+        <span>ODDS</span>
+        <strong>5/6 · 6/5</strong>
+      </div>
+      <div className="v2-slip-row">
+        <span>POT</span>
+        <strong>120 USDC</strong>
+      </div>
+      <div className="v2-slip-row">
+        <span>ESCROW</span>
+        <strong>
+          <a href={`${EXPLORER}${ESCROW_ADDRESS}`} target="_blank" rel="noreferrer">
+            0xD382…5847 ↗
+          </a>
+        </strong>
+      </div>
+      <div className="v2-slip-foot">
+        <span>{CHAIN_LABEL}</span>
+      </div>
+    </aside>
+  )
+}
+
 function WaitlistForm() {
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState<'idle' | 'loading' | 'ok' | 'err'>('idle')
@@ -114,7 +138,7 @@ function WaitlistForm() {
         return
       }
       setStatus('ok')
-      setMessage('Locked in. Watch your inbox.')
+      setMessage('Name is in the book. Watch your inbox.')
       setEmail('')
     } catch {
       setStatus('err')
@@ -124,8 +148,8 @@ function WaitlistForm() {
 
   if (status === 'ok') {
     return (
-      <div className="v2-wait v2-wait-ok" aria-live="polite">
-        <span className="v2-ok-dot" /> {message}
+      <div className="v2-wait-ok" aria-live="polite">
+        — {message}
       </div>
     )
   }
@@ -136,14 +160,14 @@ function WaitlistForm() {
         type="email"
         required
         autoComplete="email"
-        placeholder="you@email.com"
+        placeholder="leave your email"
         aria-label="Email for the waitlist"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         disabled={status === 'loading'}
       />
       <button type="submit" disabled={status === 'loading'}>
-        {status === 'loading' ? 'Locking…' : 'Get early access'}
+        {status === 'loading' ? 'Taking the stake…' : 'Put me in the book →'}
       </button>
       {message ? <p className={status === 'err' ? 'v2-msg v2-msg-err' : 'v2-msg'}>{message}</p> : null}
     </form>
@@ -173,7 +197,7 @@ function FeeTable() {
       </div>
       <div className="v2-fee-calc">
         <label>
-          <span className="v2-mono-dim">STAKE / PLAYER</span>
+          <span className="v2-mono-dim">STAKE EACH</span>
           <span className="v2-fee-stake">${stake.toFixed(0)}</span>
           <input
             type="range"
@@ -191,7 +215,7 @@ function FeeTable() {
             <strong>${pot.toFixed(0)}</strong>
           </div>
           <div>
-            <span className="v2-mono-dim">PLATFORM FEE</span>
+            <span className="v2-mono-dim">HOUSE TAKE</span>
             <strong>${fee.toFixed(2)}</strong>
           </div>
           <div>
@@ -211,15 +235,12 @@ export function BoardmanV2() {
       <header className="v2-nav">
         <div className="v2-nav-in">
           <a href="#top" className="v2-logo">
-            <span className="v2-logo-mark" aria-hidden>
-              ⬒
-            </span>
-            Boardman
+            Boardman <span className="v2-logo-mark">— the bookmaker’s table</span>
           </a>
           <nav className="v2-nav-links" aria-label="Sections">
             <a href="#humans">Humans</a>
             <a href="#arena">Arena</a>
-            <a href="#economy">Economy</a>
+            <a href="#economy">The Book</a>
             <a href="#builders">Builders</a>
           </nav>
           <div className="v2-nav-cta">
@@ -234,61 +255,57 @@ export function BoardmanV2() {
       {/* ── Hero ────────────────────────────────────────────────────── */}
       <main id="top">
         <section className="v2-hero" aria-label="Boardman">
-          <p className="v2-eyebrow v2-mono">
-            <span className="v2-live-dot" /> LIVE ON ARC · USDC SETTLEMENT
-          </p>
-          <h1 className="v2-h1">
-            Lock in. Play. Settle.
-            <span className="v2-h1-accent"> Agents too.</span>
-          </h1>
-          <p className="v2-lede">
-            The settlement layer skill games run on. Humans stake USDC on real 1v1s.
-            Autonomous agents play chess for stake. One escrow contract settles
-            both — finality in under a second.
-          </p>
-          <div className="v2-hero-cta">
-            <WaitlistForm />
-            <div className="v2-hero-btns">
-              <a className="v2-btn v2-btn-primary" href="/agentic/arena.html">
-                Watch live chess →
-              </a>
-              <a className="v2-btn" href="/app">
-                Open the app
-              </a>
+          <div className="v2-hero-grid">
+            <div>
+              <p className="v2-eyebrow">A BOARDMAN RUNS THE TABLE · EST. MMXXVI</p>
+              <h1 className="v2-h1">
+                Lock in. Play. Settle. <span className="v2-h1-accent">agents too.</span>
+              </h1>
+              <div className="v2-hero-sub">
+                <p className="v2-lede">
+                  <em>I’m the boardman.</em> You play the game; I hold both stakes so nobody
+                  has to trust anybody. Winner gets paid before they’ve left the table.
+                  Agents play chess under the same paper.
+                </p>
+                <div className="v2-hero-cta">
+                  <WaitlistForm />
+                  <div className="v2-hero-btns">
+                    <a className="v2-btn v2-btn-primary" href="/agentic/arena.html">
+                      Watch the live board →
+                    </a>
+                    <a className="v2-btn" href="/app">
+                      Open the app
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div>
+              <Slip />
+              <span className="v2-stamp">SETTLED · ARC · &lt;1S</span>
             </div>
           </div>
-          <dl className="v2-facts v2-mono">
-            <div>
-              <dt>CHAIN</dt>
-              <dd>ARC · 5042002</dd>
-            </div>
-            <div>
-              <dt>GAS</dt>
-              <dd>USDC-NATIVE</dd>
-            </div>
-            <div>
-              <dt>FINALITY</dt>
-              <dd>&lt; 1s</dd>
-            </div>
-            <div>
-              <dt>ESCROW</dt>
-              <dd className="v2-facts-addr">
-                <a href={`${EXPLORER}${ESCROW_ADDRESS}`} target="_blank" rel="noreferrer">
-                  {ESCROW_ADDRESS.slice(0, 6)}…{ESCROW_ADDRESS.slice(-4)}
-                </a>
-              </dd>
-            </div>
-          </dl>
         </section>
 
-        {/* ── Ticker ──────────────────────────────────────────────────── */}
-        <div className="v2-ticker" aria-hidden>
-          <div className="v2-ticker-track">
-            {[...TICKER, ...TICKER].map((t, i) => (
-              <span key={i} className="v2-ticker-item v2-mono">
-                {t} <span className="v2-ticker-sep">◇</span>
-              </span>
-            ))}
+        {/* ── Ledger strip: facts, not decoration ─────────────────────── */}
+        <div className="v2-ledger" aria-hidden>
+          <div className="v2-ledger-in">
+            <div className="v2-ledger-cell">
+              <span>AGENTS ON THE BOARD</span>
+              <strong>RAJA v NERO — LIVE</strong>
+            </div>
+            <div className="v2-ledger-cell">
+              <span>HOUSE RULES</span>
+              <strong>POCKET $0.50 · STD 7% · PREM 10%</strong>
+            </div>
+            <div className="v2-ledger-cell">
+              <span>ESCROW</span>
+              <strong>
+                <a href={`${EXPLORER}${ESCROW_ADDRESS}`} target="_blank" rel="noreferrer">
+                  BOARDMANESCROW ↗
+                </a>
+              </strong>
+            </div>
           </div>
         </div>
 
@@ -298,24 +315,23 @@ export function BoardmanV2() {
         {/* ── Humans ──────────────────────────────────────────────── */}
         <section className="v2-sec" id="humans" aria-label="Human versus human">
           <Reveal>
-            <p className="v2-eyebrow v2-mono">01 · HUMANS</p>
+            <p className="v2-eyebrow">01 · HUMANS</p>
             <h2 className="v2-h2">
-              Play the real game.
+              You play the game.
               <br />
-              Both sides lock.
+              <em>The paper holds the money.</em>
             </h2>
           </Reveal>
           <div className="v2-cols">
             <Reveal delay={80}>
               <p className="v2-body">
-                EA FC, Free Fire, Valorant, iMessage, the table. Challenge a friend,
-                both players lock USDC into escrow before kickoff, final screen
-                settles it. No disputes about who pays — the contract already has
-                the money.
+                EA FC, Free Fire, Valorant, iMessage, the table in your kitchen. Call your
+                opponent, name the stake, and both wallets lock <strong>before kickoff</strong>.
+                Final screen settles it — no chasing anyone for the money after.
               </p>
               <p className="v2-body">
-                If your opponent never locks in, the sweep refunds you automatically.
-                You should never have to ask for your money back.
+                If your opponent never shows, the sweep refunds you automatically.{' '}
+                <strong>You should never have to ask for your money back.</strong>
               </p>
               <div className="v2-btns">
                 <a className="v2-btn v2-btn-primary" href="/app">
@@ -340,7 +356,7 @@ export function BoardmanV2() {
                 <div className="v2-flow-row">
                   <span className="v2-step-n">4</span> SETTLE — winner paid, fee split on-chain
                 </div>
-                <div className="v2-flow-note">PILLS · CONSOLE — MOBILE — PC — iMESSAGE</div>
+                <div className="v2-flow-note">STAKED ON — CONSOLE · MOBILE · PC · iMESSAGE</div>
               </div>
             </Reveal>
           </div>
@@ -349,23 +365,24 @@ export function BoardmanV2() {
         {/* ── Arena ───────────────────────────────────────────────────── */}
         <section className="v2-sec" id="arena" aria-label="Agent chess arena">
           <Reveal>
-            <p className="v2-eyebrow v2-mono">02 · ARENA</p>
+            <p className="v2-eyebrow">02 · ARENA</p>
             <h2 className="v2-h2">
               Agents play chess.
               <br />
-              You bet who wins.
+              <em>You bet the board.</em>
             </h2>
           </Reveal>
           <div className="v2-cols">
             <Reveal delay={80}>
               <p className="v2-body">
-                Raja vs Nero — two autonomous agents on a live public board. Real
-                clocks, real stakes, resolver-settled on-chain. Spectator pools let
-                fans back a side, with a creator split baked into every pot.
+                Raja vs Nero — two autonomous agents on a live public board, real clocks,
+                real stakes. The resolver calls the result on-chain, same as a human
+                match. Back a side from the spectator pool; the creator split is baked
+                into every pot.
               </p>
               <p className="v2-body">
-                The house clerks the match. Refreshing the page does not stop the
-                game — the board is the source of truth.
+                <strong>The house clerks the match.</strong> Refreshing the page does not
+                stop the game — the board is the source of truth, not your browser.
               </p>
               <div className="v2-btns">
                 <a className="v2-btn v2-btn-primary" href="/agentic/arena.html">
@@ -394,7 +411,7 @@ export function BoardmanV2() {
                   <span className="v2-board-tag v2-mono">RAJA · WHITE · 1600</span>
                   <span className="v2-board-tag v2-board-tag-b v2-mono">NERO · BLACK · 1740</span>
                   <span className="v2-board-live v2-mono">
-                    <span className="v2-live-dot" /> MOVE 24 · POT 120 USDC
+                    MOVE 24 · POT 120 USDC · BETTING OPEN
                   </span>
                 </div>
               </div>
@@ -405,19 +422,24 @@ export function BoardmanV2() {
         {/* ── Economy ─────────────────────────────────────────────────── */}
         <section className="v2-sec" id="economy" aria-label="Fee structure and economy">
           <Reveal>
-            <p className="v2-eyebrow v2-mono">03 · ECONOMY</p>
+            <p className="v2-eyebrow">03 · THE BOOK</p>
             <h2 className="v2-h2">
-              Priced like
+              The house takes its cut.
               <br />
-              infrastructure.
+              <em>On-chain, in writing.</em>
             </h2>
           </Reveal>
           <div className="v2-cols">
             <Reveal delay={80}>
               <p className="v2-body">
-                One fee schedule, on-chain, for humans and agents alike. Dust
-                matches pay a flat half-dollar a side. Standard stakes pay 7%.
-                Premium pots pay 10%. Enforced by the contract — not by a promise.
+                One fee schedule for humans and agents alike, enforced by the contract —
+                not by a promise. Pocket matches pay a flat half-dollar a side. Standard
+                stakes pay 7%. Premium pots pay 10%. That is the whole book.
+              </p>
+              <p className="v2-body">
+                <strong>No vig on top. No withdrawal games. No changing the terms
+                mid-season.</strong> The rates live in the same contract that holds the
+                money, and the money moves the second the result lands.
               </p>
               <div className="v2-btns">
                 <a className="v2-btn" href={`${EXPLORER}${ESCROW_ADDRESS}`} target="_blank" rel="noreferrer">
@@ -434,23 +456,23 @@ export function BoardmanV2() {
         {/* ── Builders ────────────────────────────────────────────────── */}
         <section className="v2-sec" id="builders" aria-label="Builders">
           <Reveal>
-            <p className="v2-eyebrow v2-mono">04 · BUILDERS</p>
+            <p className="v2-eyebrow">04 · BUILDERS</p>
             <h2 className="v2-h2">
-              Host a webhook.
+              Your agent plays.
               <br />
-              We handle the money.
+              <em>We clerk the money.</em>
             </h2>
           </Reveal>
           <div className="v2-cols">
             <Reveal delay={80}>
               <p className="v2-body">
-                Three steps: host a move webhook, take a Stack API key, register
-                your agent. Matchmaking, wallets, escrow and settlement are the
-                protocol&apos;s job. Your server only ever returns legal moves.
+                Three things: host a move webhook, take a Stack API key, register your
+                agent. Matchmaking, wallets, escrow and settlement are the house’s job —
+                your server only ever returns legal moves.
               </p>
               <p className="v2-body">
-                Game builders can ship plugins too — the arena accepts new games,
-                not just chess.
+                Games beyond chess are already on the slate.{' '}
+                <strong>The arena accepts new games, not just kings and rooks.</strong>
               </p>
               <div className="v2-btns">
                 <a className="v2-btn v2-btn-primary" href="/agentic/docs.html">
@@ -487,10 +509,13 @@ export function BoardmanV2() {
         <section className="v2-band" aria-label="Get started">
           <Reveal>
             <h2 className="v2-h2 v2-band-h">
-              The table is set.
+              The table is open.
               <br />
-              Bring your stake.
+              <em>Paper first.</em>
             </h2>
+            <p className="v2-lede" style={{ margin: '0 auto 2rem' }}>
+              Walk up, lock your stake, play the game. The boardman handles the rest.
+            </p>
             <div className="v2-band-cta">
               <a className="v2-btn v2-btn-primary" href="/app">
                 Play now
@@ -504,7 +529,7 @@ export function BoardmanV2() {
       </main>
 
       {/* ── Footer ──────────────────────────────────────────────────── */}
-      <footer className="v2-footer v2-mono">
+      <footer className="v2-footer">
         <div className="v2-footer-in">
           <span>BOARDMAN · BY SIDEQUEST</span>
           <span>{CHAIN_LABEL}</span>

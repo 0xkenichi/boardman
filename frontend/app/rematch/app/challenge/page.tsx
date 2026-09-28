@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AppShell } from '@/components/AppShell'
+import { BookShell } from '@/components/rematch/BookShell'
 import { LiveRoomsCard } from '@/components/rematch/LiveRoomsCard'
 import { api, type Game } from '@/lib/appClient'
 
 const STAKES = [1, 5, 10, 25]
-const STEP_LABELS = ['Friend', 'Stake', 'Platform', 'Game', 'Confirm']
+const STEP_LABELS = ['Friend', 'Stake', 'Platform', 'Game', 'Ticket']
 
 export default function ChallengePage() {
   const router = useRouter()
@@ -90,20 +90,20 @@ export default function ChallengePage() {
 
   if (auth === 'checking' || auth === 'no') {
     return (
-      <AppShell title="New challenge">
+      <BookShell title="New challenge">
         <div className="rm-stack">
-          <div className="rm-skeleton" style={{ height: 8, borderRadius: 4 }} />
-          <div className="rm-skeleton" style={{ height: 160, borderRadius: 16 }} />
+          <div className="rm-skeleton" style={{ height: 8, borderRadius: 2 }} />
+          <div className="rm-skeleton" style={{ height: 160, borderRadius: 3 }} />
           <p className="rm-muted" style={{ textAlign: 'center' }}>
             {auth === 'no' ? 'Redirecting to sign in…' : 'Loading…'}
           </p>
         </div>
-      </AppShell>
+      </BookShell>
     )
   }
 
   return (
-    <AppShell title="New challenge">
+    <BookShell title="New challenge">
       <div className="rm-steps" aria-hidden>
         {STEP_LABELS.map((_, i) => (
           <div key={i} className={`rm-step-dot ${i <= step ? 'rm-step-dot-on' : ''}`} />
@@ -117,7 +117,7 @@ export default function ChallengePage() {
         <div className="rm-stack-lg">
           <div className="rm-card">
             <label className="rm-label" htmlFor="rm-tag">
-              Friend&apos;s tag
+              Who are you calling out?
             </label>
             <input
               id="rm-tag"
@@ -129,7 +129,7 @@ export default function ChallengePage() {
               autoCorrect="off"
             />
             <p className="rm-muted" style={{ marginTop: '0.65rem', marginBottom: 0 }}>
-              They must have opened Boardman (bot or app) once.
+              They must have opened the book once — bot or app.
             </p>
             <button
               type="button"
@@ -146,7 +146,7 @@ export default function ChallengePage() {
 
       {step === 1 && (
         <div className="rm-card">
-          <label className="rm-label">Stake (USDC)</label>
+          <label className="rm-label">The stake (USDC each)</label>
           <div className="rm-grid-2">
             {STAKES.map((a) => (
               <button
@@ -172,14 +172,14 @@ export default function ChallengePage() {
 
       {step === 2 && (
         <div className="rm-card">
-          <label className="rm-label">Where do you play?</label>
+          <label className="rm-label">Where does the game happen?</label>
           <div className="rm-stack">
             {(categories.length
               ? categories
               : [
-                  { id: 'mobile', label: '📲 Mobile' },
-                  { id: 'imessage', label: '📱 iMessage' },
-                  { id: 'console', label: '🎮 Console' },
+                  { id: 'mobile', label: 'Mobile' },
+                  { id: 'imessage', label: 'iMessage' },
+                  { id: 'console', label: 'Console' },
                 ]
             ).map((c) => (
               <button
@@ -213,13 +213,13 @@ export default function ChallengePage() {
 
       {step === 3 && (
         <div className="rm-card">
-          <label className="rm-label">Game</label>
+          <label className="rm-label">The game</label>
           <div
             className="rm-stack"
             style={{ maxHeight: '46vh', overflowY: 'auto', paddingRight: 2 }}
           >
             {filtered.length === 0 ? (
-              <p className="rm-muted">No games in this category yet.</p>
+              <p className="rm-muted">Nothing on the slate in this category yet.</p>
             ) : (
               filtered.map((g) => (
                 <button
@@ -228,7 +228,7 @@ export default function ChallengePage() {
                   className={`rm-tile rm-tile-left ${gameId === g.game_id ? 'rm-tile-active' : ''}`}
                   onClick={() => setGameId(g.game_id)}
                 >
-                  <span style={{ marginRight: 6 }}>{g.emoji || '🎮'}</span>
+                  {g.emoji ? <span style={{ marginRight: 6 }}>{g.emoji}</span> : null}
                   {g.display_name}
                 </button>
               ))
@@ -252,28 +252,27 @@ export default function ChallengePage() {
 
       {step === 4 && (
         <div className="rm-card rm-card-hero">
-          <p className="rm-section-title">Confirm</p>
-          <h2 className="rm-h2" style={{ marginBottom: '0.85rem' }}>
-            Ready to send?
-          </h2>
-          <div className="rm-stack" style={{ gap: '0.5rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-              <span className="rm-muted">To</span>
+          <div className="bk-slip">
+            <div className="bk-slip-head">
+              <span>THE TICKET</span>
+              <span>UNSENT</span>
+            </div>
+            <div className="bk-slip-row">
+              <span>TO</span>
               <strong>@{tag.replace(/^@/, '')}</strong>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-              <span className="rm-muted">Stake</span>
-              <strong style={{ color: '#34d399' }}>${amount}</strong>
+            <div className="bk-slip-row">
+              <span>STAKE EACH</span>
+              <strong className="bk-ink">${amount} USDC</strong>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-              <span className="rm-muted">Game</span>
-              <strong>
-                {selectedGame?.emoji || ''} {selectedGame?.display_name || gameId}
-              </strong>
+            <div className="bk-slip-row">
+              <span>GAME</span>
+              <strong>{selectedGame?.display_name || gameId}</strong>
             </div>
           </div>
-          <p className="rm-muted" style={{ fontSize: '0.8rem', marginTop: '0.9rem', marginBottom: 0 }}>
-            After both lock: play, then upload the final screen photo here or in the bot.
+          <p className="rm-muted" style={{ marginTop: '0.9rem', marginBottom: 0 }}>
+            After both lock: play the game, then upload the final screen photo here
+            or in the bot. The boardman pays the winner.
           </p>
           <div className="rm-btn-row rm-mt-2">
             <button type="button" className="rm-btn rm-btn-ghost" onClick={() => setStep(3)}>
@@ -285,13 +284,13 @@ export default function ChallengePage() {
               disabled={busy}
               onClick={submit}
             >
-              {busy ? 'Sending…' : 'Send challenge'}
+              {busy ? 'Writing it in…' : 'Send challenge'}
             </button>
           </div>
         </div>
       )}
 
       {err ? <p className="rm-err">{err}</p> : null}
-    </AppShell>
+    </BookShell>
   )
 }

@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
    BoardmanLifecycle — pinned scrollytelling stage
-   Native sticky, no libs. Inherits v2 tokens from .v2-page.
+   Native sticky, no libs. Inherits v2 book tokens from .v2-page.
    ═══════════════════════════════════════════════════════════ */
 
 .lc {
@@ -10,11 +10,11 @@
 
 .lc-stage {
   position: sticky;
-  top: 4rem; /* below the v2 nav */
-  min-height: calc(100vh - 4rem);
+  top: 3.2rem; /* below the v2 nav */
+  min-height: calc(100vh - 3.2rem);
   max-width: 72rem;
   margin: 0 auto;
-  padding: 2.5rem 1.4rem 3rem;
+  padding: 2.2rem 1.4rem 2.6rem;
   display: flex;
   flex-direction: column;
   gap: 1.6rem;
@@ -29,15 +29,15 @@
 }
 
 .lc-head-brand {
-  color: var(--v2-emerald, #34d399);
-  font-size: 0.72rem;
-  letter-spacing: 0.22em;
+  color: var(--v2-ink, #5cb98a);
+  font-size: 0.74rem;
+  letter-spacing: 0.14em;
 }
 
 .lc-head-sub {
-  color: var(--v2-dim, #5b665f);
+  color: var(--v2-dim, #7a756a);
   font-size: 0.62rem;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.16em;
 }
 
 .lc-grid {
@@ -59,37 +59,40 @@
 }
 
 .lc-chap-n {
-  color: var(--v2-emerald, #34d399);
-  font-size: 0.72rem;
-  letter-spacing: 0.22em;
+  color: var(--v2-red, #d96a50);
+  font-size: 0.74rem;
+  letter-spacing: 0.14em;
   margin: 0;
 }
 
 .lc-title {
-  font-size: clamp(2rem, 4.4vw, 3.3rem);
-  line-height: 1.02;
-  letter-spacing: -0.035em;
-  font-weight: 620;
+  font-family: var(--v2-display, sans-serif);
+  font-variation-settings: 'wght' 640;
+  font-size: clamp(2.4rem, 4.8vw, 4.2rem);
+  line-height: 0.94;
+  letter-spacing: 0.01em;
   margin: 0;
-  min-height: 3.1em; /* two lines reserved — no layout jump between chapters */
+  min-height: 2.9em; /* two lines reserved — no layout jump between chapters */
+  text-transform: uppercase;
   text-wrap: balance;
 }
 
 .lc-body {
-  font-size: 0.98rem;
-  line-height: 1.65;
-  color: var(--v2-muted, #8f9a93);
+  font-family: var(--v2-serif, Georgia, serif);
+  font-size: 1.02rem;
+  line-height: 1.6;
+  color: var(--v2-muted, #a8a396);
   margin: 0;
   max-width: 34rem;
   min-height: 5.6em;
 }
 
 .lc-stat {
-  color: var(--v2-dim, #5b665f);
+  color: var(--v2-dim, #7a756a);
   font-size: 0.66rem;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.16em;
   margin: 0;
-  border-top: 1px solid var(--v2-line, rgba(255, 255, 255, 0.07));
+  border-top: 1px dashed var(--v2-line-strong, rgba(236, 233, 223, 0.36));
   padding-top: 0.9rem;
 }
 
@@ -145,15 +148,14 @@
 }
 
 .lc-player {
-  border: 1px solid var(--v2-line, rgba(255, 255, 255, 0.07));
-  background: var(--v2-bg-raised, #0a0e0b);
-  border-radius: 0.7rem;
+  border: 1px solid var(--v2-line-strong, rgba(236, 233, 223, 0.36));
+  background: var(--v2-bg-card, #1a1b19);
+  border-radius: 3px;
   padding: 0.7rem 0.9rem;
   display: grid;
   gap: 0.2rem;
   transition:
     border-color 0.5s ease,
-    box-shadow 0.5s ease,
     transform 0.5s ease,
     opacity 0.5s ease;
   opacity: 0.55;
@@ -168,19 +170,18 @@
 .lc-player.lc-arrived {
   opacity: 1;
   transform: none;
-  border-color: var(--v2-line-strong, rgba(52, 211, 153, 0.32));
-  box-shadow: 0 0 24px var(--v2-glow, rgba(52, 211, 153, 0.14));
+  border-color: var(--v2-ink, #5cb98a);
 }
 
 .lc-player-name {
   font-size: 0.6rem;
-  letter-spacing: 0.16em;
-  color: var(--v2-dim, #5b665f);
+  letter-spacing: 0.14em;
+  color: var(--v2-dim, #7a756a);
 }
 
 .lc-player-amt {
   font-size: 0.95rem;
-  color: var(--v2-text, #f2f4f3);
+  color: var(--v2-text, #ece9df);
 }
 
 .lc-lines {
@@ -191,7 +192,7 @@
 
 .lc-line {
   height: 1px;
-  background: var(--v2-line, rgba(255, 255, 255, 0.07));
+  background: var(--v2-line-strong, rgba(236, 233, 223, 0.36));
   position: relative;
   overflow: hidden;
 }
@@ -200,7 +201,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: var(--v2-emerald, #34d399);
+  background: var(--v2-ink, #5cb98a);
   transform: scaleX(0);
   transform-origin: left;
   transition: transform 0.7s cubic-bezier(0.22, 0.61, 0.36, 1);
@@ -219,36 +220,33 @@
 .lc-vault {
   position: relative;
   width: min(100%, 24rem);
-  border: 1px solid var(--v2-line-strong, rgba(52, 211, 153, 0.32));
-  border-radius: 1rem;
-  background:
-    radial-gradient(340px 130px at 50% 0%, var(--v2-glow, rgba(52, 211, 153, 0.14)), transparent 70%),
-    var(--v2-bg-raised, #0a0e0b);
-  box-shadow: 0 0 60px var(--v2-glow, rgba(52, 211, 153, 0.14));
+  border: 1px solid var(--v2-line-strong, rgba(236, 233, 223, 0.36));
+  border-radius: 3px;
+  background: var(--v2-bg-card, #1a1b19);
   padding: 1.3rem 1.4rem 1.2rem;
   display: grid;
   justify-items: center;
   gap: 0.3rem;
-  transition: box-shadow 0.6s ease, border-color 0.6s ease;
+  transition: border-color 0.6s ease;
 }
 
 .lc-vault-label {
   font-size: 0.6rem;
-  letter-spacing: 0.2em;
-  color: var(--v2-dim, #5b665f);
+  letter-spacing: 0.18em;
+  color: var(--v2-dim, #7a756a);
 }
 
 .lc-vault-pot {
   font-size: clamp(2.1rem, 4.5vw, 3rem);
-  letter-spacing: -0.03em;
-  color: var(--v2-text, #f2f4f3);
+  letter-spacing: -0.02em;
+  color: var(--v2-text, #ece9df);
   font-variant-numeric: tabular-nums;
 }
 
 .lc-vault-sub {
   font-size: 0.58rem;
-  letter-spacing: 0.16em;
-  color: var(--v2-dim, #5b665f);
+  letter-spacing: 0.14em;
+  color: var(--v2-dim, #7a756a);
 }
 
 /* fans */
@@ -271,25 +269,24 @@
 }
 
 .lc-fan {
-  width: 0.4rem;
-  height: 0.4rem;
+  width: 0.38rem;
+  height: 0.38rem;
   border-radius: 50%;
-  background: var(--v2-emerald, #34d399);
-  opacity: 0.28;
-  transition: opacity 0.4s ease, box-shadow 0.4s ease;
+  background: var(--v2-ink, #5cb98a);
+  opacity: 0.3;
+  transition: opacity 0.4s ease;
 }
 
 .lc-fans-on .lc-fan {
-  opacity: 0.85;
-  box-shadow: 0 0 8px var(--v2-glow, rgba(52, 211, 153, 0.14));
+  opacity: 0.8;
 }
 
 .lc-fans-note {
   flex-basis: 100%;
   text-align: center;
   font-size: 0.55rem;
-  letter-spacing: 0.16em;
-  color: var(--v2-dim, #5b665f);
+  letter-spacing: 0.14em;
+  color: var(--v2-dim, #7a756a);
   margin-top: 0.25rem;
 }
 
@@ -317,61 +314,61 @@
   gap: 0.6rem;
   font-size: 0.58rem;
   letter-spacing: 0.12em;
-  color: var(--v2-muted, #8f9a93);
+  color: var(--v2-muted, #a8a396);
 }
 
 .lc-split-bar {
   height: 4px;
   border-radius: 2px;
-  background: var(--v2-line, rgba(255, 255, 255, 0.07));
+  background: var(--v2-line, rgba(236, 233, 223, 0.14));
   overflow: hidden;
 }
 
 .lc-split-bar i {
   display: block;
   height: 100%;
-  background: var(--v2-emerald, #34d399);
+  background: var(--v2-ink, #5cb98a);
   transition: width 0.25s linear;
 }
 
 .lc-split-bar-fee i {
-  background: var(--v2-amber, #fbbf24);
+  background: var(--v2-red, #d96a50);
 }
 
 .lc-split-val {
-  color: var(--v2-text, #f2f4f3);
+  color: var(--v2-text, #ece9df);
   font-variant-numeric: tabular-nums;
   min-width: 3.4rem;
   text-align: right;
 }
 
-/* stamp */
+/* stamp — red rubber stamp lands on the settled stage */
 
 .lc-stamp {
   margin-top: 0.6rem;
-  font-size: 0.6rem;
+  font-size: 0.62rem;
   letter-spacing: 0.2em;
-  color: var(--v2-emerald, #34d399);
-  border: 1px solid var(--v2-line-strong, rgba(52, 211, 153, 0.32));
-  border-radius: 999px;
+  color: var(--v2-red, #d96a50);
+  border: 2px solid var(--v2-red, #d96a50);
+  border-radius: 3px;
   padding: 0.3rem 0.8rem;
   opacity: 0;
-  transform: scale(1.25) rotate(-4deg);
+  transform: scale(1.3) rotate(-6deg);
   transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 .lc-stamp-on {
-  opacity: 1;
-  transform: scale(1) rotate(-2deg);
+  opacity: 0.9;
+  transform: scale(1) rotate(-3deg);
 }
 
 /* ── Receipt ──────────────────────────────────────────────── */
 
 .lc-receipt {
   width: min(100%, 24rem);
-  border: 1px dashed var(--v2-line-strong, rgba(52, 211, 153, 0.32));
-  border-radius: 0.8rem;
-  background: var(--v2-bg-raised, #0a0e0b);
+  border: 1px dashed var(--v2-line-strong, rgba(236, 233, 223, 0.36));
+  border-radius: 3px;
+  background: var(--v2-bg-card, #1a1b19);
   padding: 0.95rem 1.1rem;
   display: grid;
   gap: 0.45rem;
@@ -391,26 +388,26 @@
   gap: 1rem;
   font-size: 0.66rem;
   letter-spacing: 0.1em;
-  color: var(--v2-muted, #8f9a93);
+  color: var(--v2-muted, #a8a396);
 }
 
 .lc-rc-row span:last-child {
   font-variant-numeric: tabular-nums;
-  color: var(--v2-text, #f2f4f3);
+  color: var(--v2-text, #ece9df);
 }
 
 .lc-rc-strong span {
-  color: var(--v2-emerald, #34d399) !important;
-  font-weight: 600;
+  color: var(--v2-ink, #5cb98a) !important;
+  font-weight: 700;
 }
 
 .lc-rc-dim {
-  border-top: 1px dashed var(--v2-line, rgba(255, 255, 255, 0.07));
+  border-top: 1px dashed var(--v2-line, rgba(236, 233, 223, 0.14));
   padding-top: 0.5rem;
 }
 
 .lc-rc-dim span {
-  color: var(--v2-dim, #5b665f) !important;
+  color: var(--v2-dim, #7a756a) !important;
 }
 
 /* ── Progress rail ────────────────────────────────────────── */
@@ -437,19 +434,18 @@
   width: 0.45rem;
   height: 0.45rem;
   border-radius: 50%;
-  background: var(--v2-line, rgba(255, 255, 255, 0.07));
-  transition: background 0.3s ease, box-shadow 0.3s ease;
+  background: var(--v2-line-strong, rgba(236, 233, 223, 0.36));
+  transition: background 0.3s ease;
 }
 
 .lc-rail-on .lc-rail-dot {
-  background: var(--v2-emerald, #34d399);
-  box-shadow: 0 0 8px var(--v2-glow, rgba(52, 211, 153, 0.14));
+  background: var(--v2-ink, #5cb98a);
 }
 
 .lc-rail-label {
   font-size: 0.6rem;
-  letter-spacing: 0.2em;
-  color: var(--v2-muted, #8f9a93);
+  letter-spacing: 0.18em;
+  color: var(--v2-muted, #a8a396);
 }
 
 /* ── Mobile: unpin, stack chapters vertically ─────────────── */
@@ -517,15 +513,17 @@
 }
 
 .lc-mchap {
-  border-top: 1px solid var(--v2-line, rgba(255, 255, 255, 0.07));
+  border-top: 1px dashed var(--v2-line-strong, rgba(236, 233, 223, 0.36));
   padding-top: 1rem;
 }
 
 .lc-mchap-title {
-  font-size: 1.35rem;
-  line-height: 1.15;
-  letter-spacing: -0.02em;
-  font-weight: 620;
+  font-family: var(--v2-display, sans-serif);
+  font-variation-settings: 'wght' 640;
+  font-size: 1.5rem;
+  line-height: 1.05;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
   margin: 0 0 0.5rem;
 }
 
@@ -538,7 +536,6 @@
 
   .lc-line::after,
   .lc-player,
-  .lc-vault,
   .lc-stamp,
   .lc-receipt,
   .lc-split,
