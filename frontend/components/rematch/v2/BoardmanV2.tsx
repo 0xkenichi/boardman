@@ -13,7 +13,7 @@ import { FormEvent, useEffect, useRef, useState } from 'react'
 import { REMATCH_BOT_URL, REMATCH_GROUP_URL } from '@/lib/rematchLinks'
 import { BoardmanLifecycle } from './BoardmanLifecycle'
 
-const ESCROW_ADDRESS = '0xD8984396f12Cd0BD3C3e120858dd7eCdEeEF66Fc'
+const ESCROW_ADDRESS = '0xD382f627fB565eb96D9EFFb66B9119DD4a555847'
 const EXPLORER = 'https://testnet.arcscan.app/address/'
 const CHAIN_LABEL = 'ARC TESTNET · CHAIN 5042002 · USDC-NATIVE GAS'
 

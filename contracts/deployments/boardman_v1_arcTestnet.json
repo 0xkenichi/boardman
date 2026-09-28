@@ -1,19 +1,29 @@
 {
   "product": "Boardman by sideQuest",
   "formerly": "Rematch by sideQuest",
-  "version": "v1",
+  "version": "v1-tiered",
   "contractName": "BoardmanEscrow",
   "network": "arcTestnet",
   "chainId": 5042002,
   "contracts": {
-    "BoardmanEscrow": "0x3cD57447490c81598Bd8CaCBe3843b24E5735A77",
-    "ClawEscrow_V0_archive": "see contracts/deployments/* and CONTRACTS.md"
+    "BoardmanEscrow": "0xD382f627fB565eb96D9EFFb66B9119DD4a555847",
+    "previous_v1_flat_fee": "0xD8984396f12Cd0BD3C3e120858dd7eCdEeEF66Fc"
   },
   "config": {
     "usdc": "0x3600000000000000000000000000000000000000",
     "feeRecipient": "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E",
-    "resolver": "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E"
+    "resolver": "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E",
+    "feeModel": {
+      "type": "tiered",
+      "flat_usdc_per_player": "0.5",
+      "tier_flat_max_usdc": "5",
+      "mid_bps": 700,
+      "tier_bps_max_usdc": "500",
+      "premium_bps": 1000,
+      "min_stake_usdc": "2"
+    }
   },
-  "deployedAt": "2026-08-06T04:49:46.294Z",
-  "deployer": "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E"
+  "deployedAt": "2026-09-28T00:00:00.000Z",
+  "deployer": "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E",
+  "note": "Deployed via hardhat (artifact hand-written after ESM __dirname crash in deploy script — on-chain deploy itself succeeded)."
 }

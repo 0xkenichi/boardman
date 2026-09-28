@@ -1,19 +1,27 @@
 {
   "product": "Boardman by sideQuest",
-  "version": "v1",
   "contractName": "SpectatorPool",
   "network": "arcTestnet",
   "chainId": 5042002,
   "contracts": {
-    "SpectatorPool": "0x84c17D696929c6d8A525E20525CfE52F148Fd8CC"
+    "SpectatorPool": "0xd45bE49456021B74D2712fcffD47f17f91D39664",
+    "previous_flat_fee": "0x7Dcd347fA916bF93Ad8BF3c1c8e9D17111B5313e"
   },
   "config": {
     "usdc": "0x3600000000000000000000000000000000000000",
     "feeRecipient": "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E",
     "resolver": "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E",
-    "platformFeeBps": 300,
-    "creatorBps": 200
+    "feeModel": {
+      "type": "tiered_pot_level",
+      "flat_fee_usdc": "1.0",
+      "dust_cap_pct_of_pot": 25,
+      "tier_flat_max_usdc": "10",
+      "mid_bps": 700,
+      "tier_bps_max_usdc": "1000",
+      "premium_bps": 1000
+    }
   },
-  "deployedAt": "2026-08-15T06:35:14.024Z",
-  "deployer": "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E"
+  "deployedAt": "2026-09-28T00:00:00.000Z",
+  "deployer": "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E",
+  "note": "Deployed via hardhat (artifact hand-written after ESM __dirname crash in deploy script — on-chain deploy itself succeeded)."
 }

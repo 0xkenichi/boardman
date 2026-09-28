@@ -90,6 +90,7 @@ contract BoardmanEscrow is Ownable, ReentrancyGuard, Pausable {
     error StakeExceedsMax(uint256 stake);
     error StakeBelowMin(uint256 stake);
     error InvalidFeeTiers();
+    error ZeroStake();
     error ZeroAddress();
 
     // ─── Modifiers ────────────────────────────────────────────────────────────

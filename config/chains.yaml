@@ -29,12 +29,13 @@ chains:
     gas_token: USDC
     gas_mode: usdc_native
     gas_tank_required: false
-    # BoardmanEscrow V1 (2026-08). Override: CLAW_ESCROW_ADDRESS_ARC / BOARDMAN_ESCROW_ADDRESS_ARC
-    # V0 ClawEscrow archive: 0xFC44a06295d4fC58420027932A6FcB3C13D83859
-    escrow_address: "0xD8984396f12Cd0BD3C3e120858dd7eCdEeEF66Fc"
+    # BoardmanEscrow V1-tiered (2026-09). Override: CLAW_ESCROW_ADDRESS_ARC / BOARDMAN_ESCROW_ADDRESS_ARC
+    # Previous flat-fee V1: 0xD8984396f12Cd0BD3C3e120858dd7eCdEeEF66Fc · V0 archive: 0xFC44a06295d4fC58420027932A6FcB3C13D83859
+    escrow_address: "0xD382f627fB565eb96D9EFFb66B9119DD4a555847"
     escrow_contract: BoardmanEscrow
-    # SpectatorPool V1 (2026-08). Override: SPECTATOR_ESCROW_ADDRESS
-    spectator_pool_address: "0x7Dcd347fA916bF93Ad8BF3c1c8e9D17111B5313e"
+    # SpectatorPool tiered (2026-09). Override: SPECTATOR_ESCROW_ADDRESS
+    # Previous flat-fee pool: 0x7Dcd347fA916bF93Ad8BF3c1c8e9D17111B5313e
+    spectator_pool_address: "0xd45bE49456021B74D2712fcffD47f17f91D39664"
     fee_recipient: "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E"
     notes: "Boardman V1. Gas paid in USDC. Best UX."
 

@@ -32,14 +32,17 @@
 | Role | Address |
 |------|---------|
 | Ops / fee / resolver | `0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E` |
-| **BoardmanEscrow (Arc Testnet)** | `0xD8984396f12Cd0BD3C3e120858dd7eCdEeEF66Fc` |
+| **BoardmanEscrow (Arc Testnet, tiered)** | `0xD382f627fB565eb96D9EFFb66B9119DD4a555847` |
+| SpectatorPool (Arc Testnet, tiered) | `0xd45bE49456021B74D2712fcffD47f17f91D39664` |
 | BoardmanEscrow Arc Mainnet | _pending Sept 16_ |
 
 Deploy artifacts: `contracts/deployments/boardman_v1_arcTestnet.json`  
 Contract source: `contracts/contracts/core/BoardmanEscrow.sol`  
 Legacy name **ClawEscrow** = V0 archive only.
-- **Platform Fee:** 7% (`FEE_BPS = 700`) — pending contract redeploy from V1 3%
-- **Max Stake:** $10,000 USDC per match
+- **Platform Fees (tiered, on-chain):** per-player stake < $5 → flat $0.50/player · $5–$500 → 7% (`FEE_BPS = 700`) · > $500 → 10% (`PREMIUM_FEE_BPS = 1000`). Owner-tunable via `setFeeTiers`; quote with `quotePlatformFee(stakePerPlayer)`.
+- **Min Stake:** $2 USDC per player (`MIN_STAKE = 2e6`) · **Max Stake:** $10,000 per match
+- **SpectatorPool fees (pot-level tiers):** pot < $10 → min($1.00, 25% of pot) · ≤ $1000 → 7% · above → 10%. Owner-tunable via `setSpectatorFeeTiers`.
+- Testnet redeploy required for the tiered contracts (fresh address → update `chains.yaml` + env); mainnet has not been deployed yet, so it inherits tiers from day one.
 
 ## Env
 

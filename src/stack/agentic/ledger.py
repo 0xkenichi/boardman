@@ -215,7 +215,10 @@ def settle(match_id: str, winner_wallet: str, *, result: str = "win") -> dict[st
     if w not in {esc["agent_a_wallet"], esc["agent_b_wallet"]}:
         raise ValueError("winner not a party")
 
-    fee = (pot * Decimal(esc.get("fee_bps", DEFAULT_FEE_BPS)) / Decimal(10_000)).quantize(Decimal("0.000001"))
+    # Tiered platform fee — mirrors BoardmanEscrow._platformFee (V1 tiers).
+    from gaming.src.stack.agentic.economy.fees import platform_fee_for_pot
+
+    fee = platform_fee_for_pot(pot, int(esc.get("fee_bps", DEFAULT_FEE_BPS)))
     payout = pot - fee
     data["balances"][w] = str(_dec(data["balances"].get(w, "0")) + payout)
     # fee sits in treasury pseudo-wallet

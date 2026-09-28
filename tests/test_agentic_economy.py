@@ -125,10 +125,11 @@ def test_draw_book_hits_and_misses():
     assert hit["payouts"]["mode"] == "draw_hits"
     assert hit["payouts"]["draw_book"] == {}
     assert hit["payouts"]["seed_refunds"] == []
-    # pot = side seeds 1.0 + public draw 1 + house draw 0.5 = 2.5
-    # distributable = 2.5 - 7% - 2% = 2.275 → the draw bettor wins it all
+    # pot = side seeds 1.0 + public draw 1 + house draw 0.5 = 2.5 (dust tier)
+    # fee = min($1, 25% of pot) = 0.625; creator 2% = 0.05
+    # distributable = 2.5 - 0.625 - 0.05 = 1.825 → the draw bettor wins it all
     assert len(hit["payouts"]["bettors"]) == 1
-    assert Decimal(hit["payouts"]["bettors"][0]["amount"]) == Decimal("2.275000")
+    assert Decimal(hit["payouts"]["bettors"][0]["amount"]) == Decimal("1.825000")
 
     mid2 = "test_draw_book_2"
     data = book._load()

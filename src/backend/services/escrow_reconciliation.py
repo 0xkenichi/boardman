@@ -216,14 +216,28 @@ async def reconcile_escrow(
             except Exception:
                 logger.exception("[Reconcile] ops notify failed")
         else:
+            # Alert audience: BOARDMAN_OPS_TELEGRAM_ID if set, else every
+            # CLAW_ADMIN_TELEGRAM_IDS entry. A drift alarm must always have a
+            # human audience — never log-only.
             ops_id = (os.getenv("BOARDMAN_OPS_TELEGRAM_ID") or "").strip()
-            if ops_id:
+            admin_ids = sorted(
+                {
+                    p.strip()
+                    for p in (os.getenv("CLAW_ADMIN_TELEGRAM_IDS") or "").replace(";", ",").split(",")
+                    if p.strip().isdigit()
+                }
+            )
+            recipients = [ops_id] if ops_id else admin_ids
+            if recipients:
                 try:
                     from gaming.src.bot.utils.notify import notify_user
 
-                    await notify_user(
-                        ops_id, "🚨 Escrow reconciliation FAILED:\n" + "\n".join(alerts)
-                    )
+                    msg = "🚨 Escrow reconciliation FAILED:\n" + "\n".join(alerts)
+                    for rid in recipients:
+                        try:
+                            await notify_user(rid, msg)
+                        except Exception:
+                            logger.exception("[Reconcile] ops notify failed for %s", rid)
                 except Exception:
                     logger.exception("[Reconcile] ops notify failed")
     else:

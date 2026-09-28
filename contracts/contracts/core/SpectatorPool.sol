@@ -18,7 +18,7 @@ contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
 
     // ─── Platform fee tiers (pot-level, owner-settable) ─────────────────────
-    //   pot <  $10    → flat $1.00 total platform fee (dust pots; clamped to pot)
+    //   pot <  $10    → min($1.00, 25% of pot) platform fee (dust clamp)
     //   $10 ≤ pot ≤ $1000 → PLATFORM_FEE_BPS (default 700 = 7%)
     //   pot >  $1000  → PREMIUM_FEE_BPS (default 1000 = 10%)
     // Evaluated on the whole pot at resolve time. Owner-unlimited governance
@@ -367,11 +367,16 @@ contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
         return b.totalA + b.totalB + b.totalDraw;
     }
 
-    /// @notice Total platform fee on a pot, by tier. Flat fee is clamped to the
-    ///         pot so dust books can always resolve instead of reverting.
+    /// @notice Total platform fee on a pot, by tier. Dust pots pay
+    ///         min(FLAT_FEE, 25% of pot) — mirrors the escrow's $2-min-stake
+    ///         rationale (effective fee never exceeds 25%) and guarantees the
+    ///         fee + creator pool always fit inside the pot.
     function _platformFee(uint256 pot) internal view returns (uint256) {
         if (pot == 0) return 0;
-        if (pot < TIER_FLAT_MAX) return FLAT_FEE > pot ? pot : FLAT_FEE;
+        if (pot < TIER_FLAT_MAX) {
+            uint256 dustCap = pot / 4;
+            return FLAT_FEE > dustCap ? dustCap : FLAT_FEE;
+        }
         if (pot <= TIER_BPS_MAX) return (uint256(pot) * PLATFORM_FEE_BPS) / BPS_DENOM;
         return (uint256(pot) * PREMIUM_FEE_BPS) / BPS_DENOM;
     }
@@ -425,6 +430,14 @@ contract SpectatorPool is Ownable, ReentrancyGuard, Pausable {
 
         uint256 platformFee = _platformFee(pot);
         uint256 creatorPool = (pot * CREATOR_BPS) / BPS_DENOM;
+        // Never take more than the pot: on dust books the flat fee clamps so
+        // platform + creator together cannot exceed pot (creator pool is
+        // protected; the platform fee absorbs the shortfall). Prevents the
+        // distributable subtraction from underflowing on sub-$10 pots.
+        if (platformFee + creatorPool > pot) {
+            if (creatorPool > pot) creatorPool = pot;
+            platformFee = pot - creatorPool;
+        }
         uint256 distributable_ = pot - platformFee - creatorPool;
 
         b.winnerSide = storedSide;

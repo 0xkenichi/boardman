@@ -28,7 +28,15 @@ from typing import Any, Optional
 from gaming.src.stack.agentic.store import load_json, save_json
 
 BOOK_FILE = "spectator_books.json"
-DEFAULT_SPECTATOR_FEE_BPS = 700  # 7% platform fee
+# Pot-level tiered platform fee — mirrors SpectatorPool._platformFee (V1 tiers):
+#   pot < $10   → min($1, 25% of pot)   (dust clamp, effective ≤ 25%)
+#   $10 ≤ pot ≤ $1000 → 700 bps
+#   pot > $1000 → 1000 bps
+DEFAULT_SPECTATOR_FEE_BPS = 700
+SPECTATOR_TIER_FLAT_FEE = Decimal("1.0")
+SPECTATOR_TIER_FLAT_MAX = Decimal("10")
+SPECTATOR_TIER_BPS_MAX = Decimal("1000")
+SPECTATOR_TIER_PREMIUM_BPS = 1000
 DEFAULT_CREATOR_SPECTATOR_BPS = 200  # 2% of pot split across both creators
 # 12 full moves = 24 plies. Mid-game book freeze after the opening.
 DEFAULT_BOOK_CLOSE_PLIES = 24
@@ -53,6 +61,18 @@ def _d(x: Any) -> Decimal:
 
 def _bps(amount: Decimal, bps: int) -> Decimal:
     return (amount * Decimal(int(bps)) / Decimal(10_000)).quantize(Decimal("0.000001"))
+
+
+def spectator_platform_fee_for_pot(pot: Decimal, mid_bps: int = DEFAULT_SPECTATOR_FEE_BPS) -> Decimal:
+    """Tiered spectator platform fee — mirrors SpectatorPool._platformFee."""
+    pot = _d(pot)
+    if pot <= 0:
+        return Decimal("0.000000")
+    if pot < SPECTATOR_TIER_FLAT_MAX:
+        return min(SPECTATOR_TIER_FLAT_FEE, pot / 4).quantize(Decimal("0.000001"))
+    if pot <= SPECTATOR_TIER_BPS_MAX:
+        return _bps(pot, mid_bps)
+    return _bps(pot, SPECTATOR_TIER_PREMIUM_BPS)
 
 
 class SpectatorBook:
@@ -334,7 +354,7 @@ class SpectatorBook:
                         "seed_refunds": unused,
                     }
                 pot_d = public_draw + house_draw
-                fee = _bps(pot_d, platform_fee_bps)
+                fee = spectator_platform_fee_for_pot(pot_d, platform_fee_bps)
                 dist = pot_d - fee
                 bettors = []
                 for b in book.get("bets") or []:
@@ -407,7 +427,7 @@ class SpectatorBook:
             # tickets win the entire pool (side stakes + side seeds + draw
             # stakes + house draw seed), minus platform/creator fees.
             draw_pot = pot + public_draw + house_draw
-            d_fee = _bps(draw_pot, platform_fee_bps)
+            d_fee = spectator_platform_fee_for_pot(draw_pot, platform_fee_bps)
             d_creator_pool = _bps(draw_pot, creator_bps)
             d_c_each = (d_creator_pool / 2).quantize(Decimal("0.000001"))
             d_distributable = draw_pot - d_fee - d_creator_pool
@@ -464,7 +484,7 @@ class SpectatorBook:
         if winner_side not in {"a", "b"}:
             raise ValueError("winner_side must be a, b, or None")
 
-        platform_fee = _bps(pot, platform_fee_bps)
+        platform_fee = spectator_platform_fee_for_pot(pot, platform_fee_bps)
         creator_pool = _bps(pot, creator_bps)
         # split creator pool 50/50 both creators (both brought the match)
         c_each = (creator_pool / 2).quantize(Decimal("0.000001"))

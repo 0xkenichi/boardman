@@ -37,7 +37,90 @@ describe("BoardmanEscrow", function () {
     expect(await escrow.resolver()).to.equal(resolver.address);
     expect(await escrow.owner()).to.equal(owner.address);
     expect(await escrow.FEE_BPS()).to.equal(700);
+    expect(await escrow.PREMIUM_FEE_BPS()).to.equal(1000);
+    expect(await escrow.FLAT_FEE_PER_PLAYER()).to.equal(500_000n);
+    expect(await escrow.MIN_STAKE()).to.equal(2_000_000n);
     expect(await escrow.MAX_STAKE()).to.equal(10_000e6);
+  });
+
+  // ─── Tiered fees ──────────────────────────────────────────────────────
+
+  it("reverts when stake is below the $2 minimum", async function () {
+    const matchId = ethers.id("match_dust");
+    await expect(
+      escrow.connect(player1).createMatch(matchId, 1_999_999n)
+    ).to.be.revertedWithCustomError(escrow, "StakeBelowMin");
+    // boundary: exactly $2 is allowed
+    await escrow.connect(player1).createMatch(ethers.id("match_min_ok"), 2_000_000n);
+  });
+
+  it("quotes the tiered platform fee correctly", async function () {
+    // dust tier: $3/player → pot $6 → flat $1 total
+    expect(await escrow.quotePlatformFee(3_000_000n)).to.equal(1_000_000n);
+    // mid tier: $25/player → pot $50 → 7% = $3.50
+    expect(await escrow.quotePlatformFee(25_000_000n)).to.equal(3_500_000n);
+    // mid-tier upper boundary: $500/player → pot $1000 → 7% = $70
+    expect(await escrow.quotePlatformFee(500_000_000n)).to.equal(70_000_000n);
+    // premium tier: $600/player → pot $1200 → 10% = $120
+    expect(await escrow.quotePlatformFee(600_000_000n)).to.equal(120_000_000n);
+  });
+
+  it("applies the flat $1 fee on sub-$5 stakes", async function () {
+    const matchId = ethers.id("match_flat_fee");
+    await usdc.mint(player1.address, 10_000_000n);
+    await usdc.mint(player2.address, 10_000_000n);
+    await escrow.connect(player1).createMatch(matchId, 3_000_000n); // $3
+    await escrow.connect(player2).joinMatch(matchId);
+
+    const totalPot = 6_000_000n;
+    const expectedFee = 1_000_000n; // flat $1.00
+    const expectedPayout = totalPot - expectedFee;
+
+    await expect(escrow.connect(resolver).resolveMatch(matchId, player1.address))
+      .to.emit(escrow, "MatchResolved")
+      .withArgs(matchId, player1.address, expectedPayout, expectedFee);
+    expect(await usdc.balanceOf(feeRecipient.address)).to.equal(expectedFee);
+  });
+
+  it("applies the 10% premium fee above $500 stakes", async function () {
+    const matchId = ethers.id("match_premium");
+    await usdc.mint(player1.address, 1_000_000_000n);
+    await usdc.mint(player2.address, 1_000_000_000n);
+    await escrow.connect(player1).createMatch(matchId, 600_000_000n); // $600
+    await escrow.connect(player2).joinMatch(matchId);
+
+    const totalPot = 1_200_000_000n;
+    const expectedFee = 120_000_000n; // 10%
+    const expectedPayout = totalPot - expectedFee;
+
+    await expect(escrow.connect(resolver).resolveMatch(matchId, player2.address))
+      .to.emit(escrow, "MatchResolved")
+      .withArgs(matchId, player2.address, expectedPayout, expectedFee);
+    expect(await escrow.totalFeesCollected()).to.equal(expectedFee);
+  });
+
+  it("owner can retune tiers via setFeeTiers; invalid sets revert", async function () {
+    await expect(
+      escrow.connect(owner).setFeeTiers(1_000_000n, 500, 800, 4_000_000n, 600_000_000n)
+    )
+      .to.emit(escrow, "FeeTiersUpdated")
+      .withArgs(1_000_000n, 500, 800, 4_000_000n, 600_000_000n);
+    expect(await escrow.FEE_BPS()).to.equal(500);
+    expect(await escrow.PREMIUM_FEE_BPS()).to.equal(800);
+    expect(await escrow.FLAT_FEE_PER_PLAYER()).to.equal(1_000_000n);
+
+    // premium below mid
+    await expect(
+      escrow.connect(owner).setFeeTiers(1_000_000n, 800, 500, 4_000_000n, 600_000_000n)
+    ).to.be.revertedWithCustomError(escrow, "InvalidFeeTiers");
+    // flat boundary below min stake
+    await expect(
+      escrow.connect(owner).setFeeTiers(1_000_000n, 500, 800, 1_000_000n, 600_000_000n)
+    ).to.be.revertedWithCustomError(escrow, "InvalidFeeTiers");
+    // non-owner
+    await expect(
+      escrow.connect(stranger).setFeeTiers(1_000_000n, 500, 800, 4_000_000n, 600_000_000n)
+    ).to.be.revertedWithCustomError(escrow, "OwnableUnauthorizedAccount");
   });
 
   it("reverts on zero addresses in constructor", async function () {

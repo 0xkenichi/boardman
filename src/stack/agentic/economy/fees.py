@@ -22,8 +22,18 @@ from dataclasses import asdict, dataclass, field
 from decimal import Decimal
 from typing import Any, Optional
 
-# BoardmanEscrow V1 is 700 bps on-chain (V0 ClawEscrow was 300).
-DEFAULT_PLATFORM_FEE_BPS = 700  # 7% platform fee
+# BoardmanEscrow V1 tiered fees (mirrors the Solidity exactly):
+#   stake < $5  → flat $0.50/player ($1.00 on the pot)
+#   $5 ≤ stake ≤ $500 → DEFAULT_PLATFORM_FEE_BPS (700 = 7%)
+#   stake > $500 → TIER_PREMIUM_BPS (1000 = 10%)
+# Tier boundaries evaluate on PER-PLAYER stake, exactly like the contract's
+# _platformFee(pot) which derives perPlayer = pot / 2.
+DEFAULT_PLATFORM_FEE_BPS = 700  # mid tier (700 bps = 7%)
+TIER_PREMIUM_BPS = 1000  # top tier (10%)
+TIER_FLAT_FEE_PER_PLAYER = Decimal("0.5")
+TIER_FLAT_MAX_USDC = Decimal("5")
+TIER_BPS_MAX_USDC = Decimal("500")
+TIER_MIN_STAKE_USDC = Decimal("2")  # contract MIN_STAKE
 # Creator may claim up to 20% of their agent's winner_gross
 MAX_CREATOR_FEE_BPS = 2000
 DEFAULT_CREATOR_FEE_BPS = 500  # 5% of winner gross → creator
@@ -41,6 +51,20 @@ def _bps(amount: Decimal, bps: int) -> Decimal:
 
 def clamp_creator_fee_bps(bps: int) -> int:
     return max(0, min(int(bps), MAX_CREATOR_FEE_BPS))
+
+
+def platform_fee_for_pot(pot: Decimal, mid_bps: int = DEFAULT_PLATFORM_FEE_BPS) -> Decimal:
+    """Tiered platform fee on a skill pot — mirrors BoardmanEscrow._platformFee."""
+    pot = _d(pot)
+    if pot <= 0:
+        return Decimal("0.000000")
+    per_player = pot / 2
+    if per_player < TIER_FLAT_MAX_USDC:
+        flat = (TIER_FLAT_FEE_PER_PLAYER * 2).quantize(Decimal("0.000001"))
+        return min(flat, pot.quantize(Decimal("0.000001")))
+    if per_player <= TIER_BPS_MAX_USDC:
+        return _bps(pot, mid_bps)
+    return _bps(pot, TIER_PREMIUM_BPS)
 
 
 @dataclass
@@ -99,7 +123,7 @@ class FeeRouter:
         if not winner_agent:
             raise ValueError("winner_agent required unless draw")
 
-        platform_fee = _bps(pot, self.platform_fee_bps)
+        platform_fee = platform_fee_for_pot(pot, self.platform_fee_bps)
         winner_gross = pot - platform_fee
         c_bps = clamp_creator_fee_bps(
             int(
@@ -113,7 +137,9 @@ class FeeRouter:
 
         loser_crumb = Decimal("0")
         notes = [
-            f"platform {self.platform_fee_bps} bps of pot",
+            f"platform tiered: {platform_fee} of {pot} pot "
+            f"(flat $1 under $5/player, {self.platform_fee_bps} bps to $500, "
+            f"{TIER_PREMIUM_BPS} bps above)",
             f"creator {c_bps} bps of winner_gross (set by creator on deploy)",
         ]
         if loser_agent and self.loser_creator_bps_of_platform > 0:

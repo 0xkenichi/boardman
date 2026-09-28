@@ -18,7 +18,9 @@ logger = logging.getLogger(__name__)
 
 # ── Limits (override via env; mainnet-safe defaults are conservative) ─────────
 
-MIN_STAKE_USDC = Decimal(os.getenv("CLAW_MIN_STAKE_USDC", "1"))
+# $2 floor mirrors BoardmanEscrow MIN_STAKE (fee tier fairness: flat $0.50 fee
+# on dust stakes would exceed 25% effective below $2).
+MIN_STAKE_USDC = Decimal(os.getenv("CLAW_MIN_STAKE_USDC", "2"))
 MAX_STAKE_USDC = Decimal(os.getenv("CLAW_MAX_STAKE_USDC", "25"))
 MIN_WITHDRAW_USDC = Decimal(os.getenv("CLAW_MIN_WITHDRAW_USDC", "1"))
 MAX_WITHDRAW_USDC = Decimal(os.getenv("CLAW_MAX_WITHDRAW_USDC", "50"))

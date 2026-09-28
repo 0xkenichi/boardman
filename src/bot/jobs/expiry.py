@@ -402,11 +402,12 @@ def start_expiry_scheduler(interval_minutes: int = 2) -> AsyncIOScheduler:
         replace_existing=True,
     )
     # Escrow reconciliation: DB locked stakes vs on-chain contract balance.
-    # Default 60min (go-live gate item). Set ESCROW_RECONCILE_INTERVAL_MIN=0 to disable.
+    # Default 15min so mainnet inherits a tight drift-detection loop from day
+    # one (was 60min on testnet). Set ESCROW_RECONCILE_INTERVAL_MIN=0 to disable.
     try:
-        reconcile_min = int(os.getenv("ESCROW_RECONCILE_INTERVAL_MIN", "60"))
+        reconcile_min = int(os.getenv("ESCROW_RECONCILE_INTERVAL_MIN", "15"))
     except ValueError:
-        reconcile_min = 60
+        reconcile_min = 15
     if reconcile_min > 0:
         scheduler.add_job(
             run_escrow_reconciliation,

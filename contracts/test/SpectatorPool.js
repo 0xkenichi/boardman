@@ -24,8 +24,12 @@ describe("SpectatorPool", function () {
   }
 
   async function open(cap = 20_000_000n) {
+    await openBook(matchId, cap);
+  }
+
+  async function openBook(id, cap = 20_000_000n) {
     await pool.connect(resolver).openBook(
-      matchId,
+      id,
       gameId,
       agentIdA,
       agentIdB,
@@ -108,21 +112,21 @@ describe("SpectatorPool", function () {
     await pool.connect(agentB).seed(matchId, 1, 200_000n);
     await pool.connect(fan1).deposit(matchId, 1_000_000n, 0);
     await pool.connect(fan2).deposit(matchId, 1_000_000n, 1);
-    // pot = 2.4e6; fee 3% = 72_000; creator 2% = 48_000; dist = 2_280_000
-    // fanWin side 0 = 1_000_000; fan1 claim = 2_280_000
+    // pot = 2.4e6 ($2.40 dust tier): fee = min($1, 25%) = 600_000; creator 2% = 48_000; dist = 1_752_000
+    // fanWin side 0 = 1_000_000; fan1 claim = 1_752_000
     await pool.connect(resolver).resolve(matchId, 0);
     const b = await pool.getBook(matchId);
     expect(b.status).to.equal(3); // Resolved
     expect(b.winnerSide).to.equal(0);
     expect(b.fanWin).to.equal(1_000_000n);
-    expect(b.distributable).to.equal(2_280_000n);
-    expect(await pool.claimable(matchId, fan1.address)).to.equal(2_280_000n);
+    expect(b.distributable).to.equal(1_752_000n);
+    expect(await pool.claimable(matchId, fan1.address)).to.equal(1_752_000n);
     expect(await pool.claimable(matchId, fan2.address)).to.equal(0);
     expect(await pool.claimable(matchId, agentA.address)).to.equal(0);
 
     await pool.connect(owner).pause();
     await pool.connect(fan1).claim(matchId);
-    expect(await usdc.balanceOf(fan1.address)).to.equal(1_000_000_000n - 1_000_000n + 2_280_000n);
+    expect(await usdc.balanceOf(fan1.address)).to.equal(1_000_000_000n - 1_000_000n + 1_752_000n);
     await expect(pool.connect(fan1).claim(matchId)).to.be.revertedWithCustomError(
       pool,
       "NothingToClaim"
@@ -210,7 +214,7 @@ describe("SpectatorPool", function () {
       "BookNotOpen"
     );
     await pool.connect(resolver).resolve(matchId, 0);
-    expect(await pool.claimable(matchId, fan1.address)).to.equal(950_000n); // 1e6 * 95%
+    expect(await pool.claimable(matchId, fan1.address)).to.equal(730_000n); // dust: 25% fee + 2% creator
   });
 
   it("pause blocks deposit and depositFor but not claim", async function () {
@@ -236,15 +240,15 @@ describe("SpectatorPool", function () {
     await pool.connect(agentB).seed(matchId, 2, 150_000n);
     await pool.connect(fan1).deposit(matchId, 1_000_000n, 0); // A side — loses
     await pool.connect(fan2).deposit(matchId, 500_000n, 2); // draw — wins
-    // pot = 2.2e6; fee 3% = 66_000; creator 2% = 44_000; dist = 2_090_000
-    // fanWin = draw deposits only = 500_000; fan2 claim = 2_090_000
+    // pot = 2.2e6 (dust): fee = min($1, 25%) = 550_000; creator 2% = 44_000; dist = 1_606_000
+    // fanWin = draw deposits only = 500_000; fan2 claim = 1_606_000
     await pool.connect(resolver).resolve(matchId, -2);
     const b = await pool.getBook(matchId);
     expect(b.status).to.equal(3);
     expect(b.winnerSide).to.equal(-2);
     expect(b.fanWin).to.equal(500_000n);
-    expect(b.distributable).to.equal(2_090_000n);
-    expect(await pool.claimable(matchId, fan2.address)).to.equal(2_090_000n);
+    expect(b.distributable).to.equal(1_606_000n);
+    expect(await pool.claimable(matchId, fan2.address)).to.equal(1_606_000n);
     expect(await pool.claimable(matchId, fan1.address)).to.equal(0);
     expect(await pool.claimable(matchId, agentA.address)).to.equal(0); // seeds sink into pot
     await pool.connect(fan2).claim(matchId);
@@ -265,11 +269,71 @@ describe("SpectatorPool", function () {
     );
     await pool.connect(fan1).deposit(matchId, 1_000_000n, 0);
     await pool.connect(fan2).deposit(matchId, 1_000_000n, 1);
-    // pot = 2e6; platform 3% = 60_000; creator 2% = 40_000 (A 75% = 30_000, B 25% = 10_000)
+    // pot = 2e6 (dust): fee = min($1, 25%) = 500_000; creator 2% = 40_000 (A 75% = 30_000, B 25% = 10_000)
     await pool.connect(resolver).resolve(matchId, 0);
     expect(await usdc.balanceOf(agentA.address)).to.equal(1_000_000_000n + 30_000n);
     expect(await usdc.balanceOf(agentB.address)).to.equal(1_000_000_000n + 10_000n);
-    expect(await usdc.balanceOf(fee.address)).to.equal(60_000n);
+    expect(await usdc.balanceOf(fee.address)).to.equal(500_000n);
+  });
+
+  // ─── Tiered platform fee ─────────────────────────────────────────────
+
+  it("mid tier 7% applies up to a $1000 pot; premium 10% above", async function () {
+    // mid tier: pot $800
+    const m1 = ethers.id("agm_tier_mid");
+    await openBook(m1, 2_000_000_000n);
+    await pool.connect(fan1).deposit(m1, 400_000_000n, 0);
+    await pool.connect(fan2).deposit(m1, 400_000_000n, 1);
+    await pool.connect(resolver).resolve(m1, 0);
+    // platform 7% of 800e6 = 56e6; creator 2% = 16e6 — creators are ZeroAddress
+    // here, so the creator pool falls back to feeRecipient too.
+    expect(await usdc.balanceOf(fee.address)).to.equal(72_000_000n);
+
+    // premium tier: pot $1200
+    const m2 = ethers.id("agm_tier_premium");
+    await openBook(m2, 2_000_000_000n);
+    await pool.connect(fan1).deposit(m2, 600_000_000n, 0);
+    await pool.connect(fan2).deposit(m2, 600_000_000n, 1);
+    await pool.connect(resolver).resolve(m2, 1);
+    // platform 10% of 1.2e9 = 120e6; creator 2% = 24e6 → feeRecipient (zero creators)
+    expect(await usdc.balanceOf(fee.address)).to.equal(72_000_000n + 144_000_000n);
+  });
+
+  it("dust boundary: $10 pot is mid tier, just below is flat-capped", async function () {
+    // exactly $10 pot → mid tier: 7% = 700_000
+    const m1 = ethers.id("agm_tier_edge_1");
+    await openBook(m1, 2_000_000_000n);
+    await pool.connect(fan1).deposit(m1, 5_000_000n, 0);
+    await pool.connect(fan2).deposit(m1, 5_000_000n, 1);
+    await pool.connect(resolver).resolve(m1, 0);
+    // 7% = 700_000 + creator 2% = 200_000 (zero-creator fallback to feeRecipient)
+    expect(await usdc.balanceOf(fee.address)).to.equal(900_000n);
+
+    // $9.99 pot → dust tier: min(1e6, 2_499_999) = 1_000_000
+    const m2 = ethers.id("agm_tier_edge_2");
+    await openBook(m2, 2_000_000_000n);
+    await pool.connect(fan1).deposit(m2, 9_999_999n, 0);
+    await pool.connect(resolver).resolve(m2, 0);
+    // flat 1_000_000 + creator 199_999 (zero-creator fallback)
+    expect(await usdc.balanceOf(fee.address)).to.equal(900_000n + 1_199_999n);
+  });
+
+  it("owner can retune spectator tiers; invalid sets revert", async function () {
+    await expect(
+      pool.connect(owner).setSpectatorFeeTiers(500_000n, 500, 800, 8_000_000n, 800_000_000n)
+    )
+      .to.emit(pool, "SpectatorFeeTiersUpdated")
+      .withArgs(500_000n, 500, 800, 8_000_000n, 800_000_000n);
+    expect(await pool.PLATFORM_FEE_BPS()).to.equal(500);
+    expect(await pool.PREMIUM_FEE_BPS()).to.equal(800);
+    expect(await pool.FLAT_FEE()).to.equal(500_000n);
+
+    await expect(
+      pool.connect(owner).setSpectatorFeeTiers(500_000n, 800, 500, 8_000_000n, 800_000_000n)
+    ).to.be.revertedWithCustomError(pool, "InvalidFeeTiers");
+    await expect(
+      pool.connect(fan1).setSpectatorFeeTiers(500_000n, 500, 800, 8_000_000n, 800_000_000n)
+    ).to.be.revertedWithCustomError(pool, "OwnableUnauthorizedAccount");
   });
 
   it("v2: draw seeds return to both agents on cancel", async function () {

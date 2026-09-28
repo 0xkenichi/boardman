@@ -10,6 +10,9 @@
 import hre from "hardhat";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const USDC = {
   baseSepolia: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
