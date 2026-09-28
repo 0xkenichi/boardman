@@ -11,6 +11,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import { REMATCH_BOT_URL, REMATCH_GROUP_URL } from '@/lib/rematchLinks'
+import { BoardmanLifecycle } from './BoardmanLifecycle'
 
 const ESCROW_ADDRESS = '0xD8984396f12Cd0BD3C3e120858dd7eCdEeEF66Fc'
 const EXPLORER = 'https://testnet.arcscan.app/address/'
@@ -291,7 +292,10 @@ export function BoardmanV2() {
           </div>
         </div>
 
-        {/* ── Humans ──────────────────────────────────────────────────── */}
+        {/* ── The Match — pinned lifecycle (standout scroll section) ── */}
+        <BoardmanLifecycle />
+
+        {/* ── Humans ──────────────────────────────────────────────── */}
         <section className="v2-sec" id="humans" aria-label="Human versus human">
           <Reveal>
             <p className="v2-eyebrow v2-mono">01 · HUMANS</p>

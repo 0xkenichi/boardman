@@ -1,0 +1,531 @@
+/* ═══════════════════════════════════════════════════════════
+   BoardmanLifecycle — pinned scrollytelling stage
+   Native sticky, no libs. Inherits v2 tokens from .v2-page.
+   ═══════════════════════════════════════════════════════════ */
+
+.lc {
+  position: relative;
+  height: 480vh; /* scroll runway for 4 stages */
+}
+
+.lc-stage {
+  position: sticky;
+  top: 4rem; /* below the v2 nav */
+  min-height: calc(100vh - 4rem);
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 2.5rem 1.4rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.6rem;
+  overflow: hidden;
+}
+
+.lc-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.lc-head-brand {
+  color: var(--v2-emerald, #34d399);
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+}
+
+.lc-head-sub {
+  color: var(--v2-dim, #5b665f);
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+}
+
+.lc-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(2rem, 5vw, 4.5rem);
+  align-items: center;
+  min-height: 0;
+}
+
+/* ── Copy ─────────────────────────────────────────────────── */
+
+.lc-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  min-width: 0;
+}
+
+.lc-chap-n {
+  color: var(--v2-emerald, #34d399);
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  margin: 0;
+}
+
+.lc-title {
+  font-size: clamp(2rem, 4.4vw, 3.3rem);
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  font-weight: 620;
+  margin: 0;
+  min-height: 3.1em; /* two lines reserved — no layout jump between chapters */
+  text-wrap: balance;
+}
+
+.lc-body {
+  font-size: 0.98rem;
+  line-height: 1.65;
+  color: var(--v2-muted, #8f9a93);
+  margin: 0;
+  max-width: 34rem;
+  min-height: 5.6em;
+}
+
+.lc-stat {
+  color: var(--v2-dim, #5b665f);
+  font-size: 0.66rem;
+  letter-spacing: 0.18em;
+  margin: 0;
+  border-top: 1px solid var(--v2-line, rgba(255, 255, 255, 0.07));
+  padding-top: 0.9rem;
+}
+
+/* crossfade chapters */
+.lc-copy > * {
+  animation: lc-fade 0.45s ease;
+}
+
+@keyframes lc-fade {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── Artifact ─────────────────────────────────────────────── */
+
+.lc-art {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.3rem;
+  min-width: 0;
+}
+
+.lc-actors {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.lc-player {
+  border: 1px solid var(--v2-line, rgba(255, 255, 255, 0.07));
+  background: var(--v2-bg-raised, #0a0e0b);
+  border-radius: 0.7rem;
+  padding: 0.7rem 0.9rem;
+  display: grid;
+  gap: 0.2rem;
+  transition:
+    border-color 0.5s ease,
+    box-shadow 0.5s ease,
+    transform 0.5s ease,
+    opacity 0.5s ease;
+  opacity: 0.55;
+  transform: translateY(-6px);
+}
+
+.lc-player-b {
+  text-align: right;
+  transform: translateY(6px);
+}
+
+.lc-player.lc-arrived {
+  opacity: 1;
+  transform: none;
+  border-color: var(--v2-line-strong, rgba(52, 211, 153, 0.32));
+  box-shadow: 0 0 24px var(--v2-glow, rgba(52, 211, 153, 0.14));
+}
+
+.lc-player-name {
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
+  color: var(--v2-dim, #5b665f);
+}
+
+.lc-player-amt {
+  font-size: 0.95rem;
+  color: var(--v2-text, #f2f4f3);
+}
+
+.lc-lines {
+  display: grid;
+  gap: 0.35rem;
+  width: clamp(2.2rem, 6vw, 4.5rem);
+}
+
+.lc-line {
+  height: 1px;
+  background: var(--v2-line, rgba(255, 255, 255, 0.07));
+  position: relative;
+  overflow: hidden;
+}
+
+.lc-line::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--v2-emerald, #34d399);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.7s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.lc-line-b::after {
+  transform-origin: right;
+}
+
+.lc-line-on::after {
+  transform: scaleX(1);
+}
+
+/* ── Vault ────────────────────────────────────────────────── */
+
+.lc-vault {
+  position: relative;
+  width: min(100%, 24rem);
+  border: 1px solid var(--v2-line-strong, rgba(52, 211, 153, 0.32));
+  border-radius: 1rem;
+  background:
+    radial-gradient(340px 130px at 50% 0%, var(--v2-glow, rgba(52, 211, 153, 0.14)), transparent 70%),
+    var(--v2-bg-raised, #0a0e0b);
+  box-shadow: 0 0 60px var(--v2-glow, rgba(52, 211, 153, 0.14));
+  padding: 1.3rem 1.4rem 1.2rem;
+  display: grid;
+  justify-items: center;
+  gap: 0.3rem;
+  transition: box-shadow 0.6s ease, border-color 0.6s ease;
+}
+
+.lc-vault-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  color: var(--v2-dim, #5b665f);
+}
+
+.lc-vault-pot {
+  font-size: clamp(2.1rem, 4.5vw, 3rem);
+  letter-spacing: -0.03em;
+  color: var(--v2-text, #f2f4f3);
+  font-variant-numeric: tabular-nums;
+}
+
+.lc-vault-sub {
+  font-size: 0.58rem;
+  letter-spacing: 0.16em;
+  color: var(--v2-dim, #5b665f);
+}
+
+/* fans */
+
+.lc-fans {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  width: 100%;
+}
+
+.lc-fans-on {
+  opacity: 1;
+  transform: none;
+}
+
+.lc-fan {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--v2-emerald, #34d399);
+  opacity: 0.28;
+  transition: opacity 0.4s ease, box-shadow 0.4s ease;
+}
+
+.lc-fans-on .lc-fan {
+  opacity: 0.85;
+  box-shadow: 0 0 8px var(--v2-glow, rgba(52, 211, 153, 0.14));
+}
+
+.lc-fans-note {
+  flex-basis: 100%;
+  text-align: center;
+  font-size: 0.55rem;
+  letter-spacing: 0.16em;
+  color: var(--v2-dim, #5b665f);
+  margin-top: 0.25rem;
+}
+
+/* split bars */
+
+.lc-split {
+  width: 100%;
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.8rem;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.lc-split-on {
+  opacity: 1;
+  transform: none;
+}
+
+.lc-split-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.58rem;
+  letter-spacing: 0.12em;
+  color: var(--v2-muted, #8f9a93);
+}
+
+.lc-split-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--v2-line, rgba(255, 255, 255, 0.07));
+  overflow: hidden;
+}
+
+.lc-split-bar i {
+  display: block;
+  height: 100%;
+  background: var(--v2-emerald, #34d399);
+  transition: width 0.25s linear;
+}
+
+.lc-split-bar-fee i {
+  background: var(--v2-amber, #fbbf24);
+}
+
+.lc-split-val {
+  color: var(--v2-text, #f2f4f3);
+  font-variant-numeric: tabular-nums;
+  min-width: 3.4rem;
+  text-align: right;
+}
+
+/* stamp */
+
+.lc-stamp {
+  margin-top: 0.6rem;
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  color: var(--v2-emerald, #34d399);
+  border: 1px solid var(--v2-line-strong, rgba(52, 211, 153, 0.32));
+  border-radius: 999px;
+  padding: 0.3rem 0.8rem;
+  opacity: 0;
+  transform: scale(1.25) rotate(-4deg);
+  transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.lc-stamp-on {
+  opacity: 1;
+  transform: scale(1) rotate(-2deg);
+}
+
+/* ── Receipt ──────────────────────────────────────────────── */
+
+.lc-receipt {
+  width: min(100%, 24rem);
+  border: 1px dashed var(--v2-line-strong, rgba(52, 211, 153, 0.32));
+  border-radius: 0.8rem;
+  background: var(--v2-bg-raised, #0a0e0b);
+  padding: 0.95rem 1.1rem;
+  display: grid;
+  gap: 0.45rem;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.5s ease 0.15s, transform 0.5s ease 0.15s;
+}
+
+.lc-receipt-on {
+  opacity: 1;
+  transform: none;
+}
+
+.lc-rc-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  color: var(--v2-muted, #8f9a93);
+}
+
+.lc-rc-row span:last-child {
+  font-variant-numeric: tabular-nums;
+  color: var(--v2-text, #f2f4f3);
+}
+
+.lc-rc-strong span {
+  color: var(--v2-emerald, #34d399) !important;
+  font-weight: 600;
+}
+
+.lc-rc-dim {
+  border-top: 1px dashed var(--v2-line, rgba(255, 255, 255, 0.07));
+  padding-top: 0.5rem;
+}
+
+.lc-rc-dim span {
+  color: var(--v2-dim, #5b665f) !important;
+}
+
+/* ── Progress rail ────────────────────────────────────────── */
+
+.lc-rail {
+  display: flex;
+  justify-content: center;
+  gap: clamp(1.2rem, 4vw, 2.6rem);
+}
+
+.lc-rail-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  opacity: 0.4;
+  transition: opacity 0.3s ease;
+}
+
+.lc-rail-item.lc-rail-on {
+  opacity: 1;
+}
+
+.lc-rail-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--v2-line, rgba(255, 255, 255, 0.07));
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+
+.lc-rail-on .lc-rail-dot {
+  background: var(--v2-emerald, #34d399);
+  box-shadow: 0 0 8px var(--v2-glow, rgba(52, 211, 153, 0.14));
+}
+
+.lc-rail-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  color: var(--v2-muted, #8f9a93);
+}
+
+/* ── Mobile: unpin, stack chapters vertically ─────────────── */
+
+@media (max-width: 880px) {
+  .lc {
+    height: auto;
+  }
+
+  .lc-stage {
+    position: static;
+    min-height: 0;
+    height: auto;
+  }
+
+  .lc-grid {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+
+  .lc-title,
+  .lc-body {
+    min-height: 0;
+  }
+
+  /* show all four chapters stacked with their full copy */
+  .lc-copy {
+    display: none;
+  }
+
+  .lc-mobile-chapters {
+    display: grid;
+    gap: 1.2rem;
+  }
+
+  .lc-art {
+    order: -1;
+  }
+
+  .lc-receipt,
+  .lc-split,
+  .lc-fans {
+    opacity: 1;
+    transform: none;
+  }
+
+  .lc-player {
+    opacity: 1;
+    transform: none;
+  }
+
+  .lc-stamp {
+    opacity: 1;
+    transform: none;
+  }
+
+  .lc-rail {
+    display: none;
+  }
+}
+
+/* desktop shows mobile chapter list only on mobile */
+.lc-mobile-chapters {
+  display: none;
+}
+
+.lc-mchap {
+  border-top: 1px solid var(--v2-line, rgba(255, 255, 255, 0.07));
+  padding-top: 1rem;
+}
+
+.lc-mchap-title {
+  font-size: 1.35rem;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-weight: 620;
+  margin: 0 0 0.5rem;
+}
+
+/* ── Reduced motion ───────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-copy > * {
+    animation: none;
+  }
+
+  .lc-line::after,
+  .lc-player,
+  .lc-vault,
+  .lc-stamp,
+  .lc-receipt,
+  .lc-split,
+  .lc-fans {
+    transition: none !important;
+  }
+}
