@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+import '@fontsource-variable/inter'
+import '@fontsource-variable/jetbrains-mono'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -39,7 +41,13 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-[#050508] text-white antialiased">
+      <body
+        className="min-h-screen bg-[#050508] text-white antialiased"
+        style={{
+          fontFamily:
+            "'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        }}
+      >
         {children}
       </body>
     </html>

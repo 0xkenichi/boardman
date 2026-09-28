@@ -38,14 +38,14 @@ export function RematchFooter() {
   return (
     <footer
       style={{
-        borderTop: '1px solid rgba(255,255,255,0.06)',
-        background: 'rgba(7,8,12,0.95)',
+        borderTop: '1px solid rgba(255,255,255,0.07)',
+        background: 'rgba(6,9,7,0.95)',
         paddingBottom: isApp ? '5.5rem' : 0,
       }}
     >
       <div
         style={{
-          maxWidth: isApp ? '28rem' : '44rem',
+          maxWidth: isApp ? '28rem' : '56rem',
           margin: '0 auto',
           padding: '1.1rem 1rem',
           display: 'flex',
@@ -100,7 +100,7 @@ export function RematchFooter() {
             href={BOT}
             target="_blank"
             rel="noreferrer"
-            style={{ ...FOOTER_LINK_STYLE, color: '#a78bfa', fontWeight: 700 }}
+            style={{ ...FOOTER_LINK_STYLE, color: '#34d399', fontWeight: 700 }}
           >
             Bot
           </a>

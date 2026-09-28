@@ -99,8 +99,8 @@ export function RematchNav() {
         left: 0,
         right: 0,
         zIndex: 200,
-        borderBottom: '1px solid rgba(255,255,255,0.1)',
-        background: 'rgba(7,8,12,0.94)',
+        borderBottom: '1px solid rgba(255,255,255,0.07)',
+        background: 'rgba(6,9,7,0.92)',
         backdropFilter: 'blur(18px)',
         WebkitBackdropFilter: 'blur(18px)',
         boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
@@ -179,8 +179,8 @@ export function RematchNav() {
             className="rm-nav-bot"
             style={{
               borderRadius: 999,
-              background: '#7c3aed',
-              color: '#fff',
+              background: '#10b981',
+              color: '#04120c',
               padding: '0.4rem 0.75rem',
               fontSize: '0.72rem',
               fontWeight: 700,

@@ -137,6 +137,9 @@ export function proxy(req: NextRequest) {
 
   // Clean → internal app/rematch/*
   if (path === '/' || path === '') {
+    return rewriteTo(req, '/v2')
+  }
+  if (path === '/legacy' || path === '/legacy/') {
     return rewriteTo(req, '/rematch')
   }
   if (path === '/app' || path.startsWith('/app/')) {

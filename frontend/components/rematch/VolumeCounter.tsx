@@ -39,7 +39,7 @@ export function VolumeCounter() {
         fontSize: '0.75rem',
         textTransform: 'uppercase',
         letterSpacing: '0.08em',
-        color: '#a78bfa',
+        color: '#34d399',
         margin: '0 0 0.5rem 0',
         fontWeight: 600,
       }}>
