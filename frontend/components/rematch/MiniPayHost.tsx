@@ -53,14 +53,13 @@ export function MiniPayHost() {
       className="rm-card"
       style={{
         marginBottom: '0.85rem',
-        borderColor: 'rgba(53, 208, 127, 0.45)',
-        background:
-          'linear-gradient(135deg, rgba(53,208,127,0.12) 0%, rgba(7,8,12,0.95) 60%)',
+        borderColor: 'var(--v2-line-strong, rgba(236, 233, 223, 0.36))',
+        background: 'var(--v2-bg-card, #1a1b19)',
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
         <div>
-          <p className="rm-section-title" style={{ color: '#35d07f' }}>
+          <p className="rm-section-title" style={{ color: 'var(--v2-ink, #5cb98a)', fontSize: '0.9rem' }}>
             MiniPay · Celo
           </p>
           <h2 className="rm-h2" style={{ marginBottom: 4 }}>
@@ -71,7 +70,14 @@ export function MiniPayHost() {
             distribution (Proof-of-Ship).
           </p>
         </div>
-        <span className="rm-chip" style={{ background: 'rgba(53,208,127,0.15)', color: '#35d07f' }}>
+        <span
+          className="rm-chip"
+          style={{
+            background: 'var(--v2-ink-soft, rgba(92, 185, 138, 0.14))',
+            color: 'var(--v2-ink, #5cb98a)',
+            borderRadius: 2,
+          }}
+        >
           Celo
         </span>
       </div>
@@ -104,7 +110,7 @@ export function MiniPayHost() {
       <p className="rm-muted" style={{ margin: '0.65rem 0 0', fontSize: '0.72rem' }}>
         Stakes still use your Boardman play wallet (Balance $). MiniPay address is for host identity /
         future Celo USDC rails.{' '}
-        <a href={MINIPAY_ENTRY_URL} style={{ color: '#35d07f' }}>
+        <a href={MINIPAY_ENTRY_URL} style={{ color: 'var(--v2-ink, #5cb98a)' }}>
           Deep link
         </a>
       </p>

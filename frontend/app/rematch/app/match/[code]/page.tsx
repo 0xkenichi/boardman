@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { AppShell } from '@/components/AppShell'
+import { BookShell } from '@/components/rematch/BookShell'
 import { api } from '@/lib/appClient'
 
 export default function MatchDetailPage() {
@@ -51,7 +51,7 @@ export default function MatchDetailPage() {
 
   if (!match) {
     return (
-      <AppShell title={`Match ${code}`}>
+      <BookShell title={`Match ${code}`}>
         <div className="rm-stack">
           <div className="rm-skeleton" style={{ height: 140, borderRadius: 16 }} />
           <p className="rm-muted" style={{ textAlign: 'center' }}>
@@ -63,7 +63,7 @@ export default function MatchDetailPage() {
             </Link>
           ) : null}
         </div>
-      </AppShell>
+      </BookShell>
     )
   }
 
@@ -74,12 +74,12 @@ export default function MatchDetailPage() {
     status === 'open' || status === 'accepted' ? 'rm-status-live' : 'rm-status'
 
   return (
-    <AppShell title={`Match ${match.public_code || code}`}>
+    <BookShell title={`Match ${match.public_code || code}`}>
       <div className="rm-stack-lg">
         <div className="rm-card rm-card-hero">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
             <div>
-              <span className="rm-label">Stake</span>
+              <span className="rm-label">The stake</span>
               <div className="rm-balance">
                 <span>$</span>
                 {Number(match.amount_usdc || 0).toFixed(2)}
@@ -99,11 +99,11 @@ export default function MatchDetailPage() {
         </div>
 
         <div className="rm-card">
-          <p className="rm-label">What to do</p>
+          <p className="rm-label">THE HOUSE SAYS</p>
           <p className="rm-muted" style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
             {match.proof_hint
               ? String(match.proof_hint).replace(/<[^>]+>/g, '')
-              : 'After both lock: play your game, then upload the final screen photo.'}
+              : 'After both lock: play your game, then upload the final screen photo. The boardman pays the winner.'}
           </p>
         </div>
 
@@ -132,7 +132,7 @@ export default function MatchDetailPage() {
             href={`/app/match/${encodeURIComponent(match.public_code || code)}/upload`}
             className="rm-btn rm-btn-ghost"
           >
-            📸 Submit result photo
+            Submit result photo
           </Link>
           <button type="button" className="rm-btn rm-btn-ghost" onClick={load}>
             Refresh
@@ -146,6 +146,6 @@ export default function MatchDetailPage() {
           </p>
         ) : null}
       </div>
-    </AppShell>
+    </BookShell>
   )
 }

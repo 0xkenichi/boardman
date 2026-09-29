@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { AppShell } from '@/components/AppShell'
+import { BookShell } from '@/components/rematch/BookShell'
 import { api } from '@/lib/appClient'
 
 export default function UploadProofPage() {
@@ -52,13 +52,12 @@ export default function UploadProofPage() {
   }
 
   return (
-    <AppShell title="Submit result">
+    <BookShell title="Submit result">
       <form className="rm-card rm-stack-lg" onSubmit={submit}>
         <div>
           <p className="rm-section-title">Match {code}</p>
           <p className="rm-muted" style={{ margin: 0 }}>
-            Send the <strong style={{ color: '#fff' }}>final screen</strong> only — not lobby or
-            mid-game.
+            Send the <strong>final screen</strong> only — not lobby, not mid-game.
           </p>
         </div>
 
@@ -99,12 +98,12 @@ export default function UploadProofPage() {
         </div>
 
         <button type="submit" className="rm-btn rm-btn-primary" disabled={busy}>
-          {busy ? 'Uploading…' : 'Submit result'}
+          {busy ? 'Filing it…' : 'Submit result'}
         </button>
       </form>
 
       {err ? <p className="rm-err">{err}</p> : null}
-      {msg ? <p className="rm-ok">{msg}</p> : null}
+      {msg ? <p className="rm-ok">{msg} — the boardman has it.</p> : null}
 
       <button
         type="button"
@@ -113,6 +112,6 @@ export default function UploadProofPage() {
       >
         Back to match
       </button>
-    </AppShell>
+    </BookShell>
   )
 }

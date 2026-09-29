@@ -154,6 +154,69 @@
   margin-bottom: 0.55rem;
 }
 
+.bm-book .rm-h1 {
+  font-family: var(--v2-display);
+  font-variation-settings: 'wght' 700;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+.bm-book .rm-h2 {
+  font-family: var(--v2-display);
+  font-variation-settings: 'wght' 640;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.bm-book .rm-balance {
+  font-family: var(--v2-mono);
+  letter-spacing: -0.02em;
+}
+
+.bm-book .rm-balance span {
+  color: var(--v2-ink);
+}
+
+/* action rows: ruled ledger lines instead of glass tiles */
+.bm-book .rm-action {
+  border-radius: 3px;
+  border: 1px solid var(--v2-line);
+  background: transparent;
+}
+
+.bm-book .rm-action:hover {
+  background: var(--v2-bg-card);
+  border-color: var(--v2-line-strong);
+}
+
+.bm-book .rm-action-ico {
+  font-family: var(--v2-mono);
+  font-size: 0.7rem;
+  color: var(--v2-red);
+  border: 1px solid var(--v2-line-strong);
+  border-radius: 2px;
+  padding: 0.2rem 0.3rem;
+}
+
+.bm-book .rm-action-title {
+  font-family: var(--v2-display);
+  font-variation-settings: 'wght' 640;
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--v2-text);
+}
+
+.bm-book .rm-action-sub {
+  font-family: var(--v2-mono);
+  font-size: 0.68rem;
+  color: var(--v2-dim);
+}
+
+.bm-book .rm-warn-text {
+  color: var(--v2-red);
+}
+
 .bm-book .rm-muted,
 .bm-book .rm-err {
   font-family: var(--v2-serif);
@@ -530,6 +593,86 @@
   transform: rotate(-3deg);
   opacity: 0.85;
   user-select: none;
+}
+
+/* ── Ledger rows + tables (leaderboard, open challenges) ─── */
+
+.bk-ledger-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0.7rem 0.2rem;
+  border-bottom: 1px dashed var(--v2-line);
+  font-size: 0.9rem;
+  color: var(--v2-text);
+}
+
+.bk-ledger-row:last-child {
+  border-bottom: 0;
+}
+
+.bk-code-ink {
+  font-family: var(--v2-mono);
+  font-size: 0.82em;
+  color: var(--v2-ink);
+  font-weight: 700;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.bk-dot {
+  color: var(--v2-dim);
+}
+
+.bk-dim {
+  font-family: var(--v2-mono);
+  font-size: 0.74rem;
+  color: var(--v2-dim);
+}
+
+.bk-ledger-table {
+  width: 100%;
+  font-size: 0.85rem;
+  border-collapse: collapse;
+  color: var(--v2-text);
+}
+
+.bk-ledger-table th {
+  font-family: var(--v2-mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.14em;
+  color: var(--v2-dim);
+  text-align: left;
+  padding: 0.5rem 0.4rem;
+  border-bottom: 1px solid var(--v2-line-strong);
+}
+
+.bk-ledger-table td {
+  padding: 0.65rem 0.4rem;
+  border-bottom: 1px dashed var(--v2-line);
+}
+
+.bk-ledger-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.bk-ledger-table td strong {
+  font-weight: 600;
+  color: var(--v2-text);
+}
+
+.bk-ink-td {
+  font-family: var(--v2-mono);
+  color: var(--v2-ink);
+}
+
+.bk-streak {
+  color: #e0954f;
+  font-size: 0.75rem;
+  margin-left: 6px;
 }
 
 /* ── Reduced motion (nothing moves, but be explicit) ─────── */

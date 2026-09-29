@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { AppShell } from '@/components/AppShell'
+import { BookShell } from '@/components/rematch/BookShell'
 import { api } from '@/lib/appClient'
 
 type MatchRow = {
@@ -49,11 +49,11 @@ export default function MatchListPage() {
   const history = matches.filter((m) => !active.includes(m))
 
   return (
-    <AppShell title="My matches">
+    <BookShell title="My matches">
       <div className="rm-stack-lg">
         <div className="rm-card">
           <label className="rm-label" htmlFor="rm-code">
-            Open match by code
+            Open a match by code
           </label>
           <input
             id="rm-code"
@@ -81,14 +81,14 @@ export default function MatchListPage() {
         ) : (
           <>
             <div className="rm-stack">
-              <p className="rm-label">Active</p>
+              <p className="rm-label">ON THE TABLE</p>
               {active.length === 0 ? (
                 <div className="rm-card">
                   <p className="rm-muted" style={{ margin: '0 0 0.75rem' }}>
-                    No open matches. Challenge a friend or open a code.
+                    Nothing open. Challenge a friend or open a code.
                   </p>
                   <Link href="/app/challenge" className="rm-btn rm-btn-primary">
-                    ⚔️ New challenge
+                    New challenge
                   </Link>
                 </div>
               ) : (
@@ -118,7 +118,7 @@ export default function MatchListPage() {
             </div>
 
             <div className="rm-stack">
-              <p className="rm-label">Recent (same as Telegram)</p>
+              <p className="rm-label">SETTLED · RECENT (SAME AS TELEGRAM)</p>
               {history.length === 0 ? (
                 <p className="rm-muted" style={{ margin: 0 }}>
                   No past matches yet.
@@ -163,13 +163,13 @@ export default function MatchListPage() {
               )}
               {demo ? (
                 <p className="rm-muted" style={{ fontSize: '0.75rem', margin: 0 }}>
-                  Demo mode — live history needs Stack API.
+                  Demo mode — live history needs the Stack API.
                 </p>
               ) : null}
             </div>
           </>
         )}
       </div>
-    </AppShell>
+    </BookShell>
   )
 }

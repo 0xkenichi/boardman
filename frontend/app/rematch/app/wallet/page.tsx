@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AppShell } from '@/components/AppShell'
+import { BookShell } from '@/components/rematch/BookShell'
 import { api, type Me } from '@/lib/appClient'
 
 const FAUCET = 'https://faucet.circle.com/'
@@ -46,10 +46,10 @@ export default function WalletPage() {
   }
 
   return (
-    <AppShell title="Wallet">
+    <BookShell title="Wallet">
       <div className="rm-stack-lg">
         <div className="rm-card rm-card-hero">
-          <span className="rm-label">Balance (Arc · play wallet)</span>
+          <span className="rm-label">Balance on the book (Arc · play wallet)</span>
           {loading && !me ? (
             <div className="rm-skeleton" style={{ height: 40, width: '50%', marginTop: 8 }} />
           ) : (
@@ -75,14 +75,14 @@ export default function WalletPage() {
             {copied ? '✓ Copied' : 'Copy address'}
           </button>
           <p className="rm-muted" style={{ marginTop: '0.75rem', marginBottom: 0, fontSize: '0.8rem' }}>
-            Send Arc testnet USDC here only. This is the address Boardman stakes from.
+            Send Arc testnet USDC here only. This is the address the house stakes from.
           </p>
         </div>
 
         {me?.otherBalance && me.otherBalance > 0.009 ? (
           <div className="rm-card rm-card-warn">
             <p className="rm-warn-text" style={{ marginTop: 0 }}>
-              ⚠️ ${me.otherBalance.toFixed(2)} still sitting on an older address
+              ${me.otherBalance.toFixed(2)} still sitting on an older address
             </p>
             {me.otherAddress ? <code className="rm-code">{me.otherAddress}</code> : null}
             <p className="rm-muted" style={{ marginBottom: 0, fontSize: '0.8rem' }}>
@@ -100,10 +100,10 @@ export default function WalletPage() {
             Fund helper page
           </a>
           <button type="button" className="rm-btn rm-btn-ghost" onClick={load}>
-            Refresh balance
+            Read the balance again
           </button>
         </div>
       </div>
-    </AppShell>
+    </BookShell>
   )
 }
