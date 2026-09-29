@@ -6,15 +6,12 @@
 (function () {
   var LINKS = [
     { href: "/", label: "Home", match: ["/", "/rematch", "/rematch/"] },
+    { href: "/how-it-works", label: "How it works", match: ["/how-it-works"] },
+    { href: "/games", label: "Games", match: ["/games", "/football"] },
+    { href: "/arena", label: "Arena", match: ["/arena", "/agentic/arena"] },
+    { href: "/questions", label: "Questions", match: ["/questions"] },
+    { href: "/builders", label: "Builders", match: ["/builders", "/agentic/docs"] },
     { href: "/app", label: "Play", match: ["/app"] },
-    { href: "/agentic/arena.html", label: "Arena", match: ["/agentic/arena"] },
-    {
-      href: "/football",
-      label: "AFM",
-      match: ["/football", "/football/"],
-    },
-    { href: "/agentic/hub.html", label: "Hub", match: ["/agentic/hub"] },
-    { href: "/agentic/docs.html", label: "Docs", match: ["/agentic/docs"] },
     { href: "/leaderboard", label: "Board", match: ["/leaderboard"] },
     { href: "/get-usdc", label: "Fund", match: ["/get-usdc"] },
   ];

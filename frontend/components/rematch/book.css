@@ -595,6 +595,128 @@
   user-select: none;
 }
 
+/* ── Info pages: how-it-works / questions / about / games / builders ── */
+
+.bk-step-n {
+  font-family: var(--v2-display);
+  font-variation-settings: 'wght' 700;
+  font-size: 2.2rem;
+  line-height: 1;
+  color: var(--v2-ink);
+  margin: 0 0 0.15rem;
+}
+
+.bk-step-title {
+  font-family: var(--v2-display);
+  font-variation-settings: 'wght' 640;
+  font-size: 1.5rem;
+  line-height: 1.05;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--v2-text);
+  margin: 0 0 0.55rem;
+}
+
+.bk-q {
+  font-family: var(--v2-display);
+  font-variation-settings: 'wght' 640;
+  font-size: 1.4rem;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--v2-text);
+  margin: 0 0 0.55rem;
+}
+
+.bk-flag {
+  font-family: var(--v2-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  border: 1px solid var(--v2-line-strong);
+  border-radius: 2px;
+  padding: 0.2rem 0.55rem;
+  white-space: nowrap;
+}
+
+.bk-link {
+  color: var(--v2-ink);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--v2-ink);
+}
+
+.bk-code {
+  border: 1px solid var(--v2-line-strong);
+  border-radius: 3px;
+  background: var(--v2-bg);
+  padding: 0.9rem 1rem;
+  font-family: var(--v2-mono);
+  font-size: 0.76rem;
+  line-height: 1.6;
+  color: var(--v2-text);
+  overflow-x: auto;
+}
+
+.bk-code-line {
+  white-space: pre;
+}
+
+.bk-c-dim {
+  color: var(--v2-red);
+}
+
+.bk-c-key {
+  color: #b795d6; /* muted violet ink */
+}
+
+.bk-c-str {
+  color: var(--v2-ink);
+}
+
+.bk-code-out {
+  color: var(--v2-muted);
+  border-top: 1px dashed var(--v2-line);
+  margin-top: 0.4rem;
+  padding-top: 0.4rem;
+}
+
+.bk-doc-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9rem;
+  padding: 0.6rem 0.2rem;
+  border-bottom: 1px dashed var(--v2-line);
+  text-decoration: none;
+}
+
+.bk-doc-row:last-child {
+  border-bottom: 0;
+}
+
+.bk-doc-n {
+  font-family: var(--v2-mono);
+  font-size: 0.68rem;
+  color: var(--v2-red);
+  min-width: 1.6rem;
+}
+
+.bk-doc-t {
+  flex: 1;
+  font-family: var(--v2-display);
+  font-variation-settings: 'wght' 600;
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--v2-text);
+}
+
+.bk-doc-row:hover .bk-doc-t {
+  color: var(--v2-ink);
+}
+
+.bk-doc-arrow {
+  color: var(--v2-dim);
+}
+
 /* ── Ledger rows + tables (leaderboard, open challenges) ─── */
 
 .bk-ledger-row {
@@ -673,6 +795,126 @@
   color: #e0954f;
   font-size: 0.75rem;
   margin-left: 6px;
+}
+
+/* ── Arena: the live chess table ─────────────────────────── */
+
+.ar-table-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.8rem;
+  font-family: var(--v2-mono);
+  font-size: 0.74rem;
+  color: var(--v2-muted);
+}
+
+.ar-table-head strong {
+  font-family: var(--v2-display);
+  font-variation-settings: 'wght' 700;
+  font-size: 1.2rem;
+  letter-spacing: 0.02em;
+  color: var(--v2-text);
+}
+
+.ar-vs {
+  color: var(--v2-dim);
+}
+
+.ar-player-b {
+  text-align: right;
+}
+
+.ar-board-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.ar-board {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  width: min(100%, 26rem);
+  aspect-ratio: 1;
+  border: 1px solid var(--v2-line-strong);
+  background: var(--v2-bg);
+}
+
+.ar-sq {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(1.5rem, 6vw, 2.4rem);
+  line-height: 1;
+  color: var(--v2-text);
+  user-select: none;
+}
+
+.ar-sq-d {
+  background: #23282337;
+}
+
+.ar-note {
+  font-family: var(--v2-serif);
+  font-size: 1rem;
+  color: var(--v2-muted);
+  margin: 0.9rem 0 0;
+}
+
+.ar-note strong {
+  color: var(--v2-ink);
+}
+
+.ar-ledger {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  border-top: 1px dashed var(--v2-line-strong);
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+}
+
+.ar-ledger > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.ar-ledger strong {
+  font-family: var(--v2-mono);
+  font-size: 0.9rem;
+  color: var(--v2-text);
+  font-weight: 400;
+}
+
+.ar-bet-row {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.ar-bet-sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+}
+
+.ar-movelog {
+  font-family: var(--v2-mono);
+  font-size: 0.78rem;
+  line-height: 2;
+  color: var(--v2-muted);
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.ar-move {
+  display: inline-block;
+  margin-right: 0.9rem;
+  white-space: nowrap;
+}
+
+.ar-move b {
+  color: var(--v2-red);
+  font-weight: 400;
 }
 
 /* ── Reduced motion (nothing moves, but be explicit) ─────── */

@@ -8,33 +8,22 @@ import { telegramBotUrl } from '@/lib/telegramBot'
 
 const BOT = telegramBotUrl()
 
-/** Full Boardman product nav — keep in sync with public/boardman-nav.js */
-const LINKS = [
+const LINKS: NavLinkDef[] = [
   { href: '/', label: 'Home', match: (p: string) => p === '/' || p === '/rematch' || p === '/rematch/' },
-  { href: '/app', label: 'Play', match: (p: string) => p === '/app' || p.startsWith('/app/') },
+  { href: '/how-it-works', label: 'How it works', match: (p: string) => p.startsWith('/how-it-works') },
+  { href: '/games', label: 'Games', match: (p: string) => p.startsWith('/games') || p.startsWith('/football') },
   {
-    href: '/agentic/arena.html',
+    href: '/arena',
     label: 'Arena',
-    match: (p: string) => p.includes('/agentic/arena'),
-    external: true,
+    match: (p: string) => p.startsWith('/arena') || p.includes('/agentic/arena'),
   },
+  { href: '/questions', label: 'Questions', match: (p: string) => p.startsWith('/questions') },
   {
-    href: '/football',
-    label: 'AFM',
-    match: (p: string) => p === '/football' || p.startsWith('/football/'),
+    href: '/builders',
+    label: 'Builders',
+    match: (p: string) => p.startsWith('/builders') || p.includes('/agentic/docs'),
   },
-  {
-    href: '/agentic/hub.html',
-    label: 'Hub',
-    match: (p: string) => p.includes('/agentic/hub'),
-    external: true,
-  },
-  {
-    href: '/agentic/docs.html',
-    label: 'Docs',
-    match: (p: string) => p.includes('/agentic/docs'),
-    external: true,
-  },
+  { href: '/app', label: 'Play', match: (p: string) => p === '/app' || p.startsWith('/app/') },
   {
     href: '/leaderboard',
     label: 'Board',
@@ -44,13 +33,15 @@ const LINKS = [
     href: '/get-usdc',
     label: 'Fund',
     match: (p: string) => p === '/get-usdc' || p.startsWith('/get-usdc'),
-  },
-  {
-    href: '/app/how-to-play',
-    label: 'How to play',
-    match: (p: string) => p === '/app/how-to-play' || p.startsWith('/app/how-to-play'),
-  },
-] as const
+  },  { href: '/app/how-to-play', label: 'How to play', match: (p: string) => p === '/app/how-to-play' || p.startsWith('/app/how-to-play') },
+]
+
+type NavLinkDef = {
+  href: string
+  label: string
+  match: (p: string) => boolean
+  external?: boolean
+}
 
 function NavLink({
   href,

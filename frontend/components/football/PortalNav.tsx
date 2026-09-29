@@ -1,5 +1,8 @@
 import Link from 'next/link'
 import { SeasonStrip } from './SeasonStrip'
+import '@fontsource-variable/big-shoulders'
+import '@fontsource/instrument-serif'
+import '@fontsource/space-mono'
 
 const LINKS = [
   { href: '/football', label: 'Front door' },

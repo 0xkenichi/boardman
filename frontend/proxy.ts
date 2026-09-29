@@ -108,6 +108,13 @@ export function proxy(req: NextRequest) {
     ) {
       return redirectTo(req, '/football')
     }
+    // Hub & docs now live as React pages in the book
+    if (path === '/agentic/hub.html' || path === '/agentic/hub') {
+      return redirectTo(req, '/games')
+    }
+    if (path === '/agentic/docs.html' || path === '/agentic/docs') {
+      return redirectTo(req, '/builders')
+    }
     return securityHeaders(NextResponse.next(), { agentic: true })
   }
 
@@ -139,10 +146,17 @@ export function proxy(req: NextRequest) {
   if (path === '/' || path === '') {
     return rewriteTo(req, '/v2')
   }
-  if (path === '/legacy' || path === '/legacy/') {
-    return rewriteTo(req, '/rematch')
-  }
   if (path === '/app' || path.startsWith('/app/')) {
+    return rewriteTo(req, `/rematch${path}`)
+  }
+  if (
+    path === '/how-it-works' ||
+    path === '/questions' ||
+    path === '/about' ||
+    path === '/games' ||
+    path === '/builders' ||
+    path === '/arena'
+  ) {
     return rewriteTo(req, `/rematch${path}`)
   }
   if (path === '/leaderboard' || path.startsWith('/leaderboard/')) {
@@ -162,18 +176,15 @@ export function proxy(req: NextRequest) {
   if (path === '/llms.txt' || path === '/agentic/llms.txt') {
     return securityHeaders(NextResponse.next())
   }
-  if (path === '/builders' || path === '/stack' || path === '/docs/stack') {
-    return redirectTo(req, '/agentic/docs.html')
+  if (path === '/stack' || path === '/docs/stack' || path === '/docs') {
+    return redirectTo(req, '/builders')
   }
-  if (path === '/arena') {
-    return redirectTo(req, '/agentic/arena.html')
+  if (path === '/hub') {
+    return redirectTo(req, '/games')
   }
 
   if (path === '/catalog' || path === '/agentic/catalog') {
     return redirectTo(req, '/agentic/football-catalog.html')
-  }
-  if (path === '/hub') {
-    return redirectTo(req, '/agentic/hub.html')
   }
 
   // Public root assets: serve boardman SW/manifest at /

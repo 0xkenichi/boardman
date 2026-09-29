@@ -2,26 +2,54 @@
    Boardman brand tokens (mirrors rematch.css): charcoal base, emerald accent,
    amber strictly pending/attention, red strictly negative. */
 
+/* Boardman book fonts for the football suite */
 .fd-wrap {
-  /* Boardman palette */
-  --bm-bg: #07080c;
-  --bm-bg-elevated: #0d1017;
-  --bm-surface: rgba(16, 20, 28, 0.88);
-  --bm-surface-solid: #12161f;
-  --bm-border: rgba(255, 255, 255, 0.07);
-  --bm-border-strong: rgba(52, 211, 153, 0.35);
-  --bm-green: #10b981;
-  --bm-green-bright: #34d399;
-  --bm-green-deep: #059669;
-  --bm-green-glow: rgba(16, 185, 129, 0.18);
-  --bm-amber: #fbbf24;
-  --bm-red: #f87171;
-  --bm-text: #f3f4f6;
-  --bm-muted: #9ca3af;
-  --bm-dim: #6b7280;
-  --bm-radius: 12px;
-  --bm-radius-sm: 8px;
+  font-family: var(--bm-serif, Georgia, serif);
+}
+
+.fd-wrap h1,
+.fd-wrap h2,
+.fd-wrap h3,
+.fd-brand {
+  font-family: var(--bm-display, sans-serif);
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+}
+
+.fd-wrap h1 em {
+  font-family: var(--bm-serif, Georgia, serif);
+  font-style: italic;
+  text-transform: none;
+  color: var(--bm-green, #5cb98a);
+}
+
+.fd-wrap .fd-mark {
+  font-family: var(--bm-mono, monospace);
+}
+
+.fd-wrap {
+  /* Boardman book palette (paper + chalk ink + house green) */
+  --bm-bg: #101110;
+  --bm-bg-elevated: #171816;
+  --bm-surface: rgba(26, 27, 25, 0.92);
+  --bm-surface-solid: #1a1b19;
+  --bm-border: rgba(236, 233, 223, 0.14);
+  --bm-border-strong: rgba(92, 185, 138, 0.45);
+  --bm-green: #5cb98a;
+  --bm-green-bright: #5cb98a;
+  --bm-green-deep: #3f8f66;
+  --bm-green-glow: rgba(92, 185, 138, 0.16);
+  --bm-amber: #e0954f;
+  --bm-red: #d96a50;
+  --bm-text: #ece9df;
+  --bm-muted: #a8a396;
+  --bm-dim: #7a756a;
+  --bm-radius: 3px;
+  --bm-radius-sm: 2px;
   --bm-radius-pill: 999px;
+  --bm-display: 'Big Shoulders Variable', 'Arial Narrow', sans-serif;
+  --bm-serif: 'Instrument Serif', Georgia, serif;
+  --bm-mono: 'Space Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
   max-width: 1080px;
   margin: 0 auto;

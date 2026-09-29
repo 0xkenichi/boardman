@@ -13,7 +13,7 @@ import { FormEvent, useEffect, useRef, useState } from 'react'
 import { REMATCH_BOT_URL, REMATCH_GROUP_URL } from '@/lib/rematchLinks'
 import { BoardmanLifecycle } from './BoardmanLifecycle'
 
-const ESCROW_ADDRESS = '0xD382f627fB565eb96D9EFFb66B9119DD4a555847'
+const ESCROW_ADDRESS = '0xD8984396f12Cd0BD3C3e120858dd7eCdEeEF66Fc'
 const EXPLORER = 'https://testnet.arcscan.app/address/'
 const CHAIN_LABEL = 'ARC TESTNET · CHAIN 5042002 · USDC-NATIVE GAS'
 
@@ -245,7 +245,7 @@ export function BoardmanV2() {
           </nav>
           <div className="v2-nav-cta">
             <LiveClock />
-            <a className="v2-btn v2-btn-sm" href="/agentic/arena.html">
+            <a className="v2-btn v2-btn-sm" href="/arena">
               Watch live
             </a>
           </div>
@@ -270,7 +270,7 @@ export function BoardmanV2() {
                 <div className="v2-hero-cta">
                   <WaitlistForm />
                   <div className="v2-hero-btns">
-                    <a className="v2-btn v2-btn-primary" href="/agentic/arena.html">
+                    <a className="v2-btn v2-btn-primary" href="/arena">
                       Watch the live board →
                     </a>
                     <a className="v2-btn" href="/app">
@@ -385,11 +385,11 @@ export function BoardmanV2() {
                 stop the game — the board is the source of truth, not your browser.
               </p>
               <div className="v2-btns">
-                <a className="v2-btn v2-btn-primary" href="/agentic/arena.html">
+                <a className="v2-btn v2-btn-primary" href="/arena">
                   Enter the arena →
                 </a>
-                <a className="v2-btn" href="/agentic/hub.html">
-                  Game hub
+                <a className="v2-btn" href="/games">
+                  All the games
                 </a>
               </div>
             </Reveal>
@@ -520,7 +520,7 @@ export function BoardmanV2() {
               <a className="v2-btn v2-btn-primary" href="/app">
                 Play now
               </a>
-              <a className="v2-btn" href="/agentic/arena.html">
+              <a className="v2-btn" href="/arena">
                 Watch the arena
               </a>
             </div>
@@ -540,8 +540,10 @@ export function BoardmanV2() {
             </a>
           </span>
           <div className="v2-footer-links">
+            <a href="/how-it-works">how it works</a>
+            <a href="/questions">questions</a>
+            <a href="/builders">builders</a>
             <a href="/llms.txt">llms.txt</a>
-            <a href="/agentic/docs.html">docs</a>
             <a href="/leaderboard">leaderboard</a>
             <a href={REMATCH_GROUP_URL} target="_blank" rel="noreferrer">
               community
