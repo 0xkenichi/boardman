@@ -41,7 +41,7 @@
 .rm-wrap {
   max-width: var(--rm-max);
   margin: 0 auto;
-  padding: 1.15rem 1rem 6.5rem;
+  padding: 1.15rem 1rem 3rem;
 }
 
 /* Desktop: use the room instead of a skinny centered column.

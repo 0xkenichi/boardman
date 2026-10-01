@@ -1,7 +1,6 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
 import { BRAND } from '@/lib/brand'
 import { telegramBotUrl } from '@/lib/telegramBot'
 
@@ -27,11 +26,8 @@ const FOOTER_LINKS = [
  * paper ink. Styles live in rematch.css under .bm-colophon.
  */
 export function RematchFooter() {
-  const path = usePathname() || ''
-  const inApp = path === '/app' || path.startsWith('/app/')
-
   return (
-    <footer className="bm-colophon" style={inApp ? { paddingBottom: '6.5rem' } : undefined}>
+    <footer className="bm-colophon">
       <div className="bm-colophon-in">
         <p className="bm-colophon-brand">
           Boardman <em>— the book</em>
