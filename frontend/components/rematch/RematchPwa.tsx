@@ -106,17 +106,17 @@ export function RematchPwa() {
         position: 'fixed',
         left: 12,
         right: 12,
-        bottom: 'calc(5.5rem + env(safe-area-inset-bottom))',
+        bottom: 'calc(1.25rem + env(safe-area-inset-bottom))',
         zIndex: 60,
         maxWidth: 28 * 16,
         margin: '0 auto',
-        borderRadius: 16,
-        border: '1px solid rgba(52,211,153,0.35)',
-        background: 'rgba(7,8,12,0.96)',
-        boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
+        borderRadius: 3,
+        border: '1px solid rgba(32,31,26,0.4)',
+        background: 'rgba(249,246,236,0.97)',
+        boxShadow: '3px 4px 0 rgba(32,31,26,0.18)',
         padding: '0.9rem 1rem',
-        color: '#f3f4f6',
-        fontFamily: 'system-ui, sans-serif',
+        color: '#201f1a',
+        fontFamily: "'Space Mono', ui-monospace, Menlo, monospace",
       }}
     >
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
@@ -132,7 +132,7 @@ export function RematchPwa() {
           <p style={{ margin: 0, fontWeight: 800, fontSize: '0.95rem' }}>
             Add Boardman to Home Screen
           </p>
-          <p style={{ margin: '0.3rem 0 0', fontSize: '0.78rem', color: '#9ca3af', lineHeight: 1.4 }}>
+          <p style={{ margin: '0.3rem 0 0', fontSize: '0.78rem', color: '#57534a', lineHeight: 1.4 }}>
             {isIos && !deferred
               ? 'Tap Share → Add to Home Screen for a full-screen Boardman app.'
               : 'Install for one-tap play — Boardman only, not the full sideQuest site.'}
@@ -143,13 +143,13 @@ export function RematchPwa() {
                 type="button"
                 onClick={install}
                 style={{
-                  border: 'none',
-                  borderRadius: 999,
+                  border: '1px solid #256b48',
+                  borderRadius: 2,
                   padding: '0.45rem 0.9rem',
                   fontWeight: 700,
                   fontSize: '0.8rem',
-                  background: 'linear-gradient(180deg,#12c48a,#059669)',
-                  color: '#fff',
+                  background: '#256b48',
+                  color: '#f2eee2',
                   cursor: 'pointer',
                 }}
               >
@@ -160,13 +160,13 @@ export function RematchPwa() {
               type="button"
               onClick={dismiss}
               style={{
-                border: '1px solid rgba(255,255,255,0.12)',
-                borderRadius: 999,
+                border: '1px solid rgba(32,31,26,0.35)',
+                borderRadius: 2,
                 padding: '0.45rem 0.9rem',
                 fontWeight: 600,
                 fontSize: '0.8rem',
                 background: 'transparent',
-                color: '#d1d5db',
+                color: '#57534a',
                 cursor: 'pointer',
               }}
             >

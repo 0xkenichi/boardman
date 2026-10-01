@@ -6,24 +6,24 @@
    ═══════════════════════════════════════════════════════════ */
 
 .v2-page {
-  /* ── paper (warm dark — chalk on a ledger board) ── */
-  --v2-bg: #101110;
-  --v2-bg-raised: #171816;
-  --v2-bg-card: #1a1b19;
-  --v2-line: rgba(236, 233, 223, 0.14);
-  --v2-line-strong: rgba(236, 233, 223, 0.36);
+  /* ── paper (warm cream — a real day-book page) ── */
+  --v2-bg: #f2eee2;
+  --v2-bg-raised: #eae5d4;
+  --v2-bg-card: #f9f6ec;
+  --v2-line: rgba(32, 31, 26, 0.16);
+  --v2-line-strong: rgba(32, 31, 26, 0.4);
   --v2-hairline: 1px solid var(--v2-line);
-  /* ── ink (light — written in chalk on dark paper) ── */
-  --v2-text: #ece9df;
-  --v2-muted: #a8a396;
-  --v2-dim: #7a756a;
+  /* ── ink (dark — written on the page) ── */
+  --v2-text: #201f1a;
+  --v2-muted: #57534a;
+  --v2-dim: #8a8478;
   /* ── one bookmaker's ink-green ── */
-  --v2-ink: #5cb98a;
-  --v2-ink-deep: #3f8f66;
-  --v2-ink-soft: rgba(92, 185, 138, 0.14);
-  --v2-ink-glow: rgba(92, 185, 138, 0.2);
+  --v2-ink: #256b48;
+  --v2-ink-deep: #1a5236;
+  --v2-ink-soft: rgba(37, 107, 72, 0.12);
+  --v2-ink-glow: rgba(37, 107, 72, 0.16);
   /* ── stamp red (used sparingly) ── */
-  --v2-red: #d96a50;
+  --v2-red: #b04a32;
   /* ── type ── */
   --v2-display: 'Big Shoulders Variable', 'Arial Narrow', 'Helvetica Neue Condensed', sans-serif;
   --v2-serif: 'Instrument Serif', Georgia, 'Times New Roman', serif;
@@ -261,13 +261,13 @@
 .v2-btn-primary {
   background: var(--v2-ink);
   border-color: var(--v2-ink);
-  color: #0a1410;
+  color: #f2eee2;
 }
 
 .v2-btn-primary:hover {
   background: var(--v2-ink-deep);
   border-color: var(--v2-ink-deep);
-  color: #f4f2ea;
+  color: #f5f2ea;
 }
 
 .v2-btn-sm {
@@ -614,7 +614,7 @@
 }
 
 .v2-c-key {
-  color: #7a4f9e; /* muted violet ink */
+  color: #5f3a8e; /* muted violet ink */
 }
 
 .v2-c-str {
@@ -649,7 +649,7 @@
 }
 
 .v2-sq-d {
-  background: #3a423c;
+  background: #b3a993;
 }
 
 .v2-board-overlay {
@@ -659,7 +659,7 @@
   flex-direction: column;
   justify-content: space-between;
   padding: 1rem;
-  background: linear-gradient(180deg, rgba(16, 17, 16, 0.85), transparent 30%, transparent 70%, rgba(16, 17, 16, 0.85));
+  background: linear-gradient(180deg, rgba(32, 31, 26, 0.85), transparent 30%, transparent 70%, rgba(32, 31, 26, 0.85));
 }
 
 .v2-board-tag {
@@ -674,7 +674,7 @@
 
 .v2-board-live {
   font-size: 0.66rem;
-  color: #7fd3ab;
+  color: #9fd8b8;
   letter-spacing: 0.14em;
 }
 

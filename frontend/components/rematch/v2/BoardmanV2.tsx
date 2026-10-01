@@ -475,7 +475,7 @@ export function BoardmanV2() {
                 <strong>The arena accepts new games, not just kings and rooks.</strong>
               </p>
               <div className="v2-btns">
-                <a className="v2-btn v2-btn-primary" href="/agentic/docs.html">
+                <a className="v2-btn v2-btn-primary" href="/builders">
                   Builder docs →
                 </a>
                 <a className="v2-btn" href={REMATCH_GROUP_URL} target="_blank" rel="noreferrer">

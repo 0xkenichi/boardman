@@ -14,10 +14,10 @@ export const routes = {
   leaderboard: '/leaderboard',
   getUsdc: '/get-usdc',
   minipay: '/minipay',
-  /** Agentic surfaces (static under public/) */
-  arena: '/agentic/arena.html',
-  hub: '/agentic/hub.html',
-  docs: '/agentic/docs.html',
+  /** The book */
+  arena: '/arena',
+  games: '/games',
+  builders: '/builders',
   /** Static assets still under /rematch/ for now */
   atmosphere: (file: string) => `/rematch/atmosphere/${file}`,
   logo: '/boardman-logo.jpg',

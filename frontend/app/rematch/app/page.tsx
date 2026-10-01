@@ -59,7 +59,7 @@ function HowToPlayGuide() {
               balance on Telegram and the website.
             </p>
             <div className="rm-btn-row rm-mt-1">
-              <a href="/agentic/arena.html" className="rm-btn rm-btn-ghost rm-btn-sm">
+              <a href="/arena" className="rm-btn rm-btn-ghost rm-btn-sm">
                 Open the arena
               </a>
             </div>
@@ -352,7 +352,7 @@ export default function RematchAppHome() {
         <MiniPayHost />
 
         <div className="rm-actions-grid">
-          <a href="/agentic/arena.html" className="rm-action">
+          <a href="/arena" className="rm-action">
             <span className="rm-action-ico">01</span>
             <span className="rm-action-body">
               <span className="rm-action-title">Watch Raja vs Nero</span>

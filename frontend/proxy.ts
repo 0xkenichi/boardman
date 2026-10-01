@@ -115,6 +115,10 @@ export function proxy(req: NextRequest) {
     if (path === '/agentic/docs.html' || path === '/agentic/docs') {
       return redirectTo(req, '/builders')
     }
+    // The static chess arena is retired — the React book table is the only one
+    if (path === '/agentic/arena.html' || path === '/agentic/arena') {
+      return redirectTo(req, '/arena')
+    }
     return securityHeaders(NextResponse.next(), { agentic: true })
   }
 

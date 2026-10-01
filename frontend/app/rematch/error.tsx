@@ -2,6 +2,7 @@
 
 /**
  * Catches client render failures on /rematch/* so users never see a blank crash.
+ * Rendered on the book paper.
  */
 export default function RematchError({
   error,
@@ -14,31 +15,31 @@ export default function RematchError({
     <div
       style={{
         minHeight: '100vh',
-        background: '#050508',
-        color: '#fff',
+        background: '#f2eee2',
+        color: '#201f1a',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: '1.5rem',
-        fontFamily: 'system-ui, sans-serif',
+        fontFamily: "'Space Mono', ui-monospace, Menlo, monospace",
       }}
     >
       <div style={{ maxWidth: 420, textAlign: 'center' }}>
-        <h1 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>
+        <h1 style={{ fontSize: '1.25rem', marginBottom: '0.5rem', textTransform: 'uppercase' }}>
           Something went wrong
         </h1>
-        <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
-          Boardman hit a client error. Wallet-extension noise in the console is usually
-          safe to ignore — this box is for real app crashes.
+        <p style={{ color: '#57534a', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
+          The book hit a snag. Wallet-extension noise in the console is usually safe to
+          ignore — this page is for real crashes.
         </p>
         <button
           type="button"
           onClick={() => reset()}
           style={{
-            background: '#059669',
-            color: '#fff',
+            background: '#256b48',
+            color: '#f2eee2',
             border: 'none',
-            borderRadius: 12,
+            borderRadius: 2,
             padding: '0.75rem 1.25rem',
             fontWeight: 700,
             cursor: 'pointer',
@@ -51,16 +52,16 @@ export default function RematchError({
           href="/"
           style={{
             display: 'inline-block',
-            background: '#111827',
-            color: '#e5e7eb',
-            borderRadius: 12,
+            background: 'transparent',
+            color: '#201f1a',
+            borderRadius: 2,
             padding: '0.75rem 1.25rem',
             fontWeight: 600,
             textDecoration: 'none',
-            border: '1px solid #1f2937',
+            border: '1px solid rgba(32, 31, 26, 0.4)',
           }}
         >
-          Back to Boardman
+          Back to the book
         </a>
         {process.env.NODE_ENV !== 'production' && error?.message ? (
           <pre
@@ -68,7 +69,7 @@ export default function RematchError({
               marginTop: '1.25rem',
               textAlign: 'left',
               fontSize: 11,
-              color: '#f87171',
+              color: '#b04a32',
               whiteSpace: 'pre-wrap',
             }}
           >

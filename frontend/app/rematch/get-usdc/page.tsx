@@ -119,7 +119,7 @@ export default function GetUsdcPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center text-sm" style={{ background: '#101110', color: '#7a756a' }}>
+        <div className="min-h-screen flex items-center justify-center text-sm" style={{ background: '#f2eee2', color: '#8a8478' }}>
           Loading…
         </div>
       }

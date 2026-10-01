@@ -8,262 +8,150 @@ import { telegramBotUrl } from '@/lib/telegramBot'
 
 const BOT = telegramBotUrl()
 
+type NavLinkDef = {
+  href: string
+  label: string
+  match: (p: string) => boolean
+  /** drawerOnly links live in the mobile drawer, not the desktop bar */
+  drawerOnly?: boolean
+}
+
 const LINKS: NavLinkDef[] = [
-  { href: '/', label: 'Home', match: (p: string) => p === '/' || p === '/rematch' || p === '/rematch/' },
-  { href: '/how-it-works', label: 'How it works', match: (p: string) => p.startsWith('/how-it-works') },
-  { href: '/games', label: 'Games', match: (p: string) => p.startsWith('/games') || p.startsWith('/football') },
+  {
+    href: '/',
+    label: 'Home',
+    match: (p: string) => p === '/' || p === '/rematch' || p === '/rematch/',
+  },
+  {
+    href: '/how-it-works',
+    label: 'How it works',
+    match: (p: string) =>
+      p.startsWith('/how-it-works') || p.startsWith('/app/how-to-play'),
+  },
+  {
+    href: '/games',
+    label: 'Games',
+    match: (p: string) => p.startsWith('/games') || p.startsWith('/football'),
+  },
   {
     href: '/arena',
     label: 'Arena',
     match: (p: string) => p.startsWith('/arena') || p.includes('/agentic/arena'),
   },
-  { href: '/questions', label: 'Questions', match: (p: string) => p.startsWith('/questions') },
+  {
+    href: '/questions',
+    label: 'Questions',
+    match: (p: string) => p.startsWith('/questions'),
+  },
   {
     href: '/builders',
     label: 'Builders',
     match: (p: string) => p.startsWith('/builders') || p.includes('/agentic/docs'),
   },
-  { href: '/app', label: 'Play', match: (p: string) => p === '/app' || p.startsWith('/app/') },
+  // Counter pages: one tap away in the drawer and the chips
+  {
+    href: '/app',
+    label: 'Play',
+    match: (p: string) => p === '/app' || p.startsWith('/app/'),
+    drawerOnly: true,
+  },
   {
     href: '/leaderboard',
-    label: 'Board',
+    label: 'The board',
     match: (p: string) => p === '/leaderboard' || p.startsWith('/leaderboard'),
+    drawerOnly: true,
   },
   {
     href: '/get-usdc',
     label: 'Fund',
     match: (p: string) => p === '/get-usdc' || p.startsWith('/get-usdc'),
-  },  { href: '/app/how-to-play', label: 'How to play', match: (p: string) => p === '/app/how-to-play' || p.startsWith('/app/how-to-play') },
+    drawerOnly: true,
+  },
+  {
+    href: '/about',
+    label: 'About',
+    match: (p: string) => p.startsWith('/about'),
+    drawerOnly: true,
+  },
+  {
+    href: '/contact',
+    label: 'Contact',
+    match: (p: string) => p.startsWith('/contact'),
+    drawerOnly: true,
+  },
 ]
 
-type NavLinkDef = {
-  href: string
-  label: string
-  match: (p: string) => boolean
-  external?: boolean
-}
-
-function NavLink({
-  href,
-  label,
-  active,
-  external,
-}: {
-  href: string
-  label: string
-  active: boolean
-  external?: boolean
-}) {
-  const style: React.CSSProperties = {
-    borderRadius: '0.55rem',
-    padding: '0.4rem 0.65rem',
-    fontSize: '0.75rem',
-    fontWeight: 700,
-    textDecoration: 'none',
-    color: active ? '#34d399' : '#9ca3af',
-    background: active ? 'rgba(16,185,129,0.12)' : 'transparent',
-    whiteSpace: 'nowrap',
-  }
-  if (external) {
-    return (
-      <a href={href} style={style}>
-        {label}
-      </a>
-    )
-  }
-  return (
-    <Link href={href} style={style}>
-      {label}
-    </Link>
-  )
-}
-
+/**
+ * The top bar of the book: paper background, mono links, inked chips.
+ * Styles live in app/rematch/rematch.css under .bm-topbar so the bar is
+ * themed everywhere it renders, independent of BookShell.
+ */
 export function RematchNav() {
   const path = usePathname() || ''
   const [open, setOpen] = useState(false)
 
   return (
-    <header
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 200,
-        borderBottom: '1px solid rgba(255,255,255,0.07)',
-        background: 'rgba(6,9,7,0.92)',
-        backdropFilter: 'blur(18px)',
-        WebkitBackdropFilter: 'blur(18px)',
-        boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
-      }}
-    >
-      <div
-        className="rm-nav-bar rm-nav-bar--site"
-        style={{
-          margin: '0 auto',
-          padding: '0.65rem 1rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '0.75rem',
-          maxWidth: 1100,
-        }}
-      >
-        <Link
-          href="/"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.45rem',
-            fontWeight: 900,
-            letterSpacing: '-0.03em',
-            fontSize: '1.05rem',
-            textDecoration: 'none',
-            color: '#fff',
-            whiteSpace: 'nowrap',
-          }}
-        >
+    <header className="bm-topbar">
+      <div className="bm-topbar-in rm-nav-bar--site">
+        <Link href="/" className="bm-logo">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/boardman-logo.jpg"
-            alt=""
-            width={28}
-            height={28}
-            style={{ borderRadius: 8, objectFit: 'cover' }}
-          />
-          <span>
-            <span style={{ color: '#34d399' }}>Board</span>
-            <span>man</span>
-          </span>
+          <img src="/boardman-logo.jpg" alt="" width={26} height={26} />
+          <span className="bm-logo-word">Boardman</span>
+          <span className="bm-logo-mark">— the book</span>
         </Link>
 
         {/* Desktop nav — hidden on mobile */}
-        <nav
-          aria-label="Boardman"
-          className="rm-desktop-nav"
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            gap: '0.2rem',
-            flex: 1,
-            justifyContent: 'center',
-            minWidth: 0,
-          }}
-        >
-          {LINKS.map((l) => (
-            <NavLink
-              key={l.href}
-              href={l.href}
-              label={l.label}
-              active={l.match(path)}
-              external={'external' in l && l.external}
-            />
+        <nav aria-label="Boardman" className="bm-toplinks rm-desktop-nav">
+          {LINKS.filter((l) => !l.drawerOnly).map((l) => (
+            <Link key={l.href} href={l.href} className={l.match(path) ? 'on' : ''}>
+              {l.label}
+            </Link>
           ))}
         </nav>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
-          <a
-            href={BOT}
-            target="_blank"
-            rel="noreferrer"
-            className="rm-nav-bot"
-            style={{
-              borderRadius: 999,
-              background: '#10b981',
-              color: '#04120c',
-              padding: '0.4rem 0.75rem',
-              fontSize: '0.72rem',
-              fontWeight: 700,
-              textDecoration: 'none',
-            }}
-          >
+        <div className="bm-topchips">
+          <Link href="/app" className="bm-chip bm-chip--ink">
+            Play
+          </Link>
+          <a href={BOT} target="_blank" rel="noreferrer" className="bm-chip">
             Bot
           </a>
           <a
             href="https://playingsidequest.fun"
-            style={{
-              borderRadius: 999,
-              border: '1px solid rgba(255,255,255,0.1)',
-              background: 'rgba(255,255,255,0.03)',
-              color: '#d1d5db',
-              padding: '0.4rem 0.7rem',
-              fontSize: '0.7rem',
-              fontWeight: 700,
-              textDecoration: 'none',
-              whiteSpace: 'nowrap',
-            }}
+            target="_blank"
+            rel="noreferrer"
+            className="bm-chip bm-chip--dim"
           >
             sideQuest
           </a>
-          {/* Mobile hamburger */}
+          {/* Mobile hamburger — shown under 760px via .rm-nav-hamburger rules */}
           <button
             type="button"
             aria-label="Toggle menu"
             onClick={() => setOpen((v) => !v)}
-            className="rm-nav-hamburger"
-            style={{
-              display: 'none',
-              background: 'none',
-              border: 'none',
-              padding: '0.4rem',
-              cursor: 'pointer',
-              color: '#d1d5db',
-              fontSize: '1.3rem',
-              lineHeight: 1,
-              minWidth: 44,
-              minHeight: 44,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
+            className="bm-burger rm-nav-hamburger"
           >
             {open ? '✕' : '☰'}
           </button>
         </div>
       </div>
 
-      {/* Mobile dropdown nav */}
+      {/* Mobile drawer */}
       {open ? (
-        <nav
-          aria-label="Boardman mobile"
-          className="rm-mobile-nav"
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.15rem',
-            padding: '0.5rem 1rem 0.75rem',
-            borderTop: '1px solid rgba(255,255,255,0.06)',
-            background: 'rgba(7,8,12,0.98)',
-          }}
-        >
-          {LINKS.map((l) => {
-            const active = l.match(path)
-            const linkStyle: React.CSSProperties = {
-              display: 'flex',
-              padding: '0.65rem 0.75rem',
-              borderRadius: '0.6rem',
-              fontSize: '0.9rem',
-              fontWeight: 600,
-              color: active ? '#34d399' : '#d1d5db',
-              background: active ? 'rgba(16,185,129,0.12)' : 'transparent',
-              textDecoration: 'none',
-              minHeight: 44,
-              alignItems: 'center',
-            }
-            const isExternal = 'external' in l && l.external
-            if (isExternal) {
-              return (
-                <a key={l.href} href={l.href} style={linkStyle}>
-                  {l.label}
-                </a>
-              )
-            }
-            return (
-              <Link key={l.href} href={l.href} onClick={() => setOpen(false)} style={linkStyle}>
-                {l.label}
-              </Link>
-            )
-          })}
+        <nav aria-label="Boardman mobile" className="bm-topdrawer rm-mobile-nav">
+          {LINKS.map((l) => (
+            <Link
+              key={l.href}
+              href={l.href}
+              onClick={() => setOpen(false)}
+              className={l.match(path) ? 'on' : ''}
+            >
+              {l.label}
+            </Link>
+          ))}
+          <a href={BOT} target="_blank" rel="noreferrer" onClick={() => setOpen(false)}>
+            Telegram bot ↗
+          </a>
         </nav>
       ) : null}
     </header>

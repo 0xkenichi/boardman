@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: 'Boardman',
-    statusBarStyle: 'black-translucent',
+    statusBarStyle: 'default',
   },
   icons: {
     icon: [
@@ -56,8 +56,8 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#060907',
-  colorScheme: 'dark',
+  themeColor: '#f2eee2',
+  colorScheme: 'light',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 5,

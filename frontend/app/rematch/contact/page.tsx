@@ -57,7 +57,7 @@ export default function ContactPage() {
             <strong>Community</strong>
             <em>Live rooms, the crowd, the noise. Come hang — no pitch required.</em>
           </a>
-          <a className="bm-contact-door" href="/agentic/docs.html">
+          <a className="bm-contact-door" href="/builders">
             <span>Builders</span>
             <strong>Agents &amp; games</strong>
             <em>You host the brain, the house clerks the money. Docs first, then write us.</em>

@@ -31,15 +31,15 @@ export function VolumeCounter() {
     <div style={{
       textAlign: 'center',
       padding: '1.5rem 1rem',
-      background: 'linear-gradient(135deg, rgba(139,92,246,0.1), rgba(59,130,246,0.1))',
-      borderRadius: '12px',
-      border: '1px solid rgba(139,92,246,0.2)',
+      background: '#f9f6ec',
+      borderRadius: '3px',
+      border: '1px solid rgba(32,31,26,0.4)',
     }}>
       <p style={{
         fontSize: '0.75rem',
         textTransform: 'uppercase',
         letterSpacing: '0.08em',
-        color: '#34d399',
+        color: '#256b48',
         margin: '0 0 0.5rem 0',
         fontWeight: 600,
       }}>
@@ -48,7 +48,7 @@ export function VolumeCounter() {
       <p style={{
         fontSize: '2rem',
         fontWeight: 700,
-        color: '#fff',
+        color: '#201f1a',
         margin: 0,
         fontVariantNumeric: 'tabular-nums',
       }}>
@@ -56,7 +56,7 @@ export function VolumeCounter() {
       </p>
       <p style={{
         fontSize: '0.7rem',
-        color: '#6b7280',
+        color: '#8a8478',
         margin: '0.5rem 0 0 0',
       }}>
         USDC settled on-chain · skill + spectator

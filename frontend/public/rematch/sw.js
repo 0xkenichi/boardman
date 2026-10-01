@@ -1,5 +1,5 @@
 /* Boardman service worker — scope / */
-const CACHE = 'boardman-v3-purge'
+const CACHE = 'boardman-v4-book'
 const PRECACHE = [
   '/manifest.webmanifest',
   '/rematch/manifest.webmanifest',

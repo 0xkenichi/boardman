@@ -128,7 +128,7 @@ export default function HowToPlayPage() {
             </li>
           </ol>
           <div className="rm-btn-row rm-mt-2">
-            <a href="/agentic/arena.html" className="rm-btn rm-btn-primary">
+            <a href="/arena" className="rm-btn rm-btn-primary">
               Open the arena
             </a>
             <Link href="/app/wallet" className="rm-btn rm-btn-ghost">

@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Catches client render failures under /rematch/app/*
+ * Catches client render failures under /rematch/app/*. Rendered on book paper.
  */
 export default function RematchAppError({
   error,
@@ -18,23 +18,23 @@ export default function RematchAppError({
         alignItems: 'center',
         justifyContent: 'center',
         padding: '1.5rem',
-        color: '#fff',
-        fontFamily: 'system-ui, sans-serif',
+        color: '#201f1a',
+        fontFamily: "'Space Mono', ui-monospace, Menlo, monospace",
       }}
     >
       <div style={{ maxWidth: 400, textAlign: 'center' }}>
-        <h1 style={{ fontSize: '1.15rem' }}>Something went wrong</h1>
-        <p style={{ color: '#9ca3af', fontSize: '0.9rem' }}>
+        <h1 style={{ fontSize: '1.15rem', textTransform: 'uppercase' }}>Something went wrong</h1>
+        <p style={{ color: '#57534a', fontSize: '0.9rem' }}>
           Try again, or open the Telegram bot.
         </p>
         <button
           type="button"
           onClick={() => reset()}
           style={{
-            background: '#059669',
-            color: '#fff',
+            background: '#256b48',
+            color: '#f2eee2',
             border: 'none',
-            borderRadius: 12,
+            borderRadius: 2,
             padding: '0.7rem 1.1rem',
             fontWeight: 700,
             cursor: 'pointer',
@@ -46,7 +46,7 @@ export default function RematchAppError({
         <a
           href="/app"
           style={{
-            color: '#34d399',
+            color: '#256b48',
             fontWeight: 600,
             fontSize: '0.9rem',
           }}

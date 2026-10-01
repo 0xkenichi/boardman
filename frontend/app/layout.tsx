@@ -42,8 +42,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body
-        className="min-h-screen bg-[#050508] text-white antialiased"
+        className="min-h-screen antialiased"
         style={{
+          background: '#f2eee2',
+          color: '#201f1a',
           fontFamily:
             "'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
         }}

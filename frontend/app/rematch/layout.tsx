@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from 'next'
 import { RematchNav } from '@/components/rematch/RematchNav'
 import { RematchFooter } from '@/components/rematch/RematchFooter'
 import { RematchPwa } from '@/components/rematch/RematchPwa'
-import { CinematicAtmosphere } from '@/components/rematch/CinematicAtmosphere'
 import { BoardmanJsonLd } from '@/components/rematch/BoardmanJsonLd'
 import './rematch.css'
 
@@ -44,8 +43,8 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#07080c',
-  colorScheme: 'dark',
+  themeColor: '#f2eee2',
+  colorScheme: 'light',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 5,
@@ -54,13 +53,14 @@ export const viewport: Viewport = {
 
 /**
  * Boardman product shell — no sideQuest global navbar/footer.
+ * Every page under here wears the bookmaker's day-book (BookShell);
+ * the old cinematic marketing backdrop is retired.
  * PWA: Boardman manifest + SW scoped to /rematch/ (stable path).
  */
 export default function RematchLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="rm-shell flex min-h-screen flex-col" style={{ paddingTop: '3.5rem' }}>
       <BoardmanJsonLd />
-      <CinematicAtmosphere />
       <RematchNav />
       <div className="relative z-10 flex-1 rm-main-column">{children}</div>
       <RematchFooter />

@@ -2,7 +2,7 @@
 
 /**
  * /arena — the live robot chess table, rebuilt as a React page in the book.
- * Replaces public/agentic/arena.html. Polls /api/agentic/house-play (which
+ * Replaced the retired public/agentic/arena.html. Polls /api/agentic/house-play (which
  * proxies the Stack house floor), renders moves via chess.js, and posts
  * spectator bets to /api/agentic/spectator-bet.
  */
