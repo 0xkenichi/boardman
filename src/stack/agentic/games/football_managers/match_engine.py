@@ -1138,17 +1138,20 @@ def simulate_match(
             holder = "away" if rng.random() < (1.0 - p) + 0.16 else "home"
 
     def attack_likely() -> float:
+        # v1.5 scoring tune: livelier tables. The old base (0.34) starved the
+        # game of chances — a third of matches ended 0-0. Watchability target:
+        # ~2.5 goals/game, 0-0 under 10%.
         atk = holder_side()
         dfn = other_of(atk)
-        q = 0.34 + (atk.att - dfn.dfn) / 900.0 + atk.stance["agg"] * 0.06 - dfn.stance["press"] * 0.05
+        q = 0.348 + (atk.att - dfn.dfn) / 900.0 + atk.stance["agg"] * 0.06 - dfn.stance["press"] * 0.05
         q += (atk.stance["tempo"] - 0.5) * 0.16
-        return _clamp(q, 0.15, 0.6)
+        return _clamp(q, 0.15, 0.68)
 
     def goal_odds(atk: _SideState, dfn: _SideState) -> float:
         a = atk.shooting * atk.mean_effective()
         d = dfn.gk * dfn.mean_effective()
-        p = 0.078 + (a - d) / 900.0 + (atk.att - dfn.dfn) / 2000.0
-        return _clamp(p, 0.04, 0.30)
+        p = 0.084 + (a - d) / 900.0 + (atk.att - dfn.dfn) / 2000.0
+        return _clamp(p, 0.05, 0.32)
 
     def stoppage_time(half_events: list[dict[str, Any]]) -> int:
         subs = sum(1 for e in half_events if e["type"] == "substitution")
@@ -1442,7 +1445,7 @@ def simulate_match(
                 if s.subs_used < s.max_subs and rng.random() < p_sub:
                     attempt_sub(s, minute)
 
-        if rng.random() >= min(0.68, attack_likely() + shift):
+        if rng.random() >= min(0.75, attack_likely() + shift):
             # quiet minute — occasionally a midfielder keeps it ticking
             if rng.random() < 0.18:
                 pid = best_attacker(holder_side()) or (holder_side().on_pitch[0] if holder_side().on_pitch else None)

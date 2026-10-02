@@ -6,6 +6,7 @@ import '@fontsource/space-mono'
 
 const LINKS = [
   { href: '/football', label: 'Front door' },
+  { href: '/football/manage', label: 'Manager mode' },
   { href: '/football/watch', label: 'Watch' },
   { href: '/football/owner', label: 'Own a club' },
   { href: '/football/agent', label: 'The agents' },
