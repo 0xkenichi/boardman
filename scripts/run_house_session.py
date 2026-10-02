@@ -35,6 +35,13 @@ def _bootstrap() -> None:
             if not s or s.startswith("#") or "=" not in s:
                 continue
             k, v = s.split("=", 1)
+            v = v.strip()
+            # Strip unquoted inline comments ("…  # note") the way
+            # python-dotenv does, so `X=0xabc  # note` parses as 0xabc.
+            if not v.startswith(("'", '"')):
+                c = v.find(" #")
+                if c != -1:
+                    v = v[:c]
             os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
     gaming = root / "gaming"
     gaming.mkdir(exist_ok=True)
@@ -56,10 +63,25 @@ def _ensure_builder_webhooks() -> None:
     import time
 
     specs = [
-        ("Raja", 18761, "gaming.src.stack.agentic.agents.raja.serve"),
-        ("Nero", 18762, "gaming.src.stack.agentic.agents.nero.serve"),
+        ("Raja", 18761, "gaming.src.stack.agentic.agents.raja.serve", {}),
+        ("Nero", 18762, "gaming.src.stack.agentic.agents.nero.serve", {}),
+        # Sheila's builder runs Ethereal — a different open engine
+        (
+            "Sheila",
+            18764,
+            "gaming.src.stack.agentic.agents.sheila.serve",
+            {
+                "BOARDMAN_UCI_ENGINE": str(
+                    Path(__file__).resolve().parents[1]
+                    / "engines"
+                    / "Ethereal"
+                    / "src"
+                    / "ethereal"
+                )
+            },
+        ),
     ]
-    for name, port, mod in specs:
+    for name, port, mod, extra in specs:
         s = socket.socket()
         try:
             s.settimeout(0.3)
@@ -69,11 +91,19 @@ def _ensure_builder_webhooks() -> None:
             continue
         except OSError:
             pass
+        import os as _os
+
+        child_env = {
+            **_os.environ,
+            **{k: v for k, v in extra.items() if _os.path.exists(v)},
+            "PYTHONPATH": _os.environ.get("PYTHONPATH")
+            or str(Path(__file__).resolve().parents[1]),
+        }
         print(f"  starting {name} builder webhook :{port}")
         subprocess.Popen(
             [sys.executable, "-m", mod],
             cwd=str(Path(__file__).resolve().parents[1]),
-            env={**os.environ, "PYTHONPATH": os.environ.get("PYTHONPATH") or str(Path(__file__).resolve().parents[1])},
+            env=child_env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -107,7 +137,8 @@ def main() -> int:
     args = ap.parse_args()
 
     os.environ.setdefault("BOARDMAN_USE_STOCKFISH", "1")
-    os.environ.setdefault("BOARDMAN_MAX_PLIES", "80")
+    # No fixed ply cap — the arena randomizes 100–140 per match so games
+    # don't all end at the same adjudication point.
 
     _ensure_builder_webhooks()
 
@@ -119,7 +150,14 @@ def main() -> int:
     agents = {a["name"].lower(): a for a in reg.ensure_demo_agents()}
     raja = agents["raja"]
     nero = agents["nero"]
+    sheila = agents.get("sheila")
     house = get_house()
+
+    # Round-robin tables: Raja–Nero, Raja–Sheila, Nero–Sheila. Three distinct
+    # personalities and two engines — no two tables look alike.
+    pairs: list[tuple[dict, dict]] = [(raja, nero)]
+    if sheila:
+        pairs = [(raja, nero), (raja, sheila), (nero, sheila)]
 
     def play_balance(agent: dict) -> Decimal:
         """Real Arc USDC when on-chain mode is on, else the demo ledger."""
@@ -141,8 +179,14 @@ def main() -> int:
         f"  stake   = {args.stake if args.stake is not None else 'negotiate from agent policy'}  "
         f"game={args.game_id}"
     )
-    print(f"  raja    = {raja['wallet_address']}  {usdc_balance(raja['wallet_address'])} USDC")
-    print(f"  nero    = {nero['wallet_address']}  {usdc_balance(nero['wallet_address'])} USDC")
+    def _bal(addr: str) -> str:
+        try:
+            return f"{usdc_balance(addr)} USDC"
+        except Exception as exc:  # an RPC hiccup must not kill the session
+            return f"n/a ({exc.__class__.__name__}: {exc})"
+
+    print(f"  raja    = {raja['wallet_address']}  {_bal(raja['wallet_address'])}")
+    print(f"  nero    = {nero['wallet_address']}  {_bal(nero['wallet_address'])}")
 
     n = 0
     try:
@@ -152,23 +196,35 @@ def main() -> int:
             min_stake = Decimal(
                 str(float(os.environ.get("BOARDMAN_HOUSE_MIN_STAKE", "1")))
             )
-            bal_a = play_balance(raja)
-            bal_b = play_balance(nero)
-            if bal_a < min_stake or bal_b < min_stake:
+            # First funded pair wins the table — a dry Sheila must not stall
+            # Raja vs Nero.
+            a = b = None
+            for off in range(len(pairs)):
+                pa, pb = pairs[(n + off) % len(pairs)]
+                if play_balance(pa) >= min_stake and play_balance(pb) >= min_stake:
+                    a, b = pa, pb
+                    break
                 print(
-                    f"  no fund — raja={bal_a} USDC nero={bal_b} USDC below "
-                    f"{min_stake} USDC floor; waiting for funding…"
+                    f"  skipping {pa['name']} vs {pb['name']} — underfunded for "
+                    f"{min_stake} USDC"
                 )
-                time.sleep(int(os.environ.get("BOARDMAN_HOUSE_POLL_NO_FUNDS_SEC", "60")))
+            if a is None:
+                print(
+                    f"  no fund — every pair below {min_stake} USDC floor; "
+                    "waiting for funding…"
+                )
+                time.sleep(
+                    int(os.environ.get("BOARDMAN_HOUSE_POLL_NO_FUNDS_SEC", "60"))
+                )
                 continue
             n += 1
-            white = raja if n % 2 else nero
-            print(f"\n── game {n}  white={white['name']} ──")
+            white = a if n % 2 else b
+            print(f"\n── game {n}  {a['name']} vs {b['name']}  white={white['name']} ──")
             t0 = time.time()
             try:
                 out = house.rematch(
-                    agent_a_id=raja["agent_id"],
-                    agent_b_id=nero["agent_id"],
+                    agent_a_id=a["agent_id"],
+                    agent_b_id=b["agent_id"],
                     stake_usdc=args.stake,
                     game_id=args.game_id,
                     white_agent_id=white["agent_id"],
@@ -192,7 +248,7 @@ def main() -> int:
                 print(f"  rematch failed: {exc}")
                 try:
                     released = house.release_stale_pair(
-                        raja["agent_id"], nero["agent_id"]
+                        a["agent_id"], b["agent_id"]
                     )
                     print(f"  cleared {len(released)} stale locks for the pair")
                 except Exception as exc2:

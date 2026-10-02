@@ -9,7 +9,8 @@ from typing import Any, Optional
 import chess
 
 from gaming.src.stack.agentic.agents.raja.mind import MIND, OPENINGS_BLACK, OPENINGS_WHITE
-from gaming.src.stack.agentic.chess.hybrid_engine import HybridEngine, Mind
+from gaming.src.stack.agentic.chess.agent_brain import pick_with_brain
+from gaming.src.stack.agentic.chess.hybrid_engine import Mind
 from gaming.src.stack.agentic.chess import lichess_uci
 from gaming.src.stack.agentic.chess.openings import register_book
 
@@ -55,30 +56,20 @@ def pick_move(
     if not fen:
         raise ValueError("missing fen")
     LAST_SOURCE = "thinking"  # reset per request — only report what THIS move used
-    uci = lichess_uci.best_move(
-        fen,
+    _ensure_books()
+    out, source = pick_with_brain(
+        mind=_mind(),
+        agent_id="agent_raja_kia_alekhine",
+        agent_name="Raja",
+        fen=fen,
         legal_moves=legal_moves,
-        movetime_ms=movetime_ms,
         wtime_ms=wtime_ms,
         btime_ms=btime_ms,
         winc_ms=winc_ms,
         binc_ms=binc_ms,
+        movetime_ms=movetime_ms,
     )
-    if uci:
-        LAST_SOURCE = "lichess_uci"
-        return uci
-    _ensure_books()
-    board = chess.Board(fen)
-    engine = HybridEngine(_mind(), agent_id="agent_raja_kia_alekhine", agent_name="Raja")
-    mv = engine.choose_move(board)
-    LAST_SOURCE = getattr(engine, "last_source", None) or "hybrid"
-    out = mv.uci()
-    legal = list(legal_moves or [])
-    if legal and out not in legal:
-        san = board.san(mv)
-        if san in legal:
-            return san
-        raise ValueError(f"Raja move {out} not in legal_moves")
+    LAST_SOURCE = source
     return out
 
 

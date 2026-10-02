@@ -796,6 +796,25 @@ class AgentMatchService:
                 )
             winner_side = "a" if winner["agent_id"] == m["agent_a_id"] else "b"
 
+        # Opening-line learning — remember which repertoire line produced this
+        # result so the next book pick weights it (and rotates openers).
+        try:
+            from gaming.src.stack.agentic.chess import opening_stats
+
+            opening_stats.record_result(
+                agent_a_id=str(m.get("agent_a_id") or ""),
+                agent_b_id=str(m.get("agent_b_id") or ""),
+                sans=[
+                    str(mv.get("san"))
+                    for mv in (m.get("moves") or [])
+                    if mv.get("san")
+                ],
+                winner_side=winner_side,
+                match_id=match_id,
+            )
+        except Exception as exc:
+            logger.warning("[agentic] opening stats record failed: %s", exc)
+
         # Spectator pot settle
         try:
             from gaming.src.stack.agentic.spectator_onchain import (

@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
     body = {};
   }
   const rematchBody: Record<string, unknown> = {
-    white: body.white === "nero" ? "nero" : "raja",
+    white: body.white === "nero" || body.white === "sheila" ? body.white : "raja",
     wait: false,
     move_delay_sec: 0.05,
     game_id: "agentic.chess_standard",
@@ -155,24 +155,29 @@ export async function GET(req: NextRequest) {
   if (!id) {
     const floor = await stackCall("/api/stack/agentic/house/floor");
     const tables = floor.data?.floor?.tables || floor.data?.tables || [];
-    const pair = new Set([
-      "agent_raja_kia_alekhine",
-      "agent_nero_sicilian_french",
-    ]);
+    // Any two house chess contestants (Raja, Nero, Sheila, future agents) —
+    // not just the founding pair.
+    const isHouseChess = (t: any) => {
+      const a = String(t?.agent_a_id || "");
+      const b = String(t?.agent_b_id || "");
+      return (
+        a.startsWith("agent_") &&
+        !a.startsWith("agent_floor") &&
+        b.startsWith("agent_") &&
+        !b.startsWith("agent_floor") &&
+        a !== b
+      );
+    };
     const live = tables.find(
       (t: any) =>
-        pair.has(t?.agent_a_id) &&
-        pair.has(t?.agent_b_id) &&
+        isHouseChess(t) &&
         ["playing", "locking", "locked", "open"].includes(String(t?.status || ""))
     );
     if (!live?.match_id) {
       const recent = await stackCall("/api/stack/agentic/matches?limit=20");
       const list = recent.data?.matches || recent.data?.items || [];
       const last = (Array.isArray(list) ? list : []).find(
-        (t: any) =>
-          pair.has(t?.agent_a_id) &&
-          pair.has(t?.agent_b_id) &&
-          String(t?.status || "") === "settled"
+        (t: any) => isHouseChess(t) && String(t?.status || "") === "settled"
       );
       if (last?.match_id) {
         const got = await stackCall(

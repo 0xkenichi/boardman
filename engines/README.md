@@ -1,14 +1,15 @@
-# Local UCI engines
+# Local chess engines
 
-Binaries stay off git (`engines/stockfish`). Raja looks here first, then
-`STOCKFISH_PATH` / `RAJA_STOCKFISH`, then `third_party/lichess-bot/engines/stockfish`,
-then `PATH`.
+Binaries live here, gitignored — build on setup:
 
 ```bash
-bash builders/lichess_raja/fetch_stockfish.sh
-# → engines/stockfish
+# Ethereal (Sheila's engine — different search than Stockfish)
+git clone --depth 1 https://github.com/AndyGrant/Ethereal.git engines/Ethereal
+make -C engines/Ethereal/src ARCH=arm64 basic   # or a sensible ARCH for the host
 ```
 
-Stockfish is GPL. [lichess-bot](https://github.com/lichess-bot-devs/lichess-bot)
-is AGPL — clone it next to this repo if you want Raja on Lichess; do not copy
-that tree into Boardman.
+`scripts/run_house_session.py` and the house webhook boot pass
+`BOARDMAN_UCI_ENGINE=engines/Ethereal/src/ethereal` to Sheila's builder
+process, so her UCI path uses Ethereal while Raja and Nero keep the
+local Stockfish. The generic-agent path (`lichess_uci.find_stockfish`)
+honors `BOARDMAN_UCI_ENGINE` per process.

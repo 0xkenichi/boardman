@@ -86,10 +86,11 @@ class HybridEngine:
             self.last_eval = 90.0 if board.turn == chess.WHITE else -90.0
             return m2
 
-        # 1) Opening book — short identity only; engine plays the real game
+        # 1) Opening book — authored repertoire above the engine, chosen with
+        #    learned line weights so openers rotate instead of repeating.
         books = self._books_for(board)
-        book_plies = int(os.getenv("BOARDMAN_BOOK_PLIES", "6"))
-        bm = book_move(board, books, ply_limit=book_plies)
+        book_plies = int(os.getenv("BOARDMAN_BOOK_PLIES", "10"))
+        bm = book_move(board, books, ply_limit=book_plies, rng=self.rng, agent_id=self.agent_id)
         if bm is not None:
             self.last_source = "opening_book"
             self.last_eval = None
@@ -215,6 +216,90 @@ class HybridEngine:
         self.last_eval = None
         return self.local.choose_move(board)
 
+    def _persona_blend(
+        self,
+        board: chess.Board,
+        fen: str,
+        best_mv: chess.Move,
+        best_ev: Optional[float],
+        depth: int,
+        think: int,
+        pre: Optional[list[dict[str, Any]]] = None,
+    ) -> Optional[chess.Move]:
+        """Persona-weighted pick among near-best engine moves (GM window).
+
+        Candidates within BOARDMAN_STYLE_WINDOW (default 0.30) pawns of the
+        best eval are scored by the mind's theme profile and chosen with a
+        weighted roll — variety on equal moves, engine best when it clearly
+        matters. Repetition-heavy candidates are dropped when clearly better.
+        """
+        window = float(os.getenv("BOARDMAN_STYLE_WINDOW", "0.30") or 0.30)
+        if best_ev is None or window <= 0:
+            return None
+        my_edge = best_ev if board.turn == chess.WHITE else -best_ev
+
+        candidates = list(pre or [])
+        if not candidates:
+            return None
+
+        best_score = None
+        for c in candidates:
+            if c.get("mate") is not None:
+                # engine mate line — always play it, no style
+                mv = self._parse_legal(board, str(c["uci"]))
+                if mv is not None:
+                    self.last_source = f"blend+mate"
+                    self.last_eval = 50.0 if (c["mate"] or 0) > 0 else -50.0
+                    return mv
+            ev = c.get("eval_pawns")
+            if ev is None:
+                continue
+            if best_score is None or ev > best_score:
+                best_score = ev
+        if best_score is None:
+            return None
+
+        pool: list[tuple[chess.Move, float]] = []
+        for c in candidates:
+            ev = c.get("eval_pawns")
+            if ev is None:
+                continue
+            mv = self._parse_legal(board, str(c["uci"]))
+            if mv is None:
+                continue
+            if best_score - ev > window:
+                continue
+            # anti-repetition: don't shuffle when clearly better
+            try:
+                board.push(mv)
+                rep = board.is_repetition(2) or board.can_claim_threefold_repetition()
+                board.pop()
+            except Exception:
+                rep = False
+            if rep and my_edge >= 0.5 and mv != best_mv:
+                continue
+            theme = max(0.05, self._theme_score(board, mv))
+            gap = best_score - ev
+            # closeness dominates: 0-gap candidate scores 1.0, at-window ≈ 0.35
+            closeness = 1.0 - 0.65 * (gap / window)
+            pool.append((mv, closeness * theme))
+        if not pool:
+            return None
+        if len(pool) == 1:
+            mv = pool[0][0]
+            self.last_source = "blend:single"
+            self.last_eval = best_score
+            return mv if mv == best_mv else mv
+
+        weights = [max(0.01, w) for _, w in pool]
+        try:
+            mv = self.rng.choices([m for m, _ in pool], weights=weights, k=1)[0]
+        except Exception:
+            return None
+        self.last_source = "blend"
+        self.last_eval = best_score
+        return mv
+
     def _books_for(self, board: chess.Board) -> list[str]:
         if board.turn == chess.WHITE:
             return list(self.mind.book_ids_white or [])
@@ -232,58 +317,61 @@ class HybridEngine:
         depth = self.depth
         fen = board.fen()
         think = max(self.think_ms, 100)
+
+        # Local engine first: one multipv analyse yields best move AND the
+        # candidate pool for persona blending (one call, no double-think).
+        local: list[dict[str, Any]] = []
+        try:
+            from gaming.src.stack.agentic.chess import lichess_uci
+
+            local = lichess_uci.best_candidates(
+                fen,
+                multipv=int(os.getenv("BOARDMAN_STYLE_MULTIPIV", "4")),
+                movetime_ms=think,
+            )
+        except Exception as exc:
+            logger.warning("[%s] local candidates failed: %s", self.agent_id, exc)
+        if local:
+            top = local[0]
+            if top.get("mate") is not None:
+                mate_n = int(top["mate"])
+                best_mv = self._parse_legal(board, str(top["uci"]))
+                if best_mv is not None:
+                    self.last_source = f"local_sf+mate_{abs(mate_n)}"
+                    self.last_eval = 50.0 if mate_n > 0 else -50.0
+                    return best_mv
+            best_mv = self._parse_legal(board, str(top["uci"]))
+            if best_mv is None:
+                self.last_source = "local_sf:invalid"
+                return None
+            self.last_eval = top.get("eval_pawns")
+            if self.gm_pure:
+                blended = self._persona_blend(
+                    board, fen, best_mv, top.get("eval_pawns"), depth, think, pre=local
+                )
+                if blended is not None:
+                    return blended
+                self.last_source = "local_sf+gm_d%d" % depth
+                return best_mv
+
+        # Remote API fallback (no local binary / failed)
         result = sf.analyze(fen, depth=depth, think_ms=think, variants=1)
         self.last_eval = result.best.eval_pawns
 
         # API mate score — always play engine mate line
         if result.best.mate is not None:
             mate_n = int(result.best.mate)
-            best_mv = self._parse_legal(board, result.best.uci)
-            if best_mv is not None:
+            mate_mv = self._parse_legal(board, result.best.uci)
+            if mate_mv is not None:
                 self.last_source = f"{result.source}+mate_{mate_n}"
                 self.last_eval = 50.0 if mate_n > 0 else -50.0
-                if board.turn == chess.BLACK:
-                    self.last_eval = -self.last_eval
-                return best_mv
+                return mate_mv
 
-        best_uci = result.best.uci
-        best_mv = self._parse_legal(board, best_uci)
+        best_mv = self._parse_legal(board, result.best.uci)
         if best_mv is None:
             self.last_source = result.source + ":invalid"
             return None
-
         ev = result.best.eval_pawns
-
-        # GM pure: trust Stockfish. No "style" checks that hang pieces for drama.
-        if self.gm_pure:
-            # Only soft anti-repetition when clearly better and engine move repeats
-            if ev is not None:
-                my_edge = ev if board.turn == chess.WHITE else -ev
-                if my_edge >= 0.8:
-                    board.push(best_mv)
-                    rep = board.is_repetition(2) or board.can_claim_threefold_repetition()
-                    board.pop()
-                    if rep:
-                        for mv in board.legal_moves:
-                            if mv == best_mv:
-                                continue
-                            board.push(mv)
-                            bad = board.is_repetition(2)
-                            board.pop()
-                            if not bad:
-                                alt = sf.analyze(
-                                    fen,
-                                    depth=max(12, depth - 2),
-                                    think_ms=think,
-                                    searchmoves=mv.uci(),
-                                )
-                                alt_mv = self._parse_legal(board, alt.best.uci)
-                                if alt_mv is not None:
-                                    self.last_source = f"{result.source}+anti_draw_gm"
-                                    self.last_eval = alt.best.eval_pawns
-                                    return alt_mv
-            self.last_source = f"{result.source}+gm_d{depth}"
-            return best_mv
 
         # Legacy style path (BOARDMAN_GM_PURE=0 only)
         hunger = float(getattr(self.mind, "mate_hunger", 1.0) or 1.0)

@@ -1,7 +1,9 @@
-"""Nero's brain — creator_nero_forge. Chess only. Does not import Raja.
+"""Sheila's brain — creator_sheila_lab. Chess only. Does not import Raja or Nero.
 
-Move order: local UCI Stockfish (lichess-bot stack) → HybridEngine.
-Same brain serves Boardman :18762 and, with a second BOT token, Lichess.
+Move order (shared brain): opening book → mate hunt → LLM (if enabled) →
+local UCI Ethereal multipv persona blend → remote Stockfish APIs → styled
+fallback. Her builder process sets BOARDMAN_UCI_ENGINE to the Ethereal
+binary, so "the engine" for Sheila is Ethereal, not Stockfish.
 """
 from __future__ import annotations
 
@@ -9,7 +11,7 @@ from typing import Any, Optional
 
 import chess
 
-from gaming.src.stack.agentic.agents.nero.mind import MIND, OPENINGS_BLACK, OPENINGS_WHITE
+from gaming.src.stack.agentic.agents.sheila.mind import MIND, OPENINGS_BLACK, OPENINGS_WHITE
 from gaming.src.stack.agentic.chess.agent_brain import pick_with_brain
 from gaming.src.stack.agentic.chess.hybrid_engine import Mind
 from gaming.src.stack.agentic.chess import lichess_uci
@@ -25,17 +27,17 @@ def _ensure_books() -> None:
     global _books_ready
     if _books_ready:
         return
-    register_book("nero_white", OPENINGS_WHITE)
-    register_book("nero_black", OPENINGS_BLACK)
+    register_book("sheila_white", OPENINGS_WHITE)
+    register_book("sheila_black", OPENINGS_BLACK)
     _books_ready = True
 
 
 def _mind() -> Mind:
     raw = dict(MIND)
-    raw.setdefault("name", "Nero")
-    raw.setdefault("strategy_id", "nero_defense_v2")
-    raw["book_ids_white"] = ["nero_white"]
-    raw["book_ids_black"] = ["nero_black"]
+    raw.setdefault("name", "Sheila")
+    raw.setdefault("strategy_id", "sheila_anaconda_v1")
+    raw["book_ids_white"] = ["sheila_white"]
+    raw["book_ids_black"] = ["sheila_black"]
     return Mind.from_dict(raw)
 
 
@@ -53,15 +55,15 @@ def pick_move(
 ) -> str:
     global LAST_SOURCE
     if game_id and game_id not in SHIPPED_GAMES:
-        raise ValueError("Nero is chess-only — creator_nero_forge has not shipped this game")
+        raise ValueError("Sheila is chess-only — creator_sheila_lab has not shipped this game")
     if not fen:
         raise ValueError("missing fen")
     LAST_SOURCE = "thinking"  # reset per request — only report what THIS move used
     _ensure_books()
     out, source = pick_with_brain(
         mind=_mind(),
-        agent_id="agent_nero_sicilian_french",
-        agent_name="Nero",
+        agent_id="agent_sheila_anaconda",
+        agent_name="Sheila",
         fen=fen,
         legal_moves=legal_moves,
         wtime_ms=wtime_ms,

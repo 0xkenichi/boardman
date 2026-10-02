@@ -30,7 +30,18 @@ type Match = {
   fen?: string
   ply?: number
   board?: string[]
+  spectator_book?: {
+    totals?: { a?: string | number; b?: string | number; draw?: string | number }
+    status?: string
+  }
   [k: string]: unknown
+}
+
+type ScheduleInfo = {
+  ok: boolean
+  enabled?: boolean
+  cadence_sec?: number
+  every_minutes?: number
 }
 
 function pieceGlyph(kind: string | undefined, side: string | undefined): string {
@@ -129,20 +140,23 @@ function Board({ grid, flipped }: { grid: (string | null)[] | null; flipped: boo
   return <div className="ar-board">{squares}</div>
 }
 
+function agentName(id: string | undefined, fallback: string): string {
+  const s = String(id || '')
+  if (s.includes('raja')) return 'Raja'
+  if (s.includes('nero')) return 'Nero'
+  if (s.includes('sheila')) return 'Sheila'
+  return fallback
+}
+
 function StatusLine({ match }: { match: Match | null }) {
   if (!match) return <p className="ar-note">The table is quiet. Check back soon — the robots play often.</p>
   const status = String(match.status || '')
   const settled = status === 'settled' || Boolean(match.result)
-  const who =
-    match.winner_agent_id
-      ? match.winner_agent_id.includes('raja')
-        ? 'Raja wins'
-        : match.winner_agent_id.includes('nero')
-          ? 'Nero wins'
-          : `${match.winner_agent_id} wins`
-      : match.result === 'draw'
-        ? 'A draw — draw tickets win, side bets lose'
-        : ''
+  const who = match.winner_agent_id
+    ? `${agentName(match.winner_agent_id, 'The house agent')} wins`
+    : match.result === 'draw'
+      ? 'A draw — draw tickets win, side bets lose'
+      : ''
   return (
     <p className="ar-note">
       {settled ? (
@@ -158,15 +172,41 @@ function StatusLine({ match }: { match: Match | null }) {
   )
 }
 
+/** Tiered platform fee on the spectator pot — mirrors economy/spectator.py. */
+function tieredFee(pot: number): number {
+  if (pot <= 0) return 0
+  if (pot < 10) return Math.min(1, pot / 4)
+  if (pot <= 1000) return pot * 0.07
+  return pot * 0.1
+}
+
+const CREATOR_BPS = 200 // 2% of the pot to both agents' creators
+
+/**
+ * "If you bet now, the pot pays about…" — a $1 ticket's estimated return:
+ * the pot after fees, split across the money already on that side. Mirrors
+ * the settle math in economy/spectator.py. The draw quote leaves out the
+ * house draw seeds, so it errs low — never promises more than it pays.
+ */
+function payoutPerDollar(pot: number, pool: number): number | null {
+  if (pot <= 0 || pool <= 0) return null
+  const distributable = pot - tieredFee(pot) - (pot * CREATOR_BPS) / 10_000
+  if (distributable <= 0) return null
+  const dec = distributable / pool
+  if (dec < 1.01) return null
+  return Math.min(50, dec)
+}
+
 export default function ArenaPage() {
   const [match, setMatch] = useState<Match | null>(null)
   const [loading, setLoading] = useState(true)
   const [notice, setNotice] = useState<string | null>(null)
   const [betAmount, setBetAmount] = useState(1)
-  const [betSide, setBetSide] = useState<'raja' | 'nero' | 'draw'>('raja')
+  const [betSide, setBetSide] = useState<'a' | 'b' | 'draw'>('a')
   const [betBusy, setBetBusy] = useState(false)
   const [me, setMe] = useState<{ tag?: string; balance?: number } | null>(null)
   const [authOpen, setAuthOpen] = useState(false)
+  const [schedule, setSchedule] = useState<ScheduleInfo | null>(null)
   const pollRef = useRef<number | null>(null)
 
   const load = useCallback(async () => {
@@ -207,8 +247,51 @@ export default function ArenaPage() {
     })()
   }, [])
 
+  useEffect(() => {
+    let dead = false
+    fetch('/api/agentic/house-schedule', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((s: ScheduleInfo) => {
+        if (!dead) setSchedule(s)
+      })
+      .catch(() => {})
+    return () => {
+      dead = true
+    }
+  }, [])
+
   const grid = useBoard(match)
   const moves = useMemo(() => (match?.moves || []).map((m) => m?.san).filter(Boolean) as string[], [match])
+
+  const settled = match?.status === 'settled' || Boolean(match?.result)
+  const drawWidth = useMemo(() => {
+    if (!match?.spectator_book?.totals) return null
+    const d = Number(match.spectator_book.totals.draw ?? 0)
+    const a = Number(match.spectator_book.totals.a ?? 0)
+    const b = Number(match.spectator_book.totals.b ?? 0)
+    const total = a + b
+    if (total <= 0) return null
+    return (d / total) * 100
+  }, [match])
+  const odds = useMemo(() => {
+    if (!match || settled) return null
+    const t = match.spectator_book?.totals || {}
+    const a = Number(t.a ?? 0) || 0
+    const b = Number(t.b ?? 0) || 0
+    const d = Number(t.draw ?? 0) || 0
+    const sidePot = a + b
+    return {
+      raja: payoutPerDollar(sidePot, a),
+      nero: payoutPerDollar(sidePot, b),
+      draw: payoutPerDollar(sidePot + d, d),
+    }
+  }, [match, settled])
+
+  // Side A/B names straight off the match record — works for any pair
+  const nameA = agentName(match?.agent_a_id as string | undefined, 'Side A')
+  const nameB = agentName(match?.agent_b_id as string | undefined, 'Side B')
+  const aIsWhite =
+    !match?.white_agent_id || match.white_agent_id === match?.agent_a_id
 
   const pot =
     Number(match?.pot_usdc ?? 0) ||
@@ -232,7 +315,7 @@ export default function ArenaPage() {
       }
       setNotice(
         `You are on ${
-          betSide === 'raja' ? 'Raja' : betSide === 'nero' ? 'Nero' : 'the draw'
+          betSide === 'a' ? nameA : betSide === 'b' ? nameB : 'the draw'
         } for $${betAmount}. Good luck.`
       )
     } catch {
@@ -246,20 +329,29 @@ export default function ArenaPage() {
     <BookShell title="The chess table">
       <div style={{ maxWidth: '46rem', margin: '0 auto', padding: '0 1rem 3.5rem' }}>
         <p className="bk-lede" style={{ margin: '0 0 1.5rem' }}>
-          Raja plays white. Nero plays black. Real clocks, real stake, and the
-          winner gets paid by the box — no person needed.{' '}
+          Two house robots, three minds, two different engines. Real clocks,
+          real stake, and the winner gets paid by the box — no person needed.{' '}
           <em>Leaving this page does not pause the game.</em>
         </p>
+        {schedule?.ok ? (
+          <p className="rm-muted" style={{ fontSize: '0.8rem', margin: '-0.9rem 0 1.5rem' }}>
+            {schedule.enabled
+              ? schedule.cadence_sec
+                ? `The house seats a fresh table about every ${schedule.every_minutes} minutes — roughly ${Math.floor(86400 / (schedule.cadence_sec || 1))} games a day.`
+                : 'Games run back-to-back, around the clock.'
+              : 'The house floor is paused — the next table opens when the desk turns it back on.'}
+          </p>
+        ) : null}
 
         <div className="rm-stack-lg">
           <div className="rm-card rm-card-hero">
             <div className="ar-table-head">
               <span className="ar-player">
-                <strong>RAJA</strong> · white
+                <strong>{nameA.toUpperCase()}</strong> · {aIsWhite ? 'white' : 'black'}
               </span>
               <span className="ar-vs">vs</span>
               <span className="ar-player ar-player-b">
-                <strong>NERO</strong> · black
+                <strong>{nameB.toUpperCase()}</strong> · {aIsWhite ? 'black' : 'white'}
               </span>
             </div>
             <div className="ar-board-wrap">
@@ -293,17 +385,23 @@ export default function ArenaPage() {
                   <div className="ar-bet-sides">
                     <button
                       type="button"
-                      className={`rm-tile ${betSide === 'raja' ? 'rm-tile-active' : ''}`}
-                      onClick={() => setBetSide('raja')}
+                      className={`rm-tile ${betSide === 'a' ? 'rm-tile-active' : ''}`}
+                      onClick={() => setBetSide('a')}
                     >
-                      Raja
+                      {nameA}
+                      {odds?.raja ? (
+                        <span className="ar-tile-odds">pays about ${odds.raja.toFixed(2)} per $1</span>
+                      ) : null}
                     </button>
                     <button
                       type="button"
-                      className={`rm-tile ${betSide === 'nero' ? 'rm-tile-active' : ''}`}
-                      onClick={() => setBetSide('nero')}
+                      className={`rm-tile ${betSide === 'b' ? 'rm-tile-active' : ''}`}
+                      onClick={() => setBetSide('b')}
                     >
-                      Nero
+                      {nameB}
+                      {odds?.nero ? (
+                        <span className="ar-tile-odds">pays about ${odds.nero.toFixed(2)} per $1</span>
+                      ) : null}
                     </button>
                     <button
                       type="button"
@@ -311,6 +409,9 @@ export default function ArenaPage() {
                       onClick={() => setBetSide('draw')}
                     >
                       Draw
+                      {odds?.draw ? (
+                        <span className="ar-tile-odds">pays about ${odds.draw.toFixed(2)} per $1</span>
+                      ) : null}
                     </button>
                   </div>
                   <label className="rm-label" htmlFor="ar-amount">
@@ -337,7 +438,7 @@ export default function ArenaPage() {
                 </div>
                 <p className="rm-muted" style={{ fontSize: '0.75rem', margin: '0.75rem 0 0' }}>
                   Bets close while the game is young. If it ends in a draw,
-                  draw tickets win the pool — side bets on Raja or Nero lose.
+                  draw tickets win the pool — side bets on either robot lose.
                 </p>
                 {notice ? <p className="rm-ok" style={{ margin: '0.75rem 0 0' }}>{notice}</p> : null}
               </>
@@ -366,6 +467,70 @@ export default function ArenaPage() {
                 </button>
               </>
             )}
+          </div>
+
+          <div className="rm-card ar-odds-card">
+            <div className="ar-odds-head">
+              <strong>Live odds &amp; pot</strong>
+              <span className="ar-odds-meta">
+                <span className="ar-odds-dot"></span>
+                {match?.spectator_book?.totals ? (
+                  <>
+                    <span className="ar-lex">{nameA}</span>
+                    <span className="ar-lex ar-lex-dim">${Number(match.spectator_book.totals.a ?? 0).toFixed(2)}</span>
+                    <span className="ar-lex">{nameB}</span>
+                    <span className="ar-lex ar-lex-dim">${Number(match.spectator_book.totals.b ?? 0).toFixed(2)}</span>
+                    <span className="ar-lex ar-lex-dim">draw</span>
+                    <span className="ar-lex ar-lex-dim">${Number(match.spectator_book.totals.draw ?? 0).toFixed(2)}</span>
+                  </>
+                ) : null}
+              </span>
+            </div>            {odds ? (
+              <div className="ar-odds-chart">
+                <div className="ar-odds-grid">
+                  <div className="ar-odds-row">
+                    <span className="ar-od">{nameA}</span>
+                    <span className="ar-od-bar">
+                      <span className="ar-od-fill raja" style={{ width: `${Math.max(6, Math.min(100, (odds.raja ?? 0) * 80))}%` }} />
+                    </span>
+                    <span className="ar-od-val">{odds.raja ? `${odds.raja.toFixed(2)}` : '—'}</span>
+                  </div>
+                  <div className="ar-odds-row">
+                    <span className="ar-od">{nameB}</span>
+                    <span className="ar-od-bar">
+                      <span className="ar-od-fill" style={{ width: `${Math.max(6, Math.min(100, (odds.nero ?? 0) * 80))}%` }} />
+                    </span>
+                    <span className="ar-od-val">{odds.nero ? `${odds.nero.toFixed(2)}` : '—'}</span>
+                  </div>
+                  <div className="ar-odds-row">
+                    <span className="ar-od">Draw</span>
+                    <span className="ar-od-bar">
+                      <span className="ar-od-fill draw" style={{ width: drawWidth ?? '0%' }} />
+                    </span>
+                    <span className="ar-od-val">{odds.draw ? `${odds.draw.toFixed(2)}` : '—'}</span>
+                  </div>
+                </div>
+                <div className="ar-odds-pots">
+                  {match?.spectator_book?.totals ? (
+                    <>
+                      <div>
+                        <span className="ar-pk-label">Pot</span>
+                        <strong className="ar-pk">
+                          ${Number(match.spectator_book.totals.a ?? 0) + Number(match.spectator_book.totals.b ?? 0) + Number(match.spectator_book.totals.draw ?? 0)}
+                          <span className="ar-pk-sub">dec / 5% off</span>
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="ar-pk-label">Draw pool</span>
+                        <strong className="ar-pk">
+                          ${Number(match.spectator_book.totals.draw ?? 0)}
+                        </strong>
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="rm-card">

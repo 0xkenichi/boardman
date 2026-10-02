@@ -107,3 +107,6 @@ frontend/public/demos/*.pdf
 frontend/public/demos/*.pptx
 frontend/public/demos/*.webm
 frontend/public/demos/*.html
+
+# third-party engine clones + built binaries
+engines/Ethereal/

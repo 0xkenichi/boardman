@@ -93,11 +93,12 @@ def _classify(
                 return "white_win", "1-0", "white", "adjudicated_eval"
             if avg <= -1.0:
                 return "black_win", "0-1", "black", "adjudicated_eval"
-            # Slight edge still counts when game is long
+            # Slight edge still counts when game is long — draws should be
+            # real dead positions, not the default ending for every table.
             if board.ply() >= 60:
-                if avg >= 0.45:
+                if avg >= 0.35:
                     return "white_win", "1-0", "white", "adjudicated_eval_soft"
-                if avg <= -0.45:
+                if avg <= -0.35:
                     return "black_win", "0-1", "black", "adjudicated_eval_soft"
 
     wm, bm = _material(board, chess.WHITE), _material(board, chess.BLACK)
@@ -105,10 +106,10 @@ def _classify(
         return "white_win", "1-0", "white", "adjudicated_material"
     if bm > wm:
         return "black_win", "0-1", "black", "adjudicated_material"
-    # Dead equal — last non-zero eval or coin from seed later
+    # Dead equal — last meaningful eval decides (no coin-flip draws)
     if eval_history:
         for e in reversed(eval_history):
-            if e is not None and abs(e) >= 0.25:
+            if e is not None and abs(e) >= 0.15:
                 if e > 0:
                     return "white_win", "1-0", "white", "adjudicated_eval_tiebreak"
                 return "black_win", "0-1", "black", "adjudicated_eval_tiebreak"
@@ -116,8 +117,17 @@ def _classify(
 
 
 def _default_max_plies() -> int:
-    # Spectator tables should finish. 80 plies ≈ 40 moves, then adjudicate.
-    return int(os.getenv("BOARDMAN_MAX_PLIES", "80"))
+    # Spectator tables should finish, but not all at the same move 40.
+    # Randomized 100–140 plies per match unless an explicit cap is set.
+    env = (os.getenv("BOARDMAN_MAX_PLIES") or "").strip()
+    if env:
+        try:
+            return max(20, int(env))
+        except ValueError:
+            pass
+    import random as _random
+
+    return _random.randint(100, 140)
 
 
 def _ask_builder_or_engine(

@@ -248,11 +248,18 @@ def ensure_builder_webhooks() -> None:
     specs = [
         ("Raja", 18761, "gaming.src.stack.agentic.agents.raja.serve"),
         ("Nero", 18762, "gaming.src.stack.agentic.agents.nero.serve"),
+        # Sheila plays on Ethereal — her builder process gets the engine path
+        ("Sheila", 18764, "gaming.src.stack.agentic.agents.sheila.serve"),
         # AFM demo managers — football matchday asks (boardman.agent.football_managers.matchday.v1)
         ("Blue Lock", 18771, "gaming.src.stack.agentic.agents.bluelock.serve"),
         ("Ao Ashi", 18772, "gaming.src.stack.agentic.agents.aoashi.serve"),
         ("Match-Slice", 18773, "gaming.src.stack.agentic.agents.matchslice.serve"),
     ]
+    # Per-builder engine overrides — Sheila plays Ethereal, not Stockfish
+    ethereal = root / "engines" / "Ethereal" / "src" / "ethereal"
+    extra_env: dict[str, dict[str, str]] = {
+        "Sheila": ({"BOARDMAN_UCI_ENGINE": str(ethereal)} if ethereal.is_file() else {}),
+    }
     for name, port, mod in specs:
         try:
             s = socket.socket()
@@ -263,6 +270,7 @@ def ensure_builder_webhooks() -> None:
         except OSError:
             pass
         env = dict(os.environ)
+        env.update(extra_env.get(name, {}))
         env["PYTHONPATH"] = str(root) + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
         subprocess.Popen(
             [sys.executable, "-m", mod],

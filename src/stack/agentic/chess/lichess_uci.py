@@ -30,6 +30,11 @@ def _repo_root() -> Path:
 
 
 def find_stockfish() -> str:
+    # Per-process engine override (e.g. Sheila's builder runs Ethereal):
+    # the webhook child process sets BOARDMAN_UCI_ENGINE to its own binary.
+    env = (os.getenv("BOARDMAN_UCI_ENGINE") or "").strip()
+    if env and Path(env).is_file() and os.access(env, os.X_OK):
+        return env
     env = (os.getenv("STOCKFISH_PATH") or os.getenv("RAJA_STOCKFISH") or "").strip()
     if env and Path(env).is_file() and os.access(env, os.X_OK):
         return env
@@ -207,6 +212,78 @@ def _reset_session() -> None:
                 pass
         _session = None
         _session_path = ""
+
+
+def best_candidates(
+    fen: str,
+    *,
+    multipv: int = 4,
+    movetime_ms: Optional[int] = None,
+    wtime_ms: Optional[int] = None,
+    btime_ms: Optional[int] = None,
+    winc_ms: Optional[int] = None,
+    binc_ms: Optional[int] = None,
+) -> list[dict[str, Any]]:
+    """Top-N engine moves with mover-POV evals, for persona-weighted choice.
+
+    Returns [{uci, eval_pawns, mate}] sorted best-first (evals are from the
+    side-to-move's perspective, positive = good for the mover). Empty list
+    when the engine is missing/fails — callers fall back to best_move().
+    """
+    eng = _get_engine()
+    if eng is None:
+        return []
+    try:
+        board = chess.Board(fen)
+    except ValueError:
+        return []
+    think = int(movetime_ms or os.getenv("RAJA_UCI_MOVETIME_MS") or "400")
+    think = max(50, min(think, 8000))
+    wtime = _clocks_from(wtime_ms)
+    btime = _clocks_from(btime_ms)
+    limit_kw: dict[str, float] = {"time": think / 1000.0}
+    if wtime and btime:
+        cap_s = float(os.getenv("RAJA_UCI_MAX_CLOCK_S") or "2")
+        cap_s = max(0.1, min(cap_s, 6.0))
+        remaining = (wtime if board.turn == chess.WHITE else btime) / 1000.0
+        limit_kw = {"time": min(cap_s, max(0.1, remaining * 0.08))}
+        winc = _clocks_from(winc_ms)
+        binc = _clocks_from(binc_ms)
+        if winc:
+            limit_kw["white_inc"] = winc / 1000.0
+        if binc:
+            limit_kw["black_inc"] = binc / 1000.0
+    out: list[dict[str, Any]] = []
+    try:
+        with _lock:
+            infos = eng.analyse(
+                board,
+                chess.engine.Limit(**limit_kw),
+                multipv=max(1, min(int(multipv), 5)),
+            )
+        if isinstance(infos, dict):  # single line when multipv collapses
+            infos = [infos]
+        for info in infos or []:
+            pv = info.get("pv") or []
+            if not pv:
+                continue
+            mv = pv[0]
+            if mv not in board.legal_moves:
+                continue
+            score = info.get("score")
+            ev = mate = None
+            if score is not None:
+                pov = score.pov(board.turn)
+                if pov.is_mate():
+                    mate = pov.mate()
+                else:
+                    ev = round(pov.score() / 100.0, 3)
+            out.append({"uci": mv.uci(), "eval_pawns": ev, "mate": mate})
+    except Exception:
+        logger.exception("[lichess-uci] analyse failed")
+        _reset_session()
+        return []
+    return out
 
 
 def close() -> None:

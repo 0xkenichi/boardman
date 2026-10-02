@@ -7,9 +7,12 @@ module top-level beyond book tables.
 """
 from __future__ import annotations
 
+import random
 from typing import Optional
 
 import chess
+
+from gaming.src.stack.agentic.chess.opening_stats import line_weight
 
 _BOOKS: dict[str, dict[str, list[str]]] = {}
 _LOADED = False
@@ -38,8 +41,11 @@ def _build(lines: list[list[str]]) -> dict[str, list[str]]:
 
 def ensure_books_loaded() -> None:
     global _LOADED, _BOOKS
-    if _LOADED:
+    # Self-heal: a swallowed first build (import-order edge during registry
+    # init) can leave _LOADED=True with empty books — rebuild on next use.
+    if _LOADED and _BOOKS:
         return
+    _LOADED = False
     # Import siloed packages separately — they never import each other
     from gaming.src.stack.agentic.agents.raja.mind import (
         OPENINGS_WHITE as RW,
@@ -76,21 +82,48 @@ def book_move(
     book_ids: list[str],
     *,
     ply_limit: int = 24,
+    rng: Optional[random.Random] = None,
+    agent_id: str = "",
 ) -> Optional[chess.Move]:
+    """Pick a repertoire move at a book position.
+
+    Variety + learning: choose among ALL legal book moves at this position
+    (multiple authored lines share theory squares), weighted by the agent's
+    learned line results — not always the first authored hit. Deterministic
+    engines otherwise replay the same opener every table.
+    """
     ensure_books_loaded()
     if board.ply() >= ply_limit:
         return None
     k = _key(board)
+    replay = board.copy()
+    replay.reset()
+    sans_prefix = []
+    for m in board.move_stack:
+        sans_prefix.append(replay.san(m))
+        replay.push(m)
+    candidates: list[tuple[str, chess.Move, float]] = []
+    seen: set[str] = set()
     for bid in book_ids:
-        sans = _BOOKS.get(bid, {}).get(k) or []
-        for san in sans:
+        for san in _BOOKS.get(bid, {}).get(k) or []:
+            if san in seen:
+                continue
+            seen.add(san)
             try:
                 mv = board.parse_san(san)
             except ValueError:
                 continue
             if mv in board.legal_moves:
-                return mv
-    return None
+                w = line_weight(agent_id, sans_prefix, san) if agent_id else 1.0
+                candidates.append((san, mv, w))
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0][1]
+    r = rng or random
+    weights = [max(0.05, w) for _, _, w in candidates]
+    picked = r.choices(candidates, weights=weights, k=1)[0]
+    return picked[1]
 
 
 def pick_black_books(primary: str, secondary: str, board: chess.Board) -> list[str]:

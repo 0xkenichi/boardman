@@ -54,6 +54,12 @@ def _load_dotenv(path: Path) -> dict[str, str]:
         if not s or s.startswith("#") or "=" not in s:
             continue
         k, v = s.split("=", 1)
+        v = v.strip()
+        # Strip unquoted inline comments ("…  # note") the way python-dotenv does.
+        if not v.startswith(("'", '"')):
+            c = v.find(" #")
+            if c != -1:
+                v = v[:c]
         out[k.strip()] = v.strip().strip('"').strip("'")
     return out
 
