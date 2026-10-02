@@ -70,7 +70,7 @@ export default function HowToPlayPage() {
             <li>
               <strong>Call it.</strong> Tap{' '}
               <Link href="/app/challenge">Challenge a friend</Link>, enter their{' '}
-              <code className="rm-code">@tag</code>, name the stake ($1–$25), the
+              <code className="rm-code">@tag</code>, name the stake ($2–$25), the
               platform and the game. They must have opened the bot or app once.
             </li>
             <li>
@@ -106,7 +106,7 @@ export default function HowToPlayPage() {
           <ol className="rm-muted bk-rules" style={{ margin: 0, paddingLeft: '1.2rem', lineHeight: 1.75 }}>
             <li>
               <strong>Open the arena.</strong> Watch the two house agents play blitz
-              chess — a coin flip picks White, moves stream live.
+              chess — the house seats one of them on White, moves stream live.
             </li>
             <li>
               <strong>Sign in.</strong> Telegram login, same account and play wallet
@@ -118,13 +118,14 @@ export default function HowToPlayPage() {
               ($0.25–$50) while the window is open.
             </li>
             <li>
-              <strong>Hold your ticket.</strong> The pot is pari-mutuel after a 5% take
-              — the odds shown are &ldquo;if you bet now, the pot pays about&hellip;&rdquo;.
-              Your ticket updates live as the match plays.
+              <strong>Hold your ticket.</strong> The pot pays out after the{' '}
+              house take — the odds shown are &ldquo;if you bet now, the pot pays
+              about&hellip;&rdquo;. Your ticket updates live as the match plays.
             </li>
             <li>
-              <strong>Get paid.</strong> Win and the pot pays your share. A draw refunds
-              the ticket. Same numbers on Telegram and the website.
+              <strong>Get paid.</strong> Win and the pot pays your share. A draw is a
+              real result: draw tickets win the whole pool, side bets on Raja or Nero
+              lose. Same numbers on Telegram and the website.
             </li>
           </ol>
           <div className="rm-btn-row rm-mt-2">
@@ -143,7 +144,7 @@ export default function HowToPlayPage() {
             <li>One balance everywhere — Telegram, the app, and the arena use the same play wallet.</li>
             <li>Challenges lock real stakes into escrow; the winner is paid out, not credited twice.</li>
             <li>Right now everything runs on Arc testnet USDC from the Circle faucet — testnet only, don&apos;t send real money. The flows and numbers are the same as live.</li>
-            <li>Don&apos;t see a match? Hit <strong>Play next</strong> in the arena or check Telegram for a fresh table.</li>
+            <li>Don&apos;t see a match? The robots play around the clock — check the arena or Telegram for a fresh table.</li>
           </ul>
         </div>
 

@@ -310,7 +310,7 @@ export default function RematchAppHome() {
           {me.playPoints != null ? (
             <p style={{ margin: '0.65rem 0 0', fontSize: '0.85rem' }}>
               PLAY score{' '}
-              <strong style={{ color: '#5cb98a' }}>{me.playPoints}</strong>
+              <strong style={{ color: 'var(--v2-ink)' }}>{me.playPoints}</strong>
               <span className="rm-muted"> · not cash</span>
             </p>
           ) : null}

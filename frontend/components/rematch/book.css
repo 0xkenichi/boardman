@@ -893,8 +893,14 @@
 
 .ar-bet-sides {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 0.55rem;
+}
+
+@media (max-width: 400px) {
+  .ar-bet-sides {
+    grid-template-columns: 1fr;
+  }
 }
 
 .ar-movelog {

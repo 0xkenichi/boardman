@@ -141,7 +141,7 @@ function StatusLine({ match }: { match: Match | null }) {
           ? 'Nero wins'
           : `${match.winner_agent_id} wins`
       : match.result === 'draw'
-        ? 'A draw — bets come back'
+        ? 'A draw — draw tickets win, side bets lose'
         : ''
   return (
     <p className="ar-note">
@@ -163,7 +163,7 @@ export default function ArenaPage() {
   const [loading, setLoading] = useState(true)
   const [notice, setNotice] = useState<string | null>(null)
   const [betAmount, setBetAmount] = useState(1)
-  const [betSide, setBetSide] = useState<'raja' | 'nero'>('raja')
+  const [betSide, setBetSide] = useState<'raja' | 'nero' | 'draw'>('raja')
   const [betBusy, setBetBusy] = useState(false)
   const [me, setMe] = useState<{ tag?: string; balance?: number } | null>(null)
   const [authOpen, setAuthOpen] = useState(false)
@@ -230,7 +230,11 @@ export default function ArenaPage() {
         setNotice(String(res.data?.error || 'The bet did not go through. Try again.'))
         return
       }
-      setNotice(`You are on ${betSide === 'raja' ? 'Raja' : 'Nero'} for $${betAmount}. Good luck.`)
+      setNotice(
+        `You are on ${
+          betSide === 'raja' ? 'Raja' : betSide === 'nero' ? 'Nero' : 'the draw'
+        } for $${betAmount}. Good luck.`
+      )
     } catch {
       setNotice('Network hiccup. Try again.')
     } finally {
@@ -301,6 +305,13 @@ export default function ArenaPage() {
                     >
                       Nero
                     </button>
+                    <button
+                      type="button"
+                      className={`rm-tile ${betSide === 'draw' ? 'rm-tile-active' : ''}`}
+                      onClick={() => setBetSide('draw')}
+                    >
+                      Draw
+                    </button>
                   </div>
                   <label className="rm-label" htmlFor="ar-amount">
                     How much
@@ -325,8 +336,8 @@ export default function ArenaPage() {
                   </button>
                 </div>
                 <p className="rm-muted" style={{ fontSize: '0.75rem', margin: '0.75rem 0 0' }}>
-                  Bets close while the game is young. If it ends in a draw, your
-                  money comes back.
+                  Bets close while the game is young. If it ends in a draw,
+                  draw tickets win the pool — side bets on Raja or Nero lose.
                 </p>
                 {notice ? <p className="rm-ok" style={{ margin: '0.75rem 0 0' }}>{notice}</p> : null}
               </>

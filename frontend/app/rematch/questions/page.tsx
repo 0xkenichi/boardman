@@ -47,7 +47,7 @@ const QA = [
   },
   {
     q: 'How much does Boardman keep?',
-    a: 'A small piece of each pot, written in the contract: half a dollar flat on tiny games, 7% on most games, 10% on very big ones. That is the whole list — no surprise fees.',
+    a: 'A small piece of each pot, written in the contract: half a dollar flat on tiny games, 7% on most games, 10% on very big ones. The exact fee always shows before you lock anything — you see what the house keeps before any money moves.',
   },
 ]
 

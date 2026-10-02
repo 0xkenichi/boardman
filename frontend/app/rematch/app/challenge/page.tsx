@@ -6,14 +6,14 @@ import { BookShell } from '@/components/rematch/BookShell'
 import { LiveRoomsCard } from '@/components/rematch/LiveRoomsCard'
 import { api, type Game } from '@/lib/appClient'
 
-const STAKES = [1, 5, 10, 25]
+const STAKES = [2, 5, 10, 25]
 const STEP_LABELS = ['Friend', 'Stake', 'Platform', 'Game', 'Ticket']
 
 export default function ChallengePage() {
   const router = useRouter()
   const [step, setStep] = useState(0)
   const [tag, setTag] = useState('')
-  const [amount, setAmount] = useState(1)
+  const [amount, setAmount] = useState(2)
   const [category, setCategory] = useState('')
   const [gameId, setGameId] = useState('')
   const [categories, setCategories] = useState<{ id: string; label: string }[]>([])
