@@ -68,8 +68,9 @@ export async function rematchApiFetch(
     return { ok: res.ok, status: res.status, data }
   } catch (e: any) {
     const raw = String(e?.message || e || '')
+    const cause = String(e?.cause?.code || e?.cause?.message || '')
     const offline =
-      /fetch failed|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|network|certificate/i.test(raw)
+      /fetch failed|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|network|certificate/i.test(raw + ' ' + cause)
     return {
       ok: false,
       status: 502,
@@ -77,6 +78,8 @@ export async function rematchApiFetch(
         error: offline
           ? 'House API is offline. Play match needs the Boardman API running (not just Vercel).'
           : raw || 'house_unreachable',
+        // ops: underlying socket/DNS reason (e.g. ECONNREFUSED, ENOTFOUND, CERT errors)
+        detail: [raw, cause].filter(Boolean).join(' | ') || undefined,
       },
     }
   }

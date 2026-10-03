@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Allow both loopback hosts for local dev resources (HMR, fonts, chunks).
+  allowedDevOrigins: ['localhost', '127.0.0.1'],
   images: {
     unoptimized: true,
   },

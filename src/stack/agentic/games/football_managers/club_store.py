@@ -348,9 +348,11 @@ def ensure_club_for_agent(
     formation: str = "4-3-3",
     budget: Optional[Decimal] = None,
     exclude: Optional[set[str]] = None,
+    squad_ids: Optional[list[str]] = None,
+    is_filler: bool = False,
     force: bool = False,
 ) -> dict[str, Any]:
-    """Create (or return) an AFM club for an agent with an affordable roster.
+    """Create (or return) an AFM club for an agent with a legal roster.
 
     Builds a rating-first squad within `budget` (XI + bench, legal by
     construction), sets the default lineup and marks catalog players owned.
@@ -375,7 +377,7 @@ def ensure_club_for_agent(
                 except Exception:
                     pass
 
-        roster = _auto_roster(formation, budget, exclude=exclude)
+        roster = list(squad_ids) if squad_ids else _auto_roster(formation, budget, exclude=exclude)
         rec = create_club(
             agent_id,
             club_name=club_name or club_name_for_agent(agent_id),
@@ -383,6 +385,7 @@ def ensure_club_for_agent(
         ).to_dict()
         rec["formation"] = formation
         rec["tactical_tags"] = ["balanced"]
+        rec["is_filler"] = is_filler
         rec["roster"] = roster
         # legal default lineup = first 11 (covers all slots by construction)
         starters = roster[:STARTERS]
@@ -486,6 +489,7 @@ def _club_out(aid: str, club: dict[str, Any]) -> dict[str, Any]:
         "formation": club.get("formation") or "4-3-3",
         "tactical_tags": list(club.get("tactical_tags") or ["balanced"]),
         "roster_size": len(club.get("roster") or []),
+        "is_filler": bool(club.get("is_filler")),
         "starters": resolve(club.get("starters") or []),
         "bench": resolve(club.get("bench") or []),
         "squad": resolve(club.get("roster") or []),
@@ -501,6 +505,76 @@ def list_clubs() -> list[dict[str, Any]]:
 def get_club(agent_id: str) -> Optional[dict[str, Any]]:
     club = _club_for_agent(agent_id)
     return _club_out(agent_id, club) if club else None
+
+
+# --------------------------------------------------------- transfer window
+# v1.8 helpers the market engine uses to move money and players between
+# clubs. Raw club records store roster/starter/bench as player-id strings.
+
+
+def _squad_spend(rec: dict[str, Any]) -> Decimal:
+    """Committed spend: price + wage runway for every rostered player."""
+    total = Decimal("0")
+    for pid in rec.get("roster") or []:
+        p = get_player(pid)
+        if p:
+            total += _price(p) + Decimal(str(p.get("wage_per_matchday_usdc") or "0")) * WAGE_RUNWAY_MATCHDAYS
+    return total
+
+
+def roster_ids(agent_id: str) -> list[str]:
+    with _lock:
+        rec = _club_state(agent_id)
+        return list(rec.get("roster") or []) if rec else []
+
+
+def transfer_balance(agent_id: str) -> Decimal:
+    """Budget authority left after the committed squad (price + wage runway)."""
+    with _lock:
+        rec = _club_state(agent_id)
+        if not rec:
+            return Decimal("0")
+        budget = Decimal(str(rec.get("budget_usdc") or "0"))
+        return budget - _squad_spend(rec)
+
+
+def adjust_budget(agent_id: str, delta: Decimal) -> Decimal:
+    """Move a club's budget authority; refuses to go below zero."""
+    with _lock:
+        state = _state()
+        rec = state.get("clubs", {}).get(agent_id)
+        if not rec:
+            raise KeyError(agent_id)
+        new = Decimal(str(rec.get("budget_usdc") or "0")) + Decimal(str(delta))
+        if new < 0:
+            raise ValueError("budget_would_go_negative")
+        rec["budget_usdc"] = str(new)
+        _save(state)
+        return new
+
+
+def move_player(player_id: str, *, from_agent: Optional[str], to_agent: str) -> None:
+    """Complete a transfer: roster surgery + catalog ownership, atomically."""
+    with _lock:
+        state = _state()
+        clubs = state.get("clubs", {})
+        if from_agent:
+            rec = clubs.get(from_agent)
+            if not rec or player_id not in (rec.get("roster") or []):
+                raise KeyError(f"{from_agent} does not roster {player_id}")
+            rec["roster"] = [p for p in (rec.get("roster") or []) if p != player_id]
+            rec["starters"] = [p for p in (rec.get("starters") or []) if p != player_id]
+            rec["bench"] = [p for p in (rec.get("bench") or []) if p != player_id]
+        dst = clubs.get(to_agent)
+        if not dst:
+            raise KeyError(to_agent)
+        if player_id in (dst.get("roster") or []):
+            raise ValueError("already_rostered")
+        if len(dst.get("roster") or []) >= MAX_SQUAD_SIZE:
+            raise ValueError("squad_full")
+        dst.setdefault("roster", []).append(player_id)
+        set_owner(player_id, to_agent)
+        _save(state)
 
 
 def set_lineup(
@@ -593,6 +667,7 @@ def squad_view(agent_id: str) -> list[dict[str, Any]]:
     then rating desc — the FM squad-table default.
     """
     from gaming.src.stack.agentic.games.football_managers.attributes import derive_profile
+    from gaming.src.stack.agentic.games.football_managers.living import get as living_get
     from gaming.src.stack.agentic.games.football_managers.roles import role_suitability
     from gaming.src.stack.agentic.games.football_managers.rules import WAGE_RUNWAY_MATCHDAYS
 
@@ -614,6 +689,7 @@ def squad_view(agent_id: str) -> list[dict[str, Any]]:
             continue
         attrs = derive_profile(p)
         condition = carried.get(pid)
+        lv = living_get(pid)  # v1.6 FM layer: living morale/form/career
         rows.append(
             {
                 **copy.deepcopy(p),
@@ -621,7 +697,16 @@ def squad_view(agent_id: str) -> list[dict[str, Any]]:
                 "attributes": {k: round(float(v), 1) for k, v in attrs.items()},
                 "fitness": round(float(condition if condition is not None else attrs.get("fitness", 1.0)), 2),
                 "condition": round(float(condition), 2) if condition is not None else None,
-                "morale": round(float(attrs.get("morale", 0.7)), 2),
+                "morale": round(float(lv["morale"]), 2),
+                "form": round(float(lv["form"]), 2),
+                "career": {
+                    "age": int(lv["age"]),
+                    "stage": str(lv["stage"]),
+                    "development": round(float(lv["delta"]), 2),
+                    "apps": int(lv["apps"]),
+                    "goals": int(lv["goals"]),
+                    "assists": int(lv["assists"]),
+                },
                 "roles": role_suitability(str(p.get("slot") or "CM"), attrs),
                 "contract": {
                     "years_left": _contract_years_left(pid),

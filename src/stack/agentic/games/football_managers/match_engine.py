@@ -251,17 +251,27 @@ def _resolve_profiles(
     xi: list[str],
     bench: list[str],
     fatigue: Optional[dict[str, float]] = None,
+    living: Optional[dict[str, dict[str, float]]] = None,
 ) -> dict[str, dict[str, float]]:
     """Attribute profiles for every involved player (defaults for unknowns).
 
     `fatigue` carries condition across fixtures (G4): a player's in-match
     fitness *starts* at the carried value (0..1) instead of a fresh 1.0.
+    `living` carries the lock-time snapshot of the FM layer ({pid: {morale,
+    delta}}): morale overrides the static profile, `delta` shifts the rating
+    anchor so development is felt. Snapshot-at-lock keeps replays honest.
     """
     carried = {pid: _clamp(float(v), 0.05, 1.0) for pid, v in (fatigue or {}).items()}
     profiles: dict[str, dict[str, float]] = {}
     for pid in xi + bench:
         p = get_player(pid)
+        lv = (living or {}).get(pid) or {}
+        if lv:
+            p = dict(p or {})
+            p["base_rating"] = float(p.get("base_rating") or 70.0) + float(lv.get("delta") or 0.0)
         prof = derive_profile(p)
+        if lv:
+            prof["morale"] = _clamp(float(lv.get("morale") or prof.get("morale", 0.75)), 0.35, 1.0)
         slot = str((p or {}).get("slot") or (p or {}).get("primary_pos") or "CM").upper()
         prof["group"] = _GROUP_OF_SLOT.get(slot, "MID")
         prof["overall"] = (
@@ -370,6 +380,7 @@ def _make_side(
     tactics_raw: Optional[dict[str, Any]],
     rng: random.Random,
     fatigue: Optional[dict[str, float]] = None,
+    living: Optional[dict[str, dict[str, float]]] = None,
 ) -> _SideState:
     tactics = _normalize_tactics(tactics_raw)
     side = _SideState(
@@ -379,7 +390,7 @@ def _make_side(
         tactics=tactics,
         stance=_stance(tactics["formation"], tactics["tags"], tactics["mentality"],
                        tactics["instructions"]),
-        profiles=_resolve_profiles(xi, bench, fatigue=fatigue),
+        profiles=_resolve_profiles(xi, bench, fatigue=fatigue, living=living),
         on_pitch=list(xi),
     )
     _recompute_strengths(side, jitter=True, rng=rng)
@@ -404,6 +415,9 @@ class MatchResult:
     away_pen_goals: int = 0
     phases: list[dict[str, Any]] = field(default_factory=list)
     player_stats: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # v1.7: the match official (refs.py) — who refereed, and under which
+    # persona, so broadcast/news can name him and replays can pin him
+    referee: dict[str, Any] = field(default_factory=dict)
     # final condition (0..1) of every involved player, per side — the season
     # carries this into the next matchday so tiredness bites across fixtures
     fatigue: dict[str, dict[str, float]] = field(default_factory=dict)
@@ -427,6 +441,7 @@ class MatchResult:
             "outcome": _outcome(self),
             "engine": ENGINE_VERSION,
             "player_stats": self.player_stats,
+            "referee": self.referee,
             "fatigue": self.fatigue,
         }
 
@@ -1054,6 +1069,9 @@ def simulate_match(
     require_result: bool = False,
     home_fatigue: Optional[dict[str, float]] = None,
     away_fatigue: Optional[dict[str, float]] = None,
+    home_living: Optional[dict[str, dict[str, float]]] = None,
+    away_living: Optional[dict[str, dict[str, float]]] = None,
+    referee: Optional[dict[str, Any]] = None,
     home_plans: Optional[dict[str, Any]] = None,
     away_plans: Optional[dict[str, Any]] = None,
 ) -> MatchResult:
@@ -1067,6 +1085,17 @@ def simulate_match(
       require_result            — a draw must be settled: extra time + shootout
       home_fatigue / away_fatigue — carried condition (0..1) per player from
                                     the previous fixture (default: fresh legs)
+      home_living / away_living — lock-time snapshot of the FM layer ({pid:
+                                    {morale, delta}}): living morale and
+                                    development shift the profiles
+      referee                   — the match official (refs.py): overrides the
+                                    official derived from the match_id. Cards
+                                    and fouls follow the referee's persona
+                                    curve and each offender's hidden
+                                    temperament; derived deterministically
+                                    from the match_id when not given, so
+                                    replays and pre-match announcements stay
+                                    honest without extra state
       home_plans / away_plans   — half-time contingency plans keyed by game
                                     state: {"trailing": {...}, "level": {...},
                                     "leading": {...}}; the engine applies the
@@ -1075,10 +1104,24 @@ def simulate_match(
                                     given)
     """
     rng = random.Random(_seed_int(match_id))
+    from gaming.src.stack.agentic.games.football_managers.attributes import (
+        temperament as _temperament,
+    )
+    from gaming.src.stack.agentic.games.football_managers import refs as _REFS
+
+    # v1.7 referee layer: the man in the middle is part of the fixture —
+    # deterministic from the match id unless a caller (a test, a cup final
+    # assigning a marquee official) pins one explicitly.
+    ref = dict(referee) if referee else _REFS.referee_for(match_id)
+
+    def _tense(minute: int) -> bool:
+        """A tight, late game boils — officials lose patience."""
+        return minute >= 60 and abs(hg - ag) <= 1
+
     home = _make_side(home_agent_id, list(home_xi), list(home_bench or []), home_tactics, rng,
-                      fatigue=home_fatigue)
+                      fatigue=home_fatigue, living=home_living)
     away = _make_side(away_agent_id, list(away_xi), list(away_bench or []), away_tactics, rng,
-                      fatigue=away_fatigue)
+                      fatigue=away_fatigue, living=away_living)
     # home advantage (crowd + familiarity)
     home.att *= 1.025
     home.mid *= 1.015
@@ -1417,10 +1460,19 @@ def simulate_match(
                 continue
             emit(minute, "foul", f"{minute}' · foul ({side_of(s)}): {pname(pid)}",
                  side=side_of(s), player_id=pid)
+            # v1.7 referee layer: the official's strictness at this minute and
+            # the offender's hidden temperament set the carding bands. The
+            # scales are mean-preserving (1.0 at average ref, average temper),
+            # so league-wide card rates keep their calibration while the
+            # variance becomes personality — a lenient ref lets a cold
+            # defender's tackles go; a strict ref books a volatile winger.
+            y_scale, r_scale, _fk = _REFS.card_scales(ref, minute, _tense(minute), _temperament(pid))
+            p_yellow = min(0.8, (0.15 + max(0.0, s.stance["agg"]) * 0.05) * y_scale)
+            p_red = max(0.0, min((0.015 + max(0.0, s.stance["agg"]) * 0.01) * r_scale, 0.9 - p_yellow))
             r = rng.random()
-            if r < 0.15 + max(0.0, s.stance["agg"]) * 0.05:
+            if r < p_yellow:
                 give_card(minute, s, pid, "yellow", "tactical foul")
-            elif r < 0.165 + max(0.0, s.stance["agg"]) * 0.06:
+            elif r < p_yellow + p_red:
                 give_card(minute, s, pid, "red", "serious foul play")
             elif side_of(s) != holder and rng.random() < 0.06:
                 # fouled the side in possession in a promising spot — a
@@ -1507,14 +1559,20 @@ def simulate_match(
                  side=dfn_tag, player_id=pid)
             r = rng.random()
             agg = max(0.0, dfn.stance["agg"])
-            if r < 0.13 + agg * 0.04:
+            # v1.7 referee layer (see the quiet-foul site): referee persona ×
+            # offender temperament reshape the card bands; the free-kick band
+            # is a width on the same draw, ordered after the cards by
+            # construction so a strict ref can never eat the free kicks.
+            y_scale, r_scale, fk_scale = _REFS.card_scales(ref, minute, _tense(minute), _temperament(pid))
+            p_yellow = min(0.8, (0.13 + agg * 0.04) * y_scale)
+            p_red = max(0.0, min((0.015 + agg * 0.01) * r_scale, 0.9 - p_yellow))
+            p_fk = (0.07 + agg * 0.01) * fk_scale
+            if r < p_yellow:
                 give_card(minute, dfn, pid, "yellow", "professional foul")
-            elif r < 0.145 + agg * 0.05:
+            elif r < p_yellow + p_red:
                 give_card(minute, dfn, pid, "red", "last-man foul")
-            elif r < 0.215 + agg * 0.05:
+            elif r < p_yellow + p_red + p_fk:
                 # dangerous territory: a direct free kick plays out (v1.4).
-                # The band sits fully above the card bands (both of which
-                # stretch with aggression) so it can never be eaten by them.
                 resolve_set_piece(minute, "free_kick", atk, dfn)
                 return
             return
@@ -1883,6 +1941,7 @@ def simulate_match(
         reason=reason,
         home_pen_goals=pen_h,
         away_pen_goals=pen_a,
+        referee=ref,
         phases=build_phase_stream(
             match_id,
             feed,

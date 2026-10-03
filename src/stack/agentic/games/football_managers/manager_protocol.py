@@ -151,14 +151,18 @@ def _record(row: dict[str, Any]) -> dict[str, int]:
 def _player_entries(
     players: list[dict[str, Any]],
     condition: Optional[dict[str, float]] = None,
+    living: Optional[dict[str, dict[str, float]]] = None,
 ) -> list[dict[str, Any]]:
     """Observable squad rows for the ask payload.
 
     `condition` (0..1) is the tiredness carried from the last fixture — the
     agent's own squad rows carry it so a manager can rest heavy legs; the
     opposition's lineup rows never do (it is not observable to them).
+    `living` ({pid: {morale, form}}) rides the same way: own squad only, so a
+    manager knows who is confident and who is rattled before picking the XI.
     """
     cond = condition or {}
+    lv = living or {}
     return [
         {
             "player_id": str(p.get("player_id") or ""),
@@ -167,6 +171,9 @@ def _player_entries(
             "rating": float(p.get("base_rating") or 70),
             **({"condition": round(float(cond[p["player_id"]]), 2)}
                if p.get("player_id") in cond else {}),
+            **({"morale": round(float(lv[p["player_id"]]["morale"]), 2),
+                "form": round(float(lv[p["player_id"]]["form"]), 2)}
+               if p.get("player_id") in lv else {}),
         }
         for p in players
     ]
@@ -233,8 +240,14 @@ def build_matchday_ask(
     standings = season.get("standings") or {}
     info = (season.get("matchdays") or {}).get(str(matchday)) or {}
 
+    from gaming.src.stack.agentic.games.football_managers.living import (
+        morale_form_map as living_map,
+    )
+
+    own_living = living_map([str(p.get("player_id") or "") for p in ctx["players"]])
+
     my_side = "home" if ctx["home_agent"] == agent_id else "away"
-    return {
+    ask = {
         "protocol": PROTOCOL,
         "game_id": GAME_ID,
         "agent_id": agent_id,
@@ -253,6 +266,7 @@ def build_matchday_ask(
             "squad": _player_entries(
                 ctx["players"],
                 condition=current_condition(agent_id),
+                living=own_living,
             ),
             "unavailable": _unavailable(club),
             "record": _record(standings.get(agent_id) or {}),
@@ -274,6 +288,22 @@ def build_matchday_ask(
             "deadline": str(info.get("deadline_at") or ""),
         },
     }
+    # v1.8: the transfer window payload — only present while a window is open
+    # (mid-season matchday or between seasons). Agents carry market actions
+    # in their plan reply under "transfers".
+    window = _window_payload(agent_id)
+    if window:
+        ask["transfer_window"] = window
+    return ask
+
+
+def _window_payload(agent_id: str) -> Optional[dict[str, Any]]:
+    from gaming.src.stack.agentic.games.football_managers import market as _M
+
+    try:
+        return _M.window_ask_payload(agent_id)
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------- the reply
@@ -360,8 +390,16 @@ def validate_matchday_plan(
     missing = [pid for pid in xi_ids if pid not in squad_ids]
     if missing:
         return None, f"xi references players not in the squad: {missing[:3]}"
-    if not any(str(by_id[pid].get("slot") or by_id[pid].get("primary_pos") or "").upper() == "GK" for pid in xi_ids):
+    gks = [
+        pid
+        for pid in xi_ids
+        if str(by_id[pid].get("slot") or by_id[pid].get("primary_pos") or "").upper() == "GK"
+    ]
+    if not gks:
         return None, "xi has no goalkeeper"
+    if len(gks) > 1:
+        # one keeper between the sticks — two on the pitch is not a formation
+        return None, f"xi fields {len(gks)} goalkeepers"
 
     bench = plan.get("bench") or []
     if not isinstance(bench, list) or len(bench) > int(MAX_BENCH):
@@ -409,6 +447,23 @@ def validate_matchday_plan(
             if entry:
                 plans[state_key] = entry
 
+    # v1.8: optional market actions (the transfer window) ride along in the
+    # plan reply; the House validates the details at execution time.
+    transfers_raw = plan.get("transfers")
+    transfers: list[dict[str, Any]] = []
+    if transfers_raw is not None:
+        if not isinstance(transfers_raw, list) or len(transfers_raw) > 12:
+            return None, "transfers must be a list of at most 12 actions"
+        for t in transfers_raw:
+            if not isinstance(t, dict) or str(t.get("action") or "") not in (
+                "list",
+                "bid",
+                "respond",
+                "buy_free_agent",
+            ):
+                return None, "transfers actions must carry action list|bid|respond|buy_free_agent"
+            transfers.append(dict(t))
+
     return {
         "formation": formation,
         "starters": xi_ids,
@@ -416,6 +471,7 @@ def validate_matchday_plan(
         "tags": [str(t) for t in tags],
         "instructions": str(plan.get("instructions") or "").strip() or None,
         **({"plans": plans} if plans else {}),
+        **({"transfers": transfers} if transfers else {}),
     }, ""
 
 

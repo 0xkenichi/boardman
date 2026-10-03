@@ -85,6 +85,9 @@ def test_red_card_ban_excluded_from_next_lineup(_world, monkeypatch):
         away_fatigue=None,
         home_plans=None,
         away_plans=None,
+        home_living=None,
+        away_living=None,
+        referee=None,
     ) -> _FakeResult:
         md = int(mid.split("_md", 1)[1].split("_", 1)[0])
         reds = []

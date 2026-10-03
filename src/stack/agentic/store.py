@@ -43,10 +43,20 @@ def load_json(name: str, default: Any) -> Any:
 def save_json(name: str, payload: Any, *, compact: bool = False) -> None:
     path = _path(name)
     with _lock:
-        tmp = path.with_suffix(path.suffix + ".tmp")
         if compact:
             text = json.dumps(payload, separators=(",", ":"), default=str)
         else:
             text = json.dumps(payload, indent=2, default=str) + "\n"
+        # A tmp name unique to this process+thread: two writers (e.g. the API
+        # server and the house session) sharing one `file.json.tmp` race each
+        # other's atomic replace and crash. The per-writer tmp makes every
+        # replace self-contained; the in-process lock serializes our own.
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
         tmp.write_text(text, encoding="utf-8")
-        tmp.replace(path)
+        try:
+            tmp.replace(path)
+        except FileNotFoundError:
+            # pathological fs timing — one clean retry with a fresh tmp
+            tmp2 = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.r.tmp")
+            tmp2.write_text(text, encoding="utf-8")
+            tmp2.replace(path)

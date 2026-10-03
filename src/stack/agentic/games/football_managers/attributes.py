@@ -136,3 +136,29 @@ def group_skill(attrs: dict[str, float], *names: str) -> float:
     if not vals:
         return 70.0
     return sum(vals) / len(vals)
+
+
+# ---------------------------------------------------------- hidden personality
+
+def temperament(player_id: str) -> float:
+    """Hidden 0..1 volatility — ice-cold .. card magnet.
+
+    A personality attribute, not a skill: it never appears in a profile, an
+    ask payload or a squad row (FM hides it behind scouting). The referee
+    layer (`refs.py`) consumes it when deciding who collects cards, and a
+    manager learns it the way a real one does — from watching his defender
+    get booked for the third week running.
+    """
+    return _hash01(str(player_id), "temperament")
+
+
+def temperament_label(value: float) -> str:
+    """The four-step temperament scale for report/news copy."""
+    v = max(0.0, min(1.0, float(value)))
+    if v < 0.25:
+        return "ice-cold"
+    if v < 0.5:
+        return "composed"
+    if v < 0.75:
+        return "competitive"
+    return "volatile"

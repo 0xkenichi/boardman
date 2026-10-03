@@ -118,9 +118,30 @@ def _save(state: dict[str, Any]) -> None:
     save_json(STATE_FILE, state)
 
 
+def _is_filler(agent_id: str) -> bool:
+    from gaming.src.stack.agentic.games.football_managers import fillers as _F
+
+    return _F.is_filler(agent_id)
+
+
+def _window_status() -> dict[str, Any]:
+    try:
+        from gaming.src.stack.agentic.games.football_managers import market as _M
+
+        return _M.window_status()
+    except Exception:
+        return {"open": False}
+
+
 def _wallet(agent_id: str) -> str:
     from gaming.src.stack.agentic.registry import get_registry
 
+    if _is_filler(agent_id):
+        # AI filler clubs are not registered agents — they bank on a
+        # deterministic synthetic wallet key instead
+        from gaming.src.stack.agentic.games.football_managers import fillers as _F
+
+        return _F.synthetic_wallet(agent_id)
     a = get_registry().get_agent(agent_id)
     return str((a or {}).get("wallet_address") or "")
 
@@ -342,7 +363,10 @@ def _snapshot(s: dict[str, Any]) -> dict[str, Any]:
     return {
         "season_no": s["season_no"],
         "status": s["status"],
-        "division": [{"agent_id": a, "name": names.get(a, _club_display(a))} for a in s["division"]],
+        "division": [
+            {"agent_id": a, "name": names.get(a, _club_display(a)), "is_filler": _is_filler(a)}
+            for a in s["division"]
+        ],
         "matchdays_total": total,
         "current_matchday": md,
         "started_at": s["started_at"],
@@ -358,6 +382,7 @@ def _snapshot(s: dict[str, Any]) -> dict[str, Any]:
         "upcoming": upcoming,
         "recent": recent,
         "news": news,
+        "transfer_window": _window_status(),
         "created_at": s.get("created_at"),
         "updated_at": s.get("updated_at"),
     }
@@ -428,14 +453,30 @@ def open_season(
         if cur and cur.get("status") == "open" and not force:
             raise ValueError("a season is already open — tick it or wait for it to finish")
 
+        from gaming.src.stack.agentic.games.football_managers import market as _M
+
+        _M.close_all_open(reason="new_season_opened")
+
         from gaming.src.stack.agentic.games.football_managers.club_store import list_clubs
 
         clubs = {c["agent_id"]: c for c in list_clubs()}
+        auto_open = agent_ids is None
         if agent_ids is None:
-            # queued joiners enter alongside any existing club
-            agent_ids = sorted(set(st.get("pending_joins") or []) | set(clubs))
+            # queued joiners enter alongside any existing club. Idle AI
+            # filler clubs re-enter only via top_up below — never as regular
+            # entrants, so the division can't drift past the target.
+            from gaming.src.stack.agentic.games.football_managers import fillers as _F
+
+            pending = set(st.get("pending_joins") or []) | set(clubs)
+            agent_ids = sorted(a for a in pending if not _F.is_filler(a))
         ids = [a for a in sorted(set(agent_ids)) if a in clubs]
-        if len(ids) < 2:
+        _fill = None
+        if auto_open:
+            from gaming.src.stack.agentic.games.football_managers import fillers as _fill_mod
+
+            if _fill_mod.filler_enabled() and _fill_mod.filler_target() >= 2:
+                _fill = _fill_mod
+        if len(ids) < 2 and _fill is None:
             raise ValueError("need at least two clubs with AFM rosters to open a season")
 
         no = season_no or ((int(cur["season_no"]) + 1) if cur else 1)
@@ -454,6 +495,24 @@ def open_season(
                 entered.append(aid)
             except ValueError:
                 entries[aid] = {"paid": False, "entry_usdc": str(SEASON_ENTRY_USDC)}
+        # v1.8 AI filler clubs: top the division up so a league is never a
+        # two-club derby. Auto path only — explicit agent-id lists (tests,
+        # admin) keep exact control.
+        if _fill is not None and len(entered) < _fill.filler_target():
+            for aid in _fill.top_up(_fill.filler_target() - len(entered), exclude=set(entered)):
+                w = _wallet(aid)
+                if not w:
+                    continue
+                L.ensure_funded(w, DEMO_FAUCET_FLOOR)
+                try:
+                    L.debit(w, SEASON_ENTRY_USDC, reason="afm_season_entry", ref=f"s{no}")
+                    L.credit(pot, SEASON_ENTRY_USDC, reason="afm_season_pot", ref=f"s{no}")
+                    entries[aid] = {"paid": True, "entry_usdc": str(SEASON_ENTRY_USDC), "ai_filler": True}
+                    entered.append(aid)
+                except ValueError:
+                    entries[aid] = {"paid": False, "entry_usdc": str(SEASON_ENTRY_USDC), "ai_filler": True}
+        if _fill is not None and not [a for a in entered if not _fill.is_filler(a)]:
+            raise ValueError("need at least one real club to open a season")
         if len(entered) < 2:
             raise ValueError("fewer than two clubs could pay the season entry")
 
@@ -516,6 +575,10 @@ def tick(now: Optional[datetime] = None) -> dict[str, Any]:
                 }
                 info = s["matchdays"][key]
                 opened.append(md)
+                # v1.8: the mid-season matchday opens the transfer window
+                from gaming.src.stack.agentic.games.football_managers import market as _M
+
+                _M.open_window_for_matchday(s, md)
             # managers decide for this matchday once, at open — a human edit
             # after open (before the deadline) still wins for that matchday
             if not info.get("decided"):
@@ -525,11 +588,15 @@ def tick(now: Optional[datetime] = None) -> dict[str, Any]:
             if now < _deadline(s, md):
                 break
             _resolve_matchday(s, md)
+            from gaming.src.stack.agentic.games.football_managers import market as _M
+
+            _M.close_window_for_matchday(s, md)
             s["current_matchday"] = md + 1
             resolved.append(md)
             md += 1
         if s["current_matchday"] > total:
             _finalize_season(s)
+            _auto_open_next_season(s)
         s["updated_at"] = _iso(_now())
         _save(st)
         return {
@@ -555,6 +622,22 @@ def matchday_news_items(matchday: int) -> list[dict[str, Any]]:
         return []
     info = s.get("matchdays", {}).get(str(matchday)) or {}
     items: list[dict[str, Any]] = []
+    # v1.7 referee layer: world news first — the appointed official, pre-match
+    # surprises ("X had a personal week"), and star-man injury blows.
+    for it in (info.get("match_news") or []):
+        items.append(
+            {
+                "matchday": matchday,
+                "agent_id": None,
+                "club_name": it.get("club_name"),
+                "phase": "news",
+                "kind": it.get("kind") or "note",
+                "question": None,
+                "answer": it.get("text"),
+                "source": "world",
+                "error": None,
+            }
+        )
     for pc in (info.get("press_conference") or []):
         phase = pc.get("phase") or "pre"
         agent_id = pc.get("agent_id")
@@ -685,6 +768,7 @@ def _agents_decide(s: dict[str, Any], matchday: int) -> None:
         build_press_conference_ask,
         request_press_conference_answer,
     )
+    from gaming.src.stack.agentic.games.football_managers import fillers as _F
     from gaming.src.stack.agentic.registry import get_registry
 
     decisions: dict[str, Any] = {}
@@ -723,6 +807,13 @@ def _agents_decide(s: dict[str, Any], matchday: int) -> None:
                 # board can show how the manager intends to react at half-time
                 "plans": dict(plan.get("plans") or {}),
             }
+            # v1.8 transfer window: a reply may carry market actions (list /
+            # bid / respond / free-agent buy). The House validates and
+            # settles each one; failures are recorded, never fatal.
+            if plan.get("transfers"):
+                from gaming.src.stack.agentic.games.football_managers import market as _M
+
+                decisions[aid]["transfers"] = _M.execute_transfers(aid, plan["transfers"])
         except Exception as exc:
             decisions[aid] = {"error": str(exc)}
 
@@ -730,6 +821,8 @@ def _agents_decide(s: dict[str, Any], matchday: int) -> None:
     # rationale before kickoff. The answers (or "no reply") are stored so the
     # spectator feed can quote the managers before the match.
     for aid in s["division"]:
+        if _F.is_filler(aid):
+            continue  # AI filler clubs give no quotes — they are not managers
         try:
             agent = reg.get_agent(aid) or {}
             opp = _opponent_for(s, matchday, aid)
@@ -883,6 +976,44 @@ def _resolve_matchday(s: dict[str, Any], matchday: int) -> None:
     for fx in fixtures:
         h, a = fx.home_agent_id, fx.away_agent_id
         mid = f"afm_season_{no}_md{matchday}_{h}_{a}"
+        # v1.6 FM layer: snapshot each side's living state at lock time so the
+        # match plays with the morale/development the managers actually had
+        from gaming.src.stack.agentic.games.football_managers import living as LV
+
+        home_living = LV.snapshot(list(lineups[h]["xi"]) + list(lineups[h].get("bench") or []))
+        away_living = LV.snapshot(list(lineups[a]["xi"]) + list(lineups[a].get("bench") or []))
+
+        # v1.7 referee layer: name the official, and let the unexpected touch
+        # the game — a personal matter, a 24-hour bug, a knock, a first child.
+        # Rare and deterministic per (fixture, player): the dent overrides this
+        # fixture's snapshot (the match plays with the disturbed mind) and is
+        # persisted into the living state (the mood carries into next week).
+        from gaming.src.stack.agentic.games.football_managers import refs as REFS
+
+        ref = REFS.referee_for(mid)
+        surprises: dict[str, dict[str, Any]] = {}
+        match_news: list[dict[str, Any]] = [
+            {"kind": "referee", "club_name": None, "text": REFS.news_line(ref)}
+        ]
+        for side_aid, snap in ((h, home_living), (a, away_living)):
+            for pid in list(lineups[side_aid]["xi"]):
+                ev = REFS.surprise_for(mid, str(pid))
+                if not ev:
+                    continue
+                surprises[str(pid)] = ev
+                snap[pid]["morale"] = max(0.35, min(1.0, float(snap[pid]["morale"]) + ev["dent"]))
+                p_row = get_player(str(pid)) or {}
+                match_news.append({
+                    "kind": ev["kind"],
+                    "club_name": _club_display(side_aid),
+                    "player_id": str(pid),
+                    "text": f"{p_row.get('name') or pid} — {ev['label']}",
+                })
+        try:
+            LV.apply_surprises(mid, surprises)
+        except Exception:
+            pass
+
         res = simulate_match(
             mid,
             home_agent_id=h,
@@ -897,7 +1028,46 @@ def _resolve_matchday(s: dict[str, Any], matchday: int) -> None:
             away_plans=lineups[a].get("plans") or None,
             home_fatigue=current_condition(h),
             away_fatigue=current_condition(a),
+            home_living=home_living,
+            away_living=away_living,
+            referee=ref,
         ).to_dict()
+        # v1.7 news: the star man limping off is a story — flag it when the
+        # highest-rated starter of a side was the one forced off
+        for aid, tag in ((h, "home"), (a, "away")):
+            xi_ids = [str(x) for x in lineups[aid]["xi"]]
+            injured_pids = {
+                str(ev.get("player_id"))
+                for ev in (res.get("feed") or [])
+                if ev.get("type") == "injury" and ev.get("side") == tag and ev.get("player_id")
+            }
+            if injured_pids and xi_ids:
+                star = max(xi_ids, key=lambda p: float((get_player(p) or {}).get("base_rating") or 0))
+                if star in injured_pids:
+                    p_row = get_player(star) or {}
+                    match_news.append({
+                        "kind": "star_injury",
+                        "club_name": _club_display(aid),
+                        "player_id": star,
+                        "text": (
+                            f"Blow: {p_row.get('name') or star} limped off — "
+                            f"the {_club_display(aid)} star is a doubt for the next matchday"
+                        ),
+                    })
+        info.setdefault("match_news", []).extend(match_news)
+        # v1.6: the result moves the living layer (morale, form, development)
+        # for the NEXT matchday — idempotent per match_id, never blocks resolve
+        try:
+            LV.apply_matchday(
+                mid,
+                res,
+                lineups[h]["xi"],
+                lineups[h].get("bench") or [],
+                lineups[a]["xi"],
+                lineups[a].get("bench") or [],
+            )
+        except Exception:
+            pass
         # v1.4: an injury that forced a sub now costs the player the next
         # matchday — derived from the feed so the engine stays a pure function
         def _injured(feed: list[dict[str, Any]]) -> list[str]:
@@ -937,6 +1107,19 @@ def _resolve_matchday(s: dict[str, Any], matchday: int) -> None:
     s["standings"] = {aid: _row_dict(r) for aid, r in table.items()}
     info["results"] = results
     info["resolved_at"] = _iso(_now())
+
+    # v1.5 spectator betting: settle every open parimutuel book for this
+    # matchday against the real results (never blocks the season)
+    try:
+        from gaming.src.stack.agentic.games.football_managers.betting import (
+            settle_matchday,
+        )
+
+        settled = settle_matchday(int(s["season_no"]), matchday, results)
+        if settled:
+            info["betting_settlements"] = settled
+    except Exception:
+        pass
 
     # post-match press-conference: the House asks each manager for a reaction
     # after the whistle. Answers are stored alongside the pre-match ones so the
@@ -1046,6 +1229,33 @@ def _finalize_season(s: dict[str, Any]) -> None:
         L.credit(cw, dust, reason="afm_season_pot_dust", ref=f"s{no}")
     s["status"] = "finished"
     s["finished_at"] = _iso(_now())
+    # v1.8: the between-seasons window opens at the final whistle
+    from gaming.src.stack.agentic.games.football_managers import market as _M
+
+    _M.open_window(no, "end")
+
+
+def _auto_open_next_season(finished: dict[str, Any]) -> None:
+    """Open the next season automatically once one is finalized.
+
+    The new division is whatever clubs exist at that moment (plus queued
+    joins), so managers registered mid-season join the *next* one. Gated by
+    AFM_AUTO_NEXT_SEASON (default on); failures never break the tick — the
+    season just stays closed until a human opens one.
+    """
+    import os
+
+    if finished.get("status") != "finished":
+        return
+    if os.getenv("AFM_AUTO_NEXT_SEASON", "1").strip().lower() in ("0", "false", "off"):
+        return
+    try:
+        open_season(
+            start_at=_now().replace(minute=0, second=0, microsecond=0)
+            + timedelta(hours=1)
+        )
+    except Exception:
+        pass  # the keeper ticks again later; a human can open it too
 
 
 def reset_season() -> dict[str, Any]:

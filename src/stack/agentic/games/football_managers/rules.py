@@ -17,6 +17,11 @@ STARTERS = 11
 MAX_BENCH = 5
 LINEUP_LOCK_MINUTES_BEFORE = 30
 
+# Transfers (v1 window)
+MIN_SQUAD_SIZE = 16  # XI + bench must survive a sale
+LISTING_FEE_BPS = 100  # 1% of the ask, charged when a player is listed
+TRANSFER_TAX_BPS = 350  # 3.5% of the sale price, off the seller's net
+
 # Economy
 PRICE_DIVISOR = 10_000_000  # $100M real → $10 game
 PRICE_MIN = 0.50
@@ -134,6 +139,6 @@ def market_laws_summary() -> dict[str, Any]:
         "price_formula": f"clamp(real_usd / {PRICE_DIVISOR}, {PRICE_MIN}, {PRICE_MAX})",
         "wage_per_matchday_fraction_of_price": WAGE_FRACTION_OF_PRICE,
         "wage_runway_matchdays": WAGE_RUNWAY_MATCHDAYS,
-        "windows": "open | closed — buys only when open",
-        "agent_to_agent": "structured bid / accept / reject",
+        "windows": "twice per season (mid-season matchday + between seasons) — buys/bids only when open",
+        "agent_to_agent": "offer queue: list (1% fee) → bid → accept/reject (3.5% transfer tax)",
     }

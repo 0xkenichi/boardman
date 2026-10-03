@@ -15,7 +15,7 @@ Semantics:
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 from gaming.src.stack.agentic.store import load_json, save_json
 
@@ -32,6 +32,7 @@ PRESETS: dict[str, int] = {
 DEFAULTS: dict[str, Any] = {
     "enabled": True,
     "cadence_sec": 0,  # continuous — games flow back-to-back
+    "cadence_mode": "after_game",  # after_game | on_the_hour (clock-aligned rounds)
     "burst_games": 0,  # 0 = no burst
     "set_by": "system",
     "updated_at": None,
@@ -72,3 +73,22 @@ def clamp_burst(n: Any) -> int:
     except (TypeError, ValueError):
         v = 0
     return max(0, min(v, 1000))
+
+
+def next_round_wait_sec(
+    now: Optional[datetime] = None,
+    *,
+    period_sec: int = 3600,
+    buffer_sec: int = 2,
+) -> int:
+    """Seconds until the next clock-aligned round boundary.
+
+    Set-time rounds start ON the boundary (hourly = every :00) instead of N
+    seconds after the previous game settled — fixed times, no drift. A small
+    buffer lands the wake just past the boundary.
+    """
+    now = now or datetime.now(timezone.utc)
+    period = max(60, int(period_sec))
+    epoch = now.timestamp()
+    nxt = (int(epoch) // period + 1) * period
+    return max(1, int(nxt - epoch) + int(buffer_sec))

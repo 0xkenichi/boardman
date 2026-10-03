@@ -131,7 +131,17 @@ def test_formation_shape_is_football(_fake_players):
     """Keepers hug their goal, attackers push toward the opponent's goal."""
     for i in range(10):
         d = _run(f"phase_shape_{i}").to_dict()
-        ph = d["phases"][len(d["phases"]) // 2]  # mid-match, settled shape
+        # sample a settled mid-match phase — but never one where a sampled
+        # attacker is the ball-holder: the actor snaps to the ball, wherever
+        # play happens to be (a striker recycling possession deep says
+        # nothing about formation shape), so skip those phases.
+        phases = d["phases"]
+        ph = phases[len(phases) // 2]
+        for j in range(len(phases) // 2, len(phases)):
+            actor = d["feed"][j].get("player_id") if j < len(d["feed"]) else None
+            if actor not in (_H_XI[-1], _A_XI[-1]):
+                ph = phases[j]
+                break
         home = {p["id"]: p for p in ph["players"] if p["side"] == "home"}
         away = {p["id"]: p for p in ph["players"] if p["side"] == "away"}
         h_gk = home[_H_XI[0]]

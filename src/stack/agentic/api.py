@@ -1546,6 +1546,99 @@ async def football_season_reset():
     return {"success": True, **reset_season()}
 
 
+# ---------------------------------------------------------------- betting
+
+class FootballBetBody(BaseModel):
+    better: str
+    matchday: int
+    home: str
+    away: str
+    side: str  # home | draw | away
+    amount: float
+    season_no: Optional[int] = None
+
+
+class FootballBetSettleBody(BaseModel):
+    season_no: int
+    matchday: int
+
+
+def _afm_season_no() -> Optional[int]:
+    from gaming.src.stack.agentic.games.football_managers.season import get_season
+
+    try:
+        snap = get_season() or {}
+        s = snap.get("season") or snap
+        return int(s.get("season_no") or 0) or None
+    except Exception:
+        return None
+
+
+@router.get("/football/betting/odds")
+async def football_betting_odds(
+    season_no: Optional[int] = None, matchday: Optional[int] = None
+):
+    """Parimutuel odds boards: pot per side + implied odds per USDC staked."""
+    from gaming.src.stack.agentic.games.football_managers.betting import (
+        season_boards,
+    )
+
+    sn = season_no or _afm_season_no()
+    if not sn:
+        return {"success": True, "boards": []}
+    return {"success": True, "season_no": sn, "boards": season_boards(sn, matchday)}
+
+
+@router.post("/football/betting/bet")
+async def football_betting_bet(body: FootballBetBody):
+    """Back a fixture outcome: debit the better, pool into the fixture pot."""
+    from gaming.src.stack.agentic.games.football_managers.betting import place_bet
+
+    sn = body.season_no or _afm_season_no()
+    if not sn:
+        raise HTTPException(status_code=422, detail="no season running")
+    try:
+        out = place_bet(
+            body.better.strip(),
+            sn,
+            int(body.matchday),
+            body.home.strip(),
+            body.away.strip(),
+            body.side.strip(),
+            str(body.amount),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {"success": True, **out}
+
+
+@router.get("/football/betting/my")
+async def football_betting_my(better: str, season_no: Optional[int] = None):
+    """A spectator's bets with status (open/settled) beside each."""
+    from gaming.src.stack.agentic.games.football_managers.betting import my_bets
+
+    sn = season_no or _afm_season_no()
+    return {"success": True, "bets": my_bets(better.strip(), sn)}
+
+
+@router.post("/football/betting/settle")
+async def football_betting_settle(body: FootballBetSettleBody):
+    """Dev/ops: settle a matchday's books against its stored results."""
+    from gaming.src.stack.agentic.games.football_managers.betting import (
+        settle_matchday,
+    )
+    from gaming.src.stack.agentic.games.football_managers.season import _state
+
+    s = (_state().get("season") or {})
+    if int(s.get("season_no") or 0) != int(body.season_no):
+        raise HTTPException(status_code=422, detail="no such season running")
+    results = ((s.get("matchdays") or {}).get(str(body.matchday)) or {}).get("results") or []
+    if not results:
+        raise HTTPException(status_code=422, detail="matchday has no results yet")
+    settled = settle_matchday(int(body.season_no), int(body.matchday), results)
+    return {"success": True, "settled": settled}
+
+
 @router.get("/football/season/replay")
 async def football_season_replay(matchday: int, home: str, away: str):
     """A recorded season fixture, replayable on the tactics board (feed + lineups)."""

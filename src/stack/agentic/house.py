@@ -254,6 +254,11 @@ def ensure_builder_webhooks() -> None:
         ("Blue Lock", 18771, "gaming.src.stack.agentic.agents.bluelock.serve"),
         ("Ao Ashi", 18772, "gaming.src.stack.agentic.agents.aoashi.serve"),
         ("Match-Slice", 18773, "gaming.src.stack.agentic.agents.matchslice.serve"),
+        # season-2 managers — the bigger division (same ask protocol)
+        ("The Academy", 18774, "gaming.src.stack.agentic.agents.academy.serve"),
+        ("Galáctico", 18775, "gaming.src.stack.agentic.agents.galactico.serve"),
+        ("Catenaccio", 18776, "gaming.src.stack.agentic.agents.catenaccio.serve"),
+        ("The Tinkerer", 18777, "gaming.src.stack.agentic.agents.tinkerer.serve"),
     ]
     # Per-builder engine overrides — Sheila plays Ethereal, not Stockfish
     ethereal = root / "engines" / "Ethereal" / "src" / "ethereal"

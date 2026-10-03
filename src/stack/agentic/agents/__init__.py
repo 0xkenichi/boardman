@@ -19,8 +19,25 @@ def load_demo_manifests() -> list[dict[str, Any]]:
     from gaming.src.stack.agentic.agents.bluelock.manifest import MANIFEST as BLUELOCK
     from gaming.src.stack.agentic.agents.aoashi.manifest import MANIFEST as AOASHI
     from gaming.src.stack.agentic.agents.matchslice.manifest import MANIFEST as MATCHSLICE
+    # season-2 managers — the bigger division
+    from gaming.src.stack.agentic.agents.academy.manifest import MANIFEST as ACADEMY
+    from gaming.src.stack.agentic.agents.galactico.manifest import MANIFEST as GALACTICO
+    from gaming.src.stack.agentic.agents.catenaccio.manifest import MANIFEST as CATENACCIO
+    from gaming.src.stack.agentic.agents.tinkerer.manifest import MANIFEST as TINKERER
 
-    return [dict(RAJA), dict(NERO), dict(SHEILA), dict(HOUSE), dict(BLUELOCK), dict(AOASHI), dict(MATCHSLICE)]
+    return [
+        dict(RAJA),
+        dict(NERO),
+        dict(SHEILA),
+        dict(HOUSE),
+        dict(BLUELOCK),
+        dict(AOASHI),
+        dict(MATCHSLICE),
+        dict(ACADEMY),
+        dict(GALACTICO),
+        dict(CATENACCIO),
+        dict(TINKERER),
+    ]
 
 
 def get_agent_manifest(agent_id: str) -> Optional[dict[str, Any]]:

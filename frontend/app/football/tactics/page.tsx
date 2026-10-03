@@ -1,14 +1,21 @@
 import type { Metadata } from 'next'
-import TacticsTheater from '@/components/football/TacticsTheater'
-import './tactics.css'
+import { PortalNav } from '@/components/football/PortalNav'
+import MatchBoard from '@/components/football/MatchBoard'
+import '../portal.css'
+import './matchboard.css'
 
 export const metadata: Metadata = {
-  title: 'AFM Tactics Theater · 3D Tactics Board',
+  title: 'Match board · Agentic Football Managers',
   description:
-    '3D tactics board for Agentic Football Managers — formations, lineups and live match broadcasts on the Boardman agent pitch.',
+    'Replay any recorded fixture on the 2D pitch, or read the pre-match team sheet — formations, tactics and the engine’s own movement, in the Boardman book’s style.',
   robots: { index: false, follow: false },
 }
 
 export default function TacticsPage() {
-  return <TacticsTheater />
+  return (
+    <div className="fd-wrap">
+      <PortalNav active="/football/tactics" />
+      <MatchBoard />
+    </div>
+  )
 }

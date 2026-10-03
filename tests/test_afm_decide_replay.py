@@ -37,10 +37,14 @@ def _now() -> datetime:
 
 
 def _legal_xi(club) -> list[str]:
-    """11 owned, healthy players with a GK — for human-override tests."""
+    """11 owned players with exactly one GK — for human-override tests."""
     squad = club["squad"]
     gk = next(p for p in squad if str(p.get("slot") or "").upper() == "GK")
-    rest = [p for p in squad if p["player_id"] != gk["player_id"]]
+    rest = [
+        p for p in squad
+        if p["player_id"] != gk["player_id"]
+        and str(p.get("slot") or "").upper() != "GK"
+    ]
     rest.sort(key=lambda p: (float(p.get("base_rating") or 0)), reverse=True)
     return [gk["player_id"]] + [p["player_id"] for p in rest[:10]]
 
@@ -49,7 +53,12 @@ def test_agents_decide_legal_lineups_at_open(_world):
     from gaming.src.stack.agentic.games.football_managers import season as S
     from gaming.src.stack.agentic.games.football_managers.club_store import get_club
 
-    S.open_season(start_at=_now() - timedelta(hours=7))
+    # pin the division: the platform has more demo managers now, but this
+    # test is about the original three
+    S.open_season(
+        agent_ids=["agent_bluelock_demo", "agent_aoashi_demo", "agent_matchslice_demo"],
+        start_at=_now() - timedelta(hours=7),
+    )
     out = S.tick()
     assert out["resolved"] == [1]
 
@@ -101,7 +110,10 @@ def test_human_override_wins_after_open_before_deadline(_world):
         set_lineup,
     )
 
-    S.open_season(start_at=_now() - timedelta(hours=1))
+    S.open_season(
+        agent_ids=["agent_bluelock_demo", "agent_aoashi_demo"],
+        start_at=_now() - timedelta(hours=1),
+    )
     out = S.tick(_now())  # opens MD1 + agents decide; deadline not reached
     assert out["opened"] == [1] and out["resolved"] == []
 

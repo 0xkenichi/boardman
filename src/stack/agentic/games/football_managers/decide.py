@@ -18,6 +18,14 @@ decision is driven by the manager's mind (archetype) and the season context
   balanced                 — mid-block solo-brain: 4-3-3 / 4-2-3-1 with always
                              one pivot, position-disciplined XI, presses
                              poor first touches, counters aggressive sides.
+  youth_dev                — the academy: fresh legs earn minutes, energetic
+                             pressing shapes, heavy rotation for condition.
+  galactico                — stars and only stars: all-out attack shapes,
+                             best-rated XI whatever the slot.
+  catenaccio               — the wall: parked-bus base, absorbs everything,
+                             steals the 1-0.
+  tinkerer                 — chaos as a brand: a new shape almost every
+                             matchday, reads nobody, springs surprises.
 
 Each strategy's `tags` list is ordered base-tag first, reactive-tag last:
 when trailing or facing an aggressive side the manager switches to the
@@ -36,10 +44,18 @@ v1.4 additions:
     engine applies the plan the HT score calls for, so managers adjust at
     the break without a live webhook round-trip.
 
-decide_matchday() is pure and deterministic given the season + club state,
-so the tests and the live keeper observe identical behaviour. The decision
-runs exactly once per matchday (at open); a human edit after open — before
-the deadline — still wins for that matchday.
+v1.5 additions (manager variety engine):
+  * matchday rotation — from matchday 2 the formation ranges across the
+    archetype's shape list (seeded, core shape still the plurality pick)
+    instead of freezing on formations[0]/[1] all season.
+  * opponent reads — managers read the opposition's observable shape/tag
+    and most matchdays line up a shape that punishes it: overloads against
+    a back five, a creator between the lines against a bus, a bypass
+    against a high press.
+  * surprise shapes — rarely a manager springs a shape from outside its
+    core list. All of it is seeded per (season, matchday, manager), so
+    decide_matchday stays deterministic and the webhook brain
+    (decide_from_ask) reproduces the House's exact plan from the ask alone.
 
 decide_matchday() is pure and deterministic given the season + club state,
 so the tests and the live keeper observe identical behaviour. The decision
@@ -48,6 +64,8 @@ the deadline — still wins for that matchday.
 """
 from __future__ import annotations
 
+import hashlib
+import random
 from typing import Any, Optional
 
 # archetype -> strategy. mind["archetype"] picks one; fallback by agent_id
@@ -77,6 +95,29 @@ STRATEGIES: dict[str, dict[str, Any]] = {
         "formations": ["4-3-3", "4-2-3-1", "4-1-4-1"],
         "tags": ["high_press", "counter"],
         "pick": "shape",
+    },
+    "youth_dev": {
+        "formations": ["4-1-4-1", "4-4-2", "4-2-3-1"],
+        "tags": ["high_press", "counter"],
+        "pick": "shape",  # legs over logos: fresh condition earns minutes
+    },
+    "galactico": {
+        "formations": ["3-4-3", "4-3-3", "3-5-2"],
+        "tags": ["gegenpress", "long_ball"],
+        "pick": "rating",  # stars, and only stars
+    },
+    "catenaccio": {
+        "formations": ["5-3-2", "4-1-4-1", "4-4-2"],
+        "tags": ["park_bus", "low_block"],
+        "pick": "shape",
+    },
+    "tinkerer": {
+        "formations": ["4-4-2", "3-5-2", "4-2-3-1"],
+        "tags": ["long_ball", "balanced"],
+        "pick": "shape",
+        # chaos knobs: he rarely reads the opponent and springs surprises hard
+        "read_follow_prob": 0.4,
+        "surprise_prob": 0.45,
     },
 }
 
@@ -115,6 +156,128 @@ HT_PLANS: dict[str, dict[str, dict[str, Any]]] = {
         "level": {"formation": "4-3-3", "tags": ["balanced"], "mentality": "balanced"},
         "leading": {"formation": "4-2-3-1", "tags": ["counter"], "mentality": "defensive"},
     },
+    "youth_dev": {
+        "trailing": {"formation": "4-4-2", "tags": ["high_press"], "mentality": "attacking"},
+        "level": {"formation": "4-1-4-1", "tags": ["high_press"], "mentality": "balanced"},
+        "leading": {"formation": "4-2-3-1", "tags": ["counter"], "mentality": "defensive"},
+    },
+    "galactico": {
+        "trailing": {"formation": "3-4-3", "tags": ["gegenpress"], "mentality": "attacking"},
+        "level": {"formation": "3-4-3", "tags": ["long_ball"], "mentality": "attacking"},
+        "leading": {"formation": "4-3-3", "tags": ["counter"], "mentality": "balanced"},
+    },
+    "catenaccio": {
+        "trailing": {"formation": "4-4-2", "tags": ["long_ball"], "mentality": "attacking"},
+        "level": {"formation": "5-3-2", "tags": ["low_block"], "mentality": "balanced"},
+        "leading": {"formation": "5-3-2", "tags": ["park_bus"], "mentality": "defensive"},
+    },
+    "tinkerer": {
+        "trailing": {"formation": "3-5-2", "tags": ["long_ball"], "mentality": "attacking"},
+        "level": {"formation": "4-4-2", "tags": ["balanced"], "mentality": "balanced"},
+        "leading": {"formation": "4-2-3-1", "tags": ["counter"], "mentality": "defensive"},
+    },
+}
+
+# ---------------------------------------------------------------- variety (v1.5)
+# From matchday 2 a manager's shape stops freezing on formations[0]/[1].
+# One seeded roll per (season, matchday, manager) picks the flavour: an
+# opponent read usually wins, a surprise shape is rare, otherwise the
+# manager rotates across its core list with the base shape still favourite.
+
+ROTATION_WEIGHTS = (0.5, 0.3, 0.2)  # share across the archetype's shape list
+READ_FOLLOW_PROB = 0.64  # chance a matched opponent read is followed
+SURPRISE_PROB = 0.12  # chance of a shape from outside the core list
+
+# Shapes a manager can spring as a surprise — deliberately outside its core
+# list (a striker parking in 3-5-2, a pragmatist venturing into 4-3-3).
+SURPRISE_FORMATIONS: dict[str, list[str]] = {
+    "striker": ["3-5-2"],
+    "tactician": ["4-4-2", "3-4-3"],
+    "pragmatist": ["4-3-3"],
+    "possession": ["3-5-2", "4-4-2"],
+    "balanced": ["3-5-2", "3-4-3"],
+    "youth_dev": ["3-5-2", "4-3-3"],
+    "galactico": ["4-2-3-1", "4-4-2"],
+    "catenaccio": ["3-5-2"],  # the bus, but with a midfield under it
+    "tinkerer": ["5-3-2", "3-4-3", "4-3-3"],
+}
+
+# Opponent reads -> shapes that punish the read, per archetype, in preference
+# order. Triggers come from the opposition's observable formation (back three
+# or back five) or its tactical tag.
+REACTIVE_FORMATIONS: dict[str, dict[str, list[str]]] = {
+    "striker": {
+        "back_five": ["4-3-3", "4-2-3-1"],  # width plus a No.10 between the lines
+        "back_three": ["4-4-2", "3-4-3"],  # two strikers pin the back three
+        "high_press": ["4-4-2", "3-4-3"],  # meet fire with fire, go direct
+        "low_block": ["4-2-3-1", "4-3-3"],  # a creator to unlock the bus
+        "counter": ["4-3-3", "4-2-3-1"],  # pin them deep, body between the lines
+    },
+    "tactician": {
+        "back_five": ["4-2-3-1", "4-3-3"],
+        "back_three": ["4-3-3", "4-2-3-1"],
+        "high_press": ["4-1-4-1", "4-2-3-1"],  # pivot protection, play through
+        "low_block": ["4-1-4-1", "4-2-3-1"],
+        "counter": ["4-2-3-1", "4-1-4-1"],
+    },
+    "pragmatist": {
+        "back_five": ["4-4-2", "4-1-4-1"],
+        "back_three": ["4-1-4-1", "4-4-2"],
+        "high_press": ["5-3-2", "4-1-4-1"],  # absorb the press, hit back
+        "low_block": ["4-1-4-1", "4-4-2"],
+        "counter": ["5-3-2", "4-1-4-1"],
+    },
+    "possession": {
+        "back_five": ["4-3-3", "4-2-3-1"],
+        "back_three": ["4-3-3", "4-1-4-1"],
+        "high_press": ["4-3-3", "4-1-4-1"],
+        "low_block": ["4-2-3-1", "4-3-3"],
+        "counter": ["4-1-4-1", "4-3-3"],
+    },
+    "balanced": {
+        "back_five": ["4-2-3-1", "4-3-3"],
+        "back_three": ["4-3-3", "4-4-2"],
+        "high_press": ["4-2-3-1", "4-1-4-1"],
+        "low_block": ["4-2-3-1", "4-3-3"],
+        "counter": ["4-3-3", "4-1-4-1"],
+    },
+    "youth_dev": {
+        "back_five": ["4-2-3-1", "4-1-4-1"],
+        "back_three": ["4-4-2", "4-1-4-1"],
+        "high_press": ["4-1-4-1", "4-4-2"],  # out-run the pressers
+        "low_block": ["4-2-3-1", "4-4-2"],
+        "counter": ["4-1-4-1", "4-4-2"],
+    },
+    "galactico": {
+        "back_five": ["3-4-3", "4-3-3"],
+        "back_three": ["4-3-3", "3-4-3"],
+        "high_press": ["4-3-3", "3-4-3"],  # meet fire with fire
+        "low_block": ["4-3-3", "3-5-2"],
+        "counter": ["3-4-3", "4-3-3"],
+    },
+    "catenaccio": {
+        "back_five": ["5-3-2", "4-1-4-1"],
+        "back_three": ["5-3-2", "4-1-4-1"],
+        "high_press": ["5-3-2", "4-1-4-1"],  # let them tire against the wall
+        "low_block": ["4-1-4-1", "5-3-2"],
+        "counter": ["5-3-2", "4-1-4-1"],
+    },
+    "tinkerer": {
+        "back_five": ["3-5-2", "4-2-3-1"],
+        "back_three": ["4-4-2", "3-5-2"],
+        "high_press": ["4-2-3-1", "3-5-2"],
+        "low_block": ["4-4-2", "3-5-2"],
+        "counter": ["3-5-2", "4-4-2"],
+    },
+}
+
+# How the feed phrases a followed read.
+READ_LABELS: dict[str, str] = {
+    "back_five": "spreading their back five",
+    "back_three": "attacking the back three",
+    "high_press": "bypassing the press",
+    "low_block": "breaking down the bus",
+    "counter": "covering the counter",
 }
 
 _GROUP_OF = {
@@ -195,7 +358,11 @@ def _pick_xi_conditioned(
     by_group: dict[str, list[dict[str, Any]]] = {}
     for p in players:
         by_slot.setdefault(str(p.get("slot") or "").upper(), []).append(p)
-        by_group.setdefault(str(p.get("primary_pos") or "MID").upper(), []).append(p)
+        # group buckets must be keyed by the slot's GROUP (DEF/MID/FWD) — the
+        # catalog's primary_pos is a specific slot ("CB"), so keying by it
+        # raw made every group lookup miss and pushed fills into "any player"
+        pos = str(p.get("primary_pos") or "MID").upper()
+        by_group.setdefault(_GROUP_OF.get(pos, pos), []).append(p)
     for lst in by_slot.values():
         lst.sort(key=key, reverse=True)
     for lst in by_group.values():
@@ -248,8 +415,11 @@ def _pick_xi_conditioned(
                 got = first_free(live(by_slot[need]))
             if not got:
                 got = first_free(live(by_group.get(group, [])))
-        if not got:
-            got = next((p for p in live(by_rating) if p["player_id"] not in used), None)
+        if not got:  # last resort (see _pick_xi): keepers only when unavoidable
+            left = [p for p in live(by_rating) if p["player_id"] not in used]
+            got = next(
+                (p for p in left if str(p.get("slot") or "").upper() != "GK"), None,
+            ) or (left[0] if left else None)
         if got:
             take(got)
 
@@ -280,7 +450,11 @@ def _pick_xi(players: list[dict[str, Any]], formation: str, style: str) -> list[
     by_group: dict[str, list[dict[str, Any]]] = {}
     for p in players:
         by_slot.setdefault(str(p.get("slot") or "").upper(), []).append(p)
-        by_group.setdefault(str(p.get("primary_pos") or "MID").upper(), []).append(p)
+        # group buckets must be keyed by the slot's GROUP (DEF/MID/FWD) — the
+        # catalog's primary_pos is a specific slot ("CB"), so keying by it
+        # raw made every group lookup miss and pushed fills into "any player"
+        pos = str(p.get("primary_pos") or "MID").upper()
+        by_group.setdefault(_GROUP_OF.get(pos, pos), []).append(p)
     key = lambda p: (float(p.get("base_rating") or 0), float(p.get("real_value_usd") or 0))
     for lst in by_slot.values():
         lst.sort(key=key, reverse=True)
@@ -313,8 +487,13 @@ def _pick_xi(players: list[dict[str, Any]], formation: str, style: str) -> list[
                 got = first_free(by_slot[need])
             if not got:
                 got = first_free(by_group.get(group, []))
-        if not got:  # any remaining player (position be damned)
-            got = next((p for p in by_rating if p["player_id"] not in used), None)
+        if not got:  # any remaining player (position be damned) — but only
+            # field a keeper as the very last resort: two GKs on the pitch is
+            # not a formation, it is a bug
+            left = [p for p in by_rating if p["player_id"] not in used]
+            got = next(
+                (p for p in left if str(p.get("slot") or "").upper() != "GK"), None,
+            ) or (left[0] if left else None)
         if got:
             take(got)
 
@@ -393,11 +572,64 @@ def matchday_context(
         "own_pts": own_pts,
         "opp_pts": opp_pts,
         "opp_tag": opp_tag,
+        "opp_formation": str(opp_club.get("formation") or ""),
         "stronger": opp_avg > own_avg or opp_pts > own_pts,
         "trailing": opp_pts > own_pts,
         "home_agent": fx.home_agent_id,
         "away_agent": fx.away_agent_id,
     }
+
+
+def _seed_int(text: str) -> int:
+    """Stable integer seed from a seed string (sha256 — never hash())."""
+    return int(hashlib.sha256(text.encode("utf-8")).hexdigest()[:16], 16)
+
+
+def _variety_seed(season_no: int, matchday: int, agent_id: str) -> str:
+    """The variety seed for one manager on one matchday — deterministic."""
+    return f"afm-v1.5:{int(season_no or 1)}:{int(matchday or 1)}:{agent_id}"
+
+
+def _weighted_pick(formations: list[str], rng: random.Random) -> str:
+    """Pick from the archetype's core list; the base shape stays favourite."""
+    if not formations:
+        return "4-3-3"
+    if len(formations) == 1:
+        return formations[0]
+    weights = list(ROTATION_WEIGHTS[: len(formations)])
+    weights += [weights[-1]] * (len(formations) - len(weights))
+    r = rng.random() * sum(weights)
+    acc = 0.0
+    for f, w in zip(formations, weights):
+        acc += w
+        if r < acc:
+            return f
+    return formations[-1]
+
+
+def _read_opposition(
+    arch: str, opp_formation: str, opp_tag: str
+) -> tuple[str, list[str]]:
+    """What a manager reads from the *observable* opposition setup.
+
+    Returns (trigger, shapes): the opposition's back-line shape first, then
+    its tag. The shapes punish the read and are always legal formations.
+    """
+    f = (opp_formation or "").strip()
+    tag = (opp_tag or "").strip().lower()
+    if f.startswith("5-"):
+        trigger = "back_five"
+    elif f.startswith("3-"):
+        trigger = "back_three"
+    elif tag in ("gegenpress", "high_press"):
+        trigger = "high_press"
+    elif tag in ("park_bus", "low_block"):
+        trigger = "low_block"
+    elif tag in ("counter", "long_ball"):
+        trigger = "counter"
+    else:
+        return "", []
+    return trigger, list(REACTIVE_FORMATIONS.get(arch or "", {}).get(trigger, []))
 
 
 def plan_for_strategy(
@@ -410,6 +642,9 @@ def plan_for_strategy(
     opp_pts: int,
     opp_tag: str,
     condition: Optional[dict[str, float]] = None,
+    seed: str = "",
+    matchday: int = 1,
+    opp_formation: str = "",
 ) -> dict[str, Any]:
     """One manager's plan from its archetype strategy + observable context.
 
@@ -417,6 +652,11 @@ def plan_for_strategy(
     `decide_from_ask`, so the demo managers answer the ask with exactly the
     same mind the House would have used for them. `condition` (0..1 per
     player) drives v1.4 rotation: exhausted stars drop below fresh legs.
+
+    v1.5 variety: with a `seed` and matchday > 1 the formation is rotated
+    across the archetype's list, usually overridden by an opponent read
+    (`opp_formation`/`opp_tag`), rarely a surprise shape. An empty `seed`
+    or matchday 1 keeps the legacy single-shape pick.
     """
     strat = STRATEGIES.get(arch or "", STRATEGIES["tactician"])
     formations = strat["formations"]
@@ -453,7 +693,27 @@ def plan_for_strategy(
         else:
             tags = [tags[0]]
 
-    instructions = f"{formation}, {tags[0]}"
+    # v1.5 variety: one seeded roll decides the flavour of the base pick.
+    note = ""
+    if seed and int(matchday) > 1:
+        rng = random.Random(_seed_int(seed))
+        trigger, reads = _read_opposition(arch, opp_formation, opp_tag)
+        # archetypes can carry their own chaos knobs (see the tinkerer)
+        read_p = (float(strat.get("read_follow_prob") or READ_FOLLOW_PROB) if reads else 0.0)
+        surprise_p = float(strat.get("surprise_prob") or SURPRISE_PROB)
+        roll = rng.random()
+        if reads and roll < read_p:
+            formation = reads[rng.randrange(len(reads))]
+            note = READ_LABELS[trigger]
+        elif roll < read_p + surprise_p:
+            pool = SURPRISE_FORMATIONS.get(arch or "", [])
+            if pool:
+                formation = pool[rng.randrange(len(pool))]
+                note = "surprise shape"
+        else:
+            formation = _weighted_pick(formations, rng)
+
+    instructions = f"{formation}, {tags[0]}" + (f" — {note}" if note else "")
     if condition:
         xi = _pick_xi_conditioned(players, formation, strat["pick"], condition)
     else:
@@ -496,6 +756,9 @@ def decide_matchday(
         opp_pts=ctx["opp_pts"],
         opp_tag=ctx["opp_tag"],
         condition=current_condition(agent_id),
+        seed=_variety_seed(int(season.get("season_no") or 1), matchday, agent_id),
+        matchday=int(matchday),
+        opp_formation=str(ctx.get("opp_formation") or ""),
     )
 
 
@@ -540,6 +803,8 @@ def decide_from_ask(
     opp_pts = int((opp.get("record") or {}).get("points") or 0)
     opp_tags = list(opp.get("tactical_tags") or ["balanced"])
     opp_tag = opp_tags[0] if opp_tags else "balanced"
+    matchday = int((ask or {}).get("matchday") or 1)
+    asker = str((ask or {}).get("agent_id") or "")
     return plan_for_strategy(
         arch,
         squad,
@@ -548,4 +813,9 @@ def decide_from_ask(
         own_pts=own_pts,
         opp_pts=opp_pts,
         opp_tag=opp_tag,
+        seed=_variety_seed(int((ask or {}).get("season_no") or 1), matchday, asker)
+        if asker
+        else "",
+        matchday=matchday,
+        opp_formation=str(opp.get("formation") or ""),
     )

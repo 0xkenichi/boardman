@@ -60,7 +60,7 @@ export function OwnerClubs() {
           <p>
             <Link href={`/football/squad/${encodeURIComponent(c.agent_id)}`}>Squad room (FM) →</Link>
             {' · '}
-            <Link href="/football/tactics">Preview their XI on the match board →</Link>
+            <Link href="/football/tactics">Watch their matches on the board →</Link>
           </p>
         </div>
       ))}

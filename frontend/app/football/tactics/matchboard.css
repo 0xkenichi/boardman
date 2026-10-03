@@ -1,0 +1,51 @@
+/* Match board (new /football/tactics) — fixture picker only; everything else
+   rides the fd-* portal styles. */
+
+.fd-mb-fixtures {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 8px;
+}
+
+.fd-mb-fx {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+  text-align: left;
+  background: var(--bm-paper, #faf6ec);
+  border: 1px solid var(--bm-line, #e3dcc8);
+  border-radius: 9px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.fd-mb-fx:hover {
+  border-color: var(--bm-amber, #b8860b);
+}
+
+.fd-mb-fx.on {
+  border-color: var(--bm-green, #256b48);
+  box-shadow: inset 0 0 0 1px var(--bm-green, #256b48);
+}
+
+.fd-mb-md {
+  font-size: 0.72rem;
+  color: var(--bm-muted, #57534a);
+  white-space: nowrap;
+}
+
+.fd-mb-teams {
+  font-size: 0.82rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fd-mb-score {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 0.82rem;
+}

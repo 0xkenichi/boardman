@@ -157,6 +157,21 @@ def seed_catalog(*, force: bool = False) -> list[dict[str, Any]]:
         rows = [_normalize_row(i, r) for i, r in enumerate(_SEED)]
         _CATALOG_PATH.write_text(json.dumps(rows, indent=2), encoding="utf-8")
 
+    # v1 extension: more squad-depth players so a bigger division can field
+    # clubs (builders drop extra catalog files beside the v0 one)
+    known = {r["player_id"] for r in rows}
+    for ext_path in sorted(_DATA_DIR.glob("catalog_v*_extension.json")):
+        try:
+            ext_raw = json.loads(ext_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for raw in ext_raw:
+            row = _normalize_row(len(rows), raw)
+            if row["player_id"] in known:
+                continue
+            known.add(row["player_id"])
+            rows.append(row)
+
     _catalog = {r["player_id"]: r for r in rows}
     return list(_catalog.values())
 
@@ -260,3 +275,20 @@ def rebuild_from_seed() -> list[dict[str, Any]]:
     _catalog = {r["player_id"]: r for r in rows}
     export_public_json()
     return list(_catalog.values())
+
+
+def add_generated(raw: dict[str, Any]) -> dict[str, Any]:
+    """Register a generated player (e.g. an AI filler squad) in the live catalog.
+
+    Idempotent by player_id — re-generating the same filler squad is a no-op.
+    Generated rows live in memory like the rest of the v0 catalog.
+    """
+    seed_catalog()
+    pid = str(raw.get("player_id") or "")
+    if not pid:
+        raise ValueError("generated players need an explicit player_id")
+    if pid in _catalog:
+        return copy.deepcopy(_catalog[pid])
+    row = _normalize_row(len(_catalog), raw)
+    _catalog[pid] = row
+    return copy.deepcopy(row)

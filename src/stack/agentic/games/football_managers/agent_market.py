@@ -102,6 +102,34 @@ ARCHETYPES: dict[str, dict[str, str]] = {
             "Match-Slice school."
         ),
     },
+    "youth_dev": {
+        "name": "The Academy",
+        "blurb": (
+            "Fresh legs earn minutes: energetic pressing shapes, heavy "
+            "rotation for condition, never the same XI twice. Academy school."
+        ),
+    },
+    "galactico": {
+        "name": "The Galáctico",
+        "blurb": (
+            "Stars and only stars: best-rated XI whatever the slot, "
+            "all-out attack shapes, presses everything."
+        ),
+    },
+    "catenaccio": {
+        "name": "The Catenaccio",
+        "blurb": (
+            "The wall: parked-bus base, absorbs everything, and steals "
+            "the 1-0 on the break."
+        ),
+    },
+    "tinkerer": {
+        "name": "The Tinkerer",
+        "blurb": (
+            "Chaos as a brand: a new shape almost every matchday, surprise "
+            "formations from outside the playbook, reads nobody."
+        ),
+    },
 }
 
 DEMO_OWNER_ID = "demo_owner"

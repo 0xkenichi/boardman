@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import random
 import sys
 import time
 from decimal import Decimal
@@ -121,6 +122,22 @@ def _ensure_builder_webhooks() -> None:
             print(f"  WARN {name} webhook did not bind — House will use in-process silo")
 
 
+def _table_quiet(cur: dict, *, quiet_sec: float) -> bool:
+    """True when a live table has not emitted an update for quiet_sec."""
+    from datetime import datetime as _dt, timezone as _tz
+
+    ts = str((cur or {}).get("updated_at") or "")
+    if not ts:
+        return True
+    try:
+        t = _dt.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=_tz.utc)
+    return (_dt.now(_tz.utc) - t).total_seconds() >= quiet_sec
+
+
 def main() -> int:
     _bootstrap()
     ap = argparse.ArgumentParser()
@@ -196,11 +213,13 @@ def main() -> int:
             min_stake = Decimal(
                 str(float(os.environ.get("BOARDMAN_HOUSE_MIN_STAKE", "1")))
             )
-            # First funded pair wins the table — a dry Sheila must not stall
-            # Raja vs Nero.
+            # Randomized tables: shuffle the pairs every round so nobody —
+            # not even we — knows the pairing in advance. First funded pair
+            # wins the table — a dry Sheila must not stall Raja vs Nero.
             a = b = None
-            for off in range(len(pairs)):
-                pa, pb = pairs[(n + off) % len(pairs)]
+            order = list(pairs)
+            random.shuffle(order)
+            for pa, pb in order:
                 if play_balance(pa) >= min_stake and play_balance(pb) >= min_stake:
                     a, b = pa, pb
                     break
@@ -218,7 +237,7 @@ def main() -> int:
                 )
                 continue
             n += 1
-            white = a if n % 2 else b
+            white = random.choice((a, b))  # colors are a coin flip, not a ledger
             print(f"\n── game {n}  {a['name']} vs {b['name']}  white={white['name']} ──")
             t0 = time.time()
             try:
@@ -317,6 +336,21 @@ def main() -> int:
                                 break
                             except Exception as exc:
                                 print(f"  drive failed: {exc}")
+                    elif st == "playing" and _table_quiet(cur, quiet_sec=300):
+                        # a driver died mid-game — the table looks live but
+                        # nobody is moving it. Finish the round ourselves
+                        # instead of idling out the whole 25-minute window.
+                        print("  table playing but abandoned (5m quiet) — driving it home")
+                        try:
+                            house.play(mid, move_delay_sec=args.delay, wait=True)
+                            m = svc.get(mid) or {}
+                            print(
+                                f"  drove to: status={m.get('status')} result={m.get('result')} "
+                                f"winner={m.get('winner_agent_id')}"
+                            )
+                            break
+                        except Exception as exc:
+                            print(f"  drive failed: {exc}")
                 if m.get("status") != "settled" and mid:
                     print("  table did not resolve — releasing the lock and continuing")
                     try:
@@ -357,6 +391,18 @@ def main() -> int:
                     continue
                 burst = int(sch.get("burst_games") or 0)
                 cadence = int(sch.get("cadence_sec") or 0)
+                mode = str(sch.get("cadence_mode") or "after_game")
+                if mode == "on_the_hour":
+                    from gaming.src.stack.agentic.house_schedule import (
+                        next_round_wait_sec,
+                    )
+
+                    period = cadence if cadence > 0 else 3600
+                    cadence = next_round_wait_sec(period_sec=period)
+                    print(
+                        f"  set-time round: next in {cadence}s "
+                        f"(every {period // 60}m on the boundary)"
+                    )
                 if burst > 0:
                     write_schedule(set_by="session", burst_games=max(0, burst - 1))
                     print(f"  burst active — {burst - 1} game(s) left, playing now")
@@ -379,7 +425,10 @@ def main() -> int:
                             print("  burst queued by admin — waking early")
                             break
                         new_cad = int(cur.get("cadence_sec") or 0)
-                        if new_cad != cadence:
+                        # in on_the_hour mode the boundary wait is intentionally
+                        # shorter than cadence_sec — don't misread that as an
+                        # admin change and wake early (that would re-chain games)
+                        if new_cad != cadence and mode != "on_the_hour":
                             print(
                                 f"  cadence changed to {new_cad}s"
                                 + (" (continuous)" if new_cad <= 0 else "")

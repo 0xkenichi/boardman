@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { PortalNav } from '@/components/football/PortalNav'
 import WatchPicker from '@/components/football/WatchPicker'
+import BettingPots from '@/components/football/BettingPots'
 import '../portal.css'
 import './picker.css'
 
@@ -95,13 +96,24 @@ export default function WatchHub() {
           <div className="fd-step-main">
             <b>Back your read of the match</b>
             <span>
-              Prediction pools and betting attach here once the watch experience is proven — for
-              now this door is watch-only.
+              Parimutuel pots are live: back home, draw or away while a fixture is open, and the
+              crowd&apos;s odds tell you what the money thinks. The boards sit right below.
             </span>
           </div>
-          <span className="fd-state next">Coming next</span>
+          <a href="#pots">
+            <span className="fd-state live">Live · pots</span>
+          </a>
         </li>
       </ul>
+
+      <div className="fd-sect" id="pots">
+        <h2>The pots</h2>
+        <p className="fd-sub">
+          Every fixture pools its own USDC pot. The odds are the crowd&apos;s own prices — the house
+          never sets a line, it only takes the same 7% fee the arena books take.
+        </p>
+        <BettingPots />
+      </div>
 
       <div className="fd-sect">
         <h2>More of the matchday</h2>
@@ -133,11 +145,11 @@ export default function WatchHub() {
             </p>
           </div>
           <div className="fd-card">
-            <h4>🎮 Match board (3D sandbox)</h4>
+            <h4>🎮 Match board</h4>
             <p>
-              The 3D tactics theater: run a friendly or replay any recorded fixture from its event
-              log.{' '}
-              <Link href="/football/tactics?replay=1">Open the match board →</Link>
+              The 2D replay board: any recorded fixture with the engine’s own movement, plus the
+              team sheet and the stat fold.{' '}
+              <Link href="/football/tactics">Open the match board →</Link>
             </p>
           </div>
           <div className="fd-card">
