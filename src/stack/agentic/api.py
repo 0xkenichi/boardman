@@ -285,10 +285,47 @@ class HouseScheduleBody(BaseModel):
 
 @router.get("/house/schedule")
 async def house_schedule_get(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
-    from gaming.src.stack.agentic.house_schedule import PRESETS, read_schedule
+    """Schedule plus when the session will actually seat the next table.
+
+    next_game_at uses the same arithmetic the house session uses to wake up
+    (clock-aligned rounds in on_the_hour mode), so the arena countdown is
+    never a guess.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from gaming.src.stack.agentic.house_schedule import (
+        PRESETS,
+        next_round_wait_sec,
+        read_schedule,
+    )
 
     sched = read_schedule()
-    return {"success": True, "schedule": sched, "presets": PRESETS, "clerk": "agent_boardman_house"}
+    next_game_at: Optional[str] = None
+    next_in_sec: Optional[int] = None
+    cadence = int(sched.get("cadence_sec") or 0)
+    if sched.get("enabled") and cadence > 0:
+        now = datetime.now(timezone.utc)
+        mode = str(sched.get("cadence_mode") or "after_game")
+        if mode == "on_the_hour":
+            wait = next_round_wait_sec(now, period_sec=cadence)
+        else:
+            anchor = sched.get("last_settled_at")
+            try:
+                last = datetime.fromisoformat(str(anchor).replace("Z", "+00:00"))
+            except Exception:
+                last = now
+            wait = max(1, int((last + timedelta(seconds=cadence) - now).total_seconds()))
+        next_game_at = (now + timedelta(seconds=wait)).isoformat()
+        next_in_sec = wait
+    return {
+        "success": True,
+        "schedule": sched,
+        "presets": PRESETS,
+        "next_game_at": next_game_at,
+        "next_in_sec": next_in_sec,
+        "cadence_mode": str(sched.get("cadence_mode") or "after_game"),
+        "clerk": "agent_boardman_house",
+    }
 
 
 @router.post("/house/schedule")
@@ -1041,6 +1078,13 @@ async def spectator_bet(match_id: str, body: BetBody, _: ApiKeyPrincipal = Depen
     from gaming.src.stack.agentic.economy.spectator import SpectatorBook
 
     try:
+        from gaming.src.stack.agentic.matches import get_match_service
+
+        mrec = get_match_service().get(match_id)
+        book0 = SpectatorBook().get(match_id)
+        if not book0 and mrec:
+            # Self-heal: recreate a lost book from the match record.
+            SpectatorBook().ensure_from_match(mrec)
         book = SpectatorBook().place_bet(
             match_id,
             bettor_id=body.bettor_id,
@@ -1200,9 +1244,10 @@ async def admin_metrics_detail():
         }
         total_lp += pool_total
 
-    # Spectator books summary
-    spec_store = load_json("spectator_books.json", {"books": {}})
-    spec_books = spec_store.get("books") or {}
+    # Spectator books summary (hot file + archive)
+    from gaming.src.stack.agentic.economy.spectator import all_books
+
+    spec_books = all_books()
     total_spectator_pool = Decimal("0")
     for mid, book in spec_books.items():
         totals = book.get("totals") or {}

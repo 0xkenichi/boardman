@@ -10,10 +10,15 @@ export type RematchSession = {
   tag: string
   name: string
   exp: number
+  /** Issued-at (epoch sec) — absolute lifetime cap for sliding sessions. */
+  iat?: number
+  /** Linked wallet address (lowercase 0x…) proven via personal_sign. */
+  wallet?: string
 }
 
 const COOKIE = 'rematch_session'
-const MAX_AGE_SEC = 60 * 60 * 24 * 7 // 7 days
+const MAX_AGE_SEC = 60 * 60 * 24 * 7 // 7 days (slides forward while active)
+const ABSOLUTE_MAX_SEC = 60 * 60 * 24 * 30 // hard cap: re-login after 30 days
 
 function secret(): string {
   return (
@@ -33,10 +38,12 @@ function sign(payloadB64: string): string {
   return createHmac('sha256', secret()).update(payloadB64).digest('base64url')
 }
 
-export function encodeSession(session: Omit<RematchSession, 'exp'> & { exp?: number }): string {
+export function encodeSession(session: Omit<RematchSession, 'exp' | 'iat'> & { exp?: number; iat?: number }): string {
+  const now = Math.floor(Date.now() / 1000)
   const full: RematchSession = {
     ...session,
-    exp: session.exp ?? Math.floor(Date.now() / 1000) + MAX_AGE_SEC,
+    iat: session.iat ?? now,
+    exp: session.exp ?? now + MAX_AGE_SEC,
   }
   const payloadB64 = b64url(JSON.stringify(full))
   return `${payloadB64}.${sign(payloadB64)}`
@@ -56,7 +63,10 @@ export function decodeSession(token: string | undefined | null): RematchSession 
   }
   try {
     const data = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8')) as RematchSession
-    if (!data.profileId || !data.exp || data.exp < Math.floor(Date.now() / 1000)) return null
+    const now = Math.floor(Date.now() / 1000)
+    if (!data.profileId || !data.exp || data.exp < now) return null
+    // Absolute lifetime: sessions older than 30 days die even while sliding.
+    if (data.iat && data.iat + ABSOLUTE_MAX_SEC < now) return null
     return data
   } catch {
     return null
@@ -66,6 +76,12 @@ export function decodeSession(token: string | undefined | null): RematchSession 
 export function sessionCookieHeader(token: string): string {
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : ''
   return `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${MAX_AGE_SEC}${secure}`
+}
+
+/** Re-issue a session with a fresh 7-day expiry, preserving iat (sliding renewal). */
+export function renewSession(session: RematchSession): string {
+  const { exp: _exp, ...rest } = session
+  return encodeSession(rest)
 }
 
 export function clearSessionCookieHeader(): string {

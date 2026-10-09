@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { BookShell } from '@/components/rematch/BookShell'
+import { WalletLogin } from '@/components/WalletLogin'
 import { api, type Me } from '@/lib/appClient'
 
 const FAUCET = 'https://faucet.circle.com/'
@@ -13,15 +14,17 @@ export default function WalletPage() {
   const [me, setMe] = useState<Me | null>(null)
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [linkedWallet, setLinkedWallet] = useState<string>('')
 
   async function load() {
     setLoading(true)
     try {
-      const s = await api('/api/rematch/app/session')
+      const s = await api<{ wallet?: string }>('/api/rematch/app/session')
       if (!s.ok) {
         router.replace('/app')
         return
       }
+      setLinkedWallet(s.data?.wallet || '')
       const m = await api<Me>('/api/rematch/app/me')
       if (m.ok) setMe(m.data)
     } finally {
@@ -77,6 +80,27 @@ export default function WalletPage() {
           <p className="rm-muted" style={{ marginTop: '0.75rem', marginBottom: 0, fontSize: '0.8rem' }}>
             Send Arc testnet USDC here only. This is the address the house stakes from.
           </p>
+        </div>
+
+        <div className="rm-card">
+          <span className="rm-label">Sign-in wallet</span>
+          {linkedWallet ? (
+            <>
+              <code className="rm-code">{linkedWallet}</code>
+              <p className="rm-muted" style={{ marginTop: '0.6rem', marginBottom: 0, fontSize: '0.8rem' }}>
+                Linked — you can sign in to the book with this wallet instead of the Telegram
+                widget. Signing never moves funds.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="rm-muted" style={{ margin: '0 0 0.75rem', fontSize: '0.8rem' }}>
+                Link your wallet once — a free signature, no transactions — then sign in with it
+                any time. The play address above stays your funding address either way.
+              </p>
+              <WalletLogin intent="link" onAuth={load} />
+            </>
+          )}
         </div>
 
         {me?.otherBalance && me.otherBalance > 0.009 ? (

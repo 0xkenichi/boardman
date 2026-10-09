@@ -27,6 +27,11 @@ export async function GET(req: Request) {
     .toLowerCase()
   const ledger = Number(row?.wallet_balance_usdc ?? 0)
 
+  // The wallet proven at sign-in (session) or linked on the row — the user's
+  // own address, distinct from the play address above.
+  const signInWallet = (s.wallet || row?.linked_wallet || '').trim().toLowerCase()
+  const signInOk = /^0x[a-f0-9]{40}$/.test(signInWallet)
+
   const rpcP =
     address && /^0x[a-f0-9]{40}$/.test(address)
       ? usdcBalanceOf(address, { timeoutMs: 5000 })
@@ -37,8 +42,14 @@ export async function GET(req: Request) {
       }).catch(() => ({ ok: false, status: 0, data: null }))
     : Promise.resolve({ ok: false, status: 0, data: null })
 
-  const [rpc, api] = await Promise.all([rpcP, apiP])
+  const linkedP =
+    signInOk && signInWallet !== address
+      ? usdcBalanceOf(signInWallet, { timeoutMs: 5000 })
+      : Promise.resolve(null)
+
+  const [rpc, api, linked] = await Promise.all([rpcP, apiP, linkedP])
   const onchain = rpc && rpc.ok ? Number(rpc.balance_usdc) : null
+  const linkedOnchain = linked && linked.ok ? Number(linked.balance_usdc) : null
   const apiSpend =
     api.ok && api.data?.success !== false && api.data?.balance != null
       ? Number(api.data.balance)
@@ -62,6 +73,8 @@ export async function GET(req: Request) {
     name: (api.data && api.data.display_name) || row?.display_name || s.name,
     telegramId: s.telegramId,
     admin: isBoardmanAdmin(s),
+    linkedWallet: signInOk ? signInWallet : '',
+    linkedWalletUsdc: linkedOnchain,
     balance: display,
     spendable,
     otherBalance: other,

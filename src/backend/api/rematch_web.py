@@ -668,6 +668,36 @@ async def web_spectator_bet(
     except Exception as exc:
         logger.exception("[RematchWeb] live match lookup failed")
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # Reject dead tables BEFORE the Telegram approval — never make the user
+    # approve a spend that cannot be booked onto a finished game.
+    try:
+        from gaming.src.stack.agentic.house import BET_STATUSES
+        from gaming.src.stack.agentic.matches import get_match_service
+
+        rec = get_match_service().get(match_id)
+        if not rec:
+            return {
+                "success": False,
+                "error": "match_not_found",
+                "match_id": match_id,
+                "message": "That table no longer exists — bet on the live game.",
+            }
+        if rec.get("status") not in BET_STATUSES:
+            return {
+                "success": False,
+                "error": "match_not_open",
+                "match_id": match_id,
+                "message": (
+                    f"That table is {rec.get('status')} — betting is closed. "
+                    "Bet on the live game."
+                ),
+            }
+    except HTTPException:
+        raise
+    except Exception:
+        logger.warning("[RematchWeb] dead-table pre-check failed", exc_info=True)
+
     if spectator_onchain_enabled() and match_id.lower() in {"arena", "live", ""}:
         raise HTTPException(
             status_code=400,

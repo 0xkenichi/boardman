@@ -263,8 +263,9 @@ def build_public_metrics(
     store = matches if matches is not None else load_json("matches.json", {"matches": {}})
     agent_store = agents if agents is not None else load_json("agents.json", {"agents": {}})
     lp_store = lp_pools if lp_pools is not None else load_json("agent_lp_pools.json", {"pools": {}})
-    spec_store = load_json("spectator_books.json", {"books": {}})
-    spec_books = spec_store.get("books") or {}
+    from gaming.src.stack.agentic.economy.spectator import all_books
+
+    spec_books = all_books()
 
     agent_map: dict[str, Any] = dict(agent_store.get("agents") or {})
     rows_src = list((store.get("matches") or {}).values())

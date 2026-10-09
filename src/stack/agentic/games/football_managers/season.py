@@ -52,16 +52,19 @@ __all__ = [
 
 # lazy registry helper so season.py never imports the registry at module load
 # and accidentally pull a heavy runtime path into the engine-only tests.
-_reg = None
+# NOTE: the cache lives in _REG_GETTER — naming it `_reg` made `def _reg`
+# rebind the global to itself, so `return _reg()` recursed infinitely
+# (RecursionError in every post-match press conference).
+_REG_GETTER = None
 
 
 def _reg():
-    global _reg
-    if _reg is None:
+    global _REG_GETTER
+    if _REG_GETTER is None:
         from gaming.src.stack.agentic.registry import get_registry
 
-        _reg = get_registry
-    return _reg()
+        _REG_GETTER = get_registry
+    return _REG_GETTER()
 
 
 PRESS_CONFERENCE_QUESTIONS = {

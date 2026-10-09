@@ -30,6 +30,8 @@ export type Me = {
   address?: string
   playPoints?: number
   demo?: boolean
+  linkedWallet?: string
+  linkedWalletUsdc?: number | null
 }
 
 export type Game = {

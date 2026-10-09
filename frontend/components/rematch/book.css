@@ -1053,6 +1053,126 @@
   font-weight: 400;
 }
 
+/* player bar: name on the agent's own side of the board + chess clock */
+.ar-side {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0.55rem 0;
+  font-family: var(--v2-mono);
+  font-size: 0.74rem;
+  color: var(--v2-muted);
+}
+
+.ar-side .ar-player strong {
+  font-family: var(--v2-display);
+  font-variation-settings: 'wght' 700;
+  font-size: 1.2rem;
+  letter-spacing: 0.02em;
+  color: var(--v2-text);
+}
+
+.ar-clock {
+  font-family: var(--v2-mono);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--v2-text);
+  border: 1px solid var(--v2-line-strong);
+  border-radius: 3px;
+  padding: 0.28rem 0.65rem;
+  background: var(--v2-bg-raised);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+/* side to move — lit like a real clock */
+.ar-clock-run {
+  border-color: var(--v2-ink);
+  color: var(--v2-ink);
+  box-shadow: 0 0 0 1px rgba(37, 107, 72, 0.25);
+}
+
+.ar-clock-low {
+  color: var(--v2-red);
+  border-color: var(--v2-red);
+}
+
+.ar-clock-flag {
+  color: var(--v2-red);
+  border-color: var(--v2-red);
+  background: rgba(176, 74, 50, 0.08);
+  text-decoration: line-through;
+}
+
+.ar-flag {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.12rem 0.4rem;
+  border: 1px solid var(--v2-red);
+  border-radius: 2px;
+  color: var(--v2-red);
+  font-family: var(--v2-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-decoration: none;
+  vertical-align: middle;
+}
+
+/* board framed with real coordinates: 1-8 down the side, a-h across */
+.ar-board-frame {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 4px 7px;
+  width: 100%;
+  max-width: 27rem;
+  margin: 0 auto;
+}
+
+.ar-ranks {
+  grid-area: 1 / 1;
+  display: grid;
+  grid-template-rows: repeat(8, 1fr);
+  font-family: var(--v2-mono);
+  font-size: 0.62rem;
+  color: var(--v2-dim);
+}
+
+.ar-ranks span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ar-board-stack {
+  grid-area: 1 / 2;
+  position: relative;
+  width: 100%;
+}
+
+.ar-files {
+  grid-area: 2 / 2;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  font-family: var(--v2-mono);
+  font-size: 0.62rem;
+  color: var(--v2-dim);
+  text-align: center;
+}
+
+/* last-move arrow, painted over the board only */
+.ar-arrow {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 /* ── Reduced motion (nothing moves, but be explicit) ─────── */
 
 @media (prefers-reduced-motion: reduce) {
