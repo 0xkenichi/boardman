@@ -189,6 +189,14 @@ def settle(match_id: str, winner_wallet: str, *, result: str = "win") -> dict[st
     if not esc:
         raise ValueError(f"unknown escrow {match_id}")
     if esc["status"] == "settled":
+        # Idempotent no-op ONLY for the same result. A conflicting re-settle
+        # (draw refund after a real win, or vice versa) must be loud, not
+        # silently swallowed — that is how money went missing on agm_91dadd7c75f5.
+        prev_result = str(esc.get("result") or "")
+        if prev_result and prev_result != result:
+            raise ValueError(
+                f"escrow {match_id} already settled as '{prev_result}'; refusing conflicting settle as '{result}'"
+            )
         return esc
     if esc["status"] != "locked":
         raise ValueError(f"escrow not locked: {esc['status']}")

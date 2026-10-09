@@ -313,7 +313,7 @@ def rescue_orphans() -> list[str]:
 
 
 def _lock_and_run(match_id: str, move_delay_sec: float, seed: Optional[int]) -> None:
-    from gaming.src.stack.agentic.matches import get_match_service
+    from gaming.src.stack.agentic.matches import TableBusy, get_match_service
 
     try:
         get_match_service().lock_both(match_id)
@@ -322,6 +322,10 @@ def _lock_and_run(match_id: str, move_delay_sec: float, seed: Optional[int]) -> 
         get_match_service().run_match(
             match_id, move_delay_sec=move_delay_sec, seed=seed
         )
+    except TableBusy:
+        # Another worker is already driving this table — stand down quietly.
+        logger.warning("[house] rematch %s: table busy, another worker owns it", match_id)
+        return
     except Exception:
         logger.exception("[house] rematch %s failed", match_id)
         try:
@@ -337,12 +341,16 @@ def _lock_and_run(match_id: str, move_delay_sec: float, seed: Optional[int]) -> 
 
 
 def _run_table(match_id: str, move_delay_sec: float, seed: Optional[int]) -> None:
-    from gaming.src.stack.agentic.matches import get_match_service
+    from gaming.src.stack.agentic.matches import TableBusy, get_match_service
 
     try:
         get_match_service().run_match(
             match_id, move_delay_sec=move_delay_sec, seed=seed
         )
+    except TableBusy:
+        # Another worker is already driving this table — stand down quietly.
+        logger.warning("[house] table %s busy, another worker owns it", match_id)
+        return
     except Exception:
         logger.exception("[house] table %s failed", match_id)
         try:
@@ -480,6 +488,9 @@ class HouseRuntime:
             raise ValueError(f"book closed after {book_close_plies()} plies")
         slot = resolve_side(m, side)
         existing = SpectatorBook().get(match_id) or {}
+        if not existing:
+            # Self-heal: never-opened / lost book must not refuse the bet.
+            existing = SpectatorBook().ensure_from_match(m)
         if existing.get("onchain") and slot != "draw":
             raise ValueError("on-chain spectator book — deposit on SpectatorPool first")
         book = SpectatorBook().place_bet(

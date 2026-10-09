@@ -8,6 +8,7 @@ import path from "path";
 import { rematchApiFetch, rematchApiConfigured } from "@/lib/stackServer";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 import { requireAdmin } from "@/lib/adminAuth";
+import { requireSession } from "@/lib/bff";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -152,8 +153,92 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   const id = req.nextUrl.searchParams.get("id") || "";
+  // Ticket-outcome probe: the arena's ticket checker asks specifically about
+  // one table so a bettor's resolved ticket never depends on what the floor
+  // is seating now.
+  const statusFor = req.nextUrl.searchParams.get("status_for") || "";
+  if (statusFor) {
+    // Ticket-outcome probe: the arena's ticket checker asks about ONE table
+    // so a bettor's resolved ticket never depends on what the floor seats now.
+    // Outcome AND payout come straight from the settled spectator book.
+    if (!/^agm_[a-z0-9]+$/i.test(statusFor)) {
+      return NextResponse.json({ ok: false, error: "bad_match_id" }, { status: 400 });
+    }
+    // Which bettor is asking? (Telegram session on this browser.)
+    let bettorId = "";
+    try {
+      const auth = requireSession(req);
+      if (!("error" in auth)) bettorId = String(auth.session.profileId || "");
+    } catch {}
+    if (!bettorId) {
+      // Not signed in — the ticket on this browser can't be attributed.
+      return NextResponse.json(
+        { ok: true, settled: false, reason: "not_signed_in" },
+        { headers: { "Cache-Control": "no-store" } }
+      );
+    }
+    const book = await stackCall(
+      `/api/stack/agentic/matches/${encodeURIComponent(statusFor)}/spectator`
+    );
+    if (!book.ok) {
+      return NextResponse.json(
+        { ok: false, error: "book_unavailable" },
+        { status: 502, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+    const bookData = book.data?.book || {};
+    if (String(bookData.status || "") !== "settled") {
+      return NextResponse.json(
+        { ok: true, settled: false, status: bookData.status || "" },
+        { headers: { "Cache-Control": "no-store" } }
+      );
+    }
+    const bets = Array.isArray(bookData.bets) ? bookData.bets : [];
+    const mine = bets.find(
+      (b: any) => String(b.bettor_id || "") === bettorId
+    );
+    if (!mine) {
+      return NextResponse.json(
+        { ok: true, settled: false, reason: "no_ticket_on_this_table" },
+        { headers: { "Cache-Control": "no-store" } }
+      );
+    }
+    const end = bookData.payouts || {};
+    let outcome: "win" | "loss" | "refund" = "loss";
+    let payout: number | undefined;
+    if (end.mode === "draw_hits" || end.mode === "draw_seed_return") {
+      outcome = "refund";
+      payout = Number(end.payout) || undefined;
+    }
+    const winnerSide = end.winner_side || null;
+    if (winnerSide && String(mine.side || "") === winnerSide) {
+      const mine_pay = (end.bettors || []).find(
+        (p: any) => String(p.bettor_id || "") === bettorId
+      );
+      outcome = "win";
+      payout = Number(mine_pay?.amount) || undefined;
+    }
+    return NextResponse.json(
+      {
+        ok: true,
+        settled: true,
+        outcome,
+        payout,
+        ended_at: bookData.settled_at,
+      },
+      { headers: { "Cache-Control": "no-store" } }
+    );
+  }
   if (!id) {
     const floor = await stackCall("/api/stack/agentic/house/floor");
+    if (!floor.ok) {
+      // Transient backend/tunnel failure — tell the client to KEEP its last
+      // board instead of treating this as "no live game".
+      return NextResponse.json(
+        { ok: false, error: "house_api_unreachable" },
+        { status: 502, headers: { "Cache-Control": "no-store" } }
+      );
+    }
     const tables = floor.data?.floor?.tables || floor.data?.tables || [];
     // Any two house chess contestants (Raja, Nero, Sheila, future agents) —
     // not just the founding pair.

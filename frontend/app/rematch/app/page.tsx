@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { BookShell } from '@/components/rematch/BookShell'
 import { TelegramLogin } from '@/components/TelegramLogin'
+import { WalletLogin } from '@/components/WalletLogin'
 import { LiveRoomsCard } from '@/components/rematch/LiveRoomsCard'
 import { MiniPayHost, MiniPayPromo } from '@/components/rematch/MiniPayHost'
 import { api, type Me } from '@/lib/appClient'
@@ -14,6 +15,88 @@ const BOT_USERNAME = REMATCH_BOT_USERNAME
 const FAUCET = 'https://faucet.circle.com/'
 
 type OpenBotFirst = { message?: string; bot?: string } | null
+
+type SavedTicket = {
+  state: 'printed' | 'settled'
+  amount: number
+  side: 'a' | 'b' | 'draw'
+  match_id: string
+  outcome?: 'win' | 'loss' | 'refund'
+  payout?: number
+}
+
+const TICKET_KEY = 'boardman_ticket_v1'
+
+/** The bettor's last ticket (arena bets), resolved — win, loss or refund.
+ *  Reads the same localStorage key the arena writes; the status stays fresh
+ *  via the bet-checker endpoint, so a loss is never a silent page either. */
+function LastTicketCard() {
+  const [t, setT] = useState<SavedTicket | null>(null)
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(TICKET_KEY)
+      const saved = raw ? JSON.parse(raw) : null
+      if (saved && (saved.state === 'printed' || saved.state === 'settled')) setT(saved)
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!t || t.state !== 'printed') return
+    let dead = false
+    const check = async () => {
+      try {
+        const res = await fetch(
+          `/api/agentic/house-play?status_for=${encodeURIComponent(t.match_id)}`,
+          { cache: 'no-store' }
+        )
+        const d = (await res.json().catch(() => ({}))) as {
+          settled?: boolean
+          outcome?: 'win' | 'loss' | 'refund'
+          payout?: number
+        }
+        if (dead || !d.settled || !d.outcome) return
+        setT({ ...t, state: 'settled', outcome: d.outcome, payout: d.payout })
+      } catch {
+        /* retry next tick */
+      }
+    }
+    check()
+    const iv = window.setInterval(check, 20000)
+    return () => {
+      dead = true
+      window.clearInterval(iv)
+    }
+  }, [t])
+
+  if (!t) return null
+  const sideName = t.side === 'a' ? 'Raja' : t.side === 'b' ? 'Nero' : 'Draw'
+  const line =
+    t.state === 'printed'
+      ? `Ticket live — $${t.amount.toFixed(2)} on ${sideName}. It settles when the game ends.`
+      : t.outcome === 'win'
+        ? `Your ticket hit — $${(t.payout ?? 0).toFixed(2)} paid to the play wallet.`
+        : t.outcome === 'refund'
+          ? 'The table drew — your stake was refunded to the play wallet.'
+          : `Your $${t.amount.toFixed(2)} on ${sideName} didn't hit this time.`
+  return (
+    <div className="rm-card">
+      <p className="rm-label">Your last ticket</p>
+      <p className="rm-muted" style={{ margin: '0.35rem 0 0' }}>
+        {line}
+      </p>
+      <a
+        href="/arena"
+        className="rm-btn rm-btn-ghost rm-btn-sm"
+        style={{ marginTop: '0.65rem' }}
+      >
+        Open the arena
+      </a>
+    </div>
+  )
+}
 
 function HowToPlayGuide() {
   return (
@@ -241,6 +324,20 @@ export default function RematchAppHome() {
             ) : null}
           </div>
 
+          <div className="rm-card">
+            <p className="rm-label">Or continue with your wallet</p>
+            <p className="rm-muted" style={{ margin: '0 0 0.75rem', fontSize: '0.8rem' }}>
+              One-time link from your Telegram profile — after that, sign in by signing.
+            </p>
+            <WalletLogin
+              intent="login"
+              onAuth={async () => {
+                setErr(null)
+                await load()
+              }}
+            />
+          </div>
+
           {openBotFirst ? (
             <div className="rm-card rm-card-warn">
               <p className="rm-section-title">This account hasn&apos;t interacted with the bot yet</p>
@@ -350,6 +447,8 @@ export default function RematchAppHome() {
         <HowToPlayGuide />
 
         <MiniPayHost />
+
+        <LastTicketCard />
 
         <div className="rm-actions-grid">
           <a href="/arena" className="rm-action">

@@ -21,13 +21,24 @@ Demo ledger only (same file store as agentic). On-chain pools later.
 from __future__ import annotations
 
 import os
+import threading
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Optional
 
-from gaming.src.stack.agentic.store import load_json, save_json
+from gaming.src.stack.agentic.store import data_dir, load_json, save_json
 
 BOOK_FILE = "spectator_books.json"
+BOOK_ARCHIVE_FILE = "spectator_books_archive.json"
+# Settled books kept in the hot file. Everything older is compacted into the
+# archive — the hot file is rewritten on every bet/odds tick, so letting 1.8k
+# settled books accumulate froze the API for seconds per save (GIL held while
+# dumping 97MB) and eventually wedged it entirely.
+HOT_SETTLED_BOOKS = 50
+# Process-wide parse caches keyed by path (mtime invalidates across processes).
+_HOT_CACHE: dict[str, tuple[Any, dict[str, Any]]] = {}
+_ARCH_CACHE: dict[str, tuple[Any, dict[str, Any]]] = {}
+_CACHE_LOCK = threading.RLock()
 # Pot-level tiered platform fee — mirrors SpectatorPool._platformFee (V1 tiers):
 #   pot < $10   → min($1, 25% of pot)   (dust clamp, effective ≤ 25%)
 #   $10 ≤ pot ≤ $1000 → 700 bps
@@ -75,12 +86,74 @@ def spectator_platform_fee_for_pot(pot: Decimal, mid_bps: int = DEFAULT_SPECTATO
     return _bps(pot, SPECTATOR_TIER_PREMIUM_BPS)
 
 
+def _cached_load(name: str, cache: dict[str, tuple[Any, dict[str, Any]]]) -> dict[str, Any]:
+    """mtime-guarded parse cache — stat() is cheap; parsing 97MB is not."""
+    path = data_dir() / name
+    try:
+        mtime = path.stat().st_mtime_ns
+    except OSError:
+        mtime = None
+    key = str(path)
+    with _CACHE_LOCK:
+        hit = cache.get(key)
+        if hit is not None and hit[0] == mtime:
+            return hit[1]
+    data = load_json(name, {"books": {}})
+    with _CACHE_LOCK:
+        cache[key] = (mtime, data)
+    return data
+
+
+def all_books() -> dict[str, Any]:
+    """Hot file merged over the archive (archive never overwrites hot)."""
+    merged = dict(_cached_load(BOOK_ARCHIVE_FILE, _ARCH_CACHE).get("books") or {})
+    merged.update(_cached_load(BOOK_FILE, _HOT_CACHE).get("books") or {})
+    return merged
+
+
 class SpectatorBook:
     def _load(self) -> dict[str, Any]:
-        return load_json(BOOK_FILE, {"books": {}})
+        return _cached_load(BOOK_FILE, _HOT_CACHE)
 
     def _save(self, data: dict[str, Any]) -> None:
-        save_json(BOOK_FILE, data)
+        data = self._archive_cold(data)
+        save_json(BOOK_FILE, data, compact=True)
+        # Invalidate rather than re-key: another thread/process may have
+        # written between our replace and the stat — a stale (mtime, data)
+        # pair would be worse than one extra parse of a ~1MB file.
+        with _CACHE_LOCK:
+            _HOT_CACHE.pop(str(data_dir() / BOOK_FILE), None)
+
+    @staticmethod
+    def _archive_cold(data: dict[str, Any]) -> dict[str, Any]:
+        """Move settled books beyond the hot window into spectator_books_archive.json.
+
+        Mirrors AgentMatchService._archive_cold: the hot file is rewritten on
+        every bet/odds tick, so only live books + recent settlements stay there.
+        """
+        books = data.get("books") or {}
+        settled = [b for b in books.values() if b.get("status") == "settled"]
+        if len(settled) <= HOT_SETTLED_BOOKS:
+            return data
+        settled.sort(
+            key=lambda b: b.get("settled_at") or b.get("created_at") or "",
+            reverse=True,
+        )
+        keep = {
+            k: b for k, b in books.items() if b.get("status") != "settled"
+        }
+        for b in settled[:HOT_SETTLED_BOOKS]:
+            keep[b["match_id"]] = b
+        drop = settled[HOT_SETTLED_BOOKS:]
+        arch = load_json(BOOK_ARCHIVE_FILE, {"books": {}})
+        arch_books = arch.setdefault("books", {})
+        for b in drop:
+            arch_books[b["match_id"]] = b
+        save_json(BOOK_ARCHIVE_FILE, arch, compact=True)
+        with _CACHE_LOCK:
+            _ARCH_CACHE.pop(str(data_dir() / BOOK_ARCHIVE_FILE), None)
+        data["books"] = keep
+        return data
 
     def open_book(
         self,
@@ -133,6 +206,41 @@ class SpectatorBook:
         data["books"][match_id] = rec
         self._save(data)
         return rec
+
+    def ensure_from_match(self, m: dict[str, Any]) -> dict[str, Any]:
+        """
+        Recreate a missing book from the match record (idempotent).
+
+        A book can be lost to a failed save (disk full) or never opened if
+        `open_book` crashed mid-create. Bettors would otherwise hit
+        "book not found" and the match could not settle. The match record
+        carries the same economy fields open_book was called with, so the
+        reconstruction is faithful — except bets made before the loss, which
+        live only in the book and are unrecoverable by design.
+        """
+        match_id = str(m.get("match_id") or "")
+        if not match_id:
+            raise ValueError("match has no match_id")
+        data = self._load()
+        if match_id in data["books"]:
+            return data["books"][match_id]
+        archived = _cached_load(BOOK_ARCHIVE_FILE, _ARCH_CACHE).get("books") or {}
+        if match_id in archived:
+            return archived[match_id]
+        eco = m.get("economy") or {}
+        return self.open_book(
+            match_id,
+            agent_a_id=str(m.get("agent_a_id") or ""),
+            agent_b_id=str(m.get("agent_b_id") or ""),
+            seed_a=_d(eco.get("spectator_seed_a") or "0"),
+            seed_b=_d(eco.get("spectator_seed_b") or "0"),
+            seed_draw=_d(eco.get("spectator_seed_draw") or "0"),
+            creator_a_id=str(m.get("creator_a_id") or ""),
+            creator_b_id=str(m.get("creator_b_id") or ""),
+            pot_cap_usdc=_d(eco.get("pot_cap_usdc")) if eco.get("pot_cap_usdc") else None,
+            agent_a_wallet=str(m.get("agent_a_wallet") or ""),
+            agent_b_wallet=str(m.get("agent_b_wallet") or ""),
+        )
 
     def place_bet(
         self,
@@ -306,8 +414,22 @@ class SpectatorBook:
         data = self._load()
         book = data["books"].get(match_id)
         if not book:
+            # Only settled books ever leave the hot file — an archived hit is
+            # an already-finalized book, so re-settle is a no-op, not an error.
+            archived = (
+                _cached_load(BOOK_ARCHIVE_FILE, _ARCH_CACHE).get("books") or {}
+            ).get(match_id)
+            if archived:
+                return archived
             raise ValueError("book not found")
         if book["status"] == "settled":
+            # Idempotent no-op ONLY for the same winner. A conflicting re-settle
+            # must raise so the caller cannot preserve a wrong book result.
+            prev_side = book.get("payouts", {}).get("winner_side") if isinstance(book.get("payouts"), dict) else None
+            if (prev_side or None) != (winner_side or None):
+                raise ValueError(
+                    f"book {match_id} already settled with winner_side={prev_side!r}; refusing conflicting settle winner_side={winner_side!r}"
+                )
             return book
 
         totals = book.setdefault("totals", {})
@@ -544,7 +666,10 @@ class SpectatorBook:
         return book
 
     def get(self, match_id: str) -> Optional[dict[str, Any]]:
-        return self._load()["books"].get(match_id)
+        book = self._load()["books"].get(match_id)
+        if book is None:
+            book = (_cached_load(BOOK_ARCHIVE_FILE, _ARCH_CACHE).get("books") or {}).get(match_id)
+        return book
 
     def record_odds(self, match_id: str, snapshot: dict[str, Any]) -> None:
         data = self._load()

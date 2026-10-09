@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -20,10 +21,31 @@ ARCHIVE_FILE = "matches_archive.json"
 HOT_SETTLED = 8
 
 
-def _notify_spectator_payouts(
-    match_id: str, winner_side: Optional[str], pays: list[dict[str, Any]]
+class TableBusy(RuntimeError):
+    """A second driver tried to run a match that is already being driven."""
+
+
+# match_id -> monotonic start time of the thread currently driving the table.
+# Guards against double-driving (two run_match calls racing the same game).
+_RUNNING: dict[str, float] = {}
+_RUNNING_LOCK = threading.Lock()
+
+
+def _notify_spectator_outcomes(
+    match_id: str,
+    winner_side: Optional[str],
+    pays: list[dict[str, Any]],
+    book: Optional[dict[str, Any]] = None,
+    result_code: Optional[str] = None,
+    termination: Optional[str] = None,
 ) -> None:
-    """Telegram DM after the book settles. Does not block the table."""
+    """Telegram DM *every* public bettor after the book settles.
+
+    No ticket is ever silent: winners get how much they were paid, losers
+    get a plain "didn't hit" note (never again the strand-the-pool silence
+    on agm_91dadd7c75f5), and draw bets get the draw verdict. Does not
+    block the table.
+    """
     import threading
 
     def _run() -> None:
@@ -34,13 +56,31 @@ def _notify_spectator_payouts(
 
             who = "Raja" if winner_side == "a" else "Nero" if winner_side == "b" else "draw"
 
+            def _end_text() -> str:
+                term_map = {
+                    "TIMEOUT": "ran out of time",
+                    "CHECKMATE": "was checkmated",
+                    "RESIGN": "resigned",
+                    "STALEMATE": "stalemate",
+                    "INSUFFICIENT_MATERIAL": "insufficient material",
+                    "THREEFOLD_REPETITION": "threefold repetition",
+                    "FIFTY_MOVES": "fifty-move rule",
+                }
+                why = term_map.get(str(termination or "").upper())
+                if winner_side and why:
+                    return f"{who} won — the other side {why}."
+                return f"Table ended: {who}."
+
             async def _send() -> None:
+                paid_ids: set[str] = set()
+                # 1) Winners — how much they were paid.
                 for bt in pays:
                     bid = str(bt.get("bettor_id") or "")
                     amt = bt.get("amount") or "0"
                     reason = str(bt.get("reason") or "win")
                     if not bid:
                         continue
+                    paid_ids.add(bid)
                     if reason == "refund":
                         text = (
                             f"↩️ <b>Refund ${float(amt):,.2f}</b>\n\n"
@@ -50,7 +90,43 @@ def _notify_spectator_payouts(
                     else:
                         text = (
                             f"💰 <b>Paid ${float(amt):,.2f}</b>\n\n"
-                            f"{who} hit. Same number on Telegram and the website.\n"
+                            f"{_end_text()}\nSame number on Telegram and the website.\n"
+                            f"<code>{match_id}</code>"
+                        )
+                    await notify_user(bid, text)
+
+                # 2) Everyone else holding a ticket on this table — outcome
+                #    note. Includes losers whose side bets didn't hit.
+                bets = list((book or {}).get("bets") or [])
+                seen: set[str] = set()
+                for bt in bets:
+                    bid = str(bt.get("bettor_id") or "")
+                    if not bid or bid in paid_ids or bid in seen:
+                        continue
+                    seen.add(bid)
+                    side = str(bt.get("side") or "")
+                    amount = float(str(bt.get("amount") or "0"))
+                    picked = "Raja" if side == "a" else "Nero" if side == "b" else "Draw"
+                    end = _end_text()
+                    if winner_side and side != winner_side:
+                        text = (
+                            f"📡 <b>Table settled</b> — {end}\n\n"
+                            f"Your ${amount:,.2f} on <b>{picked}</b> didn't hit this time."
+                            f"\nNext table seats in about an hour.\n"
+                            f"<code>{match_id}</code>"
+                        )
+                    elif side == "draw":
+                        text = (
+                            f"📡 <b>Table settled</b> — {end}\n\n"
+                            f"Your ${amount:,.2f} on Draw rides the draw pool."
+                            f"\n<code>{match_id}</code>"
+                        )
+                    else:
+                        # Drawn table: side bets a/b lose by rulebook.
+                        text = (
+                            f"📡 <b>Table settled</b> — {end}\n\n"
+                            f"Your ${amount:,.2f} on <b>{picked}</b> didn't hit this time."
+                            f"\nNext table seats in about an hour.\n"
                             f"<code>{match_id}</code>"
                         )
                     await notify_user(bid, text)
@@ -618,6 +694,28 @@ class AgentMatchService:
         return m
 
     def _settle(self, match_id: str, m: dict[str, Any], result: dict[str, Any], white: dict, black: dict) -> dict[str, Any]:
+        # Idempotency guard: a second settle attempt (retry, watchdog, raced
+        # worker) must never re-run fee debits, escrow moves, or book payouts.
+        # This is what allowed a draw-refund to slip in before the real result
+        # on agm_91dadd7c75f5 and strand the spectator pool.
+        fresh = (self._load()["matches"] or {}).get(match_id) or m
+        if str(fresh.get("status") or "") == "settled":
+            prev_esc = fresh.get("escrow") or {}
+            prev_result = str(prev_esc.get("result") or "")
+            new_result = "draw" if result.get("result") in {"draw", "stalemate", "insufficient_material"} else "win"
+            if prev_result and prev_result != new_result:
+                logger.error(
+                    "[agentic] settle conflict %s: already settled as %s, refusing %s",
+                    match_id,
+                    prev_result,
+                    new_result,
+                )
+                raise RuntimeError(
+                    f"match {match_id} already settled ({prev_result}); conflicting re-settle refused"
+                )
+            logger.warning("[agentic] settle %s: already settled, no-op", match_id)
+            return dict(prev_esc) if prev_esc else fresh
+
         from gaming.src.stack.agentic.onchain import onchain_enabled, resolve_onchain
         from gaming.src.stack.agentic.economy.fees import FeeRouter
         from gaming.src.stack.agentic.economy.spectator import SpectatorBook
@@ -824,6 +922,14 @@ class AgentMatchService:
 
             spec_book = SpectatorBook()
             live = spec_book.get(match_id) or {}
+            if not live:
+                # Self-heal: a book lost to a failed save (disk full) must not
+                # block settlement — recreate it from the match economy fields.
+                try:
+                    live = spec_book.ensure_from_match(m)
+                    logger.warning("[agentic] spectator book recreated for %s", match_id)
+                except Exception as exc:
+                    logger.warning("[agentic] spectator book recreate failed %s: %s", match_id, exc)
             onchain_spec = bool(live.get("onchain")) and spectator_onchain_enabled()
             if onchain_spec:
                 try:
@@ -842,7 +948,19 @@ class AgentMatchService:
                 except Exception as exc:
                     logger.warning("[agentic] SpectatorPool resolve: %s", exc)
                     m["spectator_pool_resolve_error"] = str(exc)
-            spec = spec_book.settle(match_id, winner_side=winner_side)
+            spec = (
+                spec_book.settle(match_id, winner_side=winner_side)
+                if live
+                else {
+                    "status": "missing",
+                    "totals": {},
+                    "payouts": {},
+                    "onchain": False,
+                    "pool": "",
+                    "open_tx_hash": "",
+                    "resolve_tx_hash": "",
+                }
+            )
             m["spectator_book"] = {
                 "status": spec.get("status"),
                 "totals": spec.get("totals"),
@@ -895,8 +1013,14 @@ class AgentMatchService:
                     add_adjust(bid, amt, reason=f"payout:{match_id}:{reason}")
                 except Exception:
                     logger.warning("[agentic] play_adjust payout failed %s", bid, exc_info=True)
-            if fan_pays:
-                _notify_spectator_payouts(match_id, winner_side, fan_pays)
+            _notify_spectator_outcomes(
+                match_id,
+                winner_side,
+                fan_pays,
+                book=spec,
+                result_code=str(result.get("result") or ""),
+                termination=str(result.get("termination") or ""),
+            )
         except Exception as exc:
             logger.warning("[agentic] spectator settle: %s", exc)
 
@@ -937,6 +1061,32 @@ class AgentMatchService:
         if m["status"] not in {"open", "partial_lock", "locked", "playing", "queued"}:
             raise ValueError(f"cannot play from status {m['status']}")
 
+        with _RUNNING_LOCK:
+            if match_id in _RUNNING:
+                raise TableBusy(
+                    f"match {match_id} is already being driven by another worker"
+                )
+            _RUNNING[match_id] = time.monotonic()
+        try:
+            return self._run_match_inner(match_id, move_delay_sec=move_delay_sec, seed=seed, on_move=on_move)
+        finally:
+            with _RUNNING_LOCK:
+                _RUNNING.pop(match_id, None)
+
+    def _run_match_inner(
+        self,
+        match_id: str,
+        *,
+        move_delay_sec: float = 0.25,
+        seed: Optional[int] = None,
+        on_move=None,
+    ) -> dict[str, Any]:
+        # Fresh load: the wrapper checked availability; the actual game state
+        # may have moved while this thread waited on the registry lock.
+        data = self._load()
+        m = data["matches"].get(match_id)
+        if not m:
+            raise ValueError("match not found")
         if m["status"] in {"open", "partial_lock", "queued"}:
             m = self.lock_both(match_id)
 
