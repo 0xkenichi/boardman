@@ -13,6 +13,7 @@ from decimal import Decimal
 import pytest
 
 from gaming.src.stack.agentic import ledger
+from gaming.src.stack.agentic.db.tables import MATCHES
 from gaming.src.stack.agentic.economy.spectator import SpectatorBook
 from gaming.src.stack.agentic.matches import AgentMatchService, TableBusy
 
@@ -21,13 +22,20 @@ W_A = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 W_B = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 
+class _Balances:
+    """Read-through view so the assertions below read like the old dict."""
+
+    def __getitem__(self, wallet: str) -> str:
+        return str(ledger.balance(wallet))
+
+    def get(self, wallet: str, default: str = "0") -> str:
+        return str(ledger.balance(wallet))
+
+
 @pytest.fixture()
-def ledger_state(monkeypatch):
-    """In-memory ledger store (same dict object the module mutates)."""
-    state: dict = {"balances": {}, "escrows": {}, "txs": []}
-    monkeypatch.setattr(ledger, "_load", lambda: state)
-    monkeypatch.setattr(ledger, "_save", lambda data: None)
-    return state
+def ledger_state():
+    """The per-test database ledger (conftest gives each test its own store)."""
+    return {"balances": _Balances()}
 
 
 def _make_locked_escrow(match_id: str, stake: str = "10") -> None:
@@ -72,12 +80,7 @@ def test_ledger_draw_then_win_refused(ledger_state):
     assert Decimal(ledger_state["balances"][W_B]) == Decimal("50")
 
 
-def test_spectator_settle_idempotent_same_winner(monkeypatch, tmp_path):
-    books = tmp_path / "spectator_books.json"
-    books.write_text('{"books": {}}')
-    monkeypatch.setattr(
-        "gaming.src.stack.agentic.economy.spectator.BOOK_FILE", str(books)
-    )
+def test_spectator_settle_idempotent_same_winner():
     sb = SpectatorBook()
     sb.ensure_from_match(
         {
@@ -93,12 +96,7 @@ def test_spectator_settle_idempotent_same_winner(monkeypatch, tmp_path):
     assert (again.get("payouts") or {}).get("winner_side") == "a"
 
 
-def test_spectator_settle_raises_on_conflicting_winner(monkeypatch, tmp_path):
-    books = tmp_path / "spectator_books.json"
-    books.write_text('{"books": {}}')
-    monkeypatch.setattr(
-        "gaming.src.stack.agentic.economy.spectator.BOOK_FILE", str(books)
-    )
+def test_spectator_settle_raises_on_conflicting_winner():
     sb = SpectatorBook()
     sb.ensure_from_match(
         {
@@ -132,8 +130,7 @@ def test_run_match_tablebusy(monkeypatch):
         def get_agent(self, _):
             return {"agent_id": "agent-a", "wallet_address": W_A}
 
-    monkeypatch.setattr(svc, "_load", lambda: {"matches": {mid: dict(fake_match)}})
-    monkeypatch.setattr(svc, "_save", lambda data: None)
+    MATCHES.put(mid, dict(fake_match))
     monkeypatch.setattr(
         "gaming.src.stack.agentic.matches.get_registry", lambda: _FakeReg()
     )
@@ -170,8 +167,7 @@ def test_run_match_registry_cleared_on_error(monkeypatch):
         def get_agent(self, aid):
             return {"agent_id": aid} if aid == "agent-a" else None
 
-    monkeypatch.setattr(svc, "_load", lambda: {"matches": {mid: dict(fake_match)}})
-    monkeypatch.setattr(svc, "_save", lambda data: None)
+    MATCHES.put(mid, dict(fake_match))
     monkeypatch.setattr(
         "gaming.src.stack.agentic.matches.get_registry", lambda: _RegMissing()
     )

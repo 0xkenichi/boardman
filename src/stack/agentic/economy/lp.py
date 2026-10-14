@@ -14,7 +14,9 @@ They take market risk with the agent:
 This is NOT spectator betting. LPs are equity-like co-funders of the bot.
 Spectator pot remains a separate side market.
 
-Demo ledger file: agent_lp_pools.json
+Stored one row per agent pool in the agentic database (``lp_pools``); every
+change is an atomic read-modify-write of that row. Legacy file
+agent_lp_pools.json is imported by scripts/migrate_json_to_db.py.
 """
 from __future__ import annotations
 
@@ -23,9 +25,18 @@ from datetime import datetime, timezone
 from decimal import Decimal, ROUND_DOWN
 from typing import Any, Optional
 
-from gaming.src.stack.agentic.store import load_json, save_json
+from gaming.src.stack.agentic.db.tables import LP_POOLS
 
 LP_FILE = "agent_lp_pools.json"
+
+
+def _empty_pool(agent_id: str) -> dict[str, Any]:
+    return {
+        "agent_id": agent_id,
+        "total_lp_usdc": "0",
+        "positions": {},  # lp_id -> {amount, deposited_at, realized_pnl}
+        "history": [],
+    }
 
 
 def _now() -> str:
@@ -52,22 +63,15 @@ class LPPayout:
 
 class AgentLPPool:
     def _load(self) -> dict[str, Any]:
-        return load_json(LP_FILE, {"pools": {}})
+        """Legacy whole-file view ``{"pools": {...}}``."""
+        return LP_POOLS.snapshot(LP_POOLS.query(), "agent_id")
 
     def _save(self, data: dict[str, Any]) -> None:
-        save_json(LP_FILE, data)
+        """Write back only what the caller changed in a ``_load()`` snapshot."""
+        LP_POOLS.save_snapshot(data)
 
     def get_pool(self, agent_id: str) -> dict[str, Any]:
-        data = self._load()
-        p = data["pools"].get(agent_id)
-        if p:
-            return p
-        return {
-            "agent_id": agent_id,
-            "total_lp_usdc": "0",
-            "positions": {},  # lp_id -> {amount, deposited_at, realized_pnl}
-            "history": [],
-        }
+        return LP_POOLS.get(agent_id) or _empty_pool(agent_id)
 
     def deposit(
         self,
@@ -81,13 +85,20 @@ class AgentLPPool:
         amount = _q(_d(amount_usdc))
         if amount <= 0:
             raise ValueError("LP deposit must be positive")
-        data = self._load()
-        pool = data["pools"].get(agent_id) or {
-            "agent_id": agent_id,
-            "total_lp_usdc": "0",
-            "positions": {},
-            "history": [],
-        }
+
+        def _apply(cur: Optional[dict[str, Any]]) -> dict[str, Any]:
+            pool = cur or _empty_pool(agent_id)
+            self._deposit_into(pool, lp_id, amount, pull_tx_hash, pull_tx_explorer)
+            return pool
+
+        pool = LP_POOLS.upsert_with(agent_id, _apply)
+        assert pool is not None
+        return pool
+
+    @staticmethod
+    def _deposit_into(
+        pool: dict[str, Any], lp_id: str, amount: Decimal, pull_tx_hash: str, pull_tx_explorer: str
+    ) -> None:
         pos = pool["positions"].get(lp_id) or {
             "lp_id": lp_id,
             "amount": "0",
@@ -110,9 +121,6 @@ class AgentLPPool:
             }
         )
         pool["history"] = pool["history"][-200:]
-        data["pools"][agent_id] = pool
-        self._save(data)
-        return pool
 
     def withdrawable(
         self,
@@ -124,8 +132,24 @@ class AgentLPPool:
         locked_usdc: Decimal = Decimal("0"),
     ) -> Decimal:
         """LP may not pull more than their share of free capital."""
-        pool = self.get_pool(agent_id)
-        pos = pool["positions"].get(lp_id)
+        return self._withdrawable_from(
+            self.get_pool(agent_id),
+            lp_id,
+            agent_bankroll=agent_bankroll,
+            reserve_bps=reserve_bps,
+            locked_usdc=locked_usdc,
+        )
+
+    @staticmethod
+    def _withdrawable_from(
+        pool: dict[str, Any],
+        lp_id: str,
+        *,
+        agent_bankroll: Decimal,
+        reserve_bps: int,
+        locked_usdc: Decimal = Decimal("0"),
+    ) -> Decimal:
+        pos = (pool.get("positions") or {}).get(lp_id)
         if not pos:
             return Decimal("0")
         claim = _d(pos["amount"])
@@ -150,17 +174,26 @@ class AgentLPPool:
         withdraw_tx_explorer: str = "",
     ) -> dict[str, Any]:
         amount = _q(_d(amount_usdc))
-        max_w = self.withdrawable(
-            agent_id,
-            lp_id=lp_id,
-            agent_bankroll=agent_bankroll,
-            reserve_bps=reserve_bps,
-            locked_usdc=locked_usdc,
-        )
-        if amount <= 0 or amount > max_w:
-            raise ValueError(f"cannot withdraw {amount}; max {max_w}")
-        data = self._load()
-        pool = data["pools"][agent_id]
+
+        def _apply(pool: dict[str, Any]) -> None:
+            # Re-check inside the row lock: two concurrent withdrawals must not
+            # both pass a stale check.
+            max_w = self._withdrawable_from(
+                pool, lp_id, agent_bankroll=agent_bankroll, reserve_bps=reserve_bps, locked_usdc=locked_usdc
+            )
+            if amount <= 0 or amount > max_w:
+                raise ValueError(f"cannot withdraw {amount}; max {max_w}")
+            self._withdraw_from(pool, lp_id, amount, withdraw_tx_hash, withdraw_tx_explorer)
+
+        pool = LP_POOLS.update(agent_id, _apply)
+        if pool is None:
+            raise ValueError(f"cannot withdraw {amount}; max 0")
+        return {"pool": pool, "withdrawn": str(amount)}
+
+    @staticmethod
+    def _withdraw_from(
+        pool: dict[str, Any], lp_id: str, amount: Decimal, withdraw_tx_hash: str, withdraw_tx_explorer: str
+    ) -> None:
         pos = pool["positions"][lp_id]
         pos["amount"] = str(_q(_d(pos["amount"]) - amount))
         if withdraw_tx_hash:
@@ -177,9 +210,6 @@ class AgentLPPool:
             }
         )
         pool["history"] = pool["history"][-200:]
-        data["pools"][agent_id] = pool
-        self._save(data)
-        return {"pool": pool, "withdrawn": str(amount)}
 
     def distribute_skill_profit(
         self,
@@ -203,7 +233,22 @@ class AgentLPPool:
                 "notes": ["no profit to split"],
             }
 
-        pool = self.get_pool(agent_id)
+        result: dict[str, Any] = {}
+
+        def _apply(cur: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+            live = cur or _empty_pool(agent_id)
+            out, changed = self._distribute_in(live, profit, lp_profit_share_bps)
+            result.update(out)
+            return live if changed and cur is not None else None
+
+        LP_POOLS.upsert_with(agent_id, _apply)
+        return result
+
+    @staticmethod
+    def _distribute_in(
+        live: dict[str, Any], profit: Decimal, lp_profit_share_bps: int
+    ) -> tuple[dict[str, Any], bool]:
+        pool = live
         total_lp = _d(pool.get("total_lp_usdc") or "0")
         bps = max(0, min(int(lp_profit_share_bps), 8000))
 
@@ -213,14 +258,11 @@ class AgentLPPool:
                 "lp_total": "0",
                 "owner_residual": str(profit),
                 "notes": ["no LPs — all residual to owner/bankroll"],
-            }
+            }, False
 
         lp_pool_profit = _q(profit * Decimal(bps) / Decimal(10_000))
         owner_residual = _q(profit - lp_pool_profit)
         payouts: list[dict[str, Any]] = []
-        data = self._load()
-        live = data["pools"].get(agent_id) or pool
-
         positions = live.get("positions") or {}
         if not isinstance(positions, dict):
             positions = {}
@@ -243,7 +285,7 @@ class AgentLPPool:
         live["total_lp_usdc"] = str(
             _q(sum(_d(p["amount"]) for p in live["positions"].values()))
         )
-        live["history"].append(
+        live.setdefault("history", []).append(
             {
                 "ts": _now(),
                 "type": "skill_profit",
@@ -253,8 +295,6 @@ class AgentLPPool:
             }
         )
         live["history"] = live["history"][-200:]
-        data["pools"][agent_id] = live
-        self._save(data)
 
         return {
             "lp_payouts": payouts,
@@ -264,7 +304,7 @@ class AgentLPPool:
                 f"LPs take {bps} bps of net skill profit pro-rata",
                 "LP claims compound into total_lp_usdc (claim on bankroll)",
             ],
-        }
+        }, True
 
     def mark_loss(
         self,
@@ -280,9 +320,21 @@ class AgentLPPool:
         loss = _q(_d(loss_usdc))
         if loss <= 0:
             return {"haircut": "0", "notes": ["no loss"]}
-        data = self._load()
-        pool = data["pools"].get(agent_id)
-        if not pool or _d(pool.get("total_lp_usdc") or "0") <= 0:
+        result: dict[str, Any] = {}
+
+        def _apply(pool: dict[str, Any]) -> None:
+            result.update(self._mark_loss_in(pool, loss, agent_bankroll_before))
+
+        pool = LP_POOLS.update(agent_id, _apply)
+        if pool is None:
+            return {"haircut": "0", "notes": ["no LP book"]}
+        if "pool" in result:
+            result["pool"] = pool
+        return result
+
+    @staticmethod
+    def _mark_loss_in(pool: dict[str, Any], loss: Decimal, agent_bankroll_before: Decimal) -> dict[str, Any]:
+        if _d(pool.get("total_lp_usdc") or "0") <= 0:
             return {"haircut": "0", "notes": ["no LP book"]}
 
         br = _d(agent_bankroll_before)
@@ -317,6 +369,4 @@ class AgentLPPool:
             }
         )
         pool["history"] = pool["history"][-200:]
-        data["pools"][agent_id] = pool
-        self._save(data)
         return {"haircut": str(haircut), "pool": pool, "notes": ["LP claims marked down"]}

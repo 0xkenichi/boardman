@@ -107,6 +107,15 @@ def place_bet(
         raise ValueError(f"minimum bet is {MIN_BET_USDC} USDC")
     if amt > MAX_BET_USDC:
         raise ValueError(f"maximum bet is {MAX_BET_USDC} USDC")
+    # Spectator-betting kill switch / allowlist, before anything is debited
+    # (403/451, never a ValueError the route would turn into a 422).
+    from gaming.src.backend.services.spectator_policy import assert_spectator_betting_allowed
+
+    assert_spectator_betting_allowed(
+        path="football.betting.place_bet",
+        match_id=f"s{season_no}:md{matchday}:{home}:{away}",
+        profile_id=better,
+    )
 
     from gaming.src.stack.agentic.games.football_managers.season import (
         _deadline,

@@ -60,7 +60,7 @@ TERMINAL_WIN = frozenset({"white_win", "black_win", "p1_win", "p2_win"})
 TERMINAL_DRAW = frozenset({"draw", "1/2-1/2"})
 LOCKABLE_STATUSES = frozenset({"open", "partial_lock", "queued", "locking"})
 SETTLEABLE_STATUSES = frozenset(
-    {"locked", "playing", "queued", "settle_failed", "partial_lock"}
+    {"locked", "playing", "queued", "settle_failed", "partial_lock", "settling"}
 )
 CONTRACT_MAX_STAKE_USDC = Decimal("10000")
 

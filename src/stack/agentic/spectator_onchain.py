@@ -435,6 +435,10 @@ def deposit_for(
 ) -> dict[str, Any]:
     """House custodial deposit: ledger already debited; resolver pulls USDC into the pool."""
     mid = assert_live_match_id(match_id)
+    # Kill switch (defence in depth — routes gate before any pull).
+    from gaming.src.backend.services.spectator_policy import assert_spectator_betting_allowed
+
+    assert_spectator_betting_allowed(path="spectator_onchain.deposit_for", match_id=mid)
     if amount_usdc <= 0:
         raise SpectatorOnchainError("amount must be positive")
     user = (user_address or "").strip()

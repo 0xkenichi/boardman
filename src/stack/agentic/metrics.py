@@ -252,9 +252,8 @@ def _public_row(
 # metrics read from it alone only ever described a handful of recent games.
 # Every metrics read now goes through `metric_matches()`.
 #
-# TODO(ledger-db): when matches move into the DB, re-point metric_matches()
-# (and settled_since()) at it — a query that returns the fields _slim_match
-# keeps — and drop the archive projection below. Callers don't change.
+# Matches live in the agentic database now (one row each); metric_matches()
+# reads every row through an incremental, version-keyed projection cache.
 
 MATCHES_FILE = "matches.json"
 ARCHIVE_FILE = "matches_archive.json"
@@ -277,23 +276,26 @@ def _slim_archive(raw: Any) -> dict[str, Any]:
 
 
 def _archived_matches() -> dict[str, Any]:
-    from gaming.src.stack.agentic.json_cache import get_cache
-
-    arch = get_cache().view_swr(ARCHIVE_FILE, {"matches": {}}, transform=_slim_archive)
-    return arch.get("matches") or {}
+    """Settled matches, slimmed (kept for callers; all matches live in the DB)."""
+    return {mid: m for mid, m in metric_matches()["matches"].items() if m.get("status") == "settled"}
 
 
 def metric_matches() -> dict[str, Any]:
-    """Every match metrics should count: archive merged under the hot file.
+    """Every match metrics should count — live and long-settled — from the
+    agentic database; settled matches outside the hot set are slimmed of
+    move lists.
 
-    Same shape as matches.json ({"matches": {id: record}}); records may be
-    read-only cached views and must not be mutated.
+    Same shape as matches.json ({"matches": {id: record}}); records are
+    read-only cached views and must not be mutated. Only rows whose version
+    changed since the previous call are re-read (db.tables.all_matches_projected).
     """
-    from gaming.src.stack.agentic.json_cache import get_cache
+    from gaming.src.stack.agentic.db.tables import all_matches_projected, hot_matches
+    from gaming.src.stack.agentic.json_cache import freeze
 
-    hot = get_cache().view(MATCHES_FILE, {"matches": {}}).get("matches") or {}
-    merged = dict(_archived_matches())
-    merged.update(hot)  # a match mid-archive can sit in both — hot wins
+    merged = dict(all_matches_projected(_slim_match))
+    # Live tables + the newest settled ones pass through untouched (as the
+    # hot file did); only the long tail is slimmed.
+    merged.update({m["match_id"]: freeze(m) for m in hot_matches() if m.get("match_id")})
     return {"matches": merged}
 
 

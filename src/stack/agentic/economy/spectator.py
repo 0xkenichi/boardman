@@ -16,29 +16,24 @@ Settlement:
     actual draw → draw bettors take everything (side bets + side seeds +
                   public draw + both agent draw seeds); side bettors lose
 
-Demo ledger only (same file store as agentic). On-chain pools later.
+Demo book in the agentic database (one row per match); on-chain books are a
+projection of confirmed SpectatorPool txs. Every mutation is an atomic
+read-modify-write of that row.
 """
 from __future__ import annotations
 
 import os
-import threading
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
-from gaming.src.stack.agentic.store import data_dir, load_json, save_json
+from gaming.src.stack.agentic.db.tables import BOOKS, HOT_SETTLED_BOOKS, hot_books  # noqa: F401
 
+# Legacy file names (imported by scripts/migrate_json_to_db.py). Books are one
+# database row each now: a bet or odds tick rewrites one row, not a 97MB file.
 BOOK_FILE = "spectator_books.json"
 BOOK_ARCHIVE_FILE = "spectator_books_archive.json"
-# Settled books kept in the hot file. Everything older is compacted into the
-# archive — the hot file is rewritten on every bet/odds tick, so letting 1.8k
-# settled books accumulate froze the API for seconds per save (GIL held while
-# dumping 97MB) and eventually wedged it entirely.
-HOT_SETTLED_BOOKS = 50
-# Process-wide parse caches keyed by path (mtime invalidates across processes).
-_HOT_CACHE: dict[str, tuple[Any, dict[str, Any]]] = {}
-_ARCH_CACHE: dict[str, tuple[Any, dict[str, Any]]] = {}
-_CACHE_LOCK = threading.RLock()
 # Pot-level tiered platform fee — mirrors SpectatorPool._platformFee (V1 tiers):
 #   pot < $10   → min($1, 25% of pot)   (dust clamp, effective ≤ 25%)
 #   $10 ≤ pot ≤ $1000 → 700 bps
@@ -86,74 +81,64 @@ def spectator_platform_fee_for_pot(pot: Decimal, mid_bps: int = DEFAULT_SPECTATO
     return _bps(pot, SPECTATOR_TIER_PREMIUM_BPS)
 
 
-def _cached_load(name: str, cache: dict[str, tuple[Any, dict[str, Any]]]) -> dict[str, Any]:
-    """mtime-guarded parse cache — stat() is cheap; parsing 97MB is not."""
-    path = data_dir() / name
+class _AllBooks(Mapping):
+    """Every book (live + settled), lazily: ``.get(id)`` is one indexed read.
+
+    Replaces the old hot+archive merge that parsed ~67MB per call.
+    """
+
+    def __getitem__(self, key: str) -> dict[str, Any]:
+        b = BOOKS.get(str(key))
+        if b is None:
+            raise KeyError(key)
+        return b
+
+    def get(self, key: Any, default: Any = None) -> Any:  # type: ignore[override]
+        b = BOOKS.get(str(key or ""))
+        return default if b is None else b
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(BOOKS.keys())
+
+    def __len__(self) -> int:
+        return BOOKS.count()
+
+    def items(self):  # type: ignore[override]
+        return [(str(b.get("match_id")), b) for b in BOOKS.query()]
+
+    def values(self):  # type: ignore[override]
+        return BOOKS.query()
+
+
+def all_books() -> Mapping[str, Any]:
+    """All books keyed by match_id (lazy mapping over the database)."""
+    return _AllBooks()
+
+
+def _betting_gate(match_id: str) -> None:
+    from gaming.src.backend.services.spectator_policy import assert_spectator_betting_allowed
+
+    assert_spectator_betting_allowed(path="SpectatorBook.place_bet", match_id=match_id)
+
+
+def betting_open_for_new_books() -> bool:
+    """Kill switch (no country): may a new book be opened / seeded?"""
     try:
-        mtime = path.stat().st_mtime_ns
-    except OSError:
-        mtime = None
-    key = str(path)
-    with _CACHE_LOCK:
-        hit = cache.get(key)
-        if hit is not None and hit[0] == mtime:
-            return hit[1]
-    data = load_json(name, {"books": {}})
-    with _CACHE_LOCK:
-        cache[key] = (mtime, data)
-    return data
+        from gaming.src.backend.services.spectator_policy import betting_globally_enabled
 
-
-def all_books() -> dict[str, Any]:
-    """Hot file merged over the archive (archive never overwrites hot)."""
-    merged = dict(_cached_load(BOOK_ARCHIVE_FILE, _ARCH_CACHE).get("books") or {})
-    merged.update(_cached_load(BOOK_FILE, _HOT_CACHE).get("books") or {})
-    return merged
+        return betting_globally_enabled()
+    except Exception:
+        return False
 
 
 class SpectatorBook:
     def _load(self) -> dict[str, Any]:
-        return _cached_load(BOOK_FILE, _HOT_CACHE)
+        """Legacy whole-file view (live books + the newest settled ones)."""
+        return BOOKS.snapshot(hot_books(), "match_id")
 
     def _save(self, data: dict[str, Any]) -> None:
-        data = self._archive_cold(data)
-        save_json(BOOK_FILE, data, compact=True)
-        # Invalidate rather than re-key: another thread/process may have
-        # written between our replace and the stat — a stale (mtime, data)
-        # pair would be worse than one extra parse of a ~1MB file.
-        with _CACHE_LOCK:
-            _HOT_CACHE.pop(str(data_dir() / BOOK_FILE), None)
-
-    @staticmethod
-    def _archive_cold(data: dict[str, Any]) -> dict[str, Any]:
-        """Move settled books beyond the hot window into spectator_books_archive.json.
-
-        Mirrors AgentMatchService._archive_cold: the hot file is rewritten on
-        every bet/odds tick, so only live books + recent settlements stay there.
-        """
-        books = data.get("books") or {}
-        settled = [b for b in books.values() if b.get("status") == "settled"]
-        if len(settled) <= HOT_SETTLED_BOOKS:
-            return data
-        settled.sort(
-            key=lambda b: b.get("settled_at") or b.get("created_at") or "",
-            reverse=True,
-        )
-        keep = {
-            k: b for k, b in books.items() if b.get("status") != "settled"
-        }
-        for b in settled[:HOT_SETTLED_BOOKS]:
-            keep[b["match_id"]] = b
-        drop = settled[HOT_SETTLED_BOOKS:]
-        arch = load_json(BOOK_ARCHIVE_FILE, {"books": {}})
-        arch_books = arch.setdefault("books", {})
-        for b in drop:
-            arch_books[b["match_id"]] = b
-        save_json(BOOK_ARCHIVE_FILE, arch, compact=True)
-        with _CACHE_LOCK:
-            _ARCH_CACHE.pop(str(data_dir() / BOOK_ARCHIVE_FILE), None)
-        data["books"] = keep
-        return data
+        """Write back only what the caller changed in a ``_load()`` snapshot."""
+        BOOKS.save_snapshot(data)
 
     def open_book(
         self,
@@ -169,10 +154,11 @@ class SpectatorBook:
         pot_cap_usdc: Optional[Decimal] = None,
         agent_a_wallet: str = "",
         agent_b_wallet: str = "",
+        closed_reason: str = "",
     ) -> dict[str, Any]:
-        data = self._load()
-        if match_id in data["books"]:
-            return data["books"][match_id]
+        existing = BOOKS.get(match_id)
+        if existing is not None:
+            return existing
         # Default cap: seeds * 20, min $5 — keeps payout sustainable vs agent liquidity
         seeds = seed_a + seed_b
         cap = pot_cap_usdc
@@ -203,9 +189,13 @@ class SpectatorBook:
             "settled_at": None,
             "payouts": None,
         }
-        data["books"][match_id] = rec
-        self._save(data)
-        return rec
+        if closed_reason:
+            # Kill switch off: the book exists (settlement and views expect
+            # one) but never takes a ticket.
+            rec["status"] = "closed"
+            rec["closed_reason"] = closed_reason
+        stored, _created = BOOKS.insert_if_absent(match_id, rec)
+        return stored
 
     def ensure_from_match(self, m: dict[str, Any]) -> dict[str, Any]:
         """
@@ -221,12 +211,9 @@ class SpectatorBook:
         match_id = str(m.get("match_id") or "")
         if not match_id:
             raise ValueError("match has no match_id")
-        data = self._load()
-        if match_id in data["books"]:
-            return data["books"][match_id]
-        archived = _cached_load(BOOK_ARCHIVE_FILE, _ARCH_CACHE).get("books") or {}
-        if match_id in archived:
-            return archived[match_id]
+        existing = BOOKS.get(match_id)
+        if existing is not None:
+            return existing
         eco = m.get("economy") or {}
         return self.open_book(
             match_id,
@@ -257,16 +244,34 @@ class SpectatorBook:
             raise ValueError("side must be a, b, or draw")
         if amount_usdc <= 0:
             raise ValueError("amount must be positive")
-        data = self._load()
-        book = data["books"].get(match_id)
-        if not book:
+        amount_usdc = _d(amount_usdc)
+        # Kill switch / country allowlist — before any state is touched.
+        _betting_gate(match_id)
+
+        def _apply(book: dict[str, Any]) -> None:
+            if book.get("onchain"):
+                raise ValueError(
+                    "on-chain book — bets are recorded via project_deposit after a confirmed pool deposit"
+                )
+            if book["status"] != "open":
+                raise ValueError(f"book not open: {book['status']}")
+            self._book_bet(book, bettor_id=bettor_id, side=side, amount_usdc=amount_usdc)
+
+        try:
+            book = BOOKS.update(match_id, _apply)
+        except _PotFull as exc:
+            # Mark the book full (its own small transaction), then refuse.
+            if exc.mark_full:
+                BOOKS.update(match_id, lambda b: b.update(status="full") if b.get("status") == "open" else None)
+            raise ValueError(str(exc)) from None
+        if book is None:
             raise ValueError("book not found")
-        if book.get("onchain"):
-            raise ValueError(
-                "on-chain book — bets are recorded via project_deposit after a confirmed pool deposit"
-            )
-        if book["status"] != "open":
-            raise ValueError(f"book not open: {book['status']}")
+        return book
+
+    @staticmethod
+    def _book_bet(
+        book: dict[str, Any], *, bettor_id: str, side: str, amount_usdc: Decimal
+    ) -> None:
         book.setdefault("totals", {})
         book["totals"].setdefault("draw", "0")
         if side == "draw":
@@ -278,14 +283,10 @@ class SpectatorBook:
         if cap > 0 and pot + amount_usdc > cap + Decimal("0.000001"):
             room = cap - pot
             if room <= 0:
-                if side != "draw":
-                    book["status"] = "full"
-                    data["books"][match_id] = book
-                    self._save(data)
-                raise ValueError("pot full — no more bets")
+                raise _PotFull("pot full — no more bets", mark_full=side != "draw")
             label = "draw book" if side == "draw" else "pot"
-            raise ValueError(f"{label} cap ${cap} — ${room} room left, asked for ${amount_usdc}")
-        book["bets"].append(
+            raise _PotFull(f"{label} cap ${cap} — ${room} room left, asked for ${amount_usdc}", mark_full=False)
+        book.setdefault("bets", []).append(
             {
                 "bettor_id": bettor_id,
                 "side": side,
@@ -298,9 +299,6 @@ class SpectatorBook:
         new_pot = _d(book["totals"]["a"]) + _d(book["totals"]["b"])
         if cap > 0 and new_pot >= cap - Decimal("0.000001"):
             book["status"] = "full"
-        data["books"][match_id] = book
-        self._save(data)
-        return book
 
     def mark_onchain(
         self,
@@ -309,17 +307,16 @@ class SpectatorBook:
         pool: str = "",
         open_tx_hash: str = "",
     ) -> dict[str, Any]:
-        data = self._load()
-        book = data["books"].get(match_id)
-        if not book:
+        def _apply(book: dict[str, Any]) -> None:
+            book["onchain"] = True
+            if pool:
+                book["pool"] = pool
+            if open_tx_hash:
+                book["open_tx_hash"] = open_tx_hash
+
+        book = BOOKS.update(match_id, _apply)
+        if book is None:
             raise ValueError("book not found")
-        book["onchain"] = True
-        if pool:
-            book["pool"] = pool
-        if open_tx_hash:
-            book["open_tx_hash"] = open_tx_hash
-        data["books"][match_id] = book
-        self._save(data)
         return book
 
     def project_deposit(
@@ -347,29 +344,30 @@ class SpectatorBook:
         txh = (tx_hash or "").strip()
         if not txh:
             raise ValueError("tx_hash required")
-        data = self._load()
-        book = data["books"].get(match_id)
-        if not book:
+        amount_usdc = _d(amount_usdc)
+
+        def _apply(book: dict[str, Any]) -> None:
+            if not book.get("onchain"):
+                raise ValueError("project_deposit only for on-chain books")
+            for existing in book.get("bets") or []:
+                if (existing.get("tx_hash") or "") == txh:
+                    return
+            book.setdefault("bets", []).append(
+                {
+                    "bettor_id": bettor_id,
+                    "side": side,
+                    "amount": str(amount_usdc),
+                    "ts": _now(),
+                    "tx_hash": txh,
+                    "explorer": explorer,
+                }
+            )
+            totals = book.setdefault("totals", {})
+            totals[side] = str(_d(totals.get(side, "0")) + amount_usdc)
+
+        book = BOOKS.update(match_id, _apply)
+        if book is None:
             raise ValueError("book not found")
-        if not book.get("onchain"):
-            raise ValueError("project_deposit only for on-chain books")
-        for existing in book.get("bets") or []:
-            if (existing.get("tx_hash") or "") == txh:
-                return book
-        book.setdefault("bets", []).append(
-            {
-                "bettor_id": bettor_id,
-                "side": side,
-                "amount": str(amount_usdc),
-                "ts": _now(),
-                "tx_hash": txh,
-                "explorer": explorer,
-            }
-        )
-        tot = _d(book["totals"].get(side, "0")) + amount_usdc
-        book["totals"][side] = str(tot)
-        data["books"][match_id] = book
-        self._save(data)
         return book
 
     def project_resolve(
@@ -379,28 +377,26 @@ class SpectatorBook:
         tx_hash: str,
         explorer: str = "",
     ) -> dict[str, Any]:
-        data = self._load()
-        book = data["books"].get(match_id)
-        if not book:
+        def _apply(book: dict[str, Any]) -> None:
+            if tx_hash:
+                book["resolve_tx_hash"] = tx_hash
+                book["resolve_explorer"] = explorer
+
+        book = BOOKS.update(match_id, _apply)
+        if book is None:
             raise ValueError("book not found")
-        if tx_hash:
-            book["resolve_tx_hash"] = tx_hash
-            book["resolve_explorer"] = explorer
-        data["books"][match_id] = book
-        self._save(data)
         return book
 
     def close_book(self, match_id: str, *, reason: str = "stage") -> dict[str, Any]:
         """Stop new bets (mid-game freeze) without settling."""
-        data = self._load()
-        book = data["books"].get(match_id)
-        if not book:
+        def _apply(book: dict[str, Any]) -> None:
+            if book["status"] in {"open", "full"}:
+                book["status"] = "closed"
+                book["closed_reason"] = reason
+
+        book = BOOKS.update(match_id, _apply)
+        if book is None:
             raise ValueError("book not found")
-        if book["status"] in {"open", "full"}:
-            book["status"] = "closed"
-            book["closed_reason"] = reason
-            data["books"][match_id] = book
-            self._save(data)
         return book
 
     def settle(
@@ -411,27 +407,31 @@ class SpectatorBook:
         platform_fee_bps: int = DEFAULT_SPECTATOR_FEE_BPS,
         creator_bps: int = DEFAULT_CREATOR_SPECTATOR_BPS,
     ) -> dict[str, Any]:
-        data = self._load()
-        book = data["books"].get(match_id)
-        if not book:
-            # Only settled books ever leave the hot file — an archived hit is
-            # an already-finalized book, so re-settle is a no-op, not an error.
-            archived = (
-                _cached_load(BOOK_ARCHIVE_FILE, _ARCH_CACHE).get("books") or {}
-            ).get(match_id)
-            if archived:
-                return archived
-            raise ValueError("book not found")
-        if book["status"] == "settled":
-            # Idempotent no-op ONLY for the same winner. A conflicting re-settle
-            # must raise so the caller cannot preserve a wrong book result.
-            prev_side = book.get("payouts", {}).get("winner_side") if isinstance(book.get("payouts"), dict) else None
-            if (prev_side or None) != (winner_side or None):
-                raise ValueError(
-                    f"book {match_id} already settled with winner_side={prev_side!r}; refusing conflicting settle winner_side={winner_side!r}"
-                )
-            return book
+        def _apply(book: dict[str, Any]) -> None:
+            if book["status"] == "settled":
+                # Idempotent no-op ONLY for the same winner. A conflicting re-settle
+                # must raise so the caller cannot preserve a wrong book result.
+                prev_side = book.get("payouts", {}).get("winner_side") if isinstance(book.get("payouts"), dict) else None
+                if (prev_side or None) != (winner_side or None):
+                    raise ValueError(
+                        f"book {match_id} already settled with winner_side={prev_side!r}; refusing conflicting settle winner_side={winner_side!r}"
+                    )
+                return
+            self._settle_book(book, winner_side, platform_fee_bps, creator_bps)
 
+        book = BOOKS.update(match_id, _apply)
+        if book is None:
+            raise ValueError("book not found")
+        return book
+
+    @staticmethod
+    def _settle_book(
+        book: dict[str, Any],
+        winner_side: Optional[str],
+        platform_fee_bps: int,
+        creator_bps: int,
+    ) -> None:
+        """Compute payouts and mark the book settled (pure, on the row being written)."""
         totals = book.setdefault("totals", {})
         totals.setdefault("draw", "0")
         total_a = _d(totals.get("a") or "0")
@@ -598,9 +598,7 @@ class SpectatorBook:
                 "draw_book": {},
                 "seed_refunds": [],
             }
-            data["books"][match_id] = book
-            self._save(data)
-            return book
+            return
 
         winner_side = winner_side.lower()
         if winner_side not in {"a", "b"}:
@@ -661,24 +659,22 @@ class SpectatorBook:
             "draw_book": draw_book,
             "seed_refunds": list(draw_book.get("seed_refunds") or []),
         }
-        data["books"][match_id] = book
-        self._save(data)
-        return book
 
     def get(self, match_id: str) -> Optional[dict[str, Any]]:
-        book = self._load()["books"].get(match_id)
-        if book is None:
-            book = (_cached_load(BOOK_ARCHIVE_FILE, _ARCH_CACHE).get("books") or {}).get(match_id)
-        return book
+        """Indexed lookup — live or settled, no archive file to parse."""
+        return BOOKS.get(match_id)
 
     def record_odds(self, match_id: str, snapshot: dict[str, Any]) -> None:
-        data = self._load()
-        book = data["books"].get(match_id)
-        if not book:
-            return
-        hist = list(book.get("odds_history") or [])
-        hist.append(snapshot)
-        book["odds_history"] = hist[-40:]  # cap
-        book["odds_live"] = snapshot
-        data["books"][match_id] = book
-        self._save(data)
+        def _apply(book: dict[str, Any]) -> None:
+            hist = list(book.get("odds_history") or [])
+            hist.append(snapshot)
+            book["odds_history"] = hist[-40:]  # cap
+            book["odds_live"] = snapshot
+
+        BOOKS.update(match_id, _apply)
+
+
+class _PotFull(Exception):
+    def __init__(self, msg: str, *, mark_full: bool) -> None:
+        super().__init__(msg)
+        self.mark_full = mark_full

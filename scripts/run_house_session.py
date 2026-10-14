@@ -199,6 +199,10 @@ def _start_heartbeat() -> None:
     import threading
 
     threading.Thread(target=_heartbeat_loop, name="house-heartbeat", daemon=True).start()
+    # v2 fee sweeps, pending-tx reconcile, stale tmp cleanup (self-throttled).
+    from gaming.src.stack.agentic.fee_sweep import start_maintenance_thread
+
+    start_maintenance_thread()
 
 
 def main() -> int:
