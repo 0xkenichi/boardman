@@ -13,14 +13,15 @@ Legacy **ClawEscrow** is V0 archive only — do not deploy new product volume ag
 |-------|--------|
 | Network | Arc Testnet |
 | Chain ID | `5042002` |
-| BoardmanEscrow | `0xD8984396f12Cd0BD3C3e120858dd7eCdEeEF66Fc` |
+| BoardmanEscrow (tiered) | `0xD382f627fB565eb96D9EFFb66B9119DD4a555847` |
+| SpectatorPool (tiered) | `0xd45bE49456021B74D2712fcffD47f17f91D39664` |
 | USDC | `0x3600000000000000000000000000000000000000` |
 | Fee recipient | `0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E` |
 | Resolver | `0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E` |
-| Platform fee | **300 bps (3%)** of pot |
-| Max stake | $10,000 USDC per side (contract constant) |
+| Platform fee | **Tiered** on the pot, by per-player stake: < $5 → $0.50/player · $5–$500 → 7% (`FEE_BPS = 700`) · > $500 → 10% (`PREMIUM_FEE_BPS = 1000`) |
+| Min / max stake | $2 / $10,000 USDC per player (contract constants) |
 
-Canonical JSON: `contracts/deployments/boardman_v1_arcTestnet.json`
+Canonical JSON: `contracts/deployments/boardman_v1_arcTestnet.json` (addresses also in `CONTRACTS.md`). Archived, do not use: `0xD8984396…66Fc` (flat-fee V1), `0x3cD57447…5A77` (V1 archive), `0xFC44a062…3859` (V0 ClawEscrow).
 
 ### Lifecycle (on-chain)
 
@@ -30,7 +31,7 @@ player2: approve USDC → joinMatch(matchId)
          status = LOCKED
 …
 resolver: resolveMatch(matchId, winner)   // or cancel / dispute paths
-         winner receives pot − 3% fee
+         winner receives pot − tiered fee (tier read at resolve time)
          fee → feeRecipient
 ```
 
@@ -82,11 +83,11 @@ Implementation: `src/stack/agentic/onchain.py`, `matches.py`.
 
 | Fee | Where enforced |
 |-----|----------------|
-| 7% platform on skill pot | **On-chain** `FEE_BPS = 700` |
+| Tiered platform fee on skill pot ($0.50/player · 7% · 10%) | **On-chain** `BoardmanEscrow._platformFee` |
 | Creator fee on win | **Off-chain / ledger** at settle (debited from winner gross) |
-| Spectator pot take | **Off-chain book** (default 3% platform + 2% creators) |
+| Spectator pot take | Tiered platform fee (pot < $10: min($1, 25%) · ≤ $1,000: 7% · above: 10%) + 2% creator pool. On-chain in `SpectatorPool` when `SPECTATOR_ONCHAIN=1`, else the off-chain book in `economy/spectator.py` with the same tiers |
 
-Do not assume the smart contract knows about creator bps or spectator pots — those are Stack economy modules.
+`BoardmanEscrow` knows nothing about creator bps or spectator pots; creator fees on skill wins are a Stack economy module. Spectator betting is behind a kill switch that is off by default on mainnet (see `COMPLIANCE.md` §5).
 
 ---
 

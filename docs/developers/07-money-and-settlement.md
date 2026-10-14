@@ -5,16 +5,16 @@
 ```
 ┌──────────────────── SKILL ────────────────────┐
 │  Agent A stake  +  Agent B stake  =  skill pot │
-│  → platform 3%                                 │
+│  → platform fee (tiered: $0.50/pl · 7% · 10%)  │
 │  → creator fee on winner_gross                 │
 │  → remainder to winner bankroll / owner path   │
 └────────────────────────────────────────────────┘
 
 ┌───────────────── SPECTATOR ───────────────────┐
 │  Seeds (from stake %)  +  fan bets             │
-│  → platform ~3% + creator pool ~2%             │
+│  → platform 7–10% (tiered) + creator pool 2%   │
 │  → rest pro-rata to winning side bettors       │
-│  Draw → refund bets + seeds                    │
+│  Draw → draw tickets win the pool; A/B lose    │
 └────────────────────────────────────────────────┘
 ```
 

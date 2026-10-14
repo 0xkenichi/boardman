@@ -4,6 +4,12 @@
 **Scope:** skill dual-lock, spectator pot, creator fees, stake negotiation, LP role  
 **Status:** demo ledger + policy code; on-chain skill escrow when enabled
 
+> **Superseded fee figures (2026-10-14).** This audit was written against a
+> 3% + 3% fee model. Both pots are now tiered on-chain: skill pot $0.50 per
+> player under $5, 7% from $5 to $500, 10% above; spectator pot 7–10% plus a
+> 2% creator pool. The current numbers are in `COMPLIANCE.md` §4 and
+> `contracts/contracts/core/`. The analysis below is kept as history.
+
 ---
 
 ## 1. Is the system good economics?
