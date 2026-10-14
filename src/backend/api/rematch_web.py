@@ -899,17 +899,29 @@ async def web_spectator_bet(
 @router.get("/spectator/bet")
 async def web_spectator_bet_status(
     approval_id: str = Query(default=""),
+    profile_id: str = Query(default=""),
     x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
     x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
     authorization: Optional[str] = Header(default=None),
+    x_boardman_caller: Optional[str] = Header(default=None, alias="X-Boardman-Caller"),
 ):
-    """Poll Telegram Yes and apply the spend if the background task missed it."""
+    """Poll Telegram Yes and apply the spend if the background task missed it.
+
+    The approval must belong to the caller (X-Boardman-Caller, or the
+    ``profile_id`` param) — a session can never poll someone else's."""
     _require_key(x_rematch_key, x_stack_key, authorization)
     aid = (approval_id or "").strip()
     if not aid:
         raise HTTPException(status_code=400, detail="approval_id required")
-    from gaming.src.backend.services.tx_approval import apply_approved_spend
+    owner = (x_boardman_caller or "").strip() or (profile_id or "").strip()
+    if not owner:
+        raise HTTPException(status_code=400, detail="profile_id required")
+    from gaming.src.backend.services.tx_approval import apply_approved_spend, get_approval_row
 
+    row = get_approval_row(aid) or {}
+    if str(row.get("profile_id") or "") != owner:
+        # same answer for unknown and foreign ids — no probing
+        raise HTTPException(status_code=404, detail="approval_not_found")
     return await apply_approved_spend(aid)
 
 
@@ -917,49 +929,25 @@ async def web_spectator_bet_status(
 @router.get("/spectator/approval")
 async def web_spectator_approval_status(
     approval_id: str = Query(default=""),
+    profile_id: str = Query(default=""),
     x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
     x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
     authorization: Optional[str] = Header(default=None),
+    x_boardman_caller: Optional[str] = Header(default=None, alias="X-Boardman-Caller"),
 ):
     return await web_spectator_bet_status(
         approval_id=approval_id,
+        profile_id=profile_id,
         x_rematch_key=x_rematch_key,
         x_stack_key=x_stack_key,
         authorization=authorization,
+        x_boardman_caller=x_boardman_caller,
     )
 
 
-@router.post("/spectator/payout")
-async def web_spectator_payout(
-    body: dict,
-    x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
-    x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
-    authorization: Optional[str] = Header(default=None),
-):
-    """
-    Credit winnings (or refund) back to the same Telegram-linked profile wallet.
-    body: { profile_id, amount, reason? }
-    """
-    _require_key(x_rematch_key, x_stack_key, authorization)
-    profile_id = str(body.get("profile_id") or "").strip()
-    try:
-        amount = float(body.get("amount") or 0)
-    except (TypeError, ValueError):
-        amount = 0.0
-    reason = str(body.get("reason") or "spectator_payout")[:80]
-    if not profile_id:
-        raise HTTPException(status_code=400, detail="profile_id required")
-    if amount <= 0:
-        raise HTTPException(status_code=400, detail="amount must be positive")
-    try:
-        from gaming.src.backend.db_layer_blockchain import credit_wallet, get_wallet_balance
-
-        await credit_wallet(profile_id, amount, tx_hash=f"spectator:{reason}", source=reason)
-        bal = await get_wallet_balance(profile_id)
-        return {"success": True, "profile_id": profile_id, "amount": amount, "balance": float(bal)}
-    except Exception as exc:
-        logger.exception("[RematchWeb] spectator payout failed")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+# No /spectator/payout: crediting a client-chosen amount let any session mint
+# balance. Spectator winnings and refunds are paid only by server-side
+# settlement of the book.
 
 
 _AGENT_ID_ALIASES = {

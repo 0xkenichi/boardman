@@ -27,6 +27,13 @@ def _isolate_store(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _allow_local_test_webhooks(monkeypatch):
+    """The fake builders below bind 127.0.0.1 on a random port — private
+    targets are refused unless this dev switch is on."""
+    monkeypatch.setenv("BOARDMAN_ALLOW_PRIVATE_WEBHOOKS", "1")
+
+
+@pytest.fixture(autouse=True)
 def _no_demo_webhook_servers(monkeypatch):
     """Hermetic asks: the dev box often runs the demo manager servers on
     18771-18773; a live Blue Lock/Ao Ashi then answers through this suite and

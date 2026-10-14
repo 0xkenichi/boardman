@@ -24,10 +24,19 @@ export function rateLimit(
   return { ok: true }
 }
 
+/**
+ * Rate-limit key for the caller's IP. Prefer headers the edge sets itself
+ * (Vercel overwrites these); the first X-Forwarded-For entry is whatever the
+ * client typed, so it is never trusted — at most the last hop, which the
+ * nearest proxy appended.
+ */
 export function clientIp(req: Request): string {
+  const first = (v: string | null) => v?.split(',')[0]?.trim() || ''
+  const last = (v: string | null) => v?.split(',').pop()?.trim() || ''
   return (
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    req.headers.get('x-real-ip') ||
+    first(req.headers.get('x-vercel-forwarded-for')) ||
+    first(req.headers.get('x-real-ip')) ||
+    last(req.headers.get('x-forwarded-for')) ||
     'unknown'
   )
 }

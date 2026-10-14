@@ -15,7 +15,9 @@
  *   strategy?: { ... mind / strategy fields, wallet_address }
  * }
  */
+import { timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimitRequest, requireSession } from "@/lib/bff";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -384,7 +386,54 @@ async function tryGemini(
   return { uci: parsed.uci, san: parsed.san, model: GEMINI_MODEL, source: "gemini" };
 }
 
+/**
+ * Agents allowed to spend LLM credit through this proxy: exact agent_id →
+ * key slug. Keys are resolved from the canonical slug only, so a made-up id
+ * that merely contains "nero" never reaches Nero's key.
+ * Extend with BOARDMAN_LLM_AGENT_IDS="agent_id:slug,…".
+ */
+function llmAgents(): Record<string, string> {
+  const out: Record<string, string> = {
+    agent_nero_sicilian_french: "nero",
+    agent_raja_kia_alekhine: "raja",
+  };
+  for (const part of (process.env.BOARDMAN_LLM_AGENT_IDS || "").split(",")) {
+    const [id, slug] = part.split(":").map((s) => s.trim().toLowerCase());
+    if (id && slug && /^[a-z0-9_]+$/.test(id) && /^[a-z0-9_]+$/.test(slug)) out[id] = slug;
+  }
+  return out;
+}
+
+/** Resolve the request to an allow-listed agent (by exact id, or exact slug). */
+function canonicalAgent(agent: string, agentId: string): { agent: string; agentId: string } | null {
+  const agents = llmAgents();
+  const id = agentId.trim().toLowerCase();
+  if (id) return agents[id] ? { agent: agents[id], agentId: id } : null;
+  const slug = agent.trim().toLowerCase();
+  const hit = Object.entries(agents).find(([, s]) => s === slug);
+  return hit ? { agent: hit[1], agentId: hit[0] } : null;
+}
+
+/** Signed-in users, or House processes presenting the internal key. */
+function llmCallerAllowed(req: NextRequest): NextResponse | null {
+  const houseKey = (process.env.BOARDMAN_HOUSE_LLM_KEY || "").trim();
+  const got = (req.headers.get("x-boardman-house-key") || "").trim();
+  if (houseKey && got) {
+    const a = Buffer.from(got);
+    const b = Buffer.from(houseKey);
+    if (a.length === b.length && timingSafeEqual(a, b)) return null;
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
+  const auth = requireSession(req, { limit: 30 });
+  return "error" in auth ? auth.error : null;
+}
+
 export async function POST(req: NextRequest) {
+  // paid LLMs behind this route: never open, always rate-limited
+  const limited = rateLimitRequest(req, "asi-move", 20);
+  if (limited) return limited;
+  const denied = llmCallerAllowed(req);
+  if (denied) return denied;
   try {
     const body = (await req.json().catch(() => ({}))) as {
       fen?: string;
@@ -397,8 +446,17 @@ export async function POST(req: NextRequest) {
       strategy?: Strategy;
       mind?: Strategy;
     };
-    const agent = String(body.agent || body.strategy?.agent_name || "nero");
-    const agentId = String(body.agent_id || body.strategy?.agent_id || "");
+    const known = canonicalAgent(
+      String(body.agent || body.strategy?.agent_name || "nero"),
+      String(body.agent_id || body.strategy?.agent_id || "")
+    );
+    if (!known) {
+      return NextResponse.json(
+        { ok: false, error: "agent not allowed on the LLM proxy", fallback: true },
+        { status: 403 }
+      );
+    }
+    const { agent, agentId } = known;
     const wallet = String(body.wallet_address || body.wallet || body.strategy?.wallet_address || "");
 
     const geminiKey = resolveGeminiKey(agent, agentId);
@@ -420,11 +478,12 @@ export async function POST(req: NextRequest) {
     }
 
     const fen = String(body.fen || "");
-    if (!fen) {
+    if (!fen || fen.length > 120) {
       return NextResponse.json({ ok: false, error: "fen required", fallback: true }, { status: 400 });
     }
-    const legalUci = Array.isArray(body.legal_moves) ? body.legal_moves.map(String) : [];
-    const legalSan = Array.isArray(body.legal_san) ? body.legal_san.map(String) : [];
+    // a chess position never has more than ~220 legal moves; cap prompt size
+    const legalUci = Array.isArray(body.legal_moves) ? body.legal_moves.slice(0, 256).map((m) => String(m).slice(0, 8)) : [];
+    const legalSan = Array.isArray(body.legal_san) ? body.legal_san.slice(0, 256).map((m) => String(m).slice(0, 10)) : [];
     if (!legalUci.length) {
       return NextResponse.json(
         { ok: false, error: "legal_moves required (client chess.js)", fallback: true },

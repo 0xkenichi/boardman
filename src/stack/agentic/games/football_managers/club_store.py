@@ -223,6 +223,22 @@ def _club_for_agent(agent_id: str) -> Optional[dict[str, Any]]:
     return copy.deepcopy(_state().get("clubs", {}).get(agent_id))
 
 
+class NotOwnerError(ValueError):
+    """The caller does not own the club / manager it tried to change."""
+
+
+def club_owner_id(agent_id: str) -> str:
+    """Who owns a club: its manager agent's registry owner (creator until
+    adopted or sold). Empty when the agent is unknown."""
+    from gaming.src.stack.agentic.registry import get_registry
+
+    try:
+        rec = get_registry().get_agent(agent_id) or {}
+    except Exception:
+        return ""
+    return str(rec.get("owner_id") or rec.get("creator_id") or "")
+
+
 def _agent_display_name(agent_id: str) -> str:
     from gaming.src.stack.agentic.registry import get_registry
 
@@ -584,8 +600,15 @@ def set_lineup(
     starters: Optional[list[str]] = None,
     bench: Optional[list[str]] = None,
     tactical_tags: Optional[list[str]] = None,
+    set_by: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Set a club's lineup + tactics (agent's afm_set_lineup). Validates hard rules."""
+    """Set a club's lineup + tactics (agent's afm_set_lineup). Validates hard rules.
+
+    ``set_by`` is the acting party when a person (or builder) saves the board:
+    only the club's owner may. In-process House callers (matchday decisions)
+    leave it None."""
+    if set_by is not None and (not set_by.strip() or set_by.strip() != club_owner_id(agent_id)):
+        raise NotOwnerError(f"only the owner of {agent_id} can set its lineup")
     with _lock:
         club = _club_for_agent(agent_id)
         if not club:

@@ -42,6 +42,7 @@ from typing import Any, Optional
 
 from gaming.src.stack.agentic.games.football_managers.club_store import (
     STARTING_BUDGET_USDC,
+    NotOwnerError,
     ensure_club_for_agent,
     get_club,
 )
@@ -169,30 +170,72 @@ def _norm_address(address: str) -> str:
     return a
 
 
+def circle_wallet_owned_by(party_id: str, wallet_id: str, address: str) -> bool:
+    """True only when ``party_id``'s Boardman profile holds this Circle wallet
+    (profiles.circle_wallet_id, and the bound address matches the profile's
+    wallet when it has one). Anything unverifiable — no Supabase, no profile,
+    lookup error — is False."""
+    try:
+        from backend.supabase_client import get_supabase
+
+        rows = (
+            get_supabase()
+            .table("profiles")
+            .select("circle_wallet_id,wallet_address")
+            .eq("id", party_id)
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+    except Exception:
+        return False
+    if not rows:
+        return False
+    row = rows[0] or {}
+    if str(row.get("circle_wallet_id") or "").strip() != wallet_id:
+        return False
+    on_profile = str(row.get("wallet_address") or "").strip().lower()
+    return not on_profile or on_profile == address
+
+
 def bind_party_wallet(
     *,
     party_id: str,
     address: str,
     wallet_id: Optional[str] = None,
     chain_id: str = "arc",
+    bound_by: Optional[str] = None,
 ) -> dict[str, Any]:
     """Bind a payout/send wallet to a marketplace party (owner / creator / buyer).
 
     ``address`` is where the party receives USDC on Arc. Pass ``wallet_id``
     too when the party pays (a Circle developer-controlled wallet id) so the
     platform can move USDC out of it on a purchase.
+
+    ``bound_by`` is the signed-in caller (None = the platform itself). A
+    caller binds only their own party, and a Circle ``wallet_id`` only when
+    it verifiably belongs to their profile — a purchase pays from it.
     """
     party_id = (party_id or "").strip()
     if not party_id:
         raise ValueError("party_id is required")
     addr = _norm_address(address)
+    wid = (wallet_id or "").strip()
+    if bound_by is not None:
+        if bound_by.strip() != party_id:
+            raise NotOwnerError("you can only bind a wallet to your own party")
+        if wid and not circle_wallet_owned_by(party_id, wid, addr):
+            raise NotOwnerError(
+                "that Circle wallet is not verifiably yours — bind the payout address only"
+            )
     chain_id = (chain_id or "arc").strip().lower()
     wallets = _load_party_wallets()
     rec: dict[str, Any] = {
         "party_id": party_id,
         "address": addr,
-        "wallet_id": (wallet_id or "").strip() or None,
-        "can_send": bool((wallet_id or "").strip()),
+        "wallet_id": wid or None,
+        "can_send": bool(wid),
         "chain_id": chain_id,
         "bound_at": _now(),
         "updated_at": _now(),
@@ -203,11 +246,14 @@ def bind_party_wallet(
 
 
 def unbind_party_wallet(
-    *, party_id: str, address: Optional[str] = None
+    *, party_id: str, address: Optional[str] = None, unbound_by: Optional[str] = None
 ) -> bool:
     """Remove a party's wallet binding. With ``address``, refuse if it doesn't
-    match the bound wallet (so only the right party can unbind)."""
+    match the bound wallet (so only the right party can unbind). ``unbound_by``
+    is the signed-in caller (None = the platform) — it must be the party."""
     party_id = (party_id or "").strip()
+    if unbound_by is not None and unbound_by.strip() != party_id:
+        raise NotOwnerError("you can only unbind your own wallet")
     wallets = _load_party_wallets()
     if party_id not in wallets:
         return False
@@ -537,6 +583,21 @@ def create_manager_agent(
     return {"agent": row, "club": club}
 
 
+# Free adoption is for developer-built managers still held by their
+# developer: platform demo creators ("creator_*", the House, the demo owner).
+# A manager owned by anyone else — adopted, bought, or built in the owner
+# seat by a person — only changes hands through a sale.
+_ADOPTABLE_CREATORS = frozenset({"boardman", DEMO_OWNER_ID})
+
+
+def _adoptable(a: dict[str, Any]) -> bool:
+    creator = str(a.get("creator_id") or "")
+    owner = str(a.get("owner_id") or creator)
+    if not creator or owner != creator:
+        return False
+    return creator.startswith("creator_") or creator in _ADOPTABLE_CREATORS
+
+
 def acquire_manager_agent(*, agent_id: str, owner_id: Optional[str] = None) -> dict[str, Any]:
     """Adopt a developer-built manager: ownership (owner_id) moves to the caller."""
     from gaming.src.stack.agentic.registry import get_registry
@@ -559,6 +620,12 @@ def acquire_manager_agent(*, agent_id: str, owner_id: Optional[str] = None) -> d
             f"{agent_id} is listed for sale — purchase it instead of adopting"
         )
     previous_owner = str(a.get("owner_id") or "")
+    if not _adoptable(a):
+        raise NotOwnerError(
+            f"{agent_id} belongs to {previous_owner or 'someone'} — it can only change hands by sale"
+        )
+    if previous_owner == owner_id:
+        raise ValueError("you already own this manager")
     a["owner_id"] = owner_id
     a["acquired_by"] = owner_id
     a["acquired_at"] = _now()

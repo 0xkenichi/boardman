@@ -5,61 +5,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import { rematchApiFetch, rematchApiConfigured } from "@/lib/stackServer";
+// stackCall: configured API or local :8000, 8s timeout, fast 502/504 when offline
+import { stackCall } from "@/lib/stackServer";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 import { requireAdmin } from "@/lib/adminAuth";
 import { requireSession } from "@/lib/bff";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function localStackBase(): string {
-  return (
-    process.env.BOARDMAN_API_URL ||
-    process.env.REMATCH_API_URL ||
-    "http://127.0.0.1:8000"
-  ).replace(/\/$/, "");
-}
-
-async function stackCall(pathName: string, init: RequestInit = {}) {
-  if (rematchApiConfigured()) {
-    return rematchApiFetch(pathName, init);
-  }
-  const key =
-    process.env.BOARDMAN_API_KEY ||
-    process.env.REMATCH_API_KEY ||
-    process.env.STACK_API_KEY ||
-    "";
-  const url = `${localStackBase()}${pathName}`;
-  const headers = new Headers(init.headers || {});
-  if (key) {
-    headers.set("X-Rematch-Key", key);
-    headers.set("X-Stack-Key", key);
-  }
-  if (init.body && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
-  try {
-    const res = await fetch(url, { ...init, headers, cache: "no-store" });
-    const text = await res.text();
-    let data: any = null;
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      data = { raw: text };
-    }
-    return { ok: res.ok, status: res.status, data };
-  } catch (e: any) {
-    return {
-      ok: false,
-      status: 502,
-      data: {
-        error: "House API is offline. Play match needs the Boardman API running (not just Vercel).",
-        detail: String(e?.message || e),
-      },
-    };
-  }
-}
 
 function findMatchLocal(id: string): any | null {
   const env = process.env.BOARDMAN_AGENTIC_DATA;

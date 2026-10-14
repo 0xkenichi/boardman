@@ -39,25 +39,63 @@ export function stackConfigured(): boolean {
   return rematchApiConfigured()
 }
 
-export async function rematchApiFetch(
-  path: string,
-  init: RequestInit = {}
-): Promise<{ ok: boolean; status: number; data: any }> {
-  const base = REMATCH_API_URL
-  const key = REMATCH_API_KEY
-  if (!base || !key) {
-    return { ok: false, status: 503, data: { error: 'rematch_api_not_configured', demo: true } }
+/** Default ceiling on any backend call. Production hangs past 30s otherwise. */
+export const DEFAULT_STACK_TIMEOUT_MS = 8000
+
+/** Header the backend geo-fence trusts (only alongside the master key). */
+export const CLIENT_COUNTRY_HEADER = 'x-boardman-client-country'
+
+export type StackResult = { ok: boolean; status: number; data: any }
+
+export type StackInit = RequestInit & {
+  /** Abort the backend call after this many ms (default 8000). */
+  timeoutMs?: number
+  /** The incoming end-user request — its Vercel country is forwarded. */
+  clientReq?: Request | null
+  /** Or the end user's ISO country directly. */
+  clientCountry?: string | null
+}
+
+/** End user's ISO-3166 alpha-2 country from Vercel's edge header ('' if absent/odd). */
+export function clientCountry(req?: Request | null): string {
+  const raw = (req?.headers.get('x-vercel-ip-country') || '').trim().toUpperCase()
+  return /^[A-Z]{2}$/.test(raw) ? raw : ''
+}
+
+function localStackBase(): string {
+  return (REMATCH_API_URL || 'http://127.0.0.1:8000').replace(/\/$/, '')
+}
+
+async function backendFetch(url: string, key: string, init: StackInit): Promise<StackResult> {
+  const { timeoutMs, clientReq, clientCountry: country, signal: outer, ...rest } = init
+  const headers = new Headers(rest.headers || {})
+  if (key) {
+    // On-brand header + legacy alias for older API processes
+    headers.set('X-Rematch-Key', key)
+    headers.set('X-Stack-Key', key)
   }
-  const url = path.startsWith('http') ? path : `${base}${path.startsWith('/') ? '' : '/'}${path}`
-  const headers = new Headers(init.headers || {})
-  // On-brand header + legacy alias for older API processes
-  headers.set('X-Rematch-Key', key)
-  headers.set('X-Stack-Key', key)
-  if (!headers.has('Content-Type') && init.body && !(init.body instanceof FormData)) {
+  if (!headers.has('Content-Type') && rest.body && !(rest.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json')
   }
+  // only ever the edge-derived country, never a value a caller smuggled in
+  headers.delete(CLIENT_COUNTRY_HEADER)
+  const cc = (country || '').trim().toUpperCase() || clientCountry(clientReq)
+  if (/^[A-Z]{2}$/.test(cc)) headers.set(CLIENT_COUNTRY_HEADER, cc)
+
+  const ms = Math.max(1, timeoutMs ?? DEFAULT_STACK_TIMEOUT_MS)
+  const ctl = new AbortController()
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    ctl.abort()
+  }, ms)
+  const onOuter = () => ctl.abort()
+  if (outer) {
+    if (outer.aborted) ctl.abort()
+    else outer.addEventListener('abort', onOuter, { once: true })
+  }
   try {
-    const res = await fetch(url, { ...init, headers, cache: 'no-store' })
+    const res = await fetch(url, { ...rest, headers, cache: 'no-store', signal: ctl.signal })
     const text = await res.text()
     let data: any = null
     try {
@@ -67,6 +105,18 @@ export async function rematchApiFetch(
     }
     return { ok: res.ok, status: res.status, data }
   } catch (e: any) {
+    if (timedOut || e?.name === 'AbortError' || e?.name === 'TimeoutError') {
+      return {
+        ok: false,
+        status: 504,
+        data: {
+          ok: false,
+          success: false,
+          offline: true,
+          error: `House API did not answer within ${Math.round(ms / 1000)}s — the Boardman backend looks offline.`,
+        },
+      }
+    }
     const raw = String(e?.message || e || '')
     const cause = String(e?.cause?.code || e?.cause?.message || '')
     const offline =
@@ -75,6 +125,9 @@ export async function rematchApiFetch(
       ok: false,
       status: 502,
       data: {
+        ok: false,
+        success: false,
+        offline: true,
         error: offline
           ? 'House API is offline. Play match needs the Boardman API running (not just Vercel).'
           : raw || 'house_unreachable',
@@ -82,14 +135,34 @@ export async function rematchApiFetch(
         detail: [raw, cause].filter(Boolean).join(' | ') || undefined,
       },
     }
+  } finally {
+    clearTimeout(timer)
+    outer?.removeEventListener('abort', onOuter)
   }
 }
 
+export async function rematchApiFetch(path: string, init: StackInit = {}): Promise<StackResult> {
+  const base = REMATCH_API_URL
+  const key = REMATCH_API_KEY
+  if (!base || !key) {
+    return { ok: false, status: 503, data: { error: 'rematch_api_not_configured', demo: true } }
+  }
+  const url = path.startsWith('http') ? path : `${base}${path.startsWith('/') ? '' : '/'}${path}`
+  return backendFetch(url, key, init)
+}
+
+/**
+ * The configured Boardman API or — local dev without a URL+key pair — the
+ * stack on 127.0.0.1:8000 (key sent when one is set). Same timeout + offline
+ * mapping either way. Replaces the per-route localStackBase()/stackCall copies.
+ */
+export async function stackCall(path: string, init: StackInit = {}): Promise<StackResult> {
+  if (rematchApiConfigured()) return rematchApiFetch(path, init)
+  return backendFetch(`${localStackBase()}${path.startsWith('/') ? '' : '/'}${path}`, REMATCH_API_KEY, init)
+}
+
 /** @deprecated use rematchApiFetch */
-export async function stackFetch(
-  path: string,
-  init: RequestInit = {}
-): Promise<{ ok: boolean; status: number; data: any }> {
+export async function stackFetch(path: string, init: StackInit = {}): Promise<StackResult> {
   return rematchApiFetch(path, init)
 }
 

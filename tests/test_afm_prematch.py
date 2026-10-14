@@ -192,9 +192,10 @@ def test_api_prematch_endpoint(_world, monkeypatch):
     )
     S.tick()
 
+    monkeypatch.setenv("BOARDMAN_API_KEY", "test-prematch-key")
     app = FastAPI()
     app.include_router(api_mod.router)
-    client = TestClient(app)
+    client = TestClient(app, headers={"X-Boardman-Key": "test-prematch-key"})
     res = client.get(
         "/api/stack/agentic/football/season/prematch",
         params={"matchday": 1, "home": "agent_bluelock_demo", "away": "agent_aoashi_demo"},

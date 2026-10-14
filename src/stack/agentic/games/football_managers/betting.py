@@ -25,6 +25,9 @@ PLATFORM_FEE_BPS = 700  # mirrors the chess spectator book's platform fee
 MIN_BET_USDC = Decimal("1")
 MAX_BET_USDC = Decimal("50")
 
+# ledger ids a bet must never debit (pots, party/agent wallets, the House)
+_SYSTEM_WALLET_PREFIXES = ("afm_", "agent_", "0x", "house", "platform", "treasury", "boardman")
+
 _BETS_FILE = "afm_bets.json"
 _lock = threading.RLock()
 
@@ -85,9 +88,17 @@ def place_bet(
 ) -> dict[str, Any]:
     """Debit the better's wallet into the fixture pot; returns the receipt.
 
-    `better` is a free-form spectator id (e.g. a Telegram-linked profile id).
+    `better` is a spectator id (e.g. a Telegram-linked profile id) and is
+    debited directly, so it must be the authenticated caller (the API layer
+    enforces that) and never a system wallet — pots, owner/creator party
+    wallets, agents, the House.
     Betting is only allowed while the matchday is open and before its lock.
     """
+    better = str(better or "").strip()
+    if not better:
+        raise ValueError("better is required")
+    if ":" in better or better.lower().startswith(_SYSTEM_WALLET_PREFIXES):
+        raise ValueError("better must be a spectator id, not a system wallet")
     side = str(side or "").strip().lower()
     if side not in _SIDES:
         raise ValueError(f"side must be one of {', '.join(_SIDES)}")

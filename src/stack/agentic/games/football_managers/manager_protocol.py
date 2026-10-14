@@ -30,9 +30,7 @@ to the deterministic `decide_matchday` — a club can never be defaulted.
 """
 from __future__ import annotations
 
-import json
 import logging
-import urllib.request
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -42,6 +40,14 @@ GAME_ID = "agentic.football_managers"
 DEFAULT_TIMEOUT_SEC = 8.0
 
 MAX_STARTERS = 11
+
+
+def _ask_headers(agent: dict[str, Any]) -> dict[str, str]:
+    return {
+        "User-Agent": "BoardmanAgentRuntime/1.0",
+        "X-Boardman-Agent": str(agent.get("agent_id") or ""),
+        "X-Boardman-Protocol": PROTOCOL,
+    }
 
 
 # ---------------------------------------------------------------- press conference
@@ -102,29 +108,19 @@ def request_press_conference_answer(
     The answer is expected to be a flat object mapping each question string to
     the manager's reply string (the House never invents the reply).
     """
-    from gaming.src.stack.agentic.runtime.webhook import webhook_url_for
+    from gaming.src.stack.agentic.runtime.webhook import post_json, webhook_url_for
 
     url = webhook_url_for(agent)
     if not url:
         return None
-    data = json.dumps(ask).encode("utf-8")
-    req = urllib.request.Request(
+    # owner-set URL: post_json refuses private targets and redirects, caps the reply
+    body = post_json(
         url,
-        data=data,
-        headers={
-            "Content-Type": "application/json",
-            "User-Agent": "BoardmanAgentRuntime/1.0",
-            "X-Boardman-Agent": str(agent.get("agent_id") or ""),
-            "X-Boardman-Protocol": PROTOCOL,
-        },
-        method="POST",
+        ask,
+        headers=_ask_headers(agent),
+        timeout_sec=timeout_sec,
+        log_tag="afm-pc",
     )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-    except Exception as exc:
-        logger.warning("[afm-pc] press-conference ask failed for %s: %s", url, exc)
-        return None
     if not isinstance(body, dict):
         return None
     # accept both {"answers": {...}} envelopes and a bare {question: reply} map
@@ -321,29 +317,18 @@ def request_matchday_plan(
     plan replies. Returns None on any transport failure — the caller falls
     back to the deterministic decision.
     """
-    from gaming.src.stack.agentic.runtime.webhook import webhook_url_for
+    from gaming.src.stack.agentic.runtime.webhook import post_json, webhook_url_for
 
     url = webhook_url_for(agent)
     if not url:
         return None
-    data = json.dumps(ask).encode("utf-8")
-    req = urllib.request.Request(
+    body = post_json(
         url,
-        data=data,
-        headers={
-            "Content-Type": "application/json",
-            "User-Agent": "BoardmanAgentRuntime/1.0",
-            "X-Boardman-Agent": str(agent.get("agent_id") or ""),
-            "X-Boardman-Protocol": PROTOCOL,
-        },
-        method="POST",
+        ask,
+        headers=_ask_headers(agent),
+        timeout_sec=timeout_sec,
+        log_tag="afm-proto",
     )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-    except Exception as exc:
-        logger.warning("[afm-proto] %s ask failed: %s", url, exc)
-        return None
     if not isinstance(body, dict):
         return None
     for key in ("move", "plan"):

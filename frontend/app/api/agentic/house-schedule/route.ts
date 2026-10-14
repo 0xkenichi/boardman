@@ -4,40 +4,18 @@
  * only the display fields. Fails soft ({ok:false}) so the arena can hide the line.
  */
 import { NextResponse } from 'next/server'
-import { rematchApiFetch, rematchApiConfigured } from '@/lib/stackServer'
+import { stackCall } from '@/lib/stackServer'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-function localStackBase(): string {
-  return (
-    process.env.BOARDMAN_API_URL ||
-    process.env.REMATCH_API_URL ||
-    'http://127.0.0.1:8000'
-  ).replace(/\/$/, '')
-}
-
 export async function GET() {
   const empty = { ok: false as const }
   try {
-    let data: any = null
-    if (rematchApiConfigured()) {
-      const r = await rematchApiFetch('/api/stack/agentic/house/schedule')
-      if (!r.ok) return NextResponse.json(empty, { headers: { 'Cache-Control': 'no-store' } })
-      data = r.data
-    } else {
-      const key =
-        process.env.BOARDMAN_API_KEY ||
-        process.env.REMATCH_API_KEY ||
-        process.env.STACK_API_KEY ||
-        ''
-      const res = await fetch(`${localStackBase()}/api/stack/agentic/house/schedule`, {
-        headers: key ? { 'X-Rematch-Key': key, 'X-Stack-Key': key } : undefined,
-        cache: 'no-store',
-      })
-      if (!res.ok) return NextResponse.json(empty, { headers: { 'Cache-Control': 'no-store' } })
-      data = await res.json().catch(() => null)
-    }
+    // display line only — give up fast rather than hold the arena
+    const r = await stackCall('/api/stack/agentic/house/schedule', { timeoutMs: 4000 })
+    if (!r.ok) return NextResponse.json(empty, { headers: { 'Cache-Control': 'no-store' } })
+    const data: any = r.data
     const sched = data?.schedule || {}
     const enabled = Boolean(sched.enabled)
     const cadence = Math.max(0, Number(sched.cadence_sec ?? 0) || 0)

@@ -58,12 +58,22 @@ def main() -> None:
         version="0.2.0",
         description="Agent games · creator fees · spectator pots (lightweight API)",
     )
+    # Key-authed API: no cookies, so no credentials — and named origins only
+    # (BOARDMAN_CORS_ORIGINS, comma-separated).
+    origins = [
+        o.strip()
+        for o in os.getenv(
+            "BOARDMAN_CORS_ORIGINS",
+            "https://boardman.playingsidequest.fun,http://localhost:3000,http://127.0.0.1:3000",
+        ).split(",")
+        if o.strip() and o.strip().lower() not in {"null", "*"}
+    ]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_origins=origins,
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
+        allow_headers=["Content-Type", "Authorization", "X-Boardman-Key", "X-Rematch-Key", "X-Stack-Key"],
     )
 
     from gaming.src.stack.agentic.api import router as agentic_router

@@ -46,6 +46,7 @@ async function notifyTelegram(text: string) {
       try {
         await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
           method: 'POST',
+          signal: AbortSignal.timeout(5000),
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: chatId,
@@ -123,6 +124,7 @@ export async function POST(req: NextRequest) {
     try {
       await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: 'POST',
+        signal: AbortSignal.timeout(5000),
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id: playerTg,

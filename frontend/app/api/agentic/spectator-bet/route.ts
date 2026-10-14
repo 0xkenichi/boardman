@@ -49,8 +49,12 @@ export async function GET(req: NextRequest) {
   if (!stackConfigured()) {
     return NextResponse.json({ ok: false, error: "stack_not_configured" }, { status: 503 });
   }
+  // The backend answers only for approvals that belong to this caller.
   const res = await stackFetch(
-    `/api/rematch/web/spectator/bet?approval_id=${encodeURIComponent(approvalId)}`
+    `/api/rematch/web/spectator/bet?approval_id=${encodeURIComponent(
+      approvalId
+    )}&profile_id=${encodeURIComponent(session.profileId)}`,
+    { headers: { "X-Boardman-Caller": session.profileId }, clientReq: req }
   );
   if (res.ok && res.data?.success !== false) {
     return NextResponse.json(
@@ -212,6 +216,10 @@ export async function POST(req: NextRequest) {
   if (stackConfigured()) {
     const res = await stackFetch("/api/rematch/web/spectator/bet", {
       method: "POST",
+      // an always-approved spend can deposit on-chain before answering
+      timeoutMs: 30_000,
+      clientReq: req,
+      headers: { "X-Boardman-Caller": session.profileId },
       body: JSON.stringify({
         profile_id: session.profileId,
         amount,
