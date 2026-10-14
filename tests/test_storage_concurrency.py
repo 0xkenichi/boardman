@@ -255,3 +255,65 @@ def test_threads_use_their_own_connections_and_close_them():
             )
         # Only this (main) thread's connection is left once the workers exit.
         assert int(n) == 1, f"{n} connections still open"
+
+
+def test_tables_with_swapped_players_lock_without_deadlock():
+    """Two tables with the same agents in opposite seats lock at once.
+
+    Each lock transaction debits both players (stakes, then seeds). Taken in
+    seat order, table 1 holds A's balance row and wants B's while table 2
+    holds B's and wants A's: Postgres aborts one of them with a deadlock.
+    """
+    from gaming.src.stack.agentic.matches import lock_escrow_and_seeds
+
+    a, b = "0xa3" + "0" * 38, "0xb3" + "0" * 38
+    rounds = 40
+    ledger.credit(a, Decimal("1000"), reason="fund")
+    ledger.credit(b, Decimal("1000"), reason="fund")
+    for r in range(rounds):
+        ledger.open_escrow(f"agm_s{r}_0", agent_a_wallet=a, agent_b_wallet=b, stake_usdc=Decimal("1"))
+        ledger.open_escrow(f"agm_s{r}_1", agent_a_wallet=b, agent_b_wallet=a, stake_usdc=Decimal("1"))
+
+    def lock_rounds(i: int) -> None:
+        for r in range(rounds):
+            esc = ledger.get_escrow(f"agm_s{r}_{i}")
+            lock_escrow_and_seeds(
+                f"agm_s{r}_{i}", esc["agent_a_wallet"], esc["agent_b_wallet"],
+                seed_a=Decimal("0.1"), seed_b=Decimal("0.1"), seed_draw=Decimal("0.05"),
+            )
+
+    _results, errors = _race(2, lock_rounds)
+    assert errors == []
+    left = Decimal("1000") - rounds * 2 * (Decimal("1") + Decimal("0.1") + Decimal("0.05"))
+    assert ledger.balance(a) == ledger.balance(b) == left
+
+
+def test_settlement_step_reruns_after_a_deadlock_rollback():
+    """Postgres rolls back the loser of a deadlock whole; the step re-runs once."""
+    from gaming.src.stack.agentic.matches import get_match_service
+
+    class Deadlock(Exception):
+        sqlstate = "40P01"
+
+    calls: list[int] = []
+
+    def step() -> dict:
+        calls.append(1)
+        ledger.credit(W, Decimal("1"), reason="step", ref="agm_r")
+        if len(calls) == 1:
+            raise Deadlock("deadlock detected")
+        return {"ok": True}
+
+    assert get_match_service()._step("agm_r", "escrow", step) == {"ok": True}
+    assert len(calls) == 2
+    assert ledger.balance(W) == Decimal("1")  # the rolled-back try left nothing
+    assert journal.done("agm_r", "escrow")
+
+    class Other(Exception):
+        sqlstate = "23505"
+
+    def bad() -> dict:
+        raise Other("unique violation")
+
+    with pytest.raises(Other):
+        get_match_service()._step("agm_r", "creator_fee", bad)

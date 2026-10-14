@@ -99,6 +99,27 @@ def _apply_delta(tx: Tx, wallet: str, delta: int, *, scale: int = 0, need_msg: s
     return _Bal(int(row["balance_micro"]), int(row["scale"]))
 
 
+def hold_wallets(tx: Tx, *wallets: str) -> None:
+    """Lock several balance rows up front, in one global (sorted) order.
+
+    A transaction that moves money for two wallets one after the other locks
+    their rows in call order; two such transactions with the wallets swapped
+    (the same agents in opposite seats at two tables) deadlock on Postgres.
+    Taking every row first, sorted, makes the order the same for everyone.
+    SQLite needs nothing: its writers are already serialized.
+    """
+    if not tx.for_update:
+        return
+    keys = sorted({w.lower() for w in wallets if w})
+    if len(keys) < 2:
+        return
+    marks = ",".join("?" for _ in keys)
+    tx.all(
+        f"SELECT wallet FROM ledger_balances WHERE wallet IN ({marks}) ORDER BY wallet{tx.for_update}",
+        keys,
+    )
+
+
 def _log(tx: Tx, doc: dict[str, Any], *, amount_micro: Optional[int] = None,
          balance_after_micro: Optional[int] = None) -> dict[str, Any]:
     tx.execute(

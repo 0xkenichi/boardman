@@ -567,5 +567,14 @@ def transaction(*, readonly: bool = False) -> Iterator[Tx]:
         yield tx
 
 
+# Postgres aborts one side of a deadlock (40P01) or a serialization conflict
+# (40001); the whole transaction was rolled back and may simply be re-run.
+RETRYABLE_SQLSTATES = frozenset({"40P01", "40001"})
+
+
+def is_retryable(exc: BaseException) -> bool:
+    return getattr(exc, "sqlstate", None) in RETRYABLE_SQLSTATES
+
+
 def now_ms() -> int:
     return int(time.time() * 1000)
