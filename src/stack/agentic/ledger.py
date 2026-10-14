@@ -12,6 +12,8 @@ the edges and never float.
 """
 from __future__ import annotations
 
+import logging
+import os
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Optional
@@ -24,6 +26,11 @@ from gaming.src.stack.agentic.db.money import fmt, fmt_places, from_micro, place
 LEDGER_FILE = "ledger.json"  # legacy file, imported by scripts/migrate_json_to_db.py
 DEFAULT_FEE_BPS = 700  # 7% — align with BoardmanEscrow FEE_BPS
 TREASURY_WALLET = "0xboardman_agentic_treasury"
+
+logger = logging.getLogger(__name__)
+
+_FAUCET_ON = {"1", "true", "yes", "on"}
+_FAUCET_OFF = {"0", "false", "no", "off"}
 
 
 class InsufficientFunds(ValueError):
@@ -207,10 +214,74 @@ def balance(wallet: str) -> Decimal:
         return Decimal(fmt_places(micro, sc))
 
 
-def ensure_funded(wallet: str, min_amount: Decimal = Decimal("100")) -> None:
-    """Faucet for demo agents so they can lock stakes (top-up is atomic)."""
+def _money_chain_is_mainnet() -> bool:
+    """Chain-only mainnet check, shared with the spectator kill switch.
+
+    A production deploy of the testnet site is NOT mainnet; only the money
+    chain decides. Any resolution error counts as mainnet (fail closed).
+    """
+    try:
+        from gaming.src.backend.services.spectator_policy import is_mainnet
+
+        return bool(is_mainnet())
+    except Exception:
+        logger.error("[ledger] mainnet check failed — treating as mainnet", exc_info=True)
+        return True
+
+
+def _faucet_env() -> Optional[bool]:
+    """``BOARDMAN_DEMO_FAUCET`` as True/False, or None when unset/unknown."""
+    raw = (os.getenv("BOARDMAN_DEMO_FAUCET") or "").strip().lower()
+    if raw in _FAUCET_ON:
+        return True
+    if raw in _FAUCET_OFF:
+        return False
+    if raw:
+        logger.error("[ledger] BOARDMAN_DEMO_FAUCET=%r is not on/off — treating as unset", raw)
+    return None
+
+
+def demo_faucet_mode() -> bool:
+    """May the demo faucet mint book-entry USDC for HOUSE wallets?
+
+    ``BOARDMAN_DEMO_FAUCET`` 1/on or 0/off; unset means on when the money chain
+    is not mainnet. Never on mainnet: an explicit 1 there is refused and logged.
+    """
+    env = _faucet_env()
+    if _money_chain_is_mainnet():
+        if env:
+            logger.critical(
+                "[ledger] BOARDMAN_DEMO_FAUCET=1 REFUSED: the money chain is mainnet — "
+                "the demo faucet never mints there"
+            )
+        return False
+    return env is not False
+
+
+def demo_faucet_explicit() -> bool:
+    """Faucet for HUMAN parties (marketplace buyers): only when
+    ``BOARDMAN_DEMO_FAUCET=1`` is set explicitly (local demos), never by
+    default on testnet, never on mainnet."""
+    return _faucet_env() is True and demo_faucet_mode()
+
+
+def ensure_funded(wallet: str, min_amount: Decimal = Decimal("100")) -> Decimal:
+    """Demo faucet: top a house/demo wallet up to ``min_amount`` (atomic).
+
+    Gated by ``demo_faucet_mode()``: when the faucet is off this is a no-op
+    (logged when a top-up would have been needed) and real balances decide.
+    Returns the amount minted (0 when none). Never call it for a human party.
+    """
     key = wallet.lower()
     target = to_micro(min_amount)
+    if not demo_faucet_mode():
+        have = balance(key)
+        if to_micro(have) < target:
+            logger.warning(
+                "[ledger] demo faucet off: not topping up %s (has %s, wanted %s)",
+                key, have, min_amount,
+            )
+        return Decimal("0")
     with transaction() as tx:
         # Check-then-credit: two concurrent callers must not both top up.
         tx.lock_key("ledger_balances", key)
@@ -220,6 +291,8 @@ def ensure_funded(wallet: str, min_amount: Decimal = Decimal("100")) -> None:
             # Same Decimal the old code computed (min_amount - balance).
             top_up = Decimal(str(min_amount)) - Decimal(fmt_places(have, sc))
             credit(key, top_up, reason="demo_faucet", ref="agentic")
+            return top_up
+    return Decimal("0")
 
 
 # ── escrow ───────────────────────────────────────────────────────────────────
