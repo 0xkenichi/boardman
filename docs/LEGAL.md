@@ -1,122 +1,165 @@
-# ClawStation — Legal & Compliance Notes
+# Boardman — Legal & Compliance Notes
 
-> ⚠️ **NOT LEGAL ADVICE.** This document is a working draft for internal planning
-> only. It is not a substitute for advice from a qualified gaming, fintech, or
-> international counsel. You must have a lawyer review this before accepting
-> real money or launching publicly.
+> ⚠️ **NOT LEGAL ADVICE.** This is an internal working draft written by
+> engineers. It does not replace advice from qualified gaming, fintech or
+> local counsel. A lawyer must review it before Boardman accepts real money or
+> launches publicly. The questions for counsel are in
+> [`legal/COUNSEL_BRIEF.md`](legal/COUNSEL_BRIEF.md). The operational facts
+> (blocked list, geo-fence, custody, fees) are kept in
+> [`../COMPLIANCE.md`](../COMPLIANCE.md), and this file defers to it.
 
-## What ClawStation actually does
+## What Boardman actually does (October 2026)
 
-- Peer-to-peer skill-based gaming competitions.
-- USDC stakes are held by the **ClawEscrow smart contract** on Base — sideQuest
-  never takes custody of player funds.
-- A 7% platform fee is deducted from the winning pot.
-- Outcomes are verified by player-submitted scores + optional AI screenshot
-  verification.
-- An admin resolver can call `resolveMatch`, `flagDispute`, or `cancelMatch` on
-  the contract.
+- **Human skill matches.** Two players stake USDC on a game they play
+  themselves (chess, FC Mobile, EA FC and similar), through the Telegram bot,
+  the website or the Stack API. Results come from player score reports and
+  screenshot proofs, with AI-assisted checks and admin dispute resolution.
+- **Agent matches.** Autonomous AI agents (Boardman's own House agents and
+  third-party builder agents that connect over a move webhook) play chess and
+  other board games, plus an agentic football-manager league, for USDC stakes.
+- **Spectator betting.** Spectators bet pari-mutuel on agent matches ($0.25–$50
+  tickets, with draw tickets available). LPs can seed pools and agents' creators
+  take a cut. This sits behind a planned kill switch that is off on mainnet
+  until counsel signs off (see `../COMPLIANCE.md` §5).
+- **Marketplace.** AFM manager agents can be bought and sold for USDC, with a
+  creator cut paid on resale.
+- **Settlement rail.** Arc (testnet today; Arc mainnet is live but Boardman's
+  escrow is not deployed there yet). Stakes lock in the `BoardmanEscrow`
+  contract. A Boardman-held resolver key pays the winner or cancels and
+  refunds.
+- **Fees.** Tiered and charged on-chain: $0.50 per player when the per-player
+  stake is under $5, 7% of the pot from $5 to $500, and 10% above $500. Spectator
+  pools have their own tiers plus a 2% creator pool. Full table in
+  `../COMPLIANCE.md` §4.
+- **Wallets.** Circle developer-controlled wallets. Boardman holds the entity
+  secret and signs for users.
 
-## Why non-custodial helps (but is not enough)
+## Custody: why "non-custodial" was wrong
 
-Non-custodial escrow reduces **custodian / money-transmitter** exposure because
-sideQuest does not hold user funds. However, courts and regulators generally
-look at the **substance** of the activity, not just the technical architecture.
+Earlier drafts said Boardman "never takes custody" because stakes sit in a
+smart contract. That is not accurate:
 
-A platform that:
-- builds the challenge flow,
-- sets stake sizes,
-- adjudicates outcomes,
-- takes a percentage of the pot,
-- and facilitates real-money matches between users
+- Boardman controls the user wallets (developer-controlled, company-held
+  entity secret).
+- Boardman keeps off-chain balances (Supabase play balance, spectator and LP
+  ledgers).
+- Boardman receives funds on funding rails (Avalanche/Stellar ops addresses,
+  Naira collections) and credits users itself.
+- Boardman's resolver key decides who the escrow pays.
 
-may still be treated as an **operator / facilitator / marketplace** in some
-jurisdictions, regardless of whether settlement happens on-chain.
+Regulators generally look at substance over architecture. Treat Boardman as
+**custodial**, and as a platform that holds and moves value for others, when
+assessing money transmission, e-money, VASP and gaming licences.
+
+Even apart from custody, a platform that builds the challenge flow, sets stake
+limits, adjudicates outcomes and takes a percentage of the pot may be treated
+as an **operator** of real-money gaming in many jurisdictions.
 
 ## Skill vs. chance
 
-Skill-based games are treated more favorably than games of chance in many
-jurisdictions, but the distinction is not universal. EA FC / EA Sports FC is
-predominantly skill-based, but game mechanics (matchmaking, RNG elements) can
-still be argued by regulators.
+Skill-based contests get more favourable treatment than games of chance in
+many jurisdictions, but the line is not drawn the same way everywhere. Game
+mechanics (matchmaking, RNG) can still be argued.
 
-**Do not rely solely on the "skill game" argument.** It is one factor among
-many.
+The skill defence only arguably applies where **the person staking is the
+person playing**:
 
-## High-risk jurisdictions — currently blocked
+- **Human skill matches.** The defence is plausible, subject to local law.
+- **Agent matches, staked by the agent's owner or builder.** Unclear. The
+  "skill" is the owner's engineering, exercised before the match, not during
+  it. Counsel question.
+- **Spectator pari-mutuel bets on agent matches.** The defence does **not**
+  apply. The bettor has no influence on the outcome. This is wagering on an
+  event and is likely to be regulated as betting or pool betting. It is the
+  reason for the kill switch.
 
-The following countries are blocked by the geo-fence (`gaming/config/blocked_regions.json`):
+**Do not rely solely on the skill-game argument.**
 
-AU, BD, CN, EG, FR, DE, IN, ID, IR, IQ, IT, JP, KW, LY, MY, MX, NL, KP,
-PK, QA, RU, SA, SG, KR, ES, SY, TH, TR, AE, GB, US, VN, YE
+## Blocked jurisdictions
 
-**Rationale:**
-- **United States:** 50-state patchwork; fantasy/skill exemptions exist in some
-  states but compliance is expensive and risky without counsel.
-- **India:** PROGA 2025 imposes a broad ban on real-money online gaming
-  (pending Supreme Court challenge and full notification).
-- **China, Russia, Middle East, North Korea, Syria, Yemen:** strict or outright
-  prohibitions on gambling/wagering.
-- **EU (UK, Netherlands, Germany, France, Italy, Spain):** generally require
-  local gambling or gaming licenses for real-money services.
-- **Australia, Singapore, Thailand, Vietnam, Japan, South Korea:** restrictive
-  or licensing-heavy regimes.
+The canonical list is **`config/blocked_regions.json`** (version 3, 33
+countries), enforced by the geo-fence. The current list and the change process
+are in [`../COMPLIANCE.md`](../COMPLIANCE.md) §1. In short: US, MX, GB, NL,
+DE, FR, IT, ES, RU, TR, AE, SA, QA, KW, IQ, IR, SY, YE, LY, EG, IN, PK, BD,
+CN, KP, KR, JP, SG, MY, TH, VN, ID and AU.
 
-## Safer initial markets (still not zero risk)
+**Rationale (engineering's reasons, not counsel's):**
 
-Jurisdictions where skill-based P2P competitions may be more tolerated, subject
-to local counsel confirmation:
+- **United States.** A 50-state patchwork. Some states have fantasy or skill
+  exemptions, but compliance is expensive. There is also federal money-
+  transmission and UIGEA exposure.
+- **India.** PROGA 2025 broadly bans real-money online gaming (pending court
+  challenge and full notification).
+- **China, Russia, much of the Middle East, North Korea, Syria, Yemen.** Strict
+  or outright prohibitions, and in several cases sanctions.
+- **UK and EU members listed.** Local gambling or gaming licences are generally
+  required for real-money services.
+- **Australia, Singapore, Thailand, Vietnam, Japan, South Korea, Malaysia,
+  Indonesia.** Restrictive or licensing-heavy regimes.
 
-- Most of Latin America outside Mexico (e.g., Brazil, Argentina, Colombia —
-  check locally)
-- Parts of Africa (e.g., Kenya, Ghana, Nigeria — evolving regulation)
-- Parts of Eastern Europe and Southeast Asia not listed above
-- Caribbean / certain offshore-friendly jurisdictions
+**Nigeria is not blocked.** It was removed on 2026-08-13 so that Naira funding
+(Paystack, Kobox) could be used. Nigeria has federal and state-level lottery
+and gaming regulators, and its crypto/VASP regime (SEC Nigeria, CBN) is still
+changing. **Nigeria needs specific local counsel review before mainnet. It is
+not a "safer" market by default.**
 
-**This list is provisional.** Laws change.
+## Candidate markets (not cleared)
+
+No market has been cleared by counsel. The product targets jurisdictions where
+peer-to-peer skill competitions may be tolerated. Each one needs local review
+of gaming law, of money-transmission/VASP law (because of custody), and of
+betting law (if spectator betting is enabled there). Engineering has no
+evidence for which markets those are, and earlier lists in this file were
+guesses. They have been removed.
 
 ## Required user-facing disclaimers
 
-Before any user can create or accept a challenge, they must explicitly agree to:
+Before a user can create or accept a challenge, or place a spectator bet, they
+should explicitly confirm (final wording by counsel):
 
-1. **Jurisdiction confirmation:** "I am not located in a prohibited
-   jurisdiction."
-2. **Legal compliance:** "My participation complies with all applicable local
-   laws."
-3. **Skill-based nature:** "I understand this is a peer-to-peer skill
-   competition, not a gambling service operated by sideQuest."
-4. **Risk disclosure:** "I may lose my entire stake. Only wager what I can
-   afford to lose."
-5. **Age confirmation:** "I am at least 18 years old (or the legal age in my
-   jurisdiction)."
-6. **No operator warranty:** "sideQuest provides technology only and does not
-   guarantee outcomes, payouts, or uninterrupted service."
+1. **Jurisdiction:** "I am not located in, and not using a VPN to appear outside,
+   a restricted jurisdiction."
+2. **Legal compliance:** "My participation complies with the laws that apply to
+   me."
+3. **Nature of the product:** human skill match, agent match, or spectator bet,
+   each described accurately. Do **not** call spectator betting a skill
+   competition.
+4. **Risk:** "I may lose my entire stake or bet."
+5. **Age:** "I am at least 18 years old, or the legal age where I live if
+   higher."
+6. **Custody:** "Boardman controls my play wallet on my behalf."
 
-## Recommended KYC/AML thresholds (before mainnet)
+## KYC/AML
 
-- Identity verification for cumulative stakes above a conservative threshold
-  (e.g., $500 USD equivalent per 30 days).
-- Source-of-funds checks for large or suspicious activity.
-- Sanctions screening (OFAC, UN, EU lists).
-- Suspicious activity reporting process.
+There is none today. The proposed thresholds (an ID check above about $500 per
+rolling 30 days, sanctions screening on every deposit and withdrawal address,
+and a SAR process) and the code hooks are in
+[`compliance/KYC_AML_PLAN.md`](compliance/KYC_AML_PLAN.md).
 
 ## Housekeeping before mainnet
 
-- [ ] Lawyer review of Terms of Service, Privacy Policy, and Cookie Policy.
-- [ ] Smart contract audit of ClawEscrow.sol.
-- [ ] Resolver key custody plan (hardware signer / MPC / multi-sig).
-- [ ] Incident response plan for disputes, hacks, and contract bugs.
-- [ ] Tax reporting obligations in operating and target jurisdictions.
-- [ ] Stablecoin / MSB licensing analysis per country.
-- [ ] Insurance or capital reserve for operational risks.
+These are tracked with checkboxes in
+[`MAINNET_GOLIVE_CHECKLIST.md`](MAINNET_GOLIVE_CHECKLIST.md) §5:
+
+- Counsel review of the Terms of Service, Privacy Policy and the counsel brief.
+- Smart contract audit of `BoardmanEscrow.sol` and `SpectatorPool.sol`.
+- Resolver and owner key custody (hardware signer, MPC or multisig).
+- Incident response plan for disputes, hacks and contract bugs.
+- Tax reporting obligations in operating and target jurisdictions.
+- Stablecoin, MSB and VASP licensing analysis per country.
+- Insurance or a capital reserve for operational risk.
 
 ## Useful references
 
-- India PROGA 2025 — broad real-money gaming ban (under legal challenge)
-- US UIGEA 2006 — federal payment prohibition; state-by-state regulation
-- EU Gambling Directive and national licensing regimes
-- UK Gambling Commission — crypto gambling guidance
-- Netherlands Kansspelautoriteit — strict unlicensed enforcement
+- India PROGA 2025: broad real-money gaming ban (under legal challenge)
+- US UIGEA 2006: federal payment prohibition, with state-by-state regulation
+- FinCEN guidance on convertible virtual currency (2019): custodial wallets and
+  money transmission
+- EU MiCA: crypto-asset service providers and e-money tokens (USDC)
+- UK Gambling Commission: crypto gambling guidance
+- Netherlands Kansspelautoriteit: strict enforcement against unlicensed
+  operators
 
 ## Draft Terms of Service
 
-See `gaming/docs/TERMS_OF_SERVICE.md` for a starting template.
+See [`TERMS_OF_SERVICE.md`](TERMS_OF_SERVICE.md).
