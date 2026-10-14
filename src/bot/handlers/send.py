@@ -1,6 +1,7 @@
 """Withdraw / send USDC to another ClawStation user or external address."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from decimal import Decimal
@@ -51,6 +52,28 @@ def _is_address(value: str) -> bool:
 
 
 async def _execute_transfer(
+    sender_id: str,
+    sender_wallet_id: str,
+    recipient_address: str,
+    amount: Decimal,
+    recipient_id: str | None,
+    chain_id: str,
+) -> dict:
+    # The Circle transfer and the audit insert are blocking HTTP calls: run
+    # them in a worker thread so one withdrawal doesn't stall every other
+    # chat the bot is serving.
+    return await asyncio.to_thread(
+        _execute_transfer_sync,
+        sender_id,
+        sender_wallet_id,
+        recipient_address,
+        amount,
+        recipient_id,
+        chain_id,
+    )
+
+
+def _execute_transfer_sync(
     sender_id: str,
     sender_wallet_id: str,
     recipient_address: str,
@@ -328,7 +351,10 @@ async def send_confirm_password(message: types.Message, state: FSMContext) -> No
     password = message.text or ""
     profile = await get_or_create_profile(message.from_user)
 
-    if not verify_tx_password(password, profile.get("gaming_tx_password_hash", "")):
+    # PBKDF2 (260k rounds) is ~0.1-0.3s of CPU: keep it off the event loop.
+    if not await asyncio.to_thread(
+        verify_tx_password, password, profile.get("gaming_tx_password_hash", "")
+    ):
         await message.answer("❌ Incorrect transaction password. Try again, or /start to cancel.")
         return
 
