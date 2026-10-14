@@ -43,9 +43,10 @@ def _open_season():
 
 
 def _fund(better: str) -> None:
+    """A spectator's real deposit — humans are never faucet-funded."""
     from gaming.src.stack.agentic import ledger as L
 
-    L.ensure_funded(better, Decimal("100"))
+    L.credit(better, Decimal("100"), reason="test_deposit")
 
 
 def test_place_bet_pools_and_prices(_open_season):
@@ -155,3 +156,26 @@ def test_season_resolve_settles_the_books(_open_season):
     assert md.get("betting_settlements"), "resolve did not settle the books"
     book_side = md["betting_settlements"][0]["winning_side"]
     assert book_side in ("home", "draw", "away")
+
+
+def test_short_pot_never_pays_winners_from_nothing(_open_season):
+    """Ledger drift (the fixture pot holds less than its book) parks the book
+    instead of crediting winners money the pot never had."""
+    S, sn, home, away = _open_season
+    from gaming.src.stack.agentic import ledger as L
+    from gaming.src.stack.agentic.games.football_managers import betting as B
+
+    _fund("spec_a")
+    _fund("spec_b")
+    B.place_bet("spec_a", sn, 1, home, away, "home", "5")
+    B.place_bet("spec_b", sn, 1, home, away, "away", "5")
+    pot = f"afm_fixture_s{sn}_md1_{home}_{away}"
+    L.debit(pot, Decimal("6"), reason="test_drift")  # pot now short
+
+    results = [{"home_agent_id": home, "away_agent_id": away, "home_goals": 1, "away_goals": 0}]
+    B.settle_matchday(sn, 1, results)
+    assert L.balance("spec_a") == Decimal("95")  # no payout minted
+    assert L.balance("spec_b") == Decimal("95")
+    assert L.balance(pot) == Decimal("4")  # untouched: the whole settle rolled back
+    book = next(iter(B._load()["fixtures"].values()))
+    assert book["status"] == "settle_failed"
