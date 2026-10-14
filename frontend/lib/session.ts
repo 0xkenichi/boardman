@@ -1,8 +1,12 @@
 /**
  * Server-side session helpers for Rematch web app.
- * Cookie is HttpOnly; payload is HMAC-signed. Never put REMATCH_API_KEY here.
+ * Cookie is HttpOnly; payload is HMAC-signed with REMATCH_SESSION_SECRET only
+ * (never REMATCH_API_KEY / STACK_API_KEY). Production refuses to run without it.
+ *
+ * Also issues the single-use wallet sign-in nonce (EIP-4361) as a signed,
+ * short-lived HttpOnly cookie — stateless, so it works on serverless.
  */
-import { createHmac, timingSafeEqual } from 'crypto'
+import { createHmac, randomBytes, timingSafeEqual } from 'crypto'
 
 export type RematchSession = {
   profileId: string
@@ -14,19 +18,42 @@ export type RematchSession = {
   iat?: number
   /** Linked wallet address (lowercase 0x…) proven via personal_sign. */
   wallet?: string
+  /** Demo session (dev only). Never an admin, never a real profile. */
+  demo?: boolean
 }
 
 const COOKIE = 'rematch_session'
 const MAX_AGE_SEC = 60 * 60 * 24 * 7 // 7 days (slides forward while active)
 const ABSOLUTE_MAX_SEC = 60 * 60 * 24 * 30 // hard cap: re-login after 30 days
 
+const MIN_SECRET_LEN = 32
+const DEV_ONLY_SECRET = 'dev-only-change-me-rematch-session'
+let warnedDevSecret = false
+
+/** NODE_ENV or VERCEL_ENV says production (kept local: this file is server-only). */
+export function isProductionRuntime(): boolean {
+  return process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production'
+}
+
 function secret(): string {
-  return (
-    process.env.REMATCH_SESSION_SECRET ||
-    process.env.REMATCH_API_KEY ||
-    process.env.STACK_API_KEY ||
-    'dev-only-change-me-rematch-session'
-  )
+  const configured = process.env.REMATCH_SESSION_SECRET || ''
+  if (isProductionRuntime()) {
+    if (configured.length < MIN_SECRET_LEN) {
+      throw new Error(
+        `REMATCH_SESSION_SECRET must be set to at least ${MIN_SECRET_LEN} characters in production`
+      )
+    }
+    return configured
+  }
+  if (configured) return configured
+  if (!warnedDevSecret) {
+    warnedDevSecret = true
+    console.warn(
+      '[session] REMATCH_SESSION_SECRET is not set — using an insecure dev-only secret. ' +
+        'This is refused in production.'
+    )
+  }
+  return DEV_ONLY_SECRET
 }
 
 function b64url(buf: Buffer | string): string {
@@ -36,6 +63,16 @@ function b64url(buf: Buffer | string): string {
 
 function sign(payloadB64: string): string {
   return createHmac('sha256', secret()).update(payloadB64).digest('base64url')
+}
+
+function sigEqual(sig: string, expected: string): boolean {
+  try {
+    const a = Buffer.from(sig)
+    const b = Buffer.from(expected)
+    return a.length === b.length && timingSafeEqual(a, b)
+  } catch {
+    return false
+  }
 }
 
 export function encodeSession(session: Omit<RematchSession, 'exp' | 'iat'> & { exp?: number; iat?: number }): string {
@@ -53,14 +90,7 @@ export function decodeSession(token: string | undefined | null): RematchSession 
   if (!token || !token.includes('.')) return null
   const [payloadB64, sig] = token.split('.')
   if (!payloadB64 || !sig) return null
-  const expected = sign(payloadB64)
-  try {
-    const a = Buffer.from(sig)
-    const b = Buffer.from(expected)
-    if (a.length !== b.length || !timingSafeEqual(a, b)) return null
-  } catch {
-    return null
-  }
+  if (!sigEqual(sig, sign(payloadB64))) return null
   try {
     const data = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8')) as RematchSession
     const now = Math.floor(Date.now() / 1000)
@@ -73,8 +103,12 @@ export function decodeSession(token: string | undefined | null): RematchSession 
   }
 }
 
+function secureAttr(): string {
+  return isProductionRuntime() ? '; Secure' : ''
+}
+
 export function sessionCookieHeader(token: string): string {
-  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : ''
+  const secure = secureAttr()
   return `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${MAX_AGE_SEC}${secure}`
 }
 
@@ -85,14 +119,74 @@ export function renewSession(session: RematchSession): string {
 }
 
 export function clearSessionCookieHeader(): string {
-  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : ''
+  const secure = secureAttr()
   return `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`
 }
 
-export function readSessionFromRequest(req: Request): RematchSession | null {
+function readCookie(req: Request, name: string): string | null {
   const cookie = req.headers.get('cookie') || ''
-  const match = cookie.match(new RegExp(`(?:^|;\\s*)${COOKIE}=([^;]+)`))
-  return decodeSession(match?.[1] ? decodeURIComponent(match[1]) : null)
+  const match = cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`))
+  if (!match?.[1]) return null
+  try {
+    return decodeURIComponent(match[1])
+  } catch {
+    return null
+  }
+}
+
+export function readSessionFromRequest(req: Request): RematchSession | null {
+  return decodeSession(readCookie(req, COOKIE))
+}
+
+// ── Wallet sign-in nonce (EIP-4361) ─────────────────────────────────────────
+// Server-issued, single-use: GET /wallet-nonce sets it, POST /session (wallet)
+// checks it equals the signed message's nonce and always clears it.
+
+const NONCE_COOKIE = 'rematch_wallet_nonce'
+const NONCE_TTL_SEC = 10 * 60
+const NONCE_PATH = '/api/rematch/app'
+const NONCE_PURPOSE = 'wallet-nonce.'
+
+export function issueWalletNonce(nowSec = Math.floor(Date.now() / 1000)): {
+  nonce: string
+  token: string
+  expiresAt: number
+} {
+  const nonce = randomBytes(16).toString('hex')
+  const exp = nowSec + NONCE_TTL_SEC
+  const payloadB64 = b64url(JSON.stringify({ n: nonce, exp }))
+  return { nonce, token: `${payloadB64}.${sign(NONCE_PURPOSE + payloadB64)}`, expiresAt: exp }
+}
+
+/** The nonce inside a valid, unexpired nonce token — or null. */
+export function verifyWalletNonceToken(
+  token: string | null | undefined,
+  nowSec = Math.floor(Date.now() / 1000)
+): string | null {
+  if (!token) return null
+  const [payloadB64, sig, extra] = token.split('.')
+  if (!payloadB64 || !sig || extra !== undefined) return null
+  if (!sigEqual(sig, sign(NONCE_PURPOSE + payloadB64))) return null
+  try {
+    const data = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'))
+    if (typeof data?.n !== 'string' || typeof data?.exp !== 'number') return null
+    if (data.exp < nowSec) return null
+    return data.n
+  } catch {
+    return null
+  }
+}
+
+export function readWalletNonceFromRequest(req: Request): string | null {
+  return verifyWalletNonceToken(readCookie(req, NONCE_COOKIE))
+}
+
+export function walletNonceCookieHeader(token: string): string {
+  return `${NONCE_COOKIE}=${token}; Path=${NONCE_PATH}; HttpOnly; SameSite=Strict; Max-Age=${NONCE_TTL_SEC}${secureAttr()}`
+}
+
+export function clearWalletNonceCookieHeader(): string {
+  return `${NONCE_COOKIE}=; Path=${NONCE_PATH}; HttpOnly; SameSite=Strict; Max-Age=0${secureAttr()}`
 }
 
 export { COOKIE as SESSION_COOKIE_NAME, MAX_AGE_SEC }
