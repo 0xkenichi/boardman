@@ -36,11 +36,18 @@ Generate a key:
 """
 from __future__ import annotations
 
+import hmac
+import logging
 import os
 import secrets
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+# builder_id the master key resolves to; reserved, never assignable to a builder key
+MASTER_BUILDER_ID = "platform"
 
 
 @dataclass(frozen=True)
@@ -96,13 +103,21 @@ def load_api_key_map() -> dict[str, str]:
     """
     Map secret_key -> builder_id.
 
-    Includes master REMATCH_API_KEY as builder_id ``platform``.
+    Includes master REMATCH_API_KEY as builder_id ``platform``. That label is
+    reserved: a builder key listed as ``platform`` is dropped, and no builder
+    entry can relabel the master key.
     """
     out: dict[str, str] = {}
 
     master = rematch_api_key()
-    if master:
-        out[master] = "platform"
+
+    def _add(k: str, builder: str) -> None:
+        if not k or k == master:
+            return
+        if builder.strip().lower() == MASTER_BUILDER_ID:
+            logger.warning("ignoring builder key labelled %r (reserved for the master key)", builder)
+            return
+        out[k] = builder
 
     # BOARDMAN_STACK_API_KEYS=key1:builder1,key2:builder2
     raw = (os.getenv("BOARDMAN_STACK_API_KEYS") or "").strip()
@@ -116,8 +131,7 @@ def load_api_key_map() -> dict[str, str]:
                 k, builder = k.strip(), builder.strip() or "builder"
             else:
                 k, builder = part, "builder"
-            if k:
-                out[k] = builder
+            _add(k, builder)
 
     # File: one key:builder per line
     path = (os.getenv("BOARDMAN_STACK_API_KEYS_FILE") or "").strip()
@@ -133,9 +147,10 @@ def load_api_key_map() -> dict[str, str]:
                     k, builder = k.strip(), builder.strip() or "builder"
                 else:
                     k, builder = line, "builder"
-                if k:
-                    out[k] = builder
+                _add(k, builder)
 
+    if master:
+        out[master] = MASTER_BUILDER_ID
     return out
 
 
@@ -149,10 +164,13 @@ def resolve_api_key(got: str) -> Optional[ApiKeyPrincipal]:
     builder = mapping.get(got)
     if builder is None:
         return None
+    master = rematch_api_key()
+    # master status comes from the key itself, never from a label
+    is_master = bool(master) and hmac.compare_digest(got.encode("utf-8"), master.encode("utf-8"))
     return ApiKeyPrincipal(
         key_id=_fingerprint(got),
         builder_id=builder,
-        is_master=builder == "platform",
+        is_master=is_master,
     )
 
 
