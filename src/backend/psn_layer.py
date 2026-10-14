@@ -1,8 +1,7 @@
 import os
 from psnawp_api import PSNAWP
-from dotenv import load_dotenv
 
-load_dotenv()
+# .env is loaded by the entrypoint (see __main__), never at import.
 
 class PSNLayer:
     def __init__(self):
@@ -54,6 +53,9 @@ class PSNLayer:
             return {"status": "error", "message": str(e)}
 
 if __name__ == "__main__":
+    from dotenv import load_dotenv
+
+    load_dotenv()
     psn = PSNLayer()
     # example use:
     # profile = psn.get_profile("User_ID")

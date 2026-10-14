@@ -9,12 +9,12 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from backend.supabase_client import get_supabase
-from dotenv import load_dotenv
 
 # Import event bus for fan-out
 from backend.realtime_server import publish_event
 
-load_dotenv()
+# No load_dotenv() here: entrypoints (notification_worker, flash_expiry_job,
+# bot_service) load .env before importing this module.
 
 logger = logging.getLogger(__name__)
 
