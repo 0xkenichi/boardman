@@ -278,12 +278,13 @@ class _ConnHolder:
     connection open per thread for the life of the process.
     """
 
-    __slots__ = ("conn", "closed", "pid", "__weakref__")
+    __slots__ = ("conn", "closed", "pid", "thread", "__weakref__")
 
     def __init__(self, conn: Any) -> None:
         self.conn = conn
         self.closed = False
         self.pid = os.getpid()
+        self.thread = threading.get_ident()
 
     def close(self) -> None:
         if self.closed:
@@ -365,6 +366,9 @@ class Database:
 
     def connection(self) -> Any:
         if self.closed:
+            mine = getattr(self._local, "holder", None)
+            if mine is not None:
+                mine.close()  # left open by close_all() while this thread was busy
             raise StorageError("database handle closed")
         if self._pid != os.getpid():
             # Forked child: never touch the parent's connections (SQLite and
@@ -437,12 +441,23 @@ class Database:
         )
 
     def close_all(self) -> None:
+        """Close this handle's connections.
+
+        Only the caller's own and those of threads that have exited: closing a
+        connection another live thread may be using right now is unsafe (an
+        sqlite3 handle closed mid-query crashes the interpreter; libpq is no
+        better). Those close themselves on that thread's next call, which
+        refuses a closed handle, or when the thread exits.
+        """
         self.closed = True
         with self._conns_lock:
             holders = list(self._holders)
             self._holders = weakref.WeakSet()
+        me = threading.get_ident()
+        live = {t.ident for t in threading.enumerate()}
         for h in holders:
-            h.close()
+            if h.thread == me or h.thread not in live:
+                h.close()
 
     # -- execution helpers --
 

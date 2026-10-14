@@ -494,7 +494,6 @@ def _hermetic(request, tmp_path_factory, monkeypatch):
 
     pg_base = None
     if PG_TEST_URL:
-        _close_app_databases()
         pg_base = _pg_begin_test()
         monkeypatch.setenv(_pgtest.CHILD_ENV, _pgtest.child_env(PG_TEST_URL, pg_base))
 

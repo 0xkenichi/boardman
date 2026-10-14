@@ -104,3 +104,36 @@ def test_a_dropped_connection_is_replaced_not_kept_broken():
     ledger.credit(W, Decimal("1"), reason="after")  # first use after the kill
     assert ledger.balance(W) == Decimal("2")
     assert db.connection().info.backend_pid != pid
+
+
+def test_closing_the_store_never_pulls_a_connection_from_under_a_busy_thread():
+    """reset_databases()/eviction used to close every thread's connection,
+    including one mid-transaction (an sqlite3 handle closed mid-query can
+    segfault). A busy thread keeps its connection until it is done; its next
+    call is refused and closes it."""
+    import threading
+
+    from gaming.src.stack.agentic.db import StorageError, engine
+
+    db = get_db()
+    ready, go = threading.Event(), threading.Event()
+    box: dict = {}
+
+    def worker() -> None:
+        with transaction() as tx:
+            tx.scalar("SELECT 1 AS x", ())
+            ready.set()
+            go.wait(10)
+            box["after"] = tx.scalar("SELECT 2 AS x", ())
+        try:
+            db.connection()
+        except StorageError:
+            box["refused"] = True
+
+    t = threading.Thread(target=worker)
+    t.start()
+    assert ready.wait(10)
+    engine.reset_databases()
+    go.set()
+    t.join(20)
+    assert box == {"after": 2, "refused": True}
