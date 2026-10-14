@@ -8,7 +8,9 @@ If the on-chain flow fails, callers should fall back to the existing internal
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import inspect
 import logging
 import os
 from decimal import Decimal
@@ -49,6 +51,30 @@ def _match_bytes32(match_id: str) -> str:
     return "0x" + hashlib.sha256(match_id.encode()).hexdigest()
 
 
+def _side_index(side: str) -> int:
+    """0 = agent A, 1 = agent B, 2 = draw (SpectatorPool deposit side)."""
+    s = str(side or "").strip().lower()
+    if s in ("a", "0", "raja", "white"):
+        return 0
+    if s in ("draw", "d", "tie", "2"):
+        return 2
+    return 1
+
+
+async def _call_off_loop(fn, *args, **kwargs):
+    """Run a Circle wallet call without blocking the event loop.
+
+    CircleWalletService methods are synchronous (blocking HTTP); awaiting
+    their dict result raised ``TypeError`` on every call. Run them in a
+    worker thread instead, and still accept an async implementation (test
+    doubles) by awaiting the coroutine it returns.
+    """
+    res = await asyncio.to_thread(fn, *args, **kwargs)
+    if inspect.isawaitable(res):
+        res = await res
+    return res
+
+
 async def deposit_to_pool(profile_id: str, match_id: str, side: str, amount: Decimal) -> dict[str, Any]:
     """Approve USDC and deposit to the spectator pool contract.
 
@@ -77,18 +103,33 @@ async def deposit_to_pool(profile_id: str, match_id: str, side: str, amount: Dec
 
     # Approve token transfer to spectator contract
     logger.info("[SpectatorEscrow] Approving USDC for user=%s amount=%s to %s", profile_id, amount, escrow_address)
-    approve = await circle.approve_usdc_transfer(wallet_id, float(amount), escrow_address)
+    approve = await _call_off_loop(
+        circle.approve_usdc_transfer, wallet_id, float(amount), escrow_address
+    )
     if not approve.get("success"):
         raise SpectatorEscrowError(f"approve failed: {approve.get('error')}")
+    # Wait for the approve to land, or the deposit reverts on allowance.
+    approve_tx_id = approve.get("transaction_id")
+    waiter = getattr(circle, "wait_for_transaction_async", None)
+    if approve_tx_id and waiter is not None:
+        approve_wait = await waiter(approve_tx_id, max_wait_seconds=90)
+        if not approve_wait.get("success"):
+            raise SpectatorEscrowError(f"approve not confirmed: {approve_wait.get('error')}")
 
     # Execute deposit contract call. ABI expected: deposit(bytes32,uint256,uint8)
     match_bytes = _match_bytes32(match_id)
-    side_idx = 0 if str(side).lower() in ("a", "raja", "white") else 1
+    side_idx = _side_index(side)  # v1 mapped "draw" to side B
     wei = int(amount * Decimal(10 ** USDC_DECIMALS))
 
     # Try to execute contract function; this uses Circle's execute_contract_function wrapper
     logger.info("[SpectatorEscrow] deposit_to_pool user=%s match=%s side=%s wei=%s", profile_id, match_id, side_idx, wei)
-    res = await circle.execute_contract_function(wallet_id, escrow_address, "deposit(bytes32,uint256,uint8)", [match_bytes, str(wei), side_idx])
+    res = await _call_off_loop(
+        circle.execute_contract_function,
+        wallet_id,
+        escrow_address,
+        "deposit(bytes32,uint256,uint8)",
+        [match_bytes, str(wei), side_idx],
+    )
     if not res.get("success"):
         raise SpectatorEscrowError(f"deposit failed: {res.get('error')}")
 

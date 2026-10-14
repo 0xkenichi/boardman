@@ -1,5 +1,104 @@
 # ClawStation Contracts
 
+## v2 safety release (BoardmanEscrow v2 + SpectatorPool v2) — not deployed yet
+
+Source: `contracts/contracts/core/BoardmanEscrow.sol`, `contracts/contracts/core/SpectatorPool.sol`.
+The deployed v1 contracts were built from commit `555a348`; check out that
+commit to verify them on an explorer. "v2" here is the interface version
+(`ESCROW_VERSION() == 2`, `POOL_VERSION() == 2`). It is not the older
+`boardman_v1_arcTestnet_v2.json` flat-fee redeploy.
+
+### What changed and why
+
+| # | v1 problem | v2 behaviour |
+|---|------------|--------------|
+| 1 | SpectatorPool took bets after the result was known: `deposit` only checked `Open`, `_resolve` didn't need `Closed`, and the backend never called `close()` | `openBook(..., potCap, uint64 closeAt)` fixes a deadline (`now < closeAt ≤ now + 7d`). `deposit` / `depositFor` / `seed` revert with `BettingClosed` from `closeAt` on. `resolve` reverts with `BookStillOpen` unless the book is `Closed` or past `closeAt`. The backend sends `close()` before resolving, and `close_book_onchain()` exists for the kickoff freeze |
+| 2 | Owner could change fees on locked funds, up to 100% or an uncapped flat fee, which could also make `resolveMatch` underflow | Hard caps: bps ≤ `1000` on both contracts; escrow flat fee ≤ `MIN_STAKE/4` ($0.50/player); pool flat fee ≤ $1 and also ≤ 25% of the pot. Escrow stores the fee per match at `createMatch` (`Match.platformFee`). The pool adds an append-only `FeeSchedule` and each book records its `feeScheduleId` at `openBook`. Fees are clamped to the pot |
+| 3 | No way to get funds out if the resolver disappears | Escrow: `refundExpired(matchId)` can be called by anyone. An OPEN match older than `openTimeout` refunds player1, and `joinMatch` is closed by then. A LOCKED or DISPUTED match older than `lockTimeout` refunds both players, and `resolveMatch` is closed by then. Pool: `refundExpired(matchId)` can be called by anyone after `closeAt + refundGrace`, turns the book into a full refund, and `resolve` is closed by then. All timeouts are immutable constructor params with bounds |
+| 4 | Pool pushed fees and creator shares, so one USDC-blacklisted address made `resolve` revert | Platform fees accrue to `protocolFees`, and `withdrawFees()` (anyone can call it) sends them to the current `feeRecipient`. Creator shares accrue to `owed[creator]` and `withdraw()` pays them out. Escrow fees accrue the same way. Player payouts are still pushed, but a failed transfer becomes `owed[player]` (`PayoutDeferred`) instead of reverting |
+| 5 | Rounding dust and unclaimed winnings were stuck forever | Each settled book tracks `remaining`. `claim` decrements it and reverts if a claim would exceed it. After `claimWindow`, `sweep(matchId)` (owner only) moves that one book's `remaining` to `protocolFees`, and claims on that book stop |
+| 6 | Anyone could squat a backend `matchId` with `createMatch`, and anyone could take the player2 seat | `createMatch(matchId, player2, stake, deadline, resolverSig)`. The resolver signs EIP-712 `CreateMatch(bytes32 matchId,address player1,address player2,uint256 stake,uint256 deadline)` on domain `BoardmanEscrow` / `2` / chainId / contract. `player1` is `msg.sender`. Only the bound `player2` can join |
+| 7 | One EOA was owner, resolver and treasury, using plain `Ownable` | `Ownable2Step`, and `renounceOwnership` is disabled. `onlyResolver` no longer lets the owner through. Every role change emits an event. The deploy script refuses to give two roles to one address. Pause only blocks money coming in (`createMatch` / `joinMatch` / `openBook` / `seed` / `deposit` / `depositFor`); resolve, cancel, refund, claim, withdraw and sweep all keep working |
+| 8 | `spectator_escrow.py` awaited synchronous Circle calls | The Circle calls run in a worker thread, the code waits for the approve to confirm, and `draw` bets go to side 2 |
+
+ABI notes for integrators. `deposit(bytes32,uint256,uint8)` is unchanged.
+`matches(bytes32)` on the escrow keeps the v1 six-field tuple.
+`getBook` keeps positions 0..23 and appends `closeAt, settledAt,
+feeScheduleId, swept, remaining`. All v1 events are unchanged, and new ones
+were added. The breaking changes are `createMatch`, the `openBook` signature,
+both constructors, and the owner losing resolver powers. The Python
+operators (`src/stack/agentic/onchain.py`, `spectator_onchain.py`) detect v1
+or v2 through `ESCROW_VERSION()` / `POOL_VERSION()`, which can be overridden
+with `BOARDMAN_ESCROW_VERSION` / `SPECTATOR_POOL_VERSION`. The on-chain
+betting window is `SPECTATOR_BOOK_WINDOW_SECONDS` (default 900).
+
+### Deploy (human only)
+
+`contracts/scripts/deploy_v2.js` documents every constructor param. It needs
+`V2_OWNER_MULTISIG`, `V2_TREASURY`, `V2_RESOLVER` and `CONFIRM_V2_DEPLOY=1`,
+and must run from a throwaway deployer key. Defaults: `openTimeout` 24h,
+`lockTimeout` 7d, `refundGrace` 7d, `claimWindow` 180d. It writes
+`deployments/boardman_v2_<network>.json` and offers ownership to the
+multisig. The multisig must call `acceptOwnership()` on both contracts.
+Smoke-test locally with `npx hardhat run scripts/deploy_v2.js --network localhost`.
+
+### Migration plan v1 → v2
+
+1. Create a Safe for the owner and a separate treasury Safe, and generate a
+   fresh resolver key (not `0xFA93…`). Deploy v2 and accept ownership from the Safe.
+2. **Agentic path.** Set `BOARDMAN_ESCROW_ADDRESS_ARC` and `SPECTATOR_ESCROW_ADDRESS`
+   to the v2 addresses and `BOARDMAN_RESOLVER_KEY` to the v2 resolver, then restart.
+   New matches and books go to v2. Match ids are new per match, so no id lives on both contracts.
+3. **Let v1 drain.** Keep the v1 resolver key so in-flight v1 matches and books
+   can resolve or cancel. v1 `resolveMatch` / `cancelMatch` / `resolve` / `cancel`
+   have the same signatures, and the backend picks the v1 ABI by probing.
+   This needs a v1-address config entry, or a
+   one-off script, because the backend reads a single address per contract.
+   After every v1 book has settled and been claimed, pause v1 (owner) and stop using it.
+   v1 has no sweep, so its dust stays.
+4. **Human (Circle) path.** `src/backend/services/clawstation_escrow.py` and
+   `blockchain_layer.py` / `escrow_service.py` still call
+   `createMatch(bytes32,uint256)`. They must get a resolver permit (see
+   `sign_create_permit` in `onchain.py`) and pass `player2`, so the opponent
+   must be known at create. Keep that path on v1 until they are updated.
+5. Wire `close_book_onchain()` into the ply-N book freeze in
+   `src/stack/agentic/matches.py` and `house.py`. Until that is done, the
+   `closeAt` deadline plus the close-before-resolve in `resolve_book` still
+   enforce the rule.
+6. Run an ops job that calls `withdrawFees()` on both contracts and `withdraw()` for
+   agent creator wallets on the pool, then update `chains.yaml` and this file with the addresses.
+
+### Audit readiness
+
+**Invariants** (each has a test in `contracts/test/*v2.js`, and the random property runs cover them too):
+- Escrow: `usdc.balanceOf(escrow) == totalLocked + accruedFees + totalOwed`. A match only moves forward: OPEN → LOCKED/DISPUTED → RESOLVED/CANCELLED. A match id is created once. `payout + fee == 2*stake`, `fee ≤ pot/4`, and the fee is the value frozen at create.
+- Pool: `usdc.balanceOf(pool) == protocolFees + totalOwed + Σ live pots + Σ settled.remaining`. Per book, Σ claims ≤ `distributable`, the dust left is less than the number of winners, and refund books repay exactly the pot. `remaining` never underflows. A sweep touches only one book.
+- No deposit lands at or after `closeAt`, and no resolve happens while a book is Open before `closeAt`, or at or after `closeAt + refundGrace`.
+- Nothing can block money out: no payout path depends on the treasury or a creator accepting a transfer, and pause never blocks money out.
+
+**Trust assumptions:**
+- Owner (multisig) can set fees within the caps (only for future matches and books), rotate the resolver and treasury, pause intake, and sweep books past `claimWindow`. It cannot move escrowed or claimable funds.
+- The resolver decides outcomes and permits. A compromised resolver can still pick a wrong winner within the timeout windows, cancel anything, or permit matches. It cannot take funds to itself unless it is also a player.
+- `depositFor` pulls from the resolver's own balance (House float).
+- The token is a standard 6-decimal USDC: no fee-on-transfer, no rebasing, and no callbacks.
+
+**Known limitations:**
+- Off-chain dispute evidence. The fee schedule is on-chain, but outcomes are not proven.
+- `refundExpired` and `withdrawFees` can be called by anyone. A caller who gives too little gas can force a payout into `owed` instead of a push. Nothing is lost, the player just has to call `withdraw()`.
+- A blacklisted player or creator cannot withdraw until they are unblacklisted, by design: there is no redirect.
+- The domain separator is cached and rebuilt on a chain fork.
+- Seeds on a losing side are forfeited to the pot, which is v1 economics and unchanged.
+- The escrow permit has no nonce. Replay is prevented by the single-use `matchId`, but an unused permit stays valid until `deadline`, and the backend uses 600 s.
+- The contracts are built with solc 0.8.20 for the paris EVM. EIP-712 is inlined because OZ 5.6's `EIP712` needs 0.8.24 and MCOPY.
+
+**NatSpec:** both contract headers list the changes from v1. These all carry `@notice`/`@dev`, and `@param` where they take inputs:
+- every state-changing function, including the requirement lists and timeout bounds
+- the constructors
+- every new event
+- the role and config storage
+
+Gaps: trivial views (`contractBalance`, `getMatchStatus`, `fanDepositOf`, `seedOf`), `pause`/`unpause` on the escrow, and the v1 events, which were kept unchanged. Run `npx hardhat test` (all hardhat tests) and `REPORT_GAS=true npx hardhat test` for gas figures.
+
 ## Arc Mainnet (chain ID `5042` — live Sept 16 2026)
 
 - Native USDC ERC-20 facade predeploy: `0x3600000000000000000000000000000000000000` (same as testnet, 6 decimals)
