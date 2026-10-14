@@ -110,10 +110,19 @@ def test_purchase_refused_then_settled(client):
     ).json()["agents"]}
     assert owner[aid] == "dev_e2e"
 
+    # signed in but broke: 402, nothing moves (no faucet for human buyers)
+    broke = client.post(BASE + "/football/agents/purchase", json=body, headers=_as("buyer_e2e"))
+    assert broke.status_code == 402, broke.text
+    assert "insufficient balance" in broke.json()["detail"]
+    assert L.balance("owner:dev_e2e") == Decimal("0")
+    assert L.balance("owner:buyer_e2e") == Decimal("0")
+
+    L.credit("owner:buyer_e2e", Decimal("25"), reason="test_deposit")
     bought = client.post(BASE + "/football/agents/purchase", json=body, headers=_as("buyer_e2e"))
     assert bought.status_code == 200, bought.text
     assert bought.json()["sale"]["mode"] == "ledger"
     assert L.balance("owner:dev_e2e") == Decimal("25")
+    assert L.balance("owner:buyer_e2e") == Decimal("0")
 
 
 def test_open_demo_still_reaches_platform_routes(client, monkeypatch):

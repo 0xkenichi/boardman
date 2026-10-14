@@ -2109,6 +2109,7 @@ async def football_agents_offer_accept(body: FootballAgentOfferDecisionBody, cal
     import asyncio
 
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
+        InsufficientBalance,
         accept_manager_offer,
     )
 
@@ -2121,6 +2122,8 @@ async def football_agents_offer_accept(body: FootballAgentOfferDecisionBody, cal
             accept_by=_acting_party(caller, body.decided_by, field="decided_by"),
             settlement=body.settlement,
         )
+    except InsufficientBalance as e:
+        raise HTTPException(status_code=402, detail=str(e)) from e
     except (ValueError, RuntimeError) as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"success": True, **out}
@@ -2149,10 +2152,13 @@ async def football_agents_purchase(body: FootballAgentPurchaseBody, caller: Stac
     """Buy a listed manager: the price settles and ownership transfers to the
     buyer (creator cut paid to the developer). Default ``auto`` settles in
     real USDC from the buyer's bound Circle wallet when every party has one,
-    and falls back to the demo ledger otherwise."""
+    and otherwise from the buyer's book-entry ledger balance (testnet only;
+    refused on mainnet). A buyer who can't cover the price gets a 402 and
+    nothing moves."""
     import asyncio
 
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
+        InsufficientBalance,
         purchase_manager_agent,
     )
 
@@ -2165,6 +2171,8 @@ async def football_agents_purchase(body: FootballAgentPurchaseBody, caller: Stac
             buyer_id=_acting_party(caller, body.buyer_id, field="buyer_id"),
             settlement=body.settlement,
         )
+    except InsufficientBalance as e:
+        raise HTTPException(status_code=402, detail=str(e)) from e
     except (ValueError, RuntimeError) as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"success": True, **out}
