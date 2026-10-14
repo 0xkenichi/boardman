@@ -610,16 +610,34 @@ def _abort_under_lease(match_id: str, reason: str) -> dict[str, Any]:
     if rec.get("onchain") or rec.get("settlement_mode") == "onchain":
 
         def _onchain_abort() -> dict[str, Any]:
-            from gaming.src.stack.agentic.onchain import read_onchain_match, resolve_onchain
+            from gaming.src.stack.agentic.onchain import (
+                ONCHAIN_CANCELLABLE,
+                ONCHAIN_FINAL,
+                OnchainMatchAbsent,
+                read_onchain_match,
+                resolve_onchain,
+            )
 
-            # An unreadable escrow is NOT "nothing to cancel": raise, so the
-            # step stays undone and the next attempt asks the chain again.
-            on = read_onchain_match(match_id, chain_id=chain) or {}
-            st_on = int(on.get("status") or -1)
-            if st_on in {3, 4}:
+            # An unreadable escrow is NOT "nothing to cancel": an RPC error
+            # raises, so the step stays undone and the next attempt asks the
+            # chain again. Only a slot the escrow provably never filled is
+            # skipped — and not while a lock tx we sent may still mine.
+            try:
+                on = read_onchain_match(match_id, chain_id=chain)
+            except OnchainMatchAbsent:
+                pending = rec.get("onchain_pending_tx") or {}
+                if pending:
+                    raise RuntimeError(
+                        f"{match_id}: no escrow yet, but lock tx {pending.get('tx_hash')} may still mine"
+                    ) from None
+                return {"tx_hash": None, "skipped": True, "absent": True}
+            # OPEN is status 0: never `status or <default>` here — that read
+            # every OPEN escrow as "unknown" and left its stake on-chain.
+            st_on = int(on["status"])
+            if st_on in ONCHAIN_FINAL:
                 return {"tx_hash": None, "already_final": True, "status": st_on}
-            if st_on not in {0, 1, 2}:
-                return {"tx_hash": None, "skipped": True, "status": st_on}
+            if st_on not in ONCHAIN_CANCELLABLE:
+                raise RuntimeError(f"{match_id}: unknown on-chain escrow status {st_on}")
             return resolve_onchain(
                 match_id,
                 rec.get("agent_a_wallet") or on.get("player1"),

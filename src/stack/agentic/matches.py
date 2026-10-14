@@ -185,11 +185,11 @@ def _result_key(result: dict[str, Any]) -> tuple[str, str]:
 def _onchain_already_final(match_id: str, chain_id: str) -> Optional[dict[str, Any]]:
     """After a crash, the escrow may already be resolved/cancelled on-chain."""
     try:
-        from gaming.src.stack.agentic.onchain import ONCHAIN_STATUS, read_onchain_match
+        from gaming.src.stack.agentic.onchain import ONCHAIN_FINAL, ONCHAIN_STATUS, read_onchain_match
 
         on = read_onchain_match(match_id, chain_id=chain_id)
-        st = int(on.get("status") or -1)
-        if st in {3, 4}:
+        st = int(on["status"])  # 0 is OPEN, not "missing"
+        if st in ONCHAIN_FINAL:
             return {"tx_hash": None, "already_final": True, "status": ONCHAIN_STATUS.get(st, str(st))}
     except Exception:
         logger.debug("[agentic] on-chain status probe failed for %s", match_id, exc_info=True)
