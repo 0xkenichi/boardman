@@ -7,13 +7,10 @@ from pathlib import Path
 try:
     from dotenv import load_dotenv
 
-    # Load .env from likely roots:
-    # - standalone: rematch/src/bot/config.py -> parents[2] = rematch/
-    # - monorepo:   gaming/src/bot/config.py  -> parents[3] = sideQuest/
-    _here = Path(__file__).resolve()
-    for _root in (_here.parents[2], _here.parents[3], Path.cwd()):
-        load_dotenv(_root / ".env")
-    load_dotenv()  # cwd fallback
+    # This checkout's .env only (src/bot/config.py -> parents[2]). Never a
+    # parent directory's: from a worktree that would load the main checkout's
+    # live secrets.
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 except ImportError:
     pass
 

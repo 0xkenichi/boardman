@@ -13,9 +13,10 @@ from typing import Dict, Set, Optional, Any
 import redis.asyncio as redis
 import socketio
 from supabase import create_async_client
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")  # this checkout only, never a parent .env
 
 logger = logging.getLogger(__name__)
 

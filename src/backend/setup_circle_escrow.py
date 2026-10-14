@@ -10,9 +10,10 @@ Run this once to:
 
 import os
 import sys
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")  # this checkout only, never a parent .env
 
 # Add backend to path
 sys.path.insert(0, os.path.dirname(__file__))

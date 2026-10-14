@@ -53,9 +53,10 @@ class PSNLayer:
             return {"status": "error", "message": str(e)}
 
 if __name__ == "__main__":
+    from pathlib import Path
     from dotenv import load_dotenv
 
-    load_dotenv()
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")  # this checkout only, never a parent .env
     psn = PSNLayer()
     # example use:
     # profile = psn.get_profile("User_ID")

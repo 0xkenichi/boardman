@@ -10,10 +10,11 @@ import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import logging
+from pathlib import Path
 from dotenv import load_dotenv
 
 # Load environment
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")  # this checkout only, never a parent .env
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

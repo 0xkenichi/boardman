@@ -1,13 +1,14 @@
 import os
 import sys
 import asyncio
+from pathlib import Path
 from dotenv import load_dotenv
 
 # Add current dir to path
 sys.path.append(os.path.join(os.getcwd(), "backend"))
 
 async def create_official_wallet_set():
-    load_dotenv()
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")  # this checkout only, never a parent .env
     
     from circle_wallet_service import CircleWalletService
     circle = CircleWalletService()
