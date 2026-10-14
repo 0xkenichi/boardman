@@ -34,7 +34,13 @@ app = FastAPI(
 )
 
 # ─── CORS ────────────────────────────────────────────────────────────────────────
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://playingsidequest.fun,https://staging.playingsidequest.fun,https://app.playingsidequest.fun,http://localhost:3000,http://localhost,capacitor://localhost,ionic://localhost,null").split(",")
+# Never "null" or "*" with credentials: sandboxed iframes and file:// pages
+# all send Origin: null, so allowing it lets any page ride a user's cookies.
+ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.getenv("ALLOWED_ORIGINS", "https://playingsidequest.fun,https://staging.playingsidequest.fun,https://app.playingsidequest.fun,http://localhost:3000,http://localhost,capacitor://localhost,ionic://localhost").split(",")
+    if o.strip() and o.strip().lower() not in {"null", "*"}
+]
 
 app.add_middleware(
     CORSMiddleware,

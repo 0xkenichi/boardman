@@ -24,7 +24,13 @@ app = FastAPI(title="sideQuest Proof of Play API", version="1.0.0")
 # ─── CORS ──────────────────────────────────────────────────────────────────────
 
 # CORS - explicit origins only (not wildcard)
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://sidequest.vercel.app,http://localhost:3000,http://localhost,capacitor://localhost,ionic://localhost,null").split(",")
+# Never "null" or "*" with credentials: sandboxed iframes and file:// pages
+# all send Origin: null, so allowing it lets any page ride a user's cookies.
+ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.getenv("ALLOWED_ORIGINS", "https://sidequest.vercel.app,http://localhost:3000,http://localhost,capacitor://localhost,ionic://localhost").split(",")
+    if o.strip() and o.strip().lower() not in {"null", "*"}
+]
 
 app.add_middleware(
     CORSMiddleware,
