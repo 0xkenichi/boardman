@@ -307,7 +307,13 @@ def _set_status(match_id: str, status: str, **extra: Any) -> dict[str, Any]:
 
 
 def ensure_builder_webhooks() -> None:
-    """Boot Raja + Nero webhooks if they are not already listening (two builders)."""
+    """Boot Raja + Nero webhooks if they are not already listening (two builders).
+
+    No-op when BOARDMAN_WEBHOOKS_SUPERVISED=1: a supervisor
+    (deploy/start_akash.py) owns the builder processes and their logs.
+    """
+    if (os.getenv("BOARDMAN_WEBHOOKS_SUPERVISED") or "").strip() == "1":
+        return
     import socket
     import subprocess
     import sys
