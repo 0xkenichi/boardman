@@ -98,20 +98,16 @@ class DemoBody(BaseModel):
 
 @router.get("/health")
 async def agentic_health():
-    """Liveness (no key) — does not list agents or accept writes."""
+    """Liveness (no key) — does not list agents or accept writes.
+
+    Public, so it never reveals filesystem paths or which provider keys are
+    configured. Operators use /api/health/deep for readiness detail.
+    """
     from gaming.src.stack.agentic.registry import get_registry
-    from gaming.src.stack.agentic.store import data_dir
     from gaming.src.stack.agentic.chess.rule_book import rule_book_meta
-    from gaming.src.stack.agentic.runtime.agent_keys import key_status
 
     reg = get_registry()
     agents = reg.list_agents()
-    llm_status = {
-        a.get("name") or a.get("agent_id"): key_status(
-            a.get("agent_id") or "", a.get("name") or ""
-        )
-        for a in agents[:8]
-    }
     onchain = False
     try:
         from gaming.src.stack.agentic.onchain import onchain_enabled
@@ -122,13 +118,11 @@ async def agentic_health():
     return {
         "status": "ok",
         "layer": "boardman-agentic",
-        "data_dir": str(data_dir()),
         "agents": len(agents),
         "games": len(reg.list_games()),
         "auth": "X-Rematch-Key required for data routes",
         "rule_book": rule_book_meta(),
         "onchain_enabled": onchain,
-        "llm_keys": llm_status,
     }
 
 
