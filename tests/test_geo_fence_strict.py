@@ -319,10 +319,6 @@ class TestWiredMiddleware:
                       headers={"X-Rematch-Key": MASTER, "X-Boardman-Client-Country": "US"}).status_code == 451
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "main.py still returns early for /api/stack/, /api/rematch/web and any valid API key, "
-    "so strict mode never reaches money routes. Replace that block with evaluate_request "
-    "(COMPLIANCE.md, 'Wiring'), then delete this marker."))
 def test_real_app_fences_stack_money_route_in_strict_mode(monkeypatch):
     _strict(monkeypatch)
     from gaming.src.backend.main import app

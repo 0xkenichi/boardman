@@ -29,7 +29,7 @@ from gaming.src.backend.api import (
     rematch_router,
 )
 from gaming.src.backend.api.rematch_web import router as rematch_web_router
-from gaming.src.backend.middleware import BlockedRegionError, check_region
+from gaming.src.backend.middleware.geo_fence import evaluate_request
 from gaming.src.backend.services.clawstation_circle import start_deposit_expiry_task
 
 logger = logging.getLogger(__name__)
@@ -45,43 +45,20 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def geo_fence_middleware(request: Request, call_next):
-        # Health / docs always open. Server-to-server Rematch BFF calls use
-        # X-Rematch-Key and must not be blocked by edge geo (Vercel, tunnels).
-        path = request.url.path or ""
-        if path in {"/docs", "/openapi.json", "/redoc"} or path.startswith(
-            ("/api/health", "/docs", "/redoc")
-        ):
-            return await call_next(request)
-
-        import os
-
-        if os.getenv("GEO_FENCE_DISABLED", "").strip() in {"1", "true", "yes"}:
-            return await call_next(request)
-
-        try:
-            from gaming.src.backend.rematch_auth import request_has_valid_api_key
-
-            if request_has_valid_api_key(request):
-                return await call_next(request)
-        except Exception:
-            pass
-
-        # Rematch API routes enforce their own key auth
-        if path.startswith(("/api/stack/", "/api/rematch/web")):
-            return await call_next(request)
-
-        try:
-            check_region(request)
-        except BlockedRegionError as exc:
+        # One policy for every route (config/compliance/geo_fence.json):
+        # health/docs/webhooks exempt, keyed non-money traffic allowed,
+        # money routes judged by the user's country (forwarded by the BFF
+        # alongside the master key) and refused in strict mode when unknown.
+        decision = evaluate_request(request)
+        if not decision.allowed:
             logger.info(
-                "geo-fence blocked request country=%s path=%s",
-                exc.country_code,
+                "geo-fence denied reason=%s country=%s kind=%s path=%s",
+                decision.reason,
+                decision.country,
+                decision.money_kind,
                 request.url.path,
             )
-            return JSONResponse(
-                status_code=451,
-                content={"error": "service_unavailable_in_region"},
-            )
+            return JSONResponse(status_code=decision.status_code, content=decision.body())
         return await call_next(request)
 
     @app.get("/")
