@@ -38,7 +38,9 @@ def client(monkeypatch):
     monkeypatch.setenv("CIRCLE_WEBHOOK_SECRET", _TEST_SECRET)
     # Force the Supabase credit path; the asyncpg path needs a real Postgres DSN.
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    return TestClient(app)
+    # deposit routes are server-to-server: the platform master key names the user
+    monkeypatch.setenv("BOARDMAN_API_KEY", "test-deposit-master")
+    return TestClient(app, headers={"X-Boardman-Key": "test-deposit-master"})
 
 
 def _make_body(payload: dict) -> bytes:

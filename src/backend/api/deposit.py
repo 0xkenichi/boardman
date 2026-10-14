@@ -7,15 +7,21 @@ User-facing deposit endpoints for ClawStation.
 address. ``GET /api/deposit/history`` lists recent USDC credits from
 ``gaming.wallet_credit_audit``.
 
-Auth note:
-    For this chunk the endpoints accept ``user_id`` as a query parameter.
-    Production should replace this with JWT/session-based authentication.
+Auth:
+    Server-to-server only. The master Stack key is required, and the user is
+    the one the BFF vouches for in ``X-Boardman-Caller``; a ``user_id`` query
+    param may only repeat it. Without a caller header the platform itself
+    (master key) may name any ``user_id``. Builder keys have no users here.
 """
 from __future__ import annotations
 
 import logging
 from decimal import Decimal
-from fastapi import APIRouter, HTTPException, Query
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
+
+from gaming.src.backend.rematch_auth import extract_api_key, resolve_api_key
 
 from gaming.src.backend.services.clawstation_circle import (
     CircleWalletError,
@@ -27,6 +33,39 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["deposit"])
 
 
+def require_deposit_user(
+    user_id: str = Query(default="", description="Must match X-Boardman-Caller when that is sent"),
+    x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
+    x_boardman_key: Optional[str] = Header(default=None, alias="X-Boardman-Key"),
+    x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
+    authorization: Optional[str] = Header(default=None),
+    x_boardman_caller: Optional[str] = Header(default=None, alias="X-Boardman-Caller"),
+) -> str:
+    """The user whose deposits are read: the BFF-vouched caller, never a
+    free query param."""
+    principal = resolve_api_key(
+        extract_api_key(
+            x_rematch_key=x_rematch_key,
+            x_boardman_key=x_boardman_key,
+            x_stack_key=x_stack_key,
+            authorization=authorization,
+        )
+    )
+    if principal is None:
+        raise HTTPException(status_code=401, detail="invalid or missing Stack API key")
+    if not principal.is_master:
+        raise HTTPException(status_code=403, detail="deposit routes are platform only")
+    caller = (x_boardman_caller or "").strip()
+    claimed = (user_id or "").strip()
+    if caller:
+        if claimed and claimed != caller:
+            raise HTTPException(status_code=403, detail="user_id must be the signed-in caller")
+        return caller
+    if not claimed:
+        raise HTTPException(status_code=422, detail="user_id is required")
+    return claimed
+
+
 def _get_supabase():
     from backend.supabase_client import get_supabase
 
@@ -34,7 +73,7 @@ def _get_supabase():
 
 
 @router.get("/deposit/address")
-async def deposit_address(user_id: str = Query(..., description="User UUID (replace with JWT in production)")):
+async def deposit_address(user_id: str = Depends(require_deposit_user)):
     """Return the user's Circle USDC deposit address on Base Sepolia."""
     try:
         address = await get_deposit_address(user_id)
@@ -53,7 +92,7 @@ async def deposit_address(user_id: str = Query(..., description="User UUID (repl
 
 @router.get("/deposit/history")
 async def deposit_history(
-    user_id: str = Query(..., description="User UUID (replace with JWT in production)"),
+    user_id: str = Depends(require_deposit_user),
     limit: int = Query(50, ge=1, le=200),
 ):
     """Return recent USDC credits from ``gaming.wallet_credit_audit``."""
