@@ -424,6 +424,38 @@ def close_book_onchain(match_id: str, *, chain_id: str = "arc") -> dict[str, Any
     }
 
 
+def cancel_book_onchain(match_id: str, *, chain_id: str = "arc") -> dict[str, Any]:
+    """Resolver cancel(): the game never finished, every fan claims a refund.
+
+    Idempotent: a missing, resolved or already-cancelled book sends nothing
+    (the contract itself returns early on Cancelled and reverts on Resolved).
+    """
+    mid = assert_live_match_id(match_id)
+    book = read_book(mid, chain_id=chain_id)
+    if book["status"] == 0:
+        return {"success": True, "skipped": "no_book", "tx_hash": None, "match_id": mid}
+    if book["status"] in {3, 4}:  # Resolved / Cancelled
+        return {"success": True, "already_final": True, "tx_hash": None,
+                "match_id": mid, "status_name": book["status_name"]}
+
+    cfg = _pool_cfg(chain_id)
+    w3 = _w3(cfg)
+    _, pool = _contracts(w3, cfg)
+    acct = _account(load_resolver_key())
+    tx = pool.functions.cancel(match_id_to_bytes32(mid)).build_transaction({"from": acct.address})
+    h = _send_pool(w3, acct, tx, cfg, "cancel")
+    logger.info("[spectator.onchain] cancel match=%s tx=%s", mid, h)
+    return {
+        "success": True,
+        "tx_hash": h,
+        "explorer": _explorer(cfg, h),
+        "match_id": mid,
+        "pool": cfg["pool"],
+        "chain_id": chain_id,
+        "step": "cancel",
+    }
+
+
 def deposit_for(
     match_id: str,
     user_address: str,

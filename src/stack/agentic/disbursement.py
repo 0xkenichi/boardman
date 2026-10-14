@@ -45,6 +45,13 @@ ALLOWED_TRIGGERS = frozenset(
     }
 )
 
+# Why a table may be refunded without a result. ``house_session_timeout`` is
+# what scripts/run_house_session.py has always sent; ``interrupted`` is crash
+# recovery (house.recovery) for a table whose worker died.
+ABORT_REASONS = frozenset(
+    {"no_show", "lock_failed", "never_started", "ops_abort", "interrupted", "house_session_timeout"}
+)
+
 # House resolver calldata — anything else is a random send.
 HOUSE_ESCROW_SELECTORS = {
     "0x60ffcc74": "resolveMatch",  # resolveMatch(bytes32,address)
@@ -385,26 +392,42 @@ def authorize_replay_settlement(match: dict[str, Any]) -> AuthorizedDisbursement
 
 
 def authorize_abort(match: dict[str, Any], *, reason: str) -> AuthorizedDisbursement:
-    """Refund both players before a result exists (lock failed / no-show)."""
+    """Refund both players before a result exists (lock failed / no-show).
+
+    ``interrupted`` is the crash-recovery reason: the table's worker died
+    (expired or missing lease) mid-lock, mid-bet-window or mid-game and the
+    game cannot be resumed. Only that reason may abort a ``playing`` table;
+    ``aborting`` is an abort already under way (resumed from its journal).
+    """
     if not match:
         raise DisbursementDenied("match not found")
-    if match.get("status") in {"settled", "playing"}:
+    why = (reason or "").strip().lower()
+    st = match.get("status")
+    if st == "settled" or (st == "playing" and why != "interrupted"):
         raise DisbursementDenied(
-            f"cannot abort from status {match.get('status')} — wait for a game result"
+            f"cannot abort from status {st} — wait for a game result"
         )
-    if match.get("status") not in {
+    if match.get("result") or match.get("pending_result"):
+        raise DisbursementDenied("match has a result — settle it, do not abort")
+    allowed = {
         "open",
         "partial_lock",
         "locked",
         "queued",
         "lock_failed",
         "locking",
-    }:
-        raise DisbursementDenied(f"cannot abort from status {match.get('status')}")
-    why = (reason or "").strip().lower()
-    if why not in {"no_show", "lock_failed", "never_started", "ops_abort"}:
+        "aborting",
+    }
+    if why in {"interrupted", "ops_abort"}:
+        # A table whose worker failed ("error") with the stakes still locked.
+        allowed = allowed | {"error"}
+    if why == "interrupted":
+        allowed = allowed | {"playing"}
+    if st not in allowed:
+        raise DisbursementDenied(f"cannot abort from status {st}")
+    if why not in ABORT_REASONS:
         raise DisbursementDenied(
-            "abort reason must be no_show | lock_failed | never_started | ops_abort"
+            "abort reason must be " + " | ".join(sorted(ABORT_REASONS))
         )
     _assert_not_house_player(match)
     return _mint(

@@ -273,7 +273,28 @@ def main() -> int:
     print(f"  raja    = {raja['wallet_address']}  {_bal(raja['wallet_address'])}")
     print(f"  nero    = {nero['wallet_address']}  {_bal(nero['wallet_address'])}")
 
+    # Crash recovery: a kill -9 / redeploy mid-game leaves tables locked or
+    # playing with no result. Finish them now (resume or refund), then keep
+    # sweeping in the background — a dead process's lease only expires after
+    # BOARDMAN_LEASE_TTL_SEC, so the boot sweep cannot take those yet.
+    from gaming.src.stack.agentic import recovery
+
+    _beat("recovery")
+    try:
+        boot = recovery.recover_interrupted(abort_inline=True, resume_inline=False)
+        for r in boot:
+            print(
+                f"  recovery: {r.get('action')} {r.get('match_id')} (was {r.get('status')}) — "
+                f"{r.get('error') or r.get('why')}"
+            )
+        if not boot:
+            print("  recovery: no interrupted tables")
+    except Exception as exc:  # never block the session on recovery
+        print(f"  recovery at boot failed: {exc.__class__.__name__}: {exc}")
+    recovery.start_recovery_thread()
+
     n = 0
+    failures = 0  # consecutive failed opens -> exponential backoff
     try:
         while args.games <= 0 or n < args.games:
             # 24/7 except when there is no fund: pause quietly and resume
@@ -336,15 +357,22 @@ def main() -> int:
                 )
                 print(f"  rematch failed: {exc}")
                 try:
+                    # Any stuck table holding EITHER agent, not just this pair.
                     released = house.release_stale_pair(
                         a["agent_id"], b["agent_id"]
                     )
-                    print(f"  cleared {len(released)} stale locks for the pair")
+                    print(f"  recovered {len(released)} stuck table(s) for these agents")
                 except Exception as exc2:
                     print(f"  stale-lock cleanup failed: {exc2}")
-                _beat("rematch_failed")
-                time.sleep(60 if no_fund else 2)
+                failures += 1
+                # Exponential backoff with a cap — never a 2s hot loop on a
+                # table that stays "already live".
+                delay = 60.0 if no_fund else recovery.retry_delay(failures)
+                print(f"  retrying in {delay:.0f}s (failure {failures} in a row)")
+                _beat("rematch_failed", retry_in_sec=delay, failures=failures)
+                time.sleep(delay)
                 continue
+            failures = 0
             m = out["match"]
             dt = time.time() - t0
             print(
@@ -424,12 +452,14 @@ def main() -> int:
                         except Exception as exc:
                             print(f"  drive failed: {exc}")
                 if m.get("status") != "settled" and mid:
-                    print("  table did not resolve — releasing the lock and continuing")
+                    print("  table did not resolve — handing it to crash recovery and continuing")
                     try:
-                        ab = house.abort_never_started(mid, reason="house_session_timeout")
-                        print(f"  aborted: {ab.get('status')}")
+                        # Lease rule applies: a table a live worker still
+                        # drives is left alone; an orphan is resumed or refunded.
+                        rec = recovery.recover_table(mid)
+                        print(f"  recovery: {rec.get('action')} — {rec.get('error') or rec.get('why')}")
                     except Exception as exc:
-                        print(f"  abort failed: {exc}")
+                        print(f"  recovery failed: {exc}")
                 if m.get("status") != "settled":
                     # Keep the session alive; the next rematch clears stale locks.
                     continue

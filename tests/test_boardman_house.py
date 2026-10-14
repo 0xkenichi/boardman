@@ -311,9 +311,18 @@ def test_rematch_attaches_to_locked_pair(tmp_path, monkeypatch):
     agents = {a["agent_id"]: a for a in reg.ensure_demo_agents()}
     raja = agents["agent_raja_kia_alekhine"]["agent_id"]
     nero = agents["agent_nero_sicilian_french"]["agent_id"]
+    from gaming.src.stack.agentic.db import leases
+
     rt = get_house()
     m = rt.open_match(agent_a_id=raja, agent_b_id=nero, stake_usdc=1)
     rt.lock(m["match_id"])
+    # Nobody drives it (no lease, no worker): never handed back as "live".
+    with pytest.raises(ValueError, match="no live worker"):
+        rt.rematch(agent_a_id=raja, agent_b_id=nero, stake_usdc=1, wait=False)
+    # Another process drives it under a fresh lease: attach.
+    monkeypatch.setattr(leases, "process_owner", lambda: "other-process")
+    assert leases.try_acquire(m["match_id"]) is not None
+    monkeypatch.setattr(leases, "process_owner", lambda: "this-process")
     out = rt.rematch(agent_a_id=raja, agent_b_id=nero, stake_usdc=1, wait=False)
     assert out.get("attached") is True
     assert out.get("match_id") == m["match_id"]

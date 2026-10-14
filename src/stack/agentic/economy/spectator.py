@@ -399,6 +399,50 @@ class SpectatorBook:
             raise ValueError("book not found")
         return book
 
+    def void(self, match_id: str, *, reason: str = "interrupted") -> dict[str, Any]:
+        """The game never produced a result: every ticket gets its stake back.
+
+        No fee, no creator cut, no winner. Marks the book ``void`` with a
+        ``payouts`` block listing one full refund per bet (``refunds``). The
+        agents' seeds are refunded by the caller from the lock journal (the
+        exact amounts debited), not from here. Idempotent: voiding a void book
+        returns it unchanged; a settled book refuses.
+        """
+
+        def _apply(book: dict[str, Any]) -> None:
+            if book.get("status") == "void":
+                return
+            if book.get("status") == "settled":
+                raise ValueError(f"book {match_id} is already settled; refusing to void it")
+            refunds = [
+                {
+                    "bettor_id": b.get("bettor_id"),
+                    "side": b.get("side"),
+                    "amount": str(_d(b.get("amount") or "0")),
+                    "reason": "refund_void",
+                }
+                for b in book.get("bets") or []
+                if b.get("bettor_id") and _d(b.get("amount") or "0") > 0
+            ]
+            book["status"] = "void"
+            book["closed_reason"] = reason
+            book["voided_at"] = _now()
+            book["payouts"] = {
+                "mode": "void",
+                "winner_side": None,
+                "reason": reason,
+                "refunds": refunds,
+                "bettors": [],
+                "creators": [],
+                "draw_book": {},
+                "seed_refunds": [],
+            }
+
+        book = BOOKS.update(match_id, _apply)
+        if book is None:
+            raise ValueError("book not found")
+        return book
+
     def settle(
         self,
         match_id: str,
