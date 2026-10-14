@@ -113,12 +113,38 @@ def _d(x: Any) -> Decimal:
     return Decimal(str(x))
 
 
+_EMPTY_STATE: dict[str, Any] = {"season": None, "pending_joins": []}
+
+
 def _state() -> dict[str, Any]:
-    return load_json(STATE_FILE, {"season": None, "pending_joins": []})
+    """A private, mutable copy of the season state (read-modify-write paths).
+
+    Served from the parsed-file cache: a pickle round-trip of the cached
+    version instead of re-parsing ~20MB of JSON on every call.
+    """
+    from gaming.src.stack.agentic.json_cache import get_cache
+
+    return get_cache().copy(STATE_FILE, _EMPTY_STATE)
+
+
+def _state_view() -> dict[str, Any]:
+    """The shared, read-only season state (read paths only — raises on mutation).
+
+    Re-parsed only when afm_season.json changes on disk (any process) or this
+    process saves it.
+    """
+    from gaming.src.stack.agentic.json_cache import get_cache
+
+    return get_cache().view(STATE_FILE, _EMPTY_STATE)
 
 
 def _save(state: dict[str, Any]) -> None:
-    save_json(STATE_FILE, state)
+    from gaming.src.stack.agentic.json_cache import get_cache
+
+    try:
+        save_json(STATE_FILE, state)
+    finally:
+        get_cache().invalidate(STATE_FILE)
 
 
 def _is_filler(agent_id: str) -> bool:
@@ -423,7 +449,7 @@ def news_feed(matchday: int) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------- season ops
 
 def get_season() -> Optional[dict[str, Any]]:
-    s = _state().get("season")
+    s = _state_view().get("season")
     return _snapshot(s) if s else None
 
 
@@ -620,7 +646,7 @@ def matchday_news_items(matchday: int) -> list[dict[str, Any]]:
     when (pre or post match), the question the House asked and the answer the
     manager gave — or "no reply" when the agent did not answer.
     """
-    s = _state().get("season")
+    s = _state_view().get("season")
     if not s:
         return []
     info = s.get("matchdays", {}).get(str(matchday)) or {}
@@ -675,7 +701,7 @@ def press_conference_for(
     order so a renderer can show the manager's before/after quotes as a single
     thread.
     """
-    s = _state().get("season")
+    s = _state_view().get("season")
     if not s:
         raise ValueError("no season running")
     info = s.get("matchdays", {}).get(str(matchday)) or {}
@@ -887,7 +913,7 @@ def get_matchday_transcript(
     engine already ran the match. This is the raw material for the news feed
     and the broadcast "manager said..." pieces.
     """
-    s = _state().get("season")
+    s = _state_view().get("season")
     if not s:
         raise ValueError("no season running")
     info = s.get("matchdays", {}).get(str(matchday)) or {}
@@ -1282,7 +1308,7 @@ def get_replay(matchday: int, home: str, away: str) -> dict[str, Any]:
     The replay also carries the matchday's press-conference transcript so a
     spectator or broadcast can render the managers' quotes beside the replay.
     """
-    s = _state().get("season")
+    s = _state_view().get("season")
     if not s:
         raise ValueError("no season running")
     no = int(s["season_no"])
@@ -1366,7 +1392,7 @@ def prematch_view(matchday: int, home: str, away: str) -> dict[str, Any]:
     schedule and both sides come back empty ("awaiting lineups"), so the
     fixture can be listed before its managers have decided.
     """
-    s = _state().get("season")
+    s = _state_view().get("season")
     if not s:
         raise ValueError("no season running")
     sched = _schedule_for(s)
@@ -1484,7 +1510,9 @@ def _reconstruct_replay(
     lineups: dict[str, dict[str, Any]] = {}
     for r in info.get("results") or []:
         if r.get("match_id") == mid and r.get("lineups"):
-            lineups = r["lineups"]
+            from gaming.src.stack.agentic.json_cache import thaw
+
+            lineups = thaw(r["lineups"])  # may be the read-only cached view
             break
     if not lineups:
         # oldest format: nothing stored — fall back to what the club holds.
