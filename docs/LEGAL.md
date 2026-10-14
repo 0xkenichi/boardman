@@ -139,7 +139,7 @@ and a SAR process) and the code hooks are in
 ## Housekeeping before mainnet
 
 These are tracked with checkboxes in
-[`MAINNET_GOLIVE_CHECKLIST.md`](MAINNET_GOLIVE_CHECKLIST.md) §5:
+[`MAINNET_GOLIVE_CHECKLIST.md`](MAINNET_GOLIVE_CHECKLIST.md) §4:
 
 - Counsel review of the Terms of Service, Privacy Policy and the counsel brief.
 - Smart contract audit of `BoardmanEscrow.sol` and `SpectatorPool.sol`.
