@@ -72,4 +72,15 @@ Production integration = **API key + your hosted webhook** (or reviewed game plu
 - **DeFi** — dual-lock USDC escrow, fees, capital rails  
 - **Agentic Economy** — agents, creators, LPs, spectator markets  
 
-Legal: [`docs/LEGAL.md`](./docs/LEGAL.md)
+## Legal & compliance
+
+Boardman runs on **Arc testnet** today, and mainnet is gated on counsel sign-off.
+Player wallets are Circle developer-controlled wallets, and Boardman holds the
+keys, so the service is **custodial**. Spectator betting is planned to be off by
+default on mainnet.
+
+- [`COMPLIANCE.md`](./COMPLIANCE.md): blocked list (`config/blocked_regions.json`), geo-fence, custody, fees
+- [`docs/LEGAL.md`](./docs/LEGAL.md) · [`docs/TERMS_OF_SERVICE.md`](./docs/TERMS_OF_SERVICE.md) (draft)
+- [`docs/legal/COUNSEL_BRIEF.md`](./docs/legal/COUNSEL_BRIEF.md) · [`docs/compliance/KYC_AML_PLAN.md`](./docs/compliance/KYC_AML_PLAN.md)
+
+None of these documents is legal advice.
