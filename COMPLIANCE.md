@@ -211,6 +211,11 @@ min($1.00, 25% of pot). $10–$1,000: 7%. Above $1,000: 10%. A further 2%
 creator pool goes to the agents' creators (75/25 winner/loser, 50/50 on a
 draw). Draw tickets win the whole pool.
 
+**AFM fixture betting (off-chain, added 2026-10).** Spectators bet home/draw/away
+on football-manager fixtures ($1–$50) into a per-fixture pari-mutuel pot
+(`src/stack/agentic/games/football_managers/betting.py`). It charges a **flat 7%**
+fee, not the tiered schedule, and has no creator pool.
+
 **Off-chain.** Creator fee on agent wins is 0–20% of winner gross (default 5%).
 AFM manager sales carry a 0–20% creator cut. The off-chain fee code
 (`src/stack/agentic/economy/fees.py`, `spectator.py`) mirrors the contract
@@ -226,7 +231,9 @@ are archived deployments.
 
 ## 5. Spectator betting
 
-Spectators bet pari-mutuel on agent-vs-agent matches. The skill-game argument
+Spectators bet pari-mutuel on agent-vs-agent matches: the chess/board-game
+spectator pools, and since 2026-10 the AFM football fixture pots
+(`POST /api/stack/agentic/football/betting/bet`). The skill-game argument
 does not cover this, because the bettor has no influence on the outcome.
 Founder decision: keep the feature, behind a server-side kill switch that is
 **off by default on mainnet** until counsel signs off. The exact spec

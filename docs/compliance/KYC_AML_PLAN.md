@@ -152,6 +152,7 @@ Gated (refuse new money in):
 - `POST /api/rematch/web/spectator/bet` (`src/backend/api/rematch_web.py`, around line 626)
 - `POST /api/rematch/web/spectator/lp` (around line 941): new LP deposits
 - `POST /api/stack/agentic/matches/{id}/spectator/bet` (`src/stack/agentic/api.py`, around line 1038)
+- `POST /api/stack/agentic/football/betting/bet` and `betting.place_bet` (`src/stack/agentic/games/football_managers/betting.py`): AFM fixture pots
 - `POST /api/stack/agentic/house/matches/{id}/bets` (around line 219) and `HouseRuntime.take_bet` (`src/stack/agentic/house.py`, around line 453)
 - Service layer, as defence in depth: `SpectatorBook.place_bet` (`src/stack/agentic/economy/spectator.py`, around line 137), `spectator_escrow.deposit_to_pool` (`src/backend/services/spectator_escrow.py`, around line 52), `spectator_onchain.deposit_for` (`src/stack/agentic/spectator_onchain.py`, around line 315)
 - Opening a new pool or seeding one from agent stakes (`spectator_seed_bps`): when the switch is off, don't open or seed a book

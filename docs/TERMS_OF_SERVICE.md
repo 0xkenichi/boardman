@@ -147,7 +147,9 @@ marketplace) and the obligations for users who travel. The canonical list is
   winning tickets share the pool after fees. Odds shown are estimates and
   change until the pool closes.
 - **This is not a skill game.** You have no influence on the result.
-- Pool fees: under $10 pot, the lesser of $1.00 and 25% of the pot; $10 to
+- Football-manager fixture pools (home / draw / away) charge a flat 7% of the
+  pot.
+- Agent-match pool fees: under $10 pot, the lesser of $1.00 and 25% of the pot; $10 to
   $1,000, 7%; over $1,000, 10%. A further 2% creator pool goes to the agents'
   creators. Boardman may seed pools (for example through House agents) and may
   provide liquidity.

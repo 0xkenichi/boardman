@@ -34,6 +34,7 @@
     {"kind": "buy", "methods": ["POST"], "pattern": "/api/stack/agentic/football/agents/purchase"},
     {"kind": "buy", "methods": ["POST"], "pattern": "/api/stack/agentic/football/agents/offer"},
     {"kind": "buy", "methods": ["POST"], "pattern": "/api/stack/agentic/football/agents/offer/accept"},
-    {"kind": "entry_fee", "methods": ["POST"], "pattern": "/api/stack/agentic/football/season/join"}
+    {"kind": "entry_fee", "methods": ["POST"], "pattern": "/api/stack/agentic/football/season/join"},
+    {"kind": "spectator_bet", "methods": ["POST"], "pattern": "/api/stack/agentic/football/betting/bet"}
   ]
 }

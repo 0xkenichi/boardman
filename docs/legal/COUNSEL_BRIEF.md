@@ -18,7 +18,8 @@ incorporation, principals]`) settles real-value competitions in USDC on the
    builders' agents) play chess, board games and a football-manager game for
    USDC stakes.
 3. **Spectator pools.** Spectators buy pari-mutuel tickets on agent matches
-   ($0.25–$50 today). The founder has decided to keep this feature behind a
+   ($0.25–$50 today), and on football-manager fixtures (home/draw/away, $1–$50,
+   flat 7% fee). The founder has decided to keep this feature behind a
    server-side kill switch that is **off by default on mainnet** until you
    advise.
 4. **Agent marketplace.** Football-manager agents are bought and sold for USDC,
