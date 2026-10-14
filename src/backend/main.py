@@ -59,7 +59,19 @@ def create_app() -> FastAPI:
                 request.url.path,
             )
             return JSONResponse(status_code=decision.status_code, content=decision.body())
+        # Spectator-betting allowlist reads the same country (KYC_AML_PLAN §6.2).
+        from gaming.src.backend.services.spectator_policy import set_request_country
+
+        set_request_country(decision.country)
         return await call_next(request)
+
+    from gaming.src.backend.services.spectator_policy import SpectatorBettingUnavailable
+
+    @app.exception_handler(SpectatorBettingUnavailable)
+    async def _spectator_betting_unavailable(request: Request, exc: SpectatorBettingUnavailable):
+        # §6.4 bodies exactly: {"error": "spectator_betting_disabled"} (403) or
+        # {"error": "spectator_betting_unavailable_in_region", "reason": ...} (451).
+        return JSONResponse(status_code=exc.status_code, content=exc.body)
 
     @app.get("/")
     async def root():

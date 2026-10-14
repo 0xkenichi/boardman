@@ -200,6 +200,34 @@ async def _pull_play_usdc(profile_id: str, amount: float) -> dict:
     return result
 
 
+def _gate_new_spectator_money(*, path: str, profile_id: str, match_id: str = "") -> None:
+    """Kill switch + country allowlist (KYC_AML_PLAN §6). Before any approval
+    or debit: raises the 403/451 SpectatorBettingUnavailable error."""
+    from gaming.src.backend.services.spectator_policy import assert_spectator_betting_allowed
+
+    assert_spectator_betting_allowed(path=path, match_id=match_id, profile_id=profile_id)
+
+
+def _approved_flow_refusal(payload: dict, *, path: str, profile_id: str, match_id: str = "") -> Optional[dict]:
+    """Re-check the switch when an approved spend is applied (it may have
+    flipped since the request). Uses the country captured at request time."""
+    from gaming.src.backend.services.spectator_policy import (
+        SpectatorBettingUnavailable,
+        assert_spectator_betting_allowed,
+    )
+
+    try:
+        assert_spectator_betting_allowed(
+            path=path,
+            match_id=match_id,
+            profile_id=profile_id,
+            country=str(payload.get("country") or "") or None,
+        )
+    except SpectatorBettingUnavailable as exc:
+        return {"success": False, "pending": False, **exc.body, "message": str(exc)}
+    return None
+
+
 async def _apply_approved_spectator_bet(
     *,
     approval_id: str,
@@ -230,6 +258,13 @@ async def _apply_approved_spectator_bet(
         if fresh.get("status") == "applied" or prev:
             return {"success": True, "pending": False, **prev}
         return {"success": False, "pending": True, "error": "not_approved_yet"}
+
+    refused = _approved_flow_refusal(
+        payload, path="approved spectator bet", profile_id=profile_id, match_id=match_id
+    )
+    if refused is not None:
+        store_apply_result(approval_id, refused)
+        return refused
 
     pull_err = ""
     chain_tx: dict = {}
@@ -287,13 +322,25 @@ async def _apply_approved_spectator_bet(
                     pull_err += f" · ${amount} refunded to your wallet (tx {refund_h[:12]})"
             else:
                 pull_err = str(exc)
-        if not pulled and not chain_tx:
+        booked = book is not None or bool(chain_tx.get("tx_hash"))
+        if not booked and not spectator_onchain_enabled():
+            # take_bet refused (closed/full book, kill switch): no ticket, so
+            # nothing may be charged.
+            failed = {
+                "success": False,
+                "pending": False,
+                "error": "spectator_book_failed",
+                "message": pull_err or "Could not book the bet. Nothing was charged.",
+            }
+            store_apply_result(approval_id, failed)
+            return failed
+        if not pulled and not chain_tx and booked:
             from gaming.src.backend.services.play_adjust import add_adjust
 
             add_adjust(profile_id, -amount, reason=f"bet:{match_id}:{side}")
         try:
             ledger = float((summary or {}).get("ledger_usdc") or 0)
-            if ledger + 1e-9 >= amount:
+            if booked and ledger + 1e-9 >= amount:
                 await debit_wallet(profile_id, amount)
         except Exception:
             logger.warning("[RematchWeb] ledger sync after book failed", exc_info=True)
@@ -387,6 +434,11 @@ async def _apply_approved_lp(
 
     agent_id = str(agent_id or payload.get("agent_id") or "").strip()
     agent_id = _AGENT_ID_ALIASES.get(agent_id.lower(), agent_id)
+    refused = _approved_flow_refusal(payload, path="approved LP deposit", profile_id=profile_id)
+    if refused is not None:
+        if approval_id:
+            store_apply_result(approval_id, refused)
+        return refused
     try:
         from gaming.src.stack.agentic.economy.lp import AgentLPPool
 
@@ -659,6 +711,9 @@ async def web_spectator_bet(
     if side in ("d", "tie"):
         side = "draw"
 
+    # Kill switch / allowlist: refuse before the approval, before any debit.
+    _gate_new_spectator_money(path="POST /spectator/bet", profile_id=profile_id, match_id=match_id)
+
     from gaming.src.stack.agentic.spectator_onchain import spectator_onchain_enabled
 
     try:
@@ -704,6 +759,7 @@ async def web_spectator_bet(
             detail="spectator on-chain requires a live match_id — start Auto play first",
         )
 
+
     try:
         from gaming.src.backend.services.safety import is_paused
         from gaming.src.backend.services.clawstation_circle import get_balance_summary
@@ -729,10 +785,12 @@ async def web_spectator_bet(
         try:
             from gaming.src.backend.services.tx_approval import start_approval
 
+            from gaming.src.backend.services.spectator_policy import request_country
+
             decision = await start_approval(
                 profile_id,
                 "spectator_bet",
-                {"amount": amount, "side": side, "match_id": match_id},
+                {"amount": amount, "side": side, "match_id": match_id, "country": request_country()},
             )
         except Exception as exc:
             logger.exception("[RematchWeb] approval gate failed")
@@ -837,12 +895,25 @@ async def web_spectator_bet(
                 "match_id": match_id,
                 "address": summary.get("address") or "",
             }
-        if not pulled and not chain_tx:
+        booked = book is not None or bool(chain_tx.get("tx_hash"))
+        if not booked and not spectator_onchain_enabled():
+            # take_bet refused (closed/full book, kill switch): no ticket, so
+            # nothing may be charged.
+            return {
+                "success": False,
+                "error": "spectator_book_failed",
+                "message": pull_err or "Could not book the bet. Nothing was charged.",
+                "match_id": match_id,
+                "address": summary.get("address") or "",
+            }
+        if not pulled and not chain_tx and booked:
             from gaming.src.backend.services.play_adjust import add_adjust
 
             add_adjust(profile_id, -amount, reason=f"bet:{match_id}:{side}")
         try:
             ledger = float(summary.get("ledger_usdc") or 0)
+            if not booked:
+                ledger = -1.0  # on-chain deposit failed: no ledger debit either
             if ledger + 1e-9 >= amount:
                 await debit_wallet(profile_id, amount)
         except Exception:
@@ -985,6 +1056,9 @@ async def web_spectator_lp(
     if amount < 0.25:
         raise HTTPException(status_code=400, detail="amount must be >= 0.25")
 
+    # New LP money is gated with spectator betting (withdrawals never are).
+    _gate_new_spectator_money(path="POST /spectator/lp", profile_id=profile_id)
+
     try:
         from gaming.src.backend.services.safety import is_paused
         from gaming.src.backend.services.clawstation_circle import get_balance_summary
@@ -1006,10 +1080,12 @@ async def web_spectator_lp(
                 "message": "Not enough USDC on your Boardman wallet.",
             }
 
+        from gaming.src.backend.services.spectator_policy import request_country
+
         decision = await start_approval(
             profile_id,
             "lp_deposit",
-            {"amount": amount, "agent_id": agent_id, "agent_name": agent_name},
+            {"amount": amount, "agent_id": agent_id, "agent_name": agent_name, "country": request_country()},
         )
         if decision.get("status") in ("denied", "expired", "telegram_unreachable"):
             msg = {

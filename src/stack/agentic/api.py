@@ -1110,6 +1110,7 @@ async def economy_policy(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
         DEFAULT_SPECTATOR_FEE_BPS,
         DEFAULT_CREATOR_SPECTATOR_BPS,
     )
+    from gaming.src.backend.services.spectator_policy import public_policy as spectator_betting_policy
 
     return {
         "success": True,
@@ -1130,6 +1131,9 @@ async def economy_policy(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
                 "winning bettors share remainder; creators split creator pool 50/50"
             ),
         },
+        # Kill switch state for this caller (never the country list) so the
+        # UI can hide bet controls; the server stays authoritative.
+        "spectator_betting": spectator_betting_policy(),
         "deploy_template": "/docs see deploy/TEMPLATE_MANIFEST.yaml",
     }
 
