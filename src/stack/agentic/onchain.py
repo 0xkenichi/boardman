@@ -366,46 +366,124 @@ ONCHAIN_STATUS = {0: "OPEN", 1: "LOCKED", 2: "DISPUTED", 3: "RESOLVED", 4: "CANC
 HOUSE_TX_LABELS = frozenset({"resolveMatch", "cancelMatch", "flagDispute"})
 
 
-def _send(w3, acct, tx: dict[str, Any], label: str) -> str:
-    """Sign + send + wait. Returns tx hash hex."""
+def _hex(h: Any) -> str:
     from web3 import Web3
 
-    nonce = w3.eth.get_transaction_count(acct.address)
+    out = h.hex() if hasattr(h, "hex") else Web3.to_hex(h)
+    return out if out.startswith("0x") else "0x" + out
+
+
+def _tx_known(w3, tx_hash: str) -> bool:
+    try:
+        return w3.eth.get_transaction(tx_hash) is not None
+    except Exception:
+        return False
+
+
+def _send(w3, acct, tx: dict[str, Any], label: str) -> str:
+    """Sign + send + wait. Returns tx hash hex.
+
+    The nonce comes from the per-signer nonce manager (db/nonces.py): the
+    chain's *pending* count, skipping nonces this deployment already has in
+    flight, serialized per signer across threads and processes. The hash is
+    recorded before waiting; a receipt timeout raises TxPendingConfirmation
+    (the tx may still mine) instead of reporting a failure.
+    """
+    from gaming.src.stack.agentic.db import nonces
+
     tx = dict(tx)
     tx.setdefault("from", acct.address)
-    tx.setdefault("nonce", nonce)
-    tx.setdefault("chainId", int(w3.eth.chain_id))
+    chain_id = int(w3.eth.chain_id)
+    tx.setdefault("chainId", chain_id)
+    chain_key = str(chain_id)
 
-    # Gas
+    with nonces.reserve(
+        chain_key,
+        acct.address,
+        label,
+        lambda: int(w3.eth.get_transaction_count(acct.address, "pending")),
+    ) as slot:
+        # Always ours: build_transaction() may have filled a 'latest' nonce.
+        tx["nonce"] = slot.nonce
+
+        # Gas
+        try:
+            gas = w3.eth.estimate_gas(tx)
+            tx["gas"] = int(gas * 1.25)
+        except Exception as exc:
+            logger.warning("[agentic.onchain] estimate_gas %s: %s — using 400000", label, exc)
+            tx["gas"] = 400_000
+
+        # Fee fields — EIP-1559 if supported, else legacy
+        try:
+            latest = w3.eth.get_block("latest")
+            base = latest.get("baseFeePerGas")
+            if base is not None:
+                tip = w3.to_wei(1, "gwei")
+                tx["maxPriorityFeePerGas"] = tip
+                tx["maxFeePerGas"] = int(base * 2) + tip
+            else:
+                tx["gasPrice"] = w3.eth.gas_price
+        except Exception:
+            tx.setdefault("gasPrice", w3.to_wei(2, "gwei"))
+
+        signed = acct.sign_transaction(tx)
+        raw = getattr(signed, "rawTransaction", None) or getattr(signed, "raw_transaction", None)
+        signed_hash = getattr(signed, "hash", None)
+        if signed_hash is not None:
+            slot.signed(_hex(signed_hash))
+        try:
+            h = _hex(w3.eth.send_raw_transaction(raw))
+        except Exception:
+            # A timed-out broadcast may still have reached the node.
+            if slot.tx_hash and _tx_known(w3, slot.tx_hash):
+                h = slot.tx_hash
+            else:
+                raise
+        if h != slot.tx_hash:
+            slot.signed(h)
+        slot.sent()
+    logger.info("[agentic.onchain] %s sent %s nonce=%s", label, h, slot.nonce)
+
     try:
-        gas = w3.eth.estimate_gas(tx)
-        tx["gas"] = int(gas * 1.25)
+        receipt = w3.eth.wait_for_transaction_receipt(h, timeout=nonces.receipt_timeout_sec())
     except Exception as exc:
-        logger.warning("[agentic.onchain] estimate_gas %s: %s — using 400000", label, exc)
-        tx["gas"] = 400_000
-
-    # Fee fields — EIP-1559 if supported, else legacy
-    try:
-        latest = w3.eth.get_block("latest")
-        base = latest.get("baseFeePerGas")
-        if base is not None:
-            tip = w3.to_wei(1, "gwei")
-            tx["maxPriorityFeePerGas"] = tip
-            tx["maxFeePerGas"] = int(base * 2) + tip
-        else:
-            tx["gasPrice"] = w3.eth.gas_price
-    except Exception:
-        tx.setdefault("gasPrice", w3.to_wei(2, "gwei"))
-
-    signed = acct.sign_transaction(tx)
-    raw = getattr(signed, "rawTransaction", None) or getattr(signed, "raw_transaction", None)
-    tx_hash = w3.eth.send_raw_transaction(raw)
-    h = tx_hash.hex() if hasattr(tx_hash, "hex") else Web3.to_hex(tx_hash)
-    logger.info("[agentic.onchain] %s sent %s", label, h)
-    receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=180)
-    if receipt.status != 1:
+        nonces.mark(h, "pending_confirmation", error=f"{type(exc).__name__}: {exc}")
+        logger.warning("[agentic.onchain] %s %s unconfirmed — pending_confirmation", label, h)
+        raise nonces.TxPendingConfirmation(label, h) from exc
+    block = getattr(receipt, "blockNumber", None)
+    if block is None and isinstance(receipt, dict):
+        block = receipt.get("blockNumber")
+    status = getattr(receipt, "status", None)
+    if status is None and isinstance(receipt, dict):
+        status = receipt.get("status")
+    if status != 1:
+        nonces.mark(h, "reverted", block_number=block, error="reverted")
         raise RuntimeError(f"{label} reverted tx={h}")
-    return h if h.startswith("0x") else "0x" + h
+    nonces.mark(h, "confirmed", block_number=block)
+    return h
+
+
+def reconcile_pending_txs(chain_id: str = "arc") -> dict[str, int]:
+    """Settle txs left ``pending_confirmation`` by a receipt timeout."""
+    from gaming.src.stack.agentic.db import nonces
+
+    cfg = _chain_config(chain_id)
+    w3 = _w3(cfg)
+    want = str(int(w3.eth.chain_id))
+
+    def _receipt(chain_key: str, tx_hash: str) -> Optional[dict[str, Any]]:
+        if chain_key != want:
+            return None
+        try:
+            r = w3.eth.get_transaction_receipt(tx_hash)
+        except Exception:
+            return None
+        if r is None:
+            return None
+        return {"status": r.get("status"), "blockNumber": r.get("blockNumber")}
+
+    return nonces.reconcile_pending(_receipt)
 
 
 def _send_house(w3, acct, tx: dict[str, Any], label: str, escrow_address: str) -> str:
