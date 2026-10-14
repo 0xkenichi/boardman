@@ -427,6 +427,10 @@ def check_region(request, blocked: Optional[Iterable[str]] = None,
             unknown or the blocked list failed to load.
     """
     method, path = _request_method_path(request)
+    if path and is_exempt_path(path):
+        # Health/docs and signed provider webhooks (Circle calls from US IPs,
+        # and US is blocked) must never be geo-blocked.
+        return None
     money = bool(path) and money_route_kind(method, path) is not None
     strict = money and strict_mode()
 

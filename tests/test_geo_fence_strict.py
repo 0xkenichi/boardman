@@ -275,6 +275,9 @@ class TestCheckRegionStrict:
         assert isinstance(exc.value, BlockedRegionError)  # main.py's except still catches it
         assert exc.value.reason == "country_unknown"
 
+    def test_webhooks_exempt_even_from_blocked_country(self):
+        assert check_region(_Req("POST", "/webhooks/circle", headers={"cf-ipcountry": "US"})) is None
+
     def test_plain_request_without_path_unchanged(self, monkeypatch):
         _strict(monkeypatch)
         req = type("R", (), {"headers": {}, "client": None})()
