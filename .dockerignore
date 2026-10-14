@@ -1,0 +1,55 @@
+# Keep the build context small and free of local state / secrets.
+# Both Dockerfile and Dockerfile.akash copy only src/, config/, scripts/,
+# deploy/ and frontend/public/ — everything else here is noise or sensitive.
+
+# VCS / tooling
+.git
+.github
+.claude
+.vscode
+.idea
+**/.DS_Store
+
+# Secrets and local env (never bake into an image)
+.env
+.env.*
+!.env.example
+**/*.session
+.vercel
+
+# Python
+.venv
+.venv*
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+*.egg-info
+
+# JS
+**/node_modules
+frontend/.next
+contracts/artifacts
+contracts/cache
+contracts/typechain-types
+contracts/coverage
+
+# Local runtime state — production state lives on the mounted volume
+data/
+logs/
+/tmp/
+.tmp*
+**/*.bak
+**/*.log
+
+# Local engine builds (the image installs/compiles its own for linux)
+engines/stockfish
+engines/Ethereal
+third_party/lichess-bot/games
+
+# Import shims are materialized inside the image
+/gaming
+/backend
+
+# Demo media
+demos
