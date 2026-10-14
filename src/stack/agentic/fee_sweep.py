@@ -172,7 +172,15 @@ def _claim_slot(key: str, every_sec: float) -> bool:
     now = time.time()
     with transaction() as tx:
         row = tx.one(f"SELECT value FROM storage_meta WHERE key = ?{tx.for_update}", (key,))
-        if row is not None and now - float(row["value"] or 0) < every_sec:
+        if row is None:
+            # First claim ever: FOR UPDATE locked nothing, so let the insert
+            # decide. A concurrent first claimer makes this a no-op (0 rows).
+            return tx.rowcount(
+                "INSERT INTO storage_meta (key, value, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT (key) DO NOTHING",
+                (key, str(now), datetime.now(timezone.utc).isoformat()),
+            ) == 1
+        if now - float(row["value"] or 0) < every_sec:
             return False
         tx.execute(
             "INSERT INTO storage_meta (key, value, updated_at) VALUES (?, ?, ?) "

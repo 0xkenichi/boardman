@@ -32,15 +32,17 @@ def get(tx: Tx, match_id: str, step: str) -> Optional[dict[str, Any]]:
 
 
 def record(tx: Tx, match_id: str, step: str, detail: Any = None, *, owner: str = "") -> bool:
-    """Insert the step row. False if it already existed (never overwrites)."""
-    if get(tx, match_id, step) is not None:
-        return False
-    tx.execute(
+    """Insert the step row. False if it already existed (never overwrites).
+
+    ``ON CONFLICT DO NOTHING`` rather than check-then-insert: on Postgres two
+    writers can both miss the row, and the loser's plain INSERT would raise a
+    unique violation that aborts its whole transaction.
+    """
+    return tx.rowcount(
         "INSERT INTO settlement_journal (match_id, step, owner, created_at, detail) "
-        "VALUES (?, ?, ?, ?, ?)",
+        "VALUES (?, ?, ?, ?, ?) ON CONFLICT (match_id, step) DO NOTHING",
         (match_id, step, owner, _now(), tx.json(detail)),
-    )
-    return True
+    ) == 1
 
 
 def steps(match_id: str) -> list[dict[str, Any]]:

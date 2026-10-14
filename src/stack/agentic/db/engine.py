@@ -196,6 +196,20 @@ class Tx:
     def unjson(self, val: Any) -> Any:
         return self.dialect.unjson(val)
 
+    def lock_key(self, *parts: Any) -> None:
+        """Serialize this transaction against others locking the same key.
+
+        ``SELECT ... FOR UPDATE`` cannot lock a row that does not exist yet,
+        so on Postgres two "read, nothing there, insert" transactions both
+        miss and the loser's INSERT aborts on a unique violation (or both act).
+        Taking this lock before the read closes that window: it is held until
+        commit/rollback. SQLite needs nothing (``BEGIN IMMEDIATE`` already
+        serializes every writer).
+        """
+        if self.dialect.name == "postgres":
+            key = "\x1f".join(str(p) for p in parts)
+            self.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", (key,))
+
     def execute(self, sql: str, params: tuple | list = ()) -> Any:
         if self.db.readonly and not self._is_read(sql):
             raise StorageReadOnly(

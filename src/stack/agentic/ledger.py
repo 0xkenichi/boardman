@@ -191,6 +191,9 @@ def ensure_funded(wallet: str, min_amount: Decimal = Decimal("100")) -> None:
     key = wallet.lower()
     target = to_micro(min_amount)
     with transaction() as tx:
+        # Check-then-credit: two concurrent callers must not both top up.
+        tx.lock_key("ledger_balances", key)
+        tx.one(f"SELECT balance_micro FROM ledger_balances WHERE wallet = ?{tx.for_update}", (key,))
         have, sc = _balance_row(tx, key)
         if have < target:
             # Same Decimal the old code computed (min_amount - balance).
@@ -231,12 +234,16 @@ def open_escrow(
             "payout": None,
             "fee": None,
         }
-        tx.execute(
+        created = tx.rowcount(
             "INSERT INTO ledger_escrows (match_id, status, stake_micro, agent_a_wallet, "
-            "agent_b_wallet, result, created_at, settled_at, doc) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, ?)",
+            "agent_b_wallet, result, created_at, settled_at, doc) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, ?) "
+            "ON CONFLICT (match_id) DO NOTHING",
             (match_id, "open", stake_micro, rec["agent_a_wallet"], rec["agent_b_wallet"],
              rec["created_at"], tx.json(rec)),
         )
+        if not created:
+            # Opened concurrently (FOR UPDATE cannot lock a missing row).
+            return _escrow_locked(tx, match_id)
         _log(tx, {"ts": _now(), "type": "escrow_open", "ref": match_id, "stake": stake_text})
         return rec
 
