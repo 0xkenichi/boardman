@@ -487,11 +487,20 @@ class CircleWalletService:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def transfer_usdc(self, from_wallet_id: str, to_address: str, amount_usdc: float) -> Dict:
+    def transfer_usdc(
+        self,
+        from_wallet_id: str,
+        to_address: str,
+        amount_usdc: float,
+        *,
+        idempotency_key: Optional[str] = None,
+    ) -> Dict:
         """
         Transfer USDC from user's wallet to recipient (usually escrow).
 
         ``tokenId`` must be the Circle UUID, not the contract address.
+        Pass a deterministic ``idempotency_key`` (a UUID) for payouts that
+        may be retried: Circle dedups on it, so a retry cannot pay twice.
         """
         try:
             token_id = self._resolve_usdc_token_id(from_wallet_id)
@@ -501,7 +510,7 @@ class CircleWalletService:
                     "error": f"No Circle USDC tokenId for {self.blockchain}",
                 }
 
-            idempotency_key = str(uuid.uuid4())
+            idempotency_key = idempotency_key or str(uuid.uuid4())
             # Circle transfer `amounts` are token units (e.g. "18.50"), not 6-decimal atoms.
             # Passing 18500000 made Circle require $18.5M against a $211 wallet.
             amount_str = f"{float(amount_usdc):.6f}".rstrip("0").rstrip(".")
