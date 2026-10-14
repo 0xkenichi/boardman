@@ -519,9 +519,14 @@ def abort_table(match_id: str, *, reason: str) -> dict[str, Any]:
       abort:onchain    cancel the on-chain escrow (both stakes back)
       abort:escrow     ledger draw-refund of both stakes
       abort:spectator_cancel_onchain   SpectatorPool cancel (fans claim refunds)
-      abort:spectator  void the demo book: every ticket and both agents'
-                       spectator/draw seeds credited back
-      abort:play_adjust:<i>  the play-wallet side of each ticket refund
+      abort:spectator  void the demo book; both agents' spectator/draw seeds
+                       (what the lock debited, capped by what the book holds)
+                       credited back
+      abort:play_adjust:<i>  each ticket's stake back to the play wallet it
+                       was taken from
+
+    Every refund comes out of money the table holds (escrow, book): nothing
+    is credited that the lock or the bet did not take.
       abort:finalize   status -> cancelled
 
     A crash between steps leaves the table ``aborting``; the next attempt (crash
@@ -673,17 +678,29 @@ def _abort_under_lease(match_id: str, reason: str) -> dict[str, Any]:
                 "closed_reason": voided.get("closed_reason"),
             }
             if not onchain_book:
-                # On-chain fans claim from the pool; demo-book fans are paid here.
+                # On-chain fans claim from the pool; demo-book fans get their
+                # ticket back on the rail that took it (play_adjust, below).
+                # Never an agentic-ledger credit: that ledger never held their
+                # stake, so crediting it would mint money.
                 fan = list((voided.get("payouts") or {}).get("refunds") or [])
-        for r in fan:
-            ledger.credit(str(r["bettor_id"]), Decimal(str(r["amount"])), reason="spectator_refund_void", ref=match_id)
         # Return exactly what the lock debited for the book seeds (wallet and
         # amount from the ledger rows themselves, so a wallet swap at lock
-        # time cannot misdirect the refund).
+        # time cannot misdirect the refund) — capped by the seeds the book
+        # actually holds, so a refund can never exceed the pot.
+        held: Optional[Decimal] = None
+        if book:
+            held = (
+                Decimal(str(book.get("seed_a") or "0"))
+                + Decimal(str(book.get("seed_b") or "0"))
+                + 2 * Decimal(str(book.get("seed_draw") or "0"))
+            )
         seeds: list[dict[str, Any]] = []
         for t in ledger.txs(ref=match_id):
             if t.get("type") == "debit" and t.get("reason") in {"spectator_seed", "draw_seed"}:
                 amt = Decimal(str(t.get("amount") or "0"))
+                if held is not None:
+                    amt = min(amt, held)
+                    held -= amt
                 if amt > 0 and t.get("wallet"):
                     ledger.credit(str(t["wallet"]), amt, reason=f"{t['reason']}_refund_void", ref=match_id)
                     seeds.append({"wallet": t["wallet"], "amount": str(amt), "reason": t["reason"]})

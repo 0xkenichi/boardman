@@ -89,6 +89,7 @@ def _locked_table(monkeypatch, *, bets: bool = True, stake: float = 1, pre: dict
     mid = rt.open_match(agent_a_id=RAJA, agent_b_id=NERO, stake_usdc=stake, white_agent_id=RAJA)["match_id"]
     if pre is not None:
         pre.update({w: ledger.balance(w) for w in _wallets(mid)})
+        pre["*total_micro"] = Decimal(ledger.total_micro())
     leases.acquire(mid)  # rematch(wait=True) holds it across lock -> bet window
     rt.lock(mid)
     if bets:
@@ -175,17 +176,24 @@ def test_unreplayable_interrupted_game_is_refunded_exactly_once(monkeypatch):
     rec = MATCHES.get(mid)
     assert rec["status"] == "cancelled" and rec["abort_reason"] == "interrupted"
     assert rec["result"] is None
-    # Both agents whole again: stake and every seed back.
-    assert {w: ledger.balance(w) for w in (wa, wb)} == pre
+    # Both agents whole again: stake and every seed back...
+    assert {w: ledger.balance(w) for w in (wa, wb)} == {w: pre[w] for w in (wa, wb)}
+    # ...out of what the table held: the ledger as a whole is exactly where
+    # it was before the lock — nothing minted, nothing lost.
+    assert Decimal(ledger.total_micro()) == pre["*total_micro"]
     assert _escrow_moves(mid) == ["escrow_refund_draw"]
     book = SpectatorBook().get(mid)
     assert book["status"] == "void"
     assert sorted((r["bettor_id"], r["amount"]) for r in book["payouts"]["refunds"]) == [
         ("fan_a", "1.5"), ("fan_b", "0.75"), ("fan_d", "0.5"),
     ]
-    assert ledger.balance("fan_a") == Decimal("1.5")
+    # Tickets go back on the rail that took them (play wallet), never as an
+    # agentic-ledger credit that ledger never held.
+    assert ledger.balance("fan_a") == Decimal("0")
     adjust = load_json("play_adjust.json", {"profiles": {}})["profiles"]
-    assert Decimal(adjust["fan_b"]["adjust"]) == Decimal("0.75")
+    assert {p: Decimal(adjust[p]["adjust"]) for p in ("fan_a", "fan_b", "fan_d")} == {
+        "fan_a": Decimal("1.5"), "fan_b": Decimal("0.75"), "fan_d": Decimal("0.5"),
+    }
     assert {s["step"] for s in journal.steps(mid)} >= {"abort:escrow", "abort:spectator", "abort:finalize"}
 
     # Never twice: another sweep, a direct abort, an ops abort.
@@ -195,6 +203,26 @@ def test_unreplayable_interrupted_game_is_refunded_exactly_once(monkeypatch):
     assert get_house().abort_never_started(mid)["already"] is True
     assert ledger.balances() == snap
     assert Decimal(load_json("play_adjust.json", {"profiles": {}})["profiles"]["fan_b"]["adjust"]) == Decimal("0.75")
+
+
+def test_refund_with_the_demo_faucet_off_returns_only_what_was_locked(monkeypatch):
+    from gaming.src.stack.agentic import recovery
+
+    monkeypatch.setenv("BOARDMAN_DEMO_FAUCET", "0")
+    assert not ledger.demo_faucet_mode()
+    agents = _agents()
+    for aid in (RAJA, NERO):  # funded for real; no faucet will top them up
+        ledger.credit(agents[aid]["wallet_address"], Decimal("25"), reason="test_deposit")
+    pre: dict[str, Decimal] = {}
+    mid = _locked_table(monkeypatch, pre=pre)
+    _crash(monkeypatch)
+    _expire(mid)
+    assert [r["action"] for r in recovery.recover_interrupted(dry_run=True)] == ["resume"]
+    out = recovery.recover_table(mid, force_abort=True)
+    assert out["final_status"] == "cancelled"
+    assert {w: ledger.balance(w) for w in _wallets(mid)} == {w: pre[w] for w in _wallets(mid)}
+    assert Decimal(ledger.total_micro()) == pre["*total_micro"]
+    assert not [t for t in ledger.snapshot()["txs"] if t.get("reason") == "demo_faucet" and t.get("ref") == mid]
 
 
 def _abort_money_state(mid: str) -> dict[str, Any]:
