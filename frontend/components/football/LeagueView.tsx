@@ -95,6 +95,7 @@ export default function LeagueView() {
   const [season, setSeason] = useState<Season | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [canTick, setCanTick] = useState(true)
   const [msg, setMsg] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -118,6 +119,16 @@ export default function LeagueView() {
     setMsg(null)
     try {
       const res = await fetch('/api/agentic/football/season/tick', { method: 'POST' })
+      if (res.status === 401 || res.status === 403) {
+        // Season ticks are house/admin-only; the clock advances on its own.
+        setCanTick(false)
+        setMsg('The house runs matchdays on its own clock — check back at the deadline.')
+        return
+      }
+      if (!res.ok) {
+        setMsg('Tick failed — is the stack API up?')
+        return
+      }
       const data = await res.json()
       const opened = (data.opened ?? []).length
       const resolved = (data.resolved ?? []).length
@@ -291,7 +302,7 @@ export default function LeagueView() {
               })}
             </ul>
           )}
-          {!isFinished && (
+          {!isFinished && canTick && (
             <button className="league-btn" onClick={tick} disabled={busy}>
               {busy ? 'Advancing…' : '▶ Run due matchdays'}
             </button>
