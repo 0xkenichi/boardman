@@ -4,7 +4,8 @@ gaming/tests/test_geo_fence.py — Tests for the ClawStation geo-fence middlewar
 Covers:
     - Cloudflare ``cf-ipcountry`` header detection (blocked and allowed)
     - Vercel ``x-vercel-ip-country`` header detection
-    - Fallback to allow when no header and no MaxMind DB is present
+    - Fallback to allow when no header and no MaxMind DB is present (lenient
+      mode only; strict fail-closed money routes are in test_geo_fence_strict.py)
     - End-to-end through the FastAPI app via ``TestClient`` (returns HTTP 451)
     - The middleware unit ``check_region`` directly
     - The bot ``/start`` handler refusing onboarding for blocked users
@@ -64,6 +65,9 @@ def _clear_caches(tmp_path, monkeypatch):
     cfg.write_text('{"blocked": ["RU"], "version": 1}')
     monkeypatch.setenv("BLOCKED_REGIONS_FILE", str(cfg))
     monkeypatch.setenv("MAXMIND_DB_PATH", str(tmp_path / "no-such-db.mmdb"))
+    # These tests cover lenient mode; pin it so a production-like shell env
+    # (NETWORK=mainnet, GEO_FENCE_STRICT=1, ...) cannot flip them.
+    monkeypatch.setenv("GEO_FENCE_STRICT", "0")
     yield
     reset_blocked_cache()
 

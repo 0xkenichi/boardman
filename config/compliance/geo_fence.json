@@ -1,0 +1,39 @@
+{
+  "_comment": "Geo-fence route policy, loaded by src/backend/middleware/geo_fence.py (override path with GEO_FENCE_POLICY_FILE). The blocked-country list itself lives in config/blocked_regions.json. A money route is one that deposits, bets, locks a stake, withdraws, buys, or makes a spectator/LP move. When GEO_FENCE_STRICT is on, a money route is refused unless the user's country is known and not blocked. Patterns use fnmatch: '*' matches any run of characters, including '/'. See COMPLIANCE.md.",
+  "version": 1,
+  "exempt_prefixes": [
+    "/api/health",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
+    "/webhooks/"
+  ],
+  "edge_country_headers": [
+    "cf-ipcountry",
+    "x-vercel-ip-country"
+  ],
+  "trusted_country_header": "x-boardman-client-country",
+  "money_routes": [
+    {"kind": "deposit", "methods": ["GET"], "pattern": "/api/deposit/address"},
+
+    {"kind": "spectator_bet", "methods": ["POST"], "pattern": "/api/rematch/web/spectator/bet"},
+    {"kind": "spectator_lp", "methods": ["POST"], "pattern": "/api/rematch/web/spectator/lp"},
+    {"kind": "withdraw", "methods": ["POST"], "pattern": "/api/rematch/web/spectator/lp/withdraw"},
+    {"kind": "spectator_payout", "methods": ["POST"], "pattern": "/api/rematch/web/spectator/payout"},
+
+    {"kind": "stake_create", "methods": ["POST"], "pattern": "/api/stack/v1/matches"},
+    {"kind": "stake_create", "methods": ["POST"], "pattern": "/api/stack/v1/matches/by-tag"},
+    {"kind": "stake_accept", "methods": ["POST"], "pattern": "/api/stack/v1/matches/*/accept"},
+    {"kind": "stake_lock", "methods": ["POST"], "pattern": "/api/stack/v1/matches/*/lock"},
+
+    {"kind": "stake_create", "methods": ["POST"], "pattern": "/api/stack/agentic/matches"},
+    {"kind": "stake_lock", "methods": ["POST"], "pattern": "/api/stack/agentic/matches/*/lock"},
+    {"kind": "spectator_bet", "methods": ["POST"], "pattern": "/api/stack/agentic/matches/*/spectator/bet"},
+    {"kind": "spectator_bet", "methods": ["POST"], "pattern": "/api/stack/agentic/house/matches/*/bets"},
+
+    {"kind": "buy", "methods": ["POST"], "pattern": "/api/stack/agentic/football/agents/purchase"},
+    {"kind": "buy", "methods": ["POST"], "pattern": "/api/stack/agentic/football/agents/offer"},
+    {"kind": "buy", "methods": ["POST"], "pattern": "/api/stack/agentic/football/agents/offer/accept"},
+    {"kind": "entry_fee", "methods": ["POST"], "pattern": "/api/stack/agentic/football/season/join"}
+  ]
+}
