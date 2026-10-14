@@ -10,7 +10,8 @@ Mode selection:
 
 Env:
   BOARDMAN_AGENTIC_ONCHAIN=1
-  BOARDMAN_RESOLVER_KEY=0x...   # must be BoardmanEscrow.resolver (or owner)
+  BOARDMAN_RESOLVER_KEY=0x...   # must be BoardmanEscrow.resolver (v1 also took owner);
+                                # on v2 it also signs the createMatch permit
   ARC_RPC_URL / from chains.yaml
   CLAW_ESCROW_ADDRESS_ARC / BOARDMAN_ESCROW_ADDRESS_ARC
 """
@@ -77,14 +78,25 @@ ERC20_ABI = [
 
 ESCROW_ABI = [
     {
+        # v2: resolver EIP-712 permit binds player1, player2, stake, deadline.
         "name": "createMatch",
         "type": "function",
         "stateMutability": "nonpayable",
         "inputs": [
             {"name": "matchId", "type": "bytes32"},
+            {"name": "player2", "type": "address"},
             {"name": "stake", "type": "uint256"},
+            {"name": "deadline", "type": "uint256"},
+            {"name": "resolverSig", "type": "bytes"},
         ],
         "outputs": [],
+    },
+    {
+        "name": "ESCROW_VERSION",
+        "type": "function",
+        "stateMutability": "view",
+        "inputs": [],
+        "outputs": [{"name": "", "type": "uint8"}],
     },
     {
         "name": "joinMatch",
@@ -146,6 +158,88 @@ ESCROW_ABI = [
         "outputs": [{"name": "", "type": "address"}],
     },
 ]
+
+# v1 escrows (pre v2-safety) take createMatch(bytes32,uint256). Kept so
+# v1 matches can drain while the backend migrates to v2 via config.
+ESCROW_ABI_V1 = [
+    {**e, "inputs": [{"name": "matchId", "type": "bytes32"}, {"name": "stake", "type": "uint256"}]}
+    if e["name"] == "createMatch"
+    else e
+    for e in ESCROW_ABI
+    if e["name"] != "ESCROW_VERSION"
+]
+
+CREATE_PERMIT_TTL_SECONDS = 600
+_ESCROW_VERSION_CACHE: dict[str, int] = {}
+
+
+def escrow_version(w3, cfg: dict[str, Any]) -> int:
+    """2 for the v2 safety escrow (has ESCROW_VERSION()), else 1.
+
+    BOARDMAN_ESCROW_VERSION overrides the on-chain probe.
+    """
+    env = (os.getenv("BOARDMAN_ESCROW_VERSION") or "").strip()
+    if env in {"1", "2"}:
+        return int(env)
+    key = str(cfg["escrow"]).lower()
+    if key not in _ESCROW_VERSION_CACHE:
+        try:
+            probe = w3.eth.contract(address=w3.to_checksum_address(cfg["escrow"]), abi=ESCROW_ABI)
+            _ESCROW_VERSION_CACHE[key] = int(probe.functions.ESCROW_VERSION().call())
+        except Exception:
+            _ESCROW_VERSION_CACHE[key] = 1
+    return _ESCROW_VERSION_CACHE[key]
+
+
+def sign_create_permit(
+    resolver_pk: str,
+    *,
+    chain_id: int,
+    escrow: str,
+    match_id_b32: bytes,
+    player1: str,
+    player2: str,
+    stake_raw: int,
+    deadline: int,
+) -> bytes:
+    """Resolver EIP-712 permit for BoardmanEscrow v2 createMatch."""
+    from eth_account import Account
+    from eth_account.messages import encode_typed_data
+
+    msg = encode_typed_data(
+        full_message={
+            "types": {
+                "EIP712Domain": [
+                    {"name": "name", "type": "string"},
+                    {"name": "version", "type": "string"},
+                    {"name": "chainId", "type": "uint256"},
+                    {"name": "verifyingContract", "type": "address"},
+                ],
+                "CreateMatch": [
+                    {"name": "matchId", "type": "bytes32"},
+                    {"name": "player1", "type": "address"},
+                    {"name": "player2", "type": "address"},
+                    {"name": "stake", "type": "uint256"},
+                    {"name": "deadline", "type": "uint256"},
+                ],
+            },
+            "primaryType": "CreateMatch",
+            "domain": {
+                "name": "BoardmanEscrow",
+                "version": "2",
+                "chainId": int(chain_id),
+                "verifyingContract": escrow,
+            },
+            "message": {
+                "matchId": match_id_b32,
+                "player1": player1,
+                "player2": player2,
+                "stake": int(stake_raw),
+                "deadline": int(deadline),
+            },
+        }
+    )
+    return bytes(Account.sign_message(msg, private_key=resolver_pk).signature)
 
 
 def onchain_enabled() -> bool:
@@ -247,8 +341,9 @@ def _contracts(w3, cfg: dict[str, Any]):
     usdc = w3.eth.contract(
         address=w3.to_checksum_address(cfg["usdc"]), abi=ERC20_ABI
     )
+    abi = ESCROW_ABI if escrow_version(w3, cfg) >= 2 else ESCROW_ABI_V1
     escrow = w3.eth.contract(
-        address=w3.to_checksum_address(cfg["escrow"]), abi=ESCROW_ABI
+        address=w3.to_checksum_address(cfg["escrow"]), abi=abi
     )
     return usdc, escrow
 
@@ -660,10 +755,25 @@ def dual_lock_onchain(
     h = _send(w3, acct1, tx, "p1_approve")
     txs.append({"step": "p1_approve", "tx_hash": h, "explorer": _explorer(cfg, h)})
 
-    # createMatch
-    tx = escrow.functions.createMatch(mid, stake_raw).build_transaction(
-        {"from": acct1.address}
-    )
+    # createMatch — v2 needs a resolver permit binding p2 (anti front-run)
+    if escrow_version(w3, cfg) >= 2:
+        deadline = int(time.time()) + CREATE_PERMIT_TTL_SECONDS
+        sig = sign_create_permit(
+            load_resolver_key(),
+            chain_id=int(w3.eth.chain_id),
+            escrow=w3.to_checksum_address(cfg["escrow"]),
+            match_id_b32=mid,
+            player1=w3.to_checksum_address(acct1.address),
+            player2=w3.to_checksum_address(p2_addr),
+            stake_raw=stake_raw,
+            deadline=deadline,
+        )
+        create_fn = escrow.functions.createMatch(
+            mid, w3.to_checksum_address(p2_addr), stake_raw, deadline, sig
+        )
+    else:
+        create_fn = escrow.functions.createMatch(mid, stake_raw)
+    tx = create_fn.build_transaction({"from": acct1.address})
     h = _send(w3, acct1, tx, "createMatch")
     txs.append({"step": "createMatch", "tx_hash": h, "explorer": _explorer(cfg, h)})
     create_tx = h

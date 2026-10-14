@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -47,6 +48,8 @@ SPECTATOR_ABI = [
             {"name": "creatorA", "type": "address"},
             {"name": "creatorB", "type": "address"},
             {"name": "potCap", "type": "uint256"},
+            # v2: betting deadline; deposits revert from here on-chain.
+            {"name": "closeAt", "type": "uint64"},
         ],
         "outputs": [],
     },
@@ -117,6 +120,12 @@ SPECTATOR_ABI = [
             {"name": "seedDrawA", "type": "uint256"},
             {"name": "seedDrawB", "type": "uint256"},
             {"name": "totalDraw", "type": "uint256"},
+            # v2 safety fields (appended — indices 0..23 unchanged)
+            {"name": "closeAt", "type": "uint64"},
+            {"name": "settledAt", "type": "uint64"},
+            {"name": "feeScheduleId", "type": "uint32"},
+            {"name": "swept", "type": "bool"},
+            {"name": "remaining", "type": "uint256"},
         ],
     },
     {
@@ -126,7 +135,31 @@ SPECTATOR_ABI = [
         "inputs": [],
         "outputs": [{"name": "", "type": "address"}],
     },
+    {
+        "name": "POOL_VERSION",
+        "type": "function",
+        "stateMutability": "view",
+        "inputs": [],
+        "outputs": [{"name": "", "type": "uint8"}],
+    },
 ]
+
+# v1 pools (deployed before the v2 safety release) take no closeAt and
+# return the 24-field book. Kept so v1 books can drain during migration.
+_V1_OPEN_BOOK_INPUTS = [i for i in SPECTATOR_ABI[0]["inputs"] if i["name"] != "closeAt"]
+SPECTATOR_ABI_V1 = [
+    {**e, "inputs": _V1_OPEN_BOOK_INPUTS}
+    if e["name"] == "openBook"
+    else {**e, "outputs": e["outputs"][:24]}
+    if e["name"] == "getBook"
+    else e
+    for e in SPECTATOR_ABI
+    if e["name"] != "POOL_VERSION"
+]
+
+DEFAULT_BOOK_WINDOW_SECONDS = 900
+MAX_BOOK_WINDOW_SECONDS = 7 * 24 * 3600  # SpectatorPool.MAX_BETTING_WINDOW
+_POOL_VERSION_CACHE: dict[str, int] = {}
 
 BOOK_STATUS = {0: "None", 1: "Open", 2: "Closed", 3: "Resolved", 4: "Cancelled"}
 POOL_LABELS = frozenset({"openBook", "depositFor", "close", "resolve", "cancel", "approve"})
@@ -188,9 +221,41 @@ def _pool_cfg(chain_id: str = "arc") -> dict[str, Any]:
     return cfg
 
 
+def book_window_seconds() -> int:
+    """Seconds from openBook to the on-chain betting deadline (closeAt).
+
+    The off-chain book freezes after BOARDMAN_BOOK_CLOSE_PLIES; closeAt is
+    the on-chain backstop that holds even if close() is never sent.
+    """
+    try:
+        n = int(os.getenv("SPECTATOR_BOOK_WINDOW_SECONDS") or DEFAULT_BOOK_WINDOW_SECONDS)
+    except ValueError:
+        n = DEFAULT_BOOK_WINDOW_SECONDS
+    return max(60, min(n, MAX_BOOK_WINDOW_SECONDS - 60))
+
+
+def pool_version(w3, cfg: dict[str, Any]) -> int:
+    """2 for the v2 safety pool (has POOL_VERSION()), else 1.
+
+    SPECTATOR_POOL_VERSION overrides the on-chain probe.
+    """
+    env = (os.getenv("SPECTATOR_POOL_VERSION") or "").strip()
+    if env in {"1", "2"}:
+        return int(env)
+    key = str(cfg["pool"]).lower()
+    if key not in _POOL_VERSION_CACHE:
+        try:
+            probe = w3.eth.contract(address=w3.to_checksum_address(cfg["pool"]), abi=SPECTATOR_ABI)
+            _POOL_VERSION_CACHE[key] = int(probe.functions.POOL_VERSION().call())
+        except Exception:
+            _POOL_VERSION_CACHE[key] = 1
+    return _POOL_VERSION_CACHE[key]
+
+
 def _contracts(w3, cfg: dict[str, Any]):
     usdc = w3.eth.contract(address=w3.to_checksum_address(cfg["usdc"]), abi=ERC20_ABI)
-    pool = w3.eth.contract(address=w3.to_checksum_address(cfg["pool"]), abi=SPECTATOR_ABI)
+    abi = SPECTATOR_ABI if pool_version(w3, cfg) >= 2 else SPECTATOR_ABI_V1
+    pool = w3.eth.contract(address=w3.to_checksum_address(cfg["pool"]), abi=abi)
     return usdc, pool
 
 
@@ -232,6 +297,7 @@ def read_book(match_id: str, chain_id: str = "arc") -> dict[str, Any]:
     mid = match_id_to_bytes32(match_id)
     raw = pool.functions.getBook(mid).call()
     status = int(raw[18])
+    v2 = len(raw) > 24
     return {
         "match_id": match_id,
         "match_id_bytes32": match_id_hex(match_id),
@@ -249,6 +315,13 @@ def read_book(match_id: str, chain_id: str = "arc") -> dict[str, Any]:
         "seed_draw_a": int(raw[21]),
         "seed_draw_b": int(raw[22]),
         "total_draw": int(raw[23]),
+        # v2 safety fields (None on a v1 pool)
+        "close_at": int(raw[24]) if v2 else None,
+        "settled_at": int(raw[25]) if v2 else None,
+        "fee_schedule_id": int(raw[26]) if v2 else None,
+        "swept": bool(raw[27]) if v2 else None,
+        "remaining": int(raw[28]) if v2 else None,
+        "pool_version": 2 if v2 else 1,
         "pool": cfg["pool"],
         "chain_id": chain_id,
     }
@@ -283,11 +356,10 @@ def open_book_onchain(match: dict[str, Any], *, chain_id: str = "arc") -> dict[s
     if cap <= 0:
         cap = Decimal("20")
 
-    zero = "0x0000000000000000000000000000000000000000"
-    # creatorA/creatorB = the agent wallets: the pool pays them the 2%
-    # creator pool on resolve (winner-weighted 75/25 in v2), so the agents
-    # earn a slice of every fan market on their own match.
-    tx = pool.functions.openBook(
+    # creatorA/creatorB = the agent wallets: the pool credits them the 2%
+    # creator pool on resolve (winner-weighted 75/25; pulled via withdraw()
+    # on a v2 pool), so the agents earn a slice of every fan market.
+    args = [
         match_id_to_bytes32(match_id),
         match_id_to_bytes32(str(match.get("game_id") or "agentic.chess_standard")),
         match_id_to_bytes32(str(match.get("agent_a_id") or "")),
@@ -297,7 +369,14 @@ def open_book_onchain(match: dict[str, Any], *, chain_id: str = "arc") -> dict[s
         w3.to_checksum_address(wallet_a),
         w3.to_checksum_address(wallet_b),
         usdc_to_raw(cap),
-    ).build_transaction({"from": acct.address})
+    ]
+    close_at: Optional[int] = None
+    if pool_version(w3, cfg) >= 2:
+        # On-chain betting deadline, fixed at open. Deposits revert from
+        # here even if close_book_onchain() is never sent.
+        close_at = int(time.time()) + book_window_seconds()
+        args.append(close_at)
+    tx = pool.functions.openBook(*args).build_transaction({"from": acct.address})
     h = _send_pool(w3, acct, tx, cfg, "openBook")
     logger.info("[spectator.onchain] openBook match=%s tx=%s", match_id, h)
     return {
@@ -308,7 +387,40 @@ def open_book_onchain(match: dict[str, Any], *, chain_id: str = "arc") -> dict[s
         "match_id_bytes32": match_id_hex(match_id),
         "pool": cfg["pool"],
         "chain_id": chain_id,
+        "close_at": close_at,
         "step": "openBook",
+    }
+
+
+def close_book_onchain(match_id: str, *, chain_id: str = "arc") -> dict[str, Any]:
+    """Resolver close(): stop on-chain bets now. Idempotent.
+
+    Call this at kickoff / the ply-N freeze, and always before resolve —
+    a v2 pool refuses resolve while a book is Open before its closeAt.
+    """
+    mid = assert_live_match_id(match_id)
+    book = read_book(mid, chain_id=chain_id)
+    if book["status"] == 0:
+        raise SpectatorOnchainError(f"no SpectatorPool book for {mid}")
+    if book["status"] != 1:  # Closed / Resolved / Cancelled
+        return {"success": True, "already_closed": True, "tx_hash": None,
+                "match_id": mid, "status_name": book["status_name"]}
+
+    cfg = _pool_cfg(chain_id)
+    w3 = _w3(cfg)
+    _, pool = _contracts(w3, cfg)
+    acct = _account(load_resolver_key())
+    tx = pool.functions.close(match_id_to_bytes32(mid)).build_transaction({"from": acct.address})
+    h = _send_pool(w3, acct, tx, cfg, "close")
+    logger.info("[spectator.onchain] close match=%s tx=%s", mid, h)
+    return {
+        "success": True,
+        "tx_hash": h,
+        "explorer": _explorer(cfg, h),
+        "match_id": mid,
+        "pool": cfg["pool"],
+        "chain_id": chain_id,
+        "step": "close",
     }
 
 
@@ -339,6 +451,10 @@ def deposit_for(
     if book["status"] != 1:
         raise SpectatorOnchainError(
             f"SpectatorPool book {mid} is {book['status_name']} — not accepting deposits"
+        )
+    if book.get("close_at") is not None and time.time() >= int(book["close_at"]):
+        raise SpectatorOnchainError(
+            f"SpectatorPool book {mid} passed its betting deadline — not accepting deposits"
         )
 
     cfg = _pool_cfg(chain_id)
@@ -436,6 +552,10 @@ def resolve_book(
         }
     if book["status"] == 0:
         raise SpectatorOnchainError(f"no SpectatorPool book for {mid}")
+    close_h = None
+    if book["status"] == 1:
+        # Freeze bets before the result goes on-chain (v2 requires it).
+        close_h = close_book_onchain(mid, chain_id=chain_id).get("tx_hash")
 
     cfg = _pool_cfg(chain_id)
     w3 = _w3(cfg)
@@ -461,6 +581,7 @@ def resolve_book(
         "match_id": mid,
         "winner_side": winner_side,
         "winner_idx": idx,
+        "close_tx_hash": close_h,
         "pool": cfg["pool"],
         "chain_id": chain_id,
         "step": label,
