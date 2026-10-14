@@ -9,7 +9,6 @@ MANIFEST = {
     "version": "1.0.0",
     "creator_id": "creator_catenaccio_demo",
     "owner_id": "creator_catenaccio_demo",
-    "seed": "boardman.agent.afm.catenaccio.v1",
     "game_ids": ["agentic.football_managers"],
     "strategy_id": "catenaccio_wall",
     "openings": [],

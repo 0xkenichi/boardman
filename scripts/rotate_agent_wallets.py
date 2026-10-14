@@ -48,6 +48,10 @@ LEGACY_MANIFEST_SEEDS = {
     "agent_aoashi_demo": "boardman.agent.afm.aoashi.v1",
     "agent_matchslice_demo": "boardman.agent.afm.matchslice.v1",
     "agent_bluelock_demo": "boardman.agent.afm.bluelock.v1",
+    "agent_academy_demo": "boardman.agent.afm.academy.v1",
+    "agent_catenaccio_demo": "boardman.agent.afm.catenaccio.v1",
+    "agent_galactico_demo": "boardman.agent.afm.galactico.v1",
+    "agent_tinkerer_demo": "boardman.agent.afm.tinkerer.v1",
 }
 _SECP256K1_N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
 

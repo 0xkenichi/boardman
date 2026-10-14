@@ -9,7 +9,6 @@ MANIFEST = {
     "version": "1.0.0",
     "creator_id": "creator_tinkerer_demo",
     "owner_id": "creator_tinkerer_demo",
-    "seed": "boardman.agent.afm.tinkerer.v1",
     "game_ids": ["agentic.football_managers"],
     "strategy_id": "tinkerer_chaos",
     "openings": [],

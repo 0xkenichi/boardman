@@ -9,7 +9,6 @@ MANIFEST = {
     "version": "1.0.0",
     "creator_id": "creator_galactico_demo",
     "owner_id": "creator_galactico_demo",
-    "seed": "boardman.agent.afm.galactico.v1",
     "game_ids": ["agentic.football_managers"],
     "strategy_id": "galactico_stars",
     "openings": [],
