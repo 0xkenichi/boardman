@@ -58,3 +58,32 @@ def bump(data_dir: str, n: int) -> None:
 
     for _ in range(n):
         s.update_json("counter.json", lambda cur: {"n": int((cur or {}).get("n", 0)) + 1}, {})
+
+
+def _die_now() -> None:
+    """kill -9 ourselves: no finally blocks, no atexit, no lease release."""
+    import signal
+
+    os.kill(os.getpid(), signal.SIGKILL)
+
+
+def proc_lock_then_die(data_dir: str, match_id: str) -> None:
+    """The house session locks a table and is killed during its bet window."""
+    _use_store(data_dir)
+    from gaming.src.stack.agentic.db import leases
+    from gaming.src.stack.agentic.house import get_house
+
+    leases.acquire(match_id)  # what rematch(wait=True) holds across the window
+    get_house().lock(match_id)
+    _die_now()
+
+
+def proc_settle_then_die(data_dir: str, match_id: str, result: dict, crash_step: str) -> None:
+    """Settle a table and get killed right after one journaled step commits."""
+    _use_store(data_dir)
+    from gaming.src.stack.agentic import matches
+
+    matches._notify_spectator_outcomes = lambda *a, **k: None
+    matches._SETTLE_STEP_HOOK = lambda step: _die_now() if step == crash_step else None
+    matches.get_match_service().settle_result(match_id, result)
+    raise SystemExit(3)  # never reached when crash_step is a real step
