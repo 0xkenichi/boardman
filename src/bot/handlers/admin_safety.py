@@ -59,7 +59,7 @@ async def cmd_paused(message: types.Message) -> None:
     if is_paused():
         await message.answer(pause_message(), parse_mode=ParseMode.HTML)
     else:
-        await message.answer("▶️ ClawStation is running normally.", parse_mode=ParseMode.HTML)
+        await message.answer("▶️ Boardman is running normally.", parse_mode=ParseMode.HTML)
 
 
 @router.message(Command("link_community"))

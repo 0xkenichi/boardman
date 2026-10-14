@@ -235,7 +235,7 @@ async def cb_send_to_tag(callback: types.CallbackQuery, state: FSMContext) -> No
     await callback.answer()
     await state.set_state(SendState.waiting_for_tag_amount)
     await callback.message.answer(
-        "💸 <b>Withdraw to a ClawStation player</b>\n\n"
+        "💸 <b>Withdraw to a Boardman player</b>\n\n"
         "Reply with: <code>@tag amount</code>\n"
         "Example: <code>@alice 25</code>\n\n"
         "They must have opened this bot once.",
