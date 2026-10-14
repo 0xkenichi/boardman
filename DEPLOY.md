@@ -1,7 +1,9 @@
 # ClawStation 24/7 Hosting Runbook
 
 This document describes how to deploy the ClawStation gaming backend and
-Telegram bot to a VPS for always-on operation.
+Telegram bot to a VPS for always-on operation. Production runs on Railway
+(docs/RAILWAY_DEPLOY.md); restore, pause, reconciliation and incident steps
+are in docs/RUNBOOK.md.
 
 ## 1. VPS provisioning
 
@@ -41,17 +43,26 @@ sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plug
    - `CIRCLE_WALLET_SET_ID`
    - `TELEGRAM_BOT_TOKEN_CLAWSTATION` (falls back to `TELEGRAM_BOT_TOKEN`)
    - Optional: `MINIAPP_URL`, `WEBHOOK_URL`, `CIRCLE_WEBHOOK_SECRET`, `DATABASE_URL`
-3. Build and start the services:
+3. Build and start the services (first run on a new volume only needs
+   `BOARDMAN_DATA_INIT=1` so the boot guard accepts the empty volume):
 
 ```bash
-cd /path/to/sideQuest/.worktrees/clawstation-foundation
-docker compose -f docker-compose.yml up -d --build
+cd /path/to/boardman
+BOARDMAN_DATA_INIT=1 docker compose up -d --build   # first time
+docker compose up -d --build                        # afterwards
 ```
+
+   Compose runs three containers from `Dockerfile.akash`: `boardman-api`
+   (builder webhooks + API), `boardman-bot` and `boardman-house` (the house
+   session). All read `./.env` and share the named volume `boardman-data`
+   mounted at `/data` (state in `/data/agentic`). `docker compose down -v`
+   deletes that volume — never run it on a host with real balances.
 
 4. Verify the API is healthy:
 
 ```bash
 curl http://<vps-ip>:8000/api/healthz
+curl http://<vps-ip>:8000/api/health/deep   # 503 = something needs attention
 ```
 
 ## 4. Configure Caddy
@@ -82,8 +93,9 @@ https://<your-domain>/healthz
 ```
 
 The `/healthz` path is answered directly by Caddy without hitting the backend,
-so it is fast and cheap. For a deeper check, point a secondary monitor at
-`/api/healthz` which validates Supabase connectivity.
+so it is fast and cheap. Point a second monitor at `/api/health/deep`, which
+checks event-loop lag, that the data volume is writable, the house-session
+heartbeat and the supervised processes, and answers 503 on failure.
 
 ## 6. Log rotation
 
@@ -91,9 +103,13 @@ Docker Compose already configures the `json-file` log driver with
 `max-size: 10m` and `max-file: 3` per service. View logs with:
 
 ```bash
-docker compose -f docker-compose.yml logs -f --tail 100 clawstation-api
-docker compose -f docker-compose.yml logs -f --tail 100 clawstation-bot
+docker compose logs -f --tail 100 boardman-api
+docker compose logs -f --tail 100 boardman-bot
+docker compose logs -f --tail 100 boardman-house
 ```
+
+Builder-webhook output is prefixed `[wh:<name>]`; supervisor lines are
+prefixed `[akash]`.
 
 ## 7. Host-level health check
 
@@ -113,13 +129,13 @@ do not commit it. After rotating any secret, run:
 docker compose -f docker-compose.yml up -d --force-recreate
 ```
 
-## 9. CI/CD deployments
+## 9. CI/CD
 
-Pushing a Git tag matching `v*` triggers `.github/workflows/clawstation-deploy.yml`,
-which builds and pushes a Docker image to GHCR and pulls it on the VPS via SSH.
-Required repository secrets:
-
-- `GHCR_TOKEN`
-- `VPS_HOST`
-- `VPS_USER`
-- `VPS_SSH_KEY`
+- `.github/workflows/ci.yml` — every pull request and push to `main`: pytest
+  (Python 3.12, same as the images), frontend `tsc` + `next build`, hardhat
+  tests, and vitest for both `engines/afm` packages. Uses no secrets.
+- `.github/workflows/akash-image.yml` and `docker-publish.yml` — build
+  `Dockerfile.akash` on `main` and push to GHCR with the built-in
+  `GITHUB_TOKEN`.
+- Railway deploys `main` itself (GitHub integration); there is no SSH deploy
+  workflow.

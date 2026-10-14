@@ -1,9 +1,16 @@
-# Railway deploy config — Boardman API + Telegram bot
-# Runs the same Dockerfile.akash image used on Fly/Akash: the entrypoint
-# (deploy/start_akash.py) starts BOTH the FastAPI service and the Telegram
-# bot in polling mode, and restarts if either process dies.
+# Railway deploy config — Boardman API + Telegram bot + house session
+# Builds Dockerfile.akash; deploy/start_akash.py supervises the API (critical:
+# if it dies the container exits and Railway restarts it), the bot and the
+# house session (restarted with backoff) and the ten builder webhooks.
 #
-# Full walkthrough: docs/RAILWAY_DEPLOY.md
+# NOT configurable here — set in the Railway dashboard (docs/RUNBOOK.md §1):
+#   * Volume mounted at /data (state lives in /data/agentic). Without it every
+#     redeploy wipes balances while on-chain escrows stay locked.
+#   * RAILWAY_RUN_UID=0 (volumes mount root-owned; the supervisor fixes
+#     ownership and drops its children to the unprivileged app user).
+#   * REQUIRE_PERSISTENT_DATA=1 so a missing/empty volume stops the boot
+#     instead of silently starting from zero.
+#   * Exactly one replica: the JSON store and house_log.db are single-writer.
 
 "$schema" = "https://railway.com/railway.schema.json"
 
@@ -16,3 +23,5 @@ startCommand = "python /app/deploy/start_akash.py"
 healthcheckPath = "/api/healthz"
 healthcheckTimeout = 300
 restartPolicyType = "ALWAYS"
+# Give start_akash.py time to stop children cleanly (it waits up to 10s).
+drainingSeconds = 30

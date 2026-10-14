@@ -57,12 +57,41 @@ def _bootstrap() -> None:
         init.write_text("", encoding="utf-8")
 
 
+def _wait_port(port: int, attempts: int = 30) -> bool:
+    import socket
+
+    for _ in range(attempts):
+        time.sleep(0.15)
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.3):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def _pump_prefixed(stream, tag: str) -> None:
+    """Copy a child's output to our stdout with a [wh:name] prefix."""
+    try:
+        for raw in iter(stream.readline, b""):
+            sys.stdout.write(f"[wh:{tag}] " + raw.decode("utf-8", "replace"))
+            sys.stdout.flush()
+    except Exception:
+        pass
+
+
 def _ensure_builder_webhooks() -> None:
-    """Start Raja and Nero as two separate webhook processes (two builders)."""
+    """Start Raja and Nero as two separate webhook processes (two builders).
+
+    In containers deploy/start_akash.py owns these processes (logs + restart
+    with backoff) and sets BOARDMAN_WEBHOOKS_SUPERVISED=1; then we only wait
+    for them. Local runs spawn them here with prefixed output.
+    """
     import socket
     import subprocess
-    import time
+    import threading
 
+    supervised = os.environ.get("BOARDMAN_WEBHOOKS_SUPERVISED", "").strip() == "1"
     specs = [
         ("Raja", 18761, "gaming.src.stack.agentic.agents.raja.serve", {}),
         ("Nero", 18762, "gaming.src.stack.agentic.agents.nero.serve", {}),
@@ -92,33 +121,30 @@ def _ensure_builder_webhooks() -> None:
             continue
         except OSError:
             pass
-        import os as _os
+        if supervised:
+            # The container supervisor starts/restarts it; just give it time.
+            if not _wait_port(port, attempts=60):
+                print(f"  WARN {name} webhook (supervised) not up on :{port} — House will use in-process silo")
+            continue
 
         child_env = {
-            **_os.environ,
-            **{k: v for k, v in extra.items() if _os.path.exists(v)},
-            "PYTHONPATH": _os.environ.get("PYTHONPATH")
+            **os.environ,
+            **{k: v for k, v in extra.items() if os.path.exists(v)},
+            "PYTHONPATH": os.environ.get("PYTHONPATH")
             or str(Path(__file__).resolve().parents[1]),
         }
         print(f"  starting {name} builder webhook :{port}")
-        subprocess.Popen(
+        proc = subprocess.Popen(
             [sys.executable, "-m", mod],
             cwd=str(Path(__file__).resolve().parents[1]),
             env=child_env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
         )
-        for _ in range(30):
-            time.sleep(0.15)
-            try:
-                s = socket.socket()
-                s.settimeout(0.3)
-                s.connect(("127.0.0.1", port))
-                s.close()
-                break
-            except OSError:
-                continue
-        else:
+        threading.Thread(
+            target=_pump_prefixed, args=(proc.stdout, name.lower()), daemon=True
+        ).start()
+        if not _wait_port(port):
             print(f"  WARN {name} webhook did not bind — House will use in-process silo")
 
 
@@ -136,6 +162,43 @@ def _table_quiet(cur: dict, *, quiet_sec: float) -> bool:
     if t.tzinfo is None:
         t = t.replace(tzinfo=_tz.utc)
     return (_dt.now(_tz.utc) - t).total_seconds() >= quiet_sec
+
+
+# ── heartbeat ───────────────────────────────────────────────────────────────
+# A background thread rewrites house_heartbeat.json in the agentic data dir
+# every 15s; the main loop records its phase. /api/health/deep reads it:
+# a stale `ts` means the session process is gone/hung, a phase stuck far too
+# long means the loop is wedged even though the process is alive.
+
+_HB: dict = {"phase": "boot", "phase_at": time.time(), "games": 0, "last_match_id": None}
+
+
+def _beat(phase: str, **extra) -> None:
+    _HB.update(extra)
+    if _HB.get("phase") != phase:
+        _HB["phase"] = phase
+        _HB["phase_at"] = time.time()
+
+
+def _heartbeat_loop(interval: float = 15.0) -> None:
+    from gaming.src.stack.agentic.store import save_json
+
+    while True:
+        try:
+            save_json(
+                "house_heartbeat.json",
+                {"ts": time.time(), "pid": os.getpid(), **_HB},
+                compact=True,
+            )
+        except Exception as exc:  # never let the heartbeat kill the session
+            print(f"  heartbeat write failed: {exc.__class__.__name__}")
+        time.sleep(interval)
+
+
+def _start_heartbeat() -> None:
+    import threading
+
+    threading.Thread(target=_heartbeat_loop, name="house-heartbeat", daemon=True).start()
 
 
 def main() -> int:
@@ -157,6 +220,7 @@ def main() -> int:
     # No fixed ply cap — the arena randomizes 100–140 per match so games
     # don't all end at the same adjudication point.
 
+    _start_heartbeat()
     _ensure_builder_webhooks()
 
     from gaming.src.stack.agentic.house import get_house
@@ -232,6 +296,7 @@ def main() -> int:
                     f"  no fund — every pair below {min_stake} USDC floor; "
                     "waiting for funding…"
                 )
+                _beat("no_funds")
                 time.sleep(
                     int(os.environ.get("BOARDMAN_HOUSE_POLL_NO_FUNDS_SEC", "60"))
                 )
@@ -240,6 +305,7 @@ def main() -> int:
             white = random.choice((a, b))  # colors are a coin flip, not a ledger
             print(f"\n── game {n}  {a['name']} vs {b['name']}  white={white['name']} ──")
             t0 = time.time()
+            _beat("playing", last_match_id=None)
             try:
                 out = house.rematch(
                     agent_a_id=a["agent_id"],
@@ -272,6 +338,7 @@ def main() -> int:
                     print(f"  cleared {len(released)} stale locks for the pair")
                 except Exception as exc2:
                     print(f"  stale-lock cleanup failed: {exc2}")
+                _beat("rematch_failed")
                 time.sleep(60 if no_fund else 2)
                 continue
             m = out["match"]
@@ -284,6 +351,7 @@ def main() -> int:
             if m.get("onchain_settle"):
                 print(f"  settle_tx={m['onchain_settle'].get('tx_hash')}")
             mid = str(m.get("match_id") or "")
+            _beat("waiting_table", last_match_id=mid or None)
             if m.get("status") != "settled":
                 # Never die on a live table: the arena browser may be driving it
                 # (attached), or it is mid bet-window. Wait for it to resolve,
@@ -387,6 +455,7 @@ def main() -> int:
                 sch = read_schedule()
                 if not sch.get("enabled", True):
                     print("  schedule paused (enabled=false) — check again in 60s")
+                    _beat("schedule_paused")
                     time.sleep(60)
                     continue
                 burst = int(sch.get("burst_games") or 0)
@@ -412,6 +481,7 @@ def main() -> int:
                 print(
                     f"  next game in {cadence}s ({cadence / 60:.0f}m) — schedule cadence"
                 )
+                _beat("cadence", games=n, next_game_in_sec=cadence)
                 # Sleep in short slices so admin changes (burst queued, cadence
                 # lowered) apply within a minute instead of after the full wait.
                 slept = 0
