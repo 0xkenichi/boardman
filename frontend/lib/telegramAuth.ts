@@ -100,5 +100,9 @@ export function verifyTelegramWebAppInitData(initData: string): Record<string, s
     out[k] = v
   })
   out.hash = hash
+  // Freshness: initData older than 24h is stale (mirrors the widget check) —
+  // blocks replay of a captured initData string indefinitely.
+  const authDate = Number(out.auth_date || 0)
+  if (!authDate || authDate < Math.floor(Date.now() / 1000) - 86400) return null
   return out
 }

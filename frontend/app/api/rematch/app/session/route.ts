@@ -2,19 +2,27 @@ import { NextResponse } from 'next/server'
 import { createHash } from 'crypto'
 import {
   encodeSession,
+  renewSession,
   sessionCookieHeader,
   clearSessionCookieHeader,
   readSessionFromRequest,
 } from '@/lib/session'
 import { verifyTelegramLogin, verifyTelegramWebAppInitData } from '@/lib/telegramAuth'
+import {
+  parseWalletMessage,
+  walletMessageUsable,
+  buildWalletSignMessage,
+} from '@/lib/walletMessage'
+import { recoverPersonalSignAddress } from '@/lib/walletVerify'
 import { telegramBotUrl } from '@/lib/telegramBot'
 import { rateLimitRequest } from '@/lib/bff'
 import { stackConfigured, stackFetch } from '@/lib/stackServer'
+import { supabaseRest } from '@/lib/supabaseAdmin'
 import { isBoardmanAdmin } from '@/lib/adminAuth'
 
 export const dynamic = 'force-dynamic'
 
-/** GET — current session */
+/** GET — current session (slides the cookie forward while the user is active) */
 export async function GET(req: Request) {
   const limited = rateLimitRequest(req, 'session-get', 60)
   if (limited) return limited
@@ -22,15 +30,22 @@ export async function GET(req: Request) {
   if (!s) {
     return NextResponse.json({ ok: false, authenticated: false }, { status: 401 })
   }
-  return NextResponse.json({
+  const res = NextResponse.json({
     ok: true,
     authenticated: true,
     profileId: s.profileId,
     tag: s.tag,
     name: s.name,
     telegramId: s.telegramId,
+    wallet: s.wallet || '',
     admin: isBoardmanAdmin(s),
   })
+  // Sliding renewal: re-issue when more than half the lifetime has passed.
+  const now = Math.floor(Date.now() / 1000)
+  if (s.exp - now < 60 * 60 * 24 * 3.5) {
+    res.headers.set('Set-Cookie', sessionCookieHeader(renewSession(s)))
+  }
+  return res
 }
 
 /**
@@ -61,6 +76,7 @@ export async function POST(req: Request) {
   let tag = 'player'
   let profileId = ''
   let needsBotStart = false
+  let linkedWallet = ''
 
   if (mode === 'demo') {
     const allowDemo =
@@ -142,6 +158,88 @@ export async function POST(req: Request) {
         { status: 502 }
       )
     }
+  } else if (mode === 'wallet') {
+    const intent = body.intent === 'link' ? 'link' : 'login'
+    const parsed = parseWalletMessage(body.message)
+    if (!parsed) {
+      return NextResponse.json({ ok: false, error: 'invalid_wallet_message' }, { status: 400 })
+    }
+    const existing = readSessionFromRequest(req)
+    const wantProfile = intent === 'link' ? existing?.profileId : undefined
+    if (!walletMessageUsable(parsed, { action: intent, profileId: wantProfile })) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'wallet_message_expired',
+          message: 'Sign-in message expired or mismatched — try again.',
+        },
+        { status: 401 }
+      )
+    }
+    const recovered = recoverPersonalSignAddress(String(body.message || ''), body.signature)
+    if (!recovered || recovered !== parsed.address) {
+      return NextResponse.json({ ok: false, error: 'invalid_wallet_signature' }, { status: 401 })
+    }
+    const wallet = recovered
+
+    if (intent === 'link') {
+      if (!existing) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: 'unauthorized',
+            message: 'Sign in with Telegram first, then link your wallet.',
+          },
+          { status: 401 }
+        )
+      }
+      const upd = await supabaseRest(`profiles?id=eq.${existing.profileId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Prefer: 'return=representation' },
+        body: JSON.stringify({ linked_wallet: wallet }),
+      })
+      if (!upd.ok) {
+        return NextResponse.json(
+          { ok: false, error: 'wallet_link_failed', detail: upd.error || upd.data },
+          { status: 502 }
+        )
+      }
+      const token = renewSession({ ...existing, wallet })
+      const res = NextResponse.json({
+        ok: true,
+        authenticated: true,
+        profileId: existing.profileId,
+        tag: existing.tag,
+        name: existing.name,
+        wallet,
+      })
+      res.headers.set('Set-Cookie', sessionCookieHeader(token))
+      return res
+    }
+
+    // intent === 'login': resolve the existing profile this wallet is linked to
+    const found = await findProfileByWallet(wallet)
+    if (!found) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'link_wallet_first',
+          message:
+            'No Boardman profile is linked to this wallet yet. Sign in with Telegram once, then link this wallet from the Wallet tab — after that, wallet sign-in works every time.',
+          bot: telegramBotUrl(),
+          wallet,
+        },
+        { status: 403 }
+      )
+    }
+    telegramId = String(found.telegram_id || '')
+    tag = found.gaming_tag || tag
+    name = found.display_name || name
+    profileId = found.id
+    // Rows without telegram_id get a non-numeric marker; admin gating keys off
+    // numeric telegram ids, so wallet sessions never accidentally pass it.
+    if (!telegramId) telegramId = 'wallet'
+    linkedWallet = wallet
   } else {
     return NextResponse.json({ ok: false, error: 'unknown_mode' }, { status: 400 })
   }
@@ -189,6 +287,7 @@ export async function POST(req: Request) {
     telegramId,
     tag,
     name,
+    ...(linkedWallet ? { wallet: linkedWallet } : {}),
   })
   const res = NextResponse.json({
     ok: true,
@@ -196,11 +295,57 @@ export async function POST(req: Request) {
     profileId,
     tag,
     name,
+    wallet: linkedWallet || undefined,
     demo: mode === 'demo',
     needsBotStart,
   })
   res.headers.set('Set-Cookie', sessionCookieHeader(token))
   return res
+}
+
+type WalletProfileRow = {
+  id: string
+  telegram_id?: number | string | null
+  gaming_tag?: string | null
+  display_name?: string | null
+}
+
+/**
+ * Find the profile a wallet is linked to (link-first model). Checks
+ * linked_wallet first (what this route writes), then wallet_address and
+ * withdrawal_wallet for wallets linked elsewhere in the app.
+ */
+async function findProfileByWallet(wallet: string): Promise<WalletProfileRow | null> {
+  const addr = wallet.toLowerCase()
+  for (const col of ['linked_wallet', 'wallet_address', 'withdrawal_wallet']) {
+    try {
+      const q = new URLSearchParams()
+      q.set('select', 'id,telegram_id,gaming_tag,display_name')
+      q.set(col, `eq.${addr}`)
+      q.set('limit', '1')
+      const res = await supabaseRest<WalletProfileRow[]>(`profiles?${q.toString()}`)
+      if (res.ok && Array.isArray(res.data) && res.data[0]?.id) {
+        console.info('[session] wallet login hit profile=%s col=%s', res.data[0].id, col)
+        return res.data[0]
+      }
+      // Column match is case-sensitive in PostgREST — retry checksummed form
+      const checksummed = wallet
+      if (checksummed !== addr) {
+        const q2 = new URLSearchParams()
+        q2.set('select', 'id,telegram_id,gaming_tag,display_name')
+        q2.set(col, `eq.${checksummed}`)
+        q2.set('limit', '1')
+        const res2 = await supabaseRest<WalletProfileRow[]>(`profiles?${q2.toString()}`)
+        if (res2.ok && Array.isArray(res2.data) && res2.data[0]?.id) {
+          console.info('[session] wallet login hit profile=%s col=%s (checksummed)', res2.data[0].id, col)
+          return res2.data[0]
+        }
+      }
+    } catch (e) {
+      console.error('[session] wallet lookup error col=%s', col, e)
+    }
+  }
+  return null
 }
 
 type ResolveResult = {
