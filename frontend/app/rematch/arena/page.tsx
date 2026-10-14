@@ -3,17 +3,25 @@
 /**
  * /arena — the live robot chess table, rebuilt as a React page in the book.
  * Replaced the retired public/agentic/arena.html. Polls /api/agentic/house-play (which
- * proxies the Stack house floor), renders moves via chess.js, and posts
+ * proxies the Stack house floor) every ~10s while the tab is visible, backing
+ * off when the house does not answer; renders moves via chess.js, and posts
  * spectator bets to /api/agentic/spectator-bet.
+ *
+ * The 1s heartbeat lives inside <ChessClock> and <NextTableLine> only, so the
+ * page itself re-renders on data, not on every second.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Chess, type Square } from 'chess.js'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Chess } from 'chess.js'
 import { BookShell } from '@/components/rematch/BookShell'
 import { TelegramLogin } from '@/components/TelegramLogin'
 import { WalletLogin } from '@/components/WalletLogin'
+import { agentName, type HouseScheduleInfo } from '@/components/rematch/house'
+import { fetchJson, useNow, usePolling } from '@/components/rematch/live'
 import { api } from '@/lib/appClient'
-import { REMATCH_BOT_URL } from '@/lib/rematchLinks'
+// NEXT_PUBLIC_TELEGRAM_BOT_USERNAME (with the house default) — the old
+// NEXT_PUBLIC_BOT_USERNAME read was never set anywhere.
+import { REMATCH_BOT_URL, REMATCH_BOT_USERNAME } from '@/lib/rematchLinks'
 
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const
 
@@ -51,16 +59,15 @@ type Match = {
   [k: string]: unknown
 }
 
-type ScheduleInfo = {
-  ok: boolean
-  enabled?: boolean
-  cadence_sec?: number
-  every_minutes?: number
-  games_per_day?: number
-  last_settled_at?: string | null
-  cadence_mode?: string
-  next_game_at?: string | null
-  next_in_sec?: number | null
+type ScheduleInfo = HouseScheduleInfo
+
+type HousePlayResponse = {
+  ok?: boolean
+  match_id?: string
+  status?: string
+  last_settled?: boolean
+  match?: Match | null
+  error?: string
 }
 
 type Ticket =
@@ -182,14 +189,6 @@ function Board({ grid, flipped }: { grid: (string | null)[] | null; flipped: boo
   return <div className="ar-board">{squares}</div>
 }
 
-function agentName(id: string | undefined, fallback: string): string {
-  const s = String(id || '')
-  if (s.includes('raja')) return 'Raja'
-  if (s.includes('nero')) return 'Nero'
-  if (s.includes('sheila')) return 'Sheila'
-  return fallback
-}
-
 function outcomeText(match: Match): { head: string; why: string } {
   const term = String(match.termination || '').toLowerCase()
   const whiteName = agentName(match.white_agent_id, 'White')
@@ -228,7 +227,8 @@ function outcomeText(match: Match): { head: string; why: string } {
   return { head: 'Game over', why: term ? term.replace(/_/g, ' ') : '' }
 }
 
-function StatusLine({ match }: { match: Match | null }) {
+function StatusLine({ match, loading }: { match: Match | null; loading: boolean }) {
+  if (!match && loading) return <p className="ar-note">Asking the house what’s on the board…</p>
   if (!match) return <p className="ar-note">The table is quiet. Check back soon — the robots play often.</p>
   const status = String(match.status || '')
   const settled = status === 'settled' || Boolean(match.result)
@@ -256,6 +256,108 @@ function fmtClock(ms: number | null): string {
   if (ms == null) return '—:—'
   const s = Math.max(0, Math.floor(ms / 1000))
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
+/**
+ * One side's chess clock. Only the side to move ticks, and only this little
+ * span re-renders each second — the board and bet slip stay still.
+ */
+function ChessClock({
+  clock,
+  active,
+  receivedAt,
+}: {
+  clock: ClockSide | undefined
+  /** game is running and it is this side's move */
+  active: boolean
+  /** when the remaining_ms reading arrived from the house */
+  receivedAt: number
+}) {
+  const base = clock && typeof clock.remaining_ms === 'number' ? clock.remaining_ms : null
+  const ticking = active && base != null
+  const now = useNow(1000, ticking)
+  const ms = base == null ? null : ticking ? Math.max(0, base - Math.max(0, now - receivedAt)) : base
+  const flagged = Boolean(clock?.flag)
+  const low = ms != null && ms < 30000
+  const cls = flagged
+    ? 'ar-clock ar-clock-flag'
+    : active
+      ? low
+        ? 'ar-clock ar-clock-run ar-clock-low'
+        : 'ar-clock ar-clock-run'
+      : low
+        ? 'ar-clock ar-clock-low'
+        : 'ar-clock'
+  return (
+    <span className={cls}>
+      {fmtClock(ms)}
+      {flagged ? <span className="ar-flag">flagged</span> : null}
+    </span>
+  )
+}
+
+/** When the house seats the next table — its own 1s heartbeat for the countdown. */
+function NextTableLine({ schedule, match, settled }: { schedule: ScheduleInfo | null; match: Match | null; settled: boolean }) {
+  const cad = Number(schedule?.cadence_sec || 0)
+  // Authoritative: the API computes this with the same clock-aligned math
+  // the house session uses to seat a table. Fall back to a rough anchor.
+  const at = useMemo(() => {
+    if (!schedule?.ok || !schedule.enabled || !cad) return NaN
+    const parsed = Date.parse(String(schedule.next_game_at || ''))
+    if (Number.isFinite(parsed)) return parsed
+    const fallbackIso =
+      !settled && match?.created_at
+        ? String(match.created_at)
+        : String(schedule.last_settled_at || match?.settled_at || '')
+    const a = Date.parse(fallbackIso)
+    return Number.isFinite(a) ? a + cad * 1000 : NaN
+  }, [schedule, cad, settled, match?.created_at, match?.settled_at])
+  const now = useNow(1000, Number.isFinite(at))
+
+  if (!schedule?.ok) return null
+  let label: string | null
+  if (!schedule.enabled) {
+    label = 'The house floor is paused — the next table opens when the desk turns it back on.'
+  } else if (!cad) {
+    label = null
+  } else {
+    const every = schedule.every_minutes || Math.max(1, Math.round(cad / 60))
+    const perDay = schedule.games_per_day || Math.floor(86400 / cad)
+    if (!Number.isFinite(at)) {
+      label = `A fresh table seats about every ${every} minutes — roughly ${perDay} games a day.`
+    } else {
+      const d = at - now
+      const hm = new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      if (d <= 0) {
+        label = `Next table seats any moment — the house plays about every ${every} minutes.`
+      } else {
+        const totalSec = Math.floor(d / 1000)
+        const inStr =
+          totalSec >= 3600
+            ? `${Math.floor(totalSec / 3600)}h ${Math.floor((totalSec % 3600) / 60)}m`
+            : `${Math.floor(totalSec / 60)}:${String(totalSec % 60).padStart(2, '0')}`
+        label = `Next game around ${hm} — starts in ${inStr}. A fresh table seats about every ${every} minutes (${perDay} a day).`
+      }
+    }
+  }
+  if (!label) return null
+  return (
+    <p className="rm-muted" style={{ fontSize: '0.8rem', margin: '-0.9rem 0 1.5rem' }}>
+      {label}
+    </p>
+  )
+}
+
+/** Share of the whole spectator pot sitting on the draw, as a CSS width. */
+function drawShare(totals: { a?: string | number; b?: string | number; draw?: string | number } | undefined): string {
+  if (!totals) return '0%'
+  const n = (v: unknown) => Math.max(0, Number(v ?? 0) || 0)
+  const a = n(totals.a)
+  const b = n(totals.b)
+  const d = n(totals.draw)
+  const total = a + b + d
+  if (!(total > 0)) return '0%'
+  return `${Math.min(100, (d / total) * 100)}%`
 }
 
 /** The last move, drawn from its origin square to its destination. */
@@ -338,6 +440,8 @@ export default function ArenaPage() {
   const [loading, setLoading] = useState(true)
   const [notice, setNotice] = useState<string | null>(null)
   const [stale, setStale] = useState(false)
+  /** The house API itself is down (502/504, timeout, backend_offline). */
+  const [offline, setOffline] = useState(false)
   const [betAmount, setBetAmount] = useState(1)
   const [betSide, setBetSide] = useState<'a' | 'b' | 'draw'>('a')
   const [betBusy, setBetBusy] = useState(false)
@@ -345,7 +449,6 @@ export default function ArenaPage() {
   const [authOpen, setAuthOpen] = useState(false)
   const [schedule, setSchedule] = useState<ScheduleInfo | null>(null)
   const [ticket, setTicket] = useState<Ticket | null>(null)
-  const [betChecker, setBetChecker] = useState<BetChecker | null>(null)
 
   // Restore the last ticket from this browser so a resolved ticket is never
   // silently replaced by the next table's fresh bet card.
@@ -362,43 +465,39 @@ export default function ArenaPage() {
     }
   }, [])
   const [lastSettled, setLastSettled] = useState(false)
-  const [tick, setTick] = useState(() => Date.now())
-  const receivedAtRef = useRef(Date.now())
-  const pollRef = useRef<number | null>(null)
+  /** When the current clock reading arrived — the ticking clock counts from here. */
+  const [receivedAt, setReceivedAt] = useState(0)
 
   const load = useCallback(async () => {
-    try {
-      const res = await fetch('/api/agentic/house-play', { cache: 'no-store' })
-      const data = await res.json().catch(() => ({}))
-      if (data.ok && data.match_id) {
-        setMatch({ ...data.match, match_id: data.match_id, status: data.status })
-        setStale(false)
-        setLastSettled(Boolean(data.last_settled))
-        receivedAtRef.current = Date.now()
-      } else if (data.ok === true) {
-        // Server definitively answered: nothing live (and no recent settle).
-        setMatch(null)
-        setStale(false)
-        setLastSettled(false)
-        receivedAtRef.current = Date.now()
-      } else {
-        // Transient failure (tunnel/API blip) — keep the last board visible.
-        setStale(true)
-      }
-    } catch {
-      setStale(true)
-    } finally {
-      setLoading(false)
+    const r = await fetchJson<HousePlayResponse>('/api/agentic/house-play', 8000)
+    const data = r.data || {}
+    setLoading(false)
+    if (r.ok && data.ok && data.match_id) {
+      setMatch({ ...(data.match || {}), match_id: data.match_id, status: data.status })
+      setStale(false)
+      setOffline(false)
+      setLastSettled(Boolean(data.last_settled))
+      setReceivedAt(Date.now())
+      return true
     }
+    if (r.ok && data.ok === true) {
+      // Server definitively answered: nothing live (and no recent settle).
+      setMatch(null)
+      setStale(false)
+      setOffline(false)
+      setLastSettled(false)
+      setReceivedAt(Date.now())
+      return true
+    }
+    // Transient failure (tunnel/API blip) — keep the last board visible;
+    // a 502/504/timeout means the house itself is down.
+    setStale(true)
+    setOffline(r.offline)
+    return false
   }, [])
 
-  useEffect(() => {
-    load()
-    pollRef.current = window.setInterval(load, 4000)
-    return () => {
-      if (pollRef.current) window.clearInterval(pollRef.current)
-    }
-  }, [load])
+  // ~10s while visible; paused in hidden tabs; 20s → 40s → … → 2m while failing.
+  usePolling(load, { intervalMs: 10_000, maxMs: 120_000 })
 
   useEffect(() => {
     ;(async () => {
@@ -414,53 +513,37 @@ export default function ArenaPage() {
     })()
   }, [])
 
-  useEffect(() => {
-    let dead = false
-    const pull = () => {
-      fetch('/api/agentic/house-schedule', { cache: 'no-store' })
-        .then((r) => r.json())
-        .then((s: ScheduleInfo) => {
-          if (!dead && s?.ok) setSchedule(s)
-        })
-        .catch(() => {})
-    }
-    pull()
-    // Refresh the seat time as games settle so the countdown stays honest.
-    const iv = window.setInterval(pull, 20000)
-    return () => {
-      dead = true
-      window.clearInterval(iv)
-    }
+  // Refresh the seat time as games settle so the countdown stays honest.
+  const pullSchedule = useCallback(async () => {
+    const r = await fetchJson<ScheduleInfo>('/api/agentic/house-schedule', 8000)
+    if (r.data?.ok) setSchedule(r.data)
+    return r.ok
   }, [])
+  usePolling(pullSchedule, { intervalMs: 30_000, maxMs: 5 * 60_000 })
 
-  // One heartbeat drives the clocks and the next-game countdown.
-  useEffect(() => {
-    const iv = window.setInterval(() => setTick(Date.now()), 1000)
-    return () => window.clearInterval(iv)
-  }, [])
-
-  // Telegram approval: poll until the ticket prints (or fails).
+  // Telegram approval: poll until the ticket prints (or fails). Starts brisk
+  // (the bettor is tapping Yes right now), eases off to 8s, backs off harder
+  // on errors, and checks at once when the bettor comes back from Telegram.
   useEffect(() => {
     if (ticket?.state !== 'pending') return
     const aid = ticket.approval_id
     const pendingAmount = ticket.amount
     const pendingSide = ticket.side
     const pendingMatch = ticket.match_id
+    const deadline = Date.now() + 2 * 60_000
     let dead = false
-    let tries = 0
-    const iv = window.setInterval(async () => {
-      if (dead) return
-      tries += 1
-      if (tries > 60) {
-        window.clearInterval(iv)
-        setTicket({ state: 'failed', message: 'Approval timed out — nothing was charged. Try again.' })
-        return
-      }
+    let inflight = false
+    let delay = 2000
+    let timer: number | undefined
+
+    const step = async () => {
+      if (dead || inflight) return
+      inflight = true
+      let transient = false
       try {
         const r = await api(`/api/agentic/spectator-bet?approval_id=${encodeURIComponent(aid)}`)
         if (dead) return
         if (r.ok) {
-          window.clearInterval(iv)
           const d = (r.data || {}) as { amount?: number; match_id?: string; balance?: number }
           const printed: Ticket = {
             state: 'printed',
@@ -477,83 +560,79 @@ export default function ArenaPage() {
           return
         }
         const d = (r.data || {}) as { pending?: boolean; error?: string; message?: string }
-        if (d.pending) return // still waiting on Telegram
         if (String(d.error || '').startsWith('approval_')) {
-          window.clearInterval(iv)
           setTicket({
             state: 'failed',
             message: String(d.message || 'The approval was declined or expired — nothing was charged.'),
           })
           return
         }
-        // transient poll error — keep trying
+        transient = !d.pending // still waiting on Telegram vs. a poll error
       } catch {
-        /* retry */
+        transient = true
+      } finally {
+        inflight = false
       }
-    }, 2000)
+      if (dead) return
+      if (Date.now() > deadline) {
+        setTicket({ state: 'failed', message: 'Approval timed out — nothing was charged. Try again.' })
+        return
+      }
+      delay = transient ? Math.min(15_000, delay * 2) : Math.min(8_000, Math.round(delay * 1.4))
+      timer = window.setTimeout(step, delay)
+    }
+
+    const onVisibility = () => {
+      if (document.hidden) return
+      window.clearTimeout(timer)
+      timer = window.setTimeout(step, 0)
+    }
+
+    timer = window.setTimeout(step, delay)
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       dead = true
-      window.clearInterval(iv)
+      window.clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [ticket])
 
   // Ticket outcome checker: every printed ticket resolves visibly — win,
   // loss, or refund — never silently. Polls only while its table may still
   // be live; once resolved the ticket card itself carries the verdict.
-  useEffect(() => {
-    if (!ticket || ticket.state !== 'printed') return
-    let dead = false
-    const check = async () => {
-      try {
-        const r = await fetch(
-          `/api/agentic/house-play?status_for=${encodeURIComponent(ticket.match_id)}`,
-          { cache: 'no-store' }
-        )
-        const d = (await r.json().catch(() => ({}))) as {
-          settled?: boolean
-          outcome?: 'win' | 'loss' | 'refund'
-          payout?: number
-          ended_at?: string
-        }
-        if (dead || !d.settled || !d.outcome) return
-        const resolved: Ticket = {
-          state: 'settled',
-          amount: ticket.amount,
-          side: ticket.side,
-          match_id: ticket.match_id,
-          outcome: d.outcome,
-          payout: d.payout,
-          endedAt: d.ended_at,
-        }
-        setTicket(resolved)
-        try {
-          window.localStorage.setItem(TICKET_KEY, JSON.stringify(resolved))
-        } catch {}
-      } catch {
-        /* transient — retry on next tick */
-      }
+  const checkTicket = useCallback(async () => {
+    if (!ticket || ticket.state !== 'printed') return true
+    const r = await fetchJson<{
+      settled?: boolean
+      outcome?: 'win' | 'loss' | 'refund'
+      payout?: number
+      ended_at?: string
+    }>(`/api/agentic/house-play?status_for=${encodeURIComponent(ticket.match_id)}`, 8000)
+    const d = r.data || {}
+    if (!d.settled || !d.outcome) return r.ok
+    const resolved: Ticket = {
+      state: 'settled',
+      amount: ticket.amount,
+      side: ticket.side,
+      match_id: ticket.match_id,
+      outcome: d.outcome,
+      payout: d.payout,
+      endedAt: d.ended_at,
     }
-    check()
-    const iv = window.setInterval(check, 20000)
-    return () => {
-      dead = true
-      window.clearInterval(iv)
-    }
+    setTicket(resolved)
+    try {
+      window.localStorage.setItem(TICKET_KEY, JSON.stringify(resolved))
+    } catch {}
+    return true
   }, [ticket])
+  usePolling(checkTicket, { intervalMs: 20_000, maxMs: 5 * 60_000, enabled: ticket?.state === 'printed' })
 
   const grid = useBoard(match)
   const moves = useMemo(() => (match?.moves || []).map((m) => m?.san).filter(Boolean) as string[], [match])
 
   const settled = match?.status === 'settled' || Boolean(match?.result)
-  const drawWidth = useMemo(() => {
-    if (!match?.spectator_book?.totals) return null
-    const d = Number(match.spectator_book.totals.draw ?? 0)
-    const a = Number(match.spectator_book.totals.a ?? 0)
-    const b = Number(match.spectator_book.totals.b ?? 0)
-    const total = a + b
-    if (total <= 0) return null
-    return (d / total) * 100
-  }, [match])
+  // Draw share of the whole spectator pot (a + b + draw), clamped to 100%.
+  const drawWidth = useMemo(() => drawShare(match?.spectator_book?.totals), [match])
   const odds = useMemo(() => {
     if (!match || settled) return null
     const t = match.spectator_book?.totals || {}
@@ -584,56 +663,6 @@ export default function ArenaPage() {
   const plies = match?.moves?.length || 0
   const toMove: 'white' | 'black' = plies % 2 === 0 ? 'white' : 'black'
   const running = match?.status === 'playing' && !settled
-  const msFor = (side: 'white' | 'black'): number | null => {
-    const c = match?.clock?.[side]
-    if (!c || typeof c.remaining_ms !== 'number') return null
-    if (!running || side !== toMove) return c.remaining_ms
-    return Math.max(0, c.remaining_ms - Math.max(0, tick - receivedAtRef.current))
-  }
-  const clockFlagged = (side: 'white' | 'black') => Boolean(match?.clock?.[side]?.flag)
-  const clockCls = (side: 'white' | 'black') => {
-    const ms = msFor(side)
-    if (clockFlagged(side)) return 'ar-clock ar-clock-flag'
-    const low = ms != null && ms < 30000
-    if (running && side === toMove) return low ? 'ar-clock ar-clock-run ar-clock-low' : 'ar-clock ar-clock-run'
-    return low ? 'ar-clock ar-clock-low' : 'ar-clock'
-  }
-
-  // ── when the house seats the next table ────────────────────
-  const nextLabel = (() => {
-    if (!schedule?.ok) return null
-    if (!schedule.enabled)
-      return 'The house floor is paused — the next table opens when the desk turns it back on.'
-    const cad = Number(schedule.cadence_sec || 0)
-    if (!cad) return null
-    // Authoritative: the API computes this with the same clock-aligned math
-    // the house session uses to seat a table. Fall back to a rough anchor.
-    const anchorIso = String(schedule.next_game_at || '')
-    const parsed = Date.parse(anchorIso)
-    const at = Number.isFinite(parsed)
-      ? parsed
-      : (() => {
-          const fallbackIso = !settled && match?.created_at
-            ? String(match.created_at)
-            : String(schedule.last_settled_at || match?.settled_at || '')
-          const a = Date.parse(fallbackIso)
-          return Number.isFinite(a) ? a + cad * 1000 : NaN
-        })()
-    const every = schedule.every_minutes || Math.max(1, Math.round(cad / 60))
-    const perDay = schedule.games_per_day || Math.floor(86400 / cad)
-    if (!Number.isFinite(at))
-      return `A fresh table seats about every ${every} minutes — roughly ${perDay} games a day.`
-    const d = at - tick
-    const hm = new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    if (d <= 0)
-      return `Next table seats any moment — the house plays about every ${every} minutes.`
-    const totalSec = Math.floor(d / 1000)
-    const inStr =
-      totalSec >= 3600
-        ? `${Math.floor(totalSec / 3600)}h ${Math.floor((totalSec % 3600) / 60)}m`
-        : `${Math.floor(totalSec / 60)}:${String(totalSec % 60).padStart(2, '0')}`
-    return `Next game around ${hm} — starts in ${inStr}. A fresh table seats about every ${every} minutes (${perDay} a day).`
-  })()
 
   async function placeBet() {
     if (!match?.match_id || settled) return
@@ -699,22 +728,29 @@ export default function ArenaPage() {
           real stake, and the winner gets paid by the box — no person needed.{' '}
           <em>Leaving this page does not pause the game.</em>
         </p>
-        {nextLabel ? (
-          <p className="rm-muted" style={{ fontSize: '0.8rem', margin: '-0.9rem 0 1.5rem' }}>
-            {nextLabel}
-          </p>
-        ) : null}
+        <NextTableLine schedule={schedule} match={match} settled={settled} />
 
         <div className="rm-stack-lg">
+          {offline && !match ? (
+          <div className="rm-card rm-card-hero ar-offline" role="status">
+            <span className="bk-stamp">HOUSE OFFLINE</span>
+            <p className="ar-note">
+              <strong>The house is offline — back soon.</strong> The robots’ table runs on
+              the house server and it isn’t answering right now. This page keeps checking
+              on its own; no bets are taken while the house is down.
+            </p>
+          </div>
+          ) : (
           <div className="rm-card rm-card-hero">
             <div className="ar-side">
               <span className="ar-player">
                 <strong>{blackName.toUpperCase()}</strong> · black
               </span>
-              <span className={clockCls('black')}>
-                {fmtClock(msFor('black'))}
-                {clockFlagged('black') ? <span className="ar-flag">flagged</span> : null}
-              </span>
+              <ChessClock
+                clock={match?.clock?.black}
+                active={running && toMove === 'black'}
+                receivedAt={receivedAt}
+              />
             </div>
             <div className="ar-board-wrap">
               <div className="ar-board-frame">
@@ -738,15 +774,18 @@ export default function ArenaPage() {
               <span className="ar-player">
                 <strong>{whiteName.toUpperCase()}</strong> · white
               </span>
-              <span className={clockCls('white')}>
-                {fmtClock(msFor('white'))}
-                {clockFlagged('white') ? <span className="ar-flag">flagged</span> : null}
-              </span>
+              <ChessClock
+                clock={match?.clock?.white}
+                active={running && toMove === 'white'}
+                receivedAt={receivedAt}
+              />
             </div>
-            <StatusLine match={match} />
+            <StatusLine match={match} loading={loading} />
             {stale ? (
               <p className="ar-note" style={{ opacity: 0.75 }}>
-                Connection hiccup — reconnecting, the board may be a move behind.
+                {offline
+                  ? 'The house is offline — this is the last board we saw. Back soon; the page keeps checking.'
+                  : 'Connection hiccup — reconnecting, the board may be a move behind.'}
               </p>
             ) : null}
             {!stale && lastSettled ? (
@@ -769,6 +808,7 @@ export default function ArenaPage() {
               </div>
             </div>
           </div>
+          )}
 
           <div className="rm-card">
             <p className="rm-section-title">Bet on the game</p>
@@ -776,7 +816,12 @@ export default function ArenaPage() {
               <>
                 <p className="rm-muted" style={{ margin: '0 0 0.9rem' }}>
                   Money comes from your play wallet ({me.balance != null ? `$${Number(me.balance).toFixed(2)}` : 'check the wallet page'}).
-                  {settled || !match?.match_id ? (
+                  {offline ? (
+                    <>
+                      {' '}
+                      <strong>The house is offline — betting reopens when it’s back.</strong>
+                    </>
+                  ) : settled || !match?.match_id ? (
                     <>
                       {' '}
                       <strong>This table is finished — betting is closed.</strong>
@@ -837,7 +882,7 @@ export default function ArenaPage() {
                   <button
                     type="button"
                     className="rm-btn rm-btn-primary"
-                    disabled={betBusy || !match?.match_id || pot <= 0 || settled}
+                    disabled={betBusy || offline || !match?.match_id || pot <= 0 || settled}
                     onClick={placeBet}
                   >
                     {betBusy ? 'Placing…' : 'Place the bet'}
@@ -930,7 +975,7 @@ export default function ArenaPage() {
             ) : authOpen ? (
               <div className="rm-stack">
                 <TelegramLogin
-                  botUsername={process.env.NEXT_PUBLIC_BOT_USERNAME || 'myboardmanOfficialBot'}
+                  botUsername={REMATCH_BOT_USERNAME}
                   onAuth={async () => {
                     setAuthOpen(false)
                     window.location.reload()
@@ -991,7 +1036,7 @@ export default function ArenaPage() {
                   <div className="ar-odds-row">
                     <span className="ar-od">Draw</span>
                     <span className="ar-od-bar">
-                      <span className="ar-od-fill draw" style={{ width: drawWidth ?? '0%' }} />
+                      <span className="ar-od-fill draw" style={{ width: drawWidth }} />
                     </span>
                     <span className="ar-od-val">{odds.draw ? `${odds.draw.toFixed(2)}` : '—'}</span>
                   </div>
