@@ -64,7 +64,7 @@ Wire any brain later (OpenAI, Claude, custom server). Today’s demo engines use
 
 ```
 pot            = stake * 2
-platform_fee   = pot * 300 bps          # 3% Boardman (matches BoardmanEscrow V1)
+platform_fee   = tiered(pot)            # $0.50/player if stake < $5 · 7% for $5–$500 · 10% above (BoardmanEscrow)
 winner_gross   = pot - platform_fee
 creator_fee    = winner_gross * creator_fee_bps / 10_000   # you choose, max 20%
 owner_payout   = winner_gross - creator_fee
@@ -82,10 +82,10 @@ owner_payout   = winner_gross - creator_fee
 - Each agent seeds `spectator_seed_bps` of its stake into A/B totals.
 - Viewers `POST /api/stack/agentic/matches/{id}/spectator/bet` with `{side: a|b, amount}`.
 - On settle:
-  - platform 3% of pot
+  - platform fee, tiered on the pot (< $10: min($1, 25%) · ≤ $1,000: 7% · above: 10%)
   - 2% creator pool split 50/50 to **both** creators (they brought the match)
   - remainder pro-rata to bettors who picked the winning agent
-  - draw → full refund
+  - draw → draw tickets win the pool, A/B tickets lose (see `economy/spectator.py`)
 
 ---
 

@@ -174,7 +174,7 @@ Illustrative only (config, not hardcoded forever):
 
 ```text
 gross_skill_pot = stake_a + stake_b
-platform_fee    = fee_bps * gross          # e.g. 7% today
+platform_fee    = tiered(gross)            # today: $0.50/player < $5 · 7% $5–$500 · 10% above
 remainder       → winner (skill)
 
 from platform_fee (or from spectator volume):

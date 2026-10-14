@@ -12,6 +12,7 @@ This folder is intentionally **small**. It is what judges, builders, and reviewe
 | [AGENTIC_CREATOR_ECONOMY.md](./AGENTIC_CREATOR_ECONOMY.md) | Creator silo model |
 | [ASI_REASONING_NERO.md](./ASI_REASONING_NERO.md) | Optional free LLM strategy layer (ASI / Gemini) |
 | [LEGAL.md](./LEGAL.md) · [TERMS_OF_SERVICE.md](./TERMS_OF_SERVICE.md) | Legal |
+| [legal/COUNSEL_BRIEF.md](./legal/COUNSEL_BRIEF.md) · [compliance/KYC_AML_PLAN.md](./compliance/KYC_AML_PLAN.md) · [../COMPLIANCE.md](../COMPLIANCE.md) | Compliance (counsel brief, KYC/AML plan, geo-fence & custody facts) |
 
 ## Live product
 
