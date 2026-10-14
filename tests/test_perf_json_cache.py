@@ -76,16 +76,18 @@ def test_season_save_invalidates_and_reads_hit_cache():
     assert S._state_view()["pending_joins"] == []
 
 
-def test_cached_view_is_much_faster_than_parse():
-    # ~2MB of season-shaped JSON; the cached view must not re-parse it
+def test_cached_view_does_not_reparse(monkeypatch):
+    # ~2MB of season-shaped JSON; the cached view must parse it once, not per read.
+    # Counting parses (not wall-clock) keeps this stable under full-suite load.
+    import gaming.src.stack.agentic.json_cache as jc
+
     big = {"season": {"matchdays": {str(i): {"results": [{"feed": ["x" * 40] * 50}]} for i in range(200)}}, "pending_joins": []}
     save_json(S.STATE_FILE, big)
     get_cache().invalidate(S.STATE_FILE)
-    t = time.perf_counter()
-    S._state_view()
-    cold = time.perf_counter() - t
-    t = time.perf_counter()
+    parses = []
+    real_load = jc.load_json
+    monkeypatch.setattr(jc, "load_json", lambda *a, **k: parses.append(1) or real_load(*a, **k))
+    first = S._state_view()
     for _ in range(20):
-        S._state_view()
-    warm = (time.perf_counter() - t) / 20
-    assert warm < cold / 20
+        assert S._state_view() is first
+    assert len(parses) == 1
