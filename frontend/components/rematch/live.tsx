@@ -58,7 +58,14 @@ export function usePolling(
     intervalMs,
     maxMs = 60_000,
     enabled = true,
-  }: { intervalMs: number; maxMs?: number; enabled?: boolean },
+    immediate = true,
+  }: {
+    intervalMs: number
+    maxMs?: number
+    enabled?: boolean
+    /** false: the caller already loaded once — wait a full interval first */
+    immediate?: boolean
+  },
 ) {
   const taskRef = useRef(task)
   useEffect(() => {
@@ -100,13 +107,14 @@ export function usePolling(
     }
 
     document.addEventListener('visibilitychange', onVisibility)
-    run()
+    if (immediate) run()
+    else schedule(intervalMs)
     return () => {
       dead = true
       window.clearTimeout(timer)
       document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [intervalMs, maxMs, enabled])
+  }, [intervalMs, maxMs, enabled, immediate])
 }
 
 /** Current time, refreshed every `everyMs` — only in the component that asks. */
