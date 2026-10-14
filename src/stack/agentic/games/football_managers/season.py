@@ -86,6 +86,9 @@ STATE_FILE = "afm_season.json"
 # money (USDC, v1 defaults)
 SEASON_ENTRY_USDC = Decimal("25.00")
 MATCH_STAKE_USDC = Decimal("5.00")
+# Demo faucet floor for house / AI clubs (only while ledger.demo_faucet_mode()
+# is on; off on mainnet). With the faucet off a club that can't pay the entry
+# is recorded unpaid and sits the season out.
 DEMO_FAUCET_FLOOR = Decimal("600.00")  # so a full derby season settles cleanly
 SEASON_POT_SHARES_2 = (Decimal("0.70"), Decimal("0.30"))
 SEASON_POT_SHARES_N = (Decimal("0.60"), Decimal("0.25"), Decimal("0.15"))
@@ -516,7 +519,7 @@ def open_season(
             w = _wallet(aid)
             if not w:
                 continue
-            L.ensure_funded(w, DEMO_FAUCET_FLOOR)  # demo ledger faucet so the season can run
+            L.ensure_funded(w, DEMO_FAUCET_FLOOR)  # gated demo faucet (no-op when off)
             try:
                 L.debit(w, SEASON_ENTRY_USDC, reason="afm_season_entry", ref=f"s{no}")
                 L.credit(pot, SEASON_ENTRY_USDC, reason="afm_season_pot", ref=f"s{no}")
@@ -1247,15 +1250,18 @@ def _finalize_season(s: dict[str, Any]) -> None:
             continue
         amt = (pot * shares[i]).quantize(Decimal("0.000001"))
         if amt > 0:
-            _debit_budget(s["pot_wallet"], amt, reason="afm_season_pot_payout", ref=f"s{no}")
-            L.credit(w, amt, reason="afm_season_pot_payout", ref=f"s{no}")
-            paid += amt
+            # credit only what the pot actually gave up — never mint a shortfall
+            got, _short = _debit_budget(s["pot_wallet"], amt, reason="afm_season_pot_payout", ref=f"s{no}")
+            if got > 0:
+                L.credit(w, got, reason="afm_season_pot_payout", ref=f"s{no}")
+            paid += got
     # leftover dust goes to the champion
     dust = pot - paid
     cw = _wallet(order[0])
     if cw and dust > 0:
-        _debit_budget(s["pot_wallet"], dust, reason="afm_season_pot_payout", ref=f"s{no}")
-        L.credit(cw, dust, reason="afm_season_pot_dust", ref=f"s{no}")
+        got, _short = _debit_budget(s["pot_wallet"], dust, reason="afm_season_pot_payout", ref=f"s{no}")
+        if got > 0:
+            L.credit(cw, got, reason="afm_season_pot_dust", ref=f"s{no}")
     s["status"] = "finished"
     s["finished_at"] = _iso(_now())
     # v1.8: the between-seasons window opens at the final whistle

@@ -14,10 +14,13 @@ store as everything else in the game.
 """
 from __future__ import annotations
 
+import logging
 import threading
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 _SIDES = ("home", "draw", "away")
 CLOSE_OFFSET_HOURS = 0  # betting closes at the fixture deadline (open → deadline)
@@ -266,6 +269,7 @@ def settle_matchday(season_no: int, matchday: int, results: list[dict[str, Any]]
     resolve — idempotent (books flip to `settled`).
     """
     from gaming.src.stack.agentic import ledger as L
+    from gaming.src.stack.agentic.db import transaction
 
     settled: list[dict[str, Any]] = []
     with _lock:
@@ -297,27 +301,36 @@ def settle_matchday(season_no: int, matchday: int, results: list[dict[str, Any]]
             if pot_total > 0:
                 fee = (pot_total * Decimal(PLATFORM_FEE_BPS) / Decimal(10000)).quantize(Decimal("0.000001"))
                 distributable = pot_total - fee
-                if stakes[winning] > 0:
-                    for better, st in (book.get("stakes", {}).get(winning) or {}).items():
-                        share = (distributable * _d(st) / stakes[winning]).quantize(Decimal("0.000001"))
-                        if share > 0:
-                            L.credit(better, share, reason="afm_bet_payout", ref=fx)
-                            payouts[better] = str(share)
-                            paid += share
-                # only rounding dust can remain — the winners' shares sum to
-                # distributable, and losing stakes fund the pool by design
-                dust = pot_total - paid
-                if dust > 0:
-                    L.credit(
-                        f"afm_season_{int(season_no)}_pot",
-                        dust,
-                        reason="afm_bet_unbacked",
-                        ref=fx,
-                    )
                 try:
-                    L.debit(pot, pot_total, reason="afm_bet_settle", ref=fx)
-                except Exception:
-                    pass  # pot short — ledger drift; never block the season
+                    # Pay out only what the pot actually holds: the pot debit
+                    # comes first, in the same transaction as every credit.
+                    with transaction():
+                        L.debit(pot, pot_total, reason="afm_bet_settle", ref=fx)
+                        if stakes[winning] > 0:
+                            for better, st in (book.get("stakes", {}).get(winning) or {}).items():
+                                share = (distributable * _d(st) / stakes[winning]).quantize(Decimal("0.000001"))
+                                if share > 0:
+                                    L.credit(better, share, reason="afm_bet_payout", ref=fx)
+                                    payouts[better] = str(share)
+                                    paid += share
+                        # only rounding dust can remain — the winners' shares sum to
+                        # distributable, and losing stakes fund the pool by design
+                        dust = pot_total - paid
+                        if dust > 0:
+                            L.credit(
+                                f"afm_season_{int(season_no)}_pot",
+                                dust,
+                                reason="afm_bet_unbacked",
+                                ref=fx,
+                            )
+                except L.InsufficientFunds as exc:
+                    # Pot short = ledger drift. Never mint the payouts; park the
+                    # book for ops and keep the season moving.
+                    logger.error("[afm_betting] pot %s short, book %s not paid: %s", pot, fx, exc)
+                    book["status"] = "settle_failed"
+                    book["error"] = str(exc)
+                    book["settled_at"] = _iso(_now())
+                    continue
 
             book["status"] = "settled"
             book["result"] = {"home_goals": hg, "away_goals": ag, "winning_side": winning}
@@ -362,6 +375,7 @@ def close_stale_books(max_hours: float = 6.0) -> int:
     """Guard: books whose matchday never resolved within a window flip to
     `closed` (stake refunds) instead of holding funds forever."""
     from gaming.src.stack.agentic import ledger as L
+    from gaming.src.stack.agentic.db import transaction
 
     n = 0
     with _lock:
@@ -378,18 +392,23 @@ def close_stale_books(max_hours: float = 6.0) -> int:
                     continue
             except Exception:
                 continue
-            # refund everything on the book
-            for side, stakers in (book.get("stakes") or {}).items():
-                for better, st in (stakers or {}).items():
-                    if _d(st) > 0:
-                        L.credit(better, _d(st), reason="afm_bet_refund", ref=fx)
+            # refund everything on the book — out of the pot, never from nothing
             pot_total = sum(_d(v) for stakers in (book.get("stakes") or {}).values() for v in (stakers or {}).values())
             pot = f"afm_fixture_s{int(book.get('season_no') or 0)}_md{int(book.get('matchday') or 0)}_{book.get('home')}_{book.get('away')}"
             if pot_total > 0:
                 try:
-                    L.debit(pot, pot_total, reason="afm_bet_close", ref=fx)
-                except Exception:
-                    pass
+                    with transaction():
+                        L.debit(pot, pot_total, reason="afm_bet_close", ref=fx)
+                        for side, stakers in (book.get("stakes") or {}).items():
+                            for better, st in (stakers or {}).items():
+                                if _d(st) > 0:
+                                    L.credit(better, _d(st), reason="afm_bet_refund", ref=fx)
+                except L.InsufficientFunds as exc:
+                    logger.error("[afm_betting] pot %s short, book %s not refunded: %s", pot, fx, exc)
+                    book["status"] = "settle_failed"
+                    book["error"] = str(exc)
+                    book["settled_at"] = _iso(_now())
+                    continue
             book["status"] = "closed"
             book["settled_at"] = _iso(_now())
             n += 1
