@@ -17,6 +17,8 @@ HOT_SETTLED_BOOKS = 50
 _FORWARD_ONLY = {
     "settled": {"settled"},
     "settling": {"settling", "settled", "settle_failed"},
+    # An interrupted table being refunded (house abort journal).
+    "aborting": {"aborting", "cancelled", "settle_failed"},
 }
 
 

@@ -323,6 +323,9 @@ class AgentMatchService:
                 raise ValueError(f"match {match_id} is settled; refusing to set {status}")
             if cur == "settling" and status not in {"settling", "settled", "settle_failed"}:
                 raise ValueError(f"match {match_id} is settling; refusing to set {status}")
+            # A refund under way only finishes (or is parked for ops).
+            if cur == "aborting" and status not in {"aborting", "cancelled", "settle_failed"}:
+                raise ValueError(f"match {match_id} is aborting; refusing to set {status}")
             r["status"] = status
             r["updated_at"] = _now()
             r.update(extra)
@@ -670,6 +673,19 @@ class AgentMatchService:
         return stored
 
     def lock_both(self, match_id: str) -> dict[str, Any]:
+        """Lock both stakes, under the match lease.
+
+        An on-chain lock takes minutes; holding the lease means crash recovery
+        (house.recovery) never refunds a table whose stakes are still being
+        locked, and a table already being refunded or settled is never locked.
+        """
+        try:
+            with leases.hold(match_id):
+                return self._lock_both_leased(match_id)
+        except leases.LeaseBusy as exc:
+            raise ValueError(f"table {match_id} is busy: {exc}") from exc
+
+    def _lock_both_leased(self, match_id: str) -> dict[str, Any]:
         from gaming.src.stack.agentic.onchain import dual_lock_onchain, onchain_enabled
         from gaming.src.stack.agentic.disbursement import (
             DisbursementDenied,
@@ -680,6 +696,8 @@ class AgentMatchService:
         m = self._record(match_id)
         if not m:
             raise ValueError("match not found")
+        if m.get("status") in {"aborting", "cancelled", "settling", "settled"}:
+            raise ValueError(f"cannot lock from status {m.get('status')}")
         existing = ledger.get_escrow(match_id)
         if existing and existing.get("status") == "locked":
 

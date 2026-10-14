@@ -25,7 +25,12 @@ from gaming.src.stack.agentic.registry import get_registry
 logger = logging.getLogger(__name__)
 
 LIVE_STATUSES = frozenset(
-    {"open", "locked", "partial_lock", "playing", "queued", "settle_failed", "locking", "settling"}
+    {"open", "locked", "partial_lock", "playing", "queued", "settle_failed", "locking", "settling", "aborting"}
+)
+# Statuses abort_table may refund from (no result yet). "playing" only with
+# reason "interrupted"; "aborting" is a refund resumed from its journal.
+ABORTABLE_STATUSES = frozenset(
+    {"open", "partial_lock", "locked", "queued", "lock_failed", "locking", "playing", "aborting", "error"}
 )
 # Statuses a worker owns; orphaned ones (no live lease) are re-seated.
 WORKER_STATUSES = frozenset({"playing", "settling", "locking", "locked"})
@@ -503,6 +508,235 @@ def _release_table(match_id: str) -> None:
     leases.release(match_id)
 
 
+def abort_table(match_id: str, *, reason: str) -> dict[str, Any]:
+    """Refund a table that has no result, exactly once.
+
+    Runs under the match lease (a table another live process drives raises
+    TableBusy) and as journaled steps, like settlement: the first write flips
+    the table to ``aborting`` so nobody can start or settle it any more, then
+
+      abort:onchain    cancel the on-chain escrow (both stakes back)
+      abort:escrow     ledger draw-refund of both stakes
+      abort:spectator_cancel_onchain   SpectatorPool cancel (fans claim refunds)
+      abort:spectator  void the demo book: every ticket and both agents'
+                       spectator/draw seeds credited back
+      abort:play_adjust:<i>  the play-wallet side of each ticket refund
+      abort:finalize   status -> cancelled
+
+    A crash between steps leaves the table ``aborting``; the next attempt (crash
+    recovery, ops script) skips every journaled step, so nothing is refunded
+    twice and nothing is skipped.
+    """
+    from gaming.src.stack.agentic.db import leases
+    from gaming.src.stack.agentic.matches import TableBusy
+
+    try:
+        with leases.hold(match_id):
+            return _abort_under_lease(match_id, reason)
+    except leases.LeaseBusy as exc:
+        raise TableBusy(str(exc)) from exc
+
+
+def _abort_under_lease(match_id: str, reason: str) -> dict[str, Any]:
+    from gaming.src.stack.agentic import ledger
+    from gaming.src.stack.agentic import matches as matches_mod
+    from gaming.src.stack.agentic.disbursement import authorize_abort
+    from gaming.src.stack.agentic.economy.spectator import SpectatorBook
+    from gaming.src.stack.agentic.matches import get_match_service
+
+    svc = get_match_service()
+    m = svc._record(match_id)
+    if not m:
+        raise ValueError("match not found")
+    st = str(m.get("status") or "")
+    if st == "cancelled":
+        return {"match_id": match_id, "status": "cancelled", "reason": m.get("abort_reason") or reason,
+                "already": True, "match": m}
+    if m.get("result") or m.get("pending_result") or st in {"settled", "settling", "settle_failed"}:
+        raise ValueError("match already has a result — settle, do not abort")
+    if st == "playing" and reason != "interrupted":
+        raise ValueError("cannot abort a playing table — wait for a result")
+    why = str(m.get("abort_reason") or reason) if st == "aborting" else reason
+    auth = authorize_abort(m, reason=why)
+
+    max_attempts = matches_mod._max_settle_attempts()
+    outcome: dict[str, Any] = {}
+    now = datetime.now(timezone.utc).isoformat()
+
+    def _claim(r: dict[str, Any]) -> Any:
+        cur = str(r.get("status") or "")
+        if cur == "cancelled":
+            outcome["done"] = True
+            return False
+        if r.get("result") or r.get("pending_result") or cur not in ABORTABLE_STATUSES:
+            outcome["refused"] = cur
+            return False
+        if cur == "aborting":
+            r["abort_attempts"] = int(r.get("abort_attempts") or 0) + 1
+            if r["abort_attempts"] > max_attempts:
+                r["status"] = "settle_failed"
+                r["settle_error"] = f"abort retried {max_attempts}x — needs ops"
+                outcome["parked"] = True
+        else:
+            r["status"] = "aborting"
+            r["abort_reason"] = why
+            r["abort_from_status"] = cur
+            r["abort_started_at"] = now
+            r["abort_attempts"] = 1
+            r["disbursement"] = auth.to_dict()
+        r["updated_at"] = now
+        return None
+
+    rec = svc._update(match_id, _claim)
+    if rec is None:
+        raise ValueError("match not found")
+    if outcome.get("done"):
+        return {"match_id": match_id, "status": "cancelled", "reason": rec.get("abort_reason") or why,
+                "already": True, "match": rec}
+    if outcome.get("refused"):
+        raise ValueError(f"cannot abort from status {outcome['refused']}")
+    if outcome.get("parked"):
+        raise RuntimeError(f"match {match_id}: abort attempts exhausted — parked as settle_failed")
+    matches_mod._after_step("aborting")
+
+    chain = rec.get("chain_id") or "arc"
+    onchain_out: Any = None
+    if rec.get("onchain") or rec.get("settlement_mode") == "onchain":
+
+        def _onchain_abort() -> dict[str, Any]:
+            from gaming.src.stack.agentic.onchain import read_onchain_match, resolve_onchain
+
+            # An unreadable escrow is NOT "nothing to cancel": raise, so the
+            # step stays undone and the next attempt asks the chain again.
+            on = read_onchain_match(match_id, chain_id=chain) or {}
+            st_on = int(on.get("status") or -1)
+            if st_on in {3, 4}:
+                return {"tx_hash": None, "already_final": True, "status": st_on}
+            if st_on not in {0, 1, 2}:
+                return {"tx_hash": None, "skipped": True, "status": st_on}
+            return resolve_onchain(
+                match_id,
+                rec.get("agent_a_wallet") or on.get("player1"),
+                chain_id=chain,
+                draw=True,
+                authorization=auth,
+            )
+
+        onchain_out = svc._external_step(match_id, "abort:onchain", _onchain_abort)
+
+    def _escrow_refund() -> dict[str, Any]:
+        esc = ledger.get_escrow(match_id)
+        if not esc:
+            return {"refunded": False, "escrow_status": None}
+        est = str(esc.get("status") or "")
+        if est == "locked":
+            out = ledger.settle(match_id, esc["agent_a_wallet"], result="draw")
+            return {"refunded": True, "stake_usdc": str(esc.get("stake_usdc")), "escrow": out}
+        if est == "settled":
+            if str(esc.get("result") or "") == "draw":
+                return {"refunded": True, "already": True, "escrow": esc}
+            raise RuntimeError(f"escrow {match_id} already settled as {esc.get('result')}; refusing to abort")
+        if est == "partial_lock":
+            raise RuntimeError(f"escrow {match_id} is half-locked — needs ops")
+        return {"refunded": False, "escrow_status": est}
+
+    esc_out = svc._step(match_id, "abort:escrow", _escrow_refund) or {}
+
+    book = SpectatorBook().get(match_id) or {}
+    onchain_book = bool(book.get("onchain"))
+    if onchain_book:
+        from gaming.src.stack.agentic.spectator_onchain import cancel_book_onchain, spectator_onchain_enabled
+
+        if spectator_onchain_enabled():
+            svc._external_step(
+                match_id,
+                "abort:spectator_cancel_onchain",
+                lambda: cancel_book_onchain(match_id, chain_id=chain),
+            )
+        else:
+            # Fans' USDC sits in the SpectatorPool; with the operator off,
+            # its permissionless refundExpired() after closeAt is the path.
+            logger.warning("[house] abort %s: on-chain book but SpectatorPool is off — fans use refundExpired", match_id)
+
+    def _void() -> dict[str, Any]:
+        snap: dict[str, Any] = {}
+        fan: list[dict[str, Any]] = []
+        if book:
+            voided = SpectatorBook().void(match_id, reason=why)
+            snap = {
+                "status": voided.get("status"),
+                "totals": voided.get("totals"),
+                "payouts": voided.get("payouts"),
+                "onchain": bool(voided.get("onchain")),
+                "pool": voided.get("pool"),
+                "closed_reason": voided.get("closed_reason"),
+            }
+            if not onchain_book:
+                # On-chain fans claim from the pool; demo-book fans are paid here.
+                fan = list((voided.get("payouts") or {}).get("refunds") or [])
+        for r in fan:
+            ledger.credit(str(r["bettor_id"]), Decimal(str(r["amount"])), reason="spectator_refund_void", ref=match_id)
+        # Return exactly what the lock debited for the book seeds (wallet and
+        # amount from the ledger rows themselves, so a wallet swap at lock
+        # time cannot misdirect the refund).
+        seeds: list[dict[str, Any]] = []
+        for t in ledger.txs(ref=match_id):
+            if t.get("type") == "debit" and t.get("reason") in {"spectator_seed", "draw_seed"}:
+                amt = Decimal(str(t.get("amount") or "0"))
+                if amt > 0 and t.get("wallet"):
+                    ledger.credit(str(t["wallet"]), amt, reason=f"{t['reason']}_refund_void", ref=match_id)
+                    seeds.append({"wallet": t["wallet"], "amount": str(amt), "reason": t["reason"]})
+        return {"book": snap, "fan_refunds": fan, "seed_refunds": seeds}
+
+    spec_out = svc._step(match_id, "abort:spectator", _void) or {}
+    for i, r in enumerate(spec_out.get("fan_refunds") or []):
+        bid = str(r.get("bettor_id") or "")
+        amt = Decimal(str(r.get("amount") or "0"))
+        if not bid or amt <= 0:
+            continue
+        tag = f"refund:{match_id}:void#{i}"
+
+        def _adjust(bid: str = bid, amt: Decimal = amt, tag: str = tag) -> dict[str, Any]:
+            if matches_mod._adjust_already_applied(bid, tag):
+                return {"reconciled": True}
+            from gaming.src.backend.services.play_adjust import add_adjust
+
+            add_adjust(bid, amt, reason=tag)
+            return {"applied": str(amt)}
+
+        svc._external_step(match_id, f"abort:play_adjust:{i}", _adjust)
+
+    def _finalize() -> dict[str, Any]:
+        at = datetime.now(timezone.utc).isoformat()
+
+        def _apply(r: dict[str, Any]) -> None:
+            r["status"] = "cancelled"
+            r["abort_reason"] = why
+            r["cancelled_at"] = at
+            r["updated_at"] = at
+            r["onchain_abort"] = onchain_out
+            r["abort_refund"] = {
+                "escrow_refunded": bool(esc_out.get("refunded")),
+                "fan_refunds": len(spec_out.get("fan_refunds") or []),
+                "seed_refunds": spec_out.get("seed_refunds") or [],
+            }
+            if esc_out.get("escrow"):
+                r["escrow"] = esc_out["escrow"]
+            if spec_out.get("book"):
+                b = dict(r.get("spectator_book") or {})
+                b.update(spec_out["book"])
+                r["spectator_book"] = b
+
+        svc._update(match_id, _apply)
+        return {"cancelled_at": at}
+
+    svc._step(match_id, "abort:finalize", _finalize)
+    final = svc._record(match_id) or rec
+    logger.warning("[house] aborted %s (%s): stakes and tickets refunded", match_id, why)
+    return {"match_id": match_id, "status": final.get("status"), "reason": why,
+            "onchain": onchain_out, "match": final}
+
+
 class HouseRuntime:
     """Cashier API. Telegram stays human-vs-human; this is the agent venue."""
 
@@ -722,48 +956,13 @@ class HouseRuntime:
         return {"match_id": match_id, "status": "playing", "seated": True, "match": rec}
 
     def abort_never_started(self, match_id: str, *, reason: str = "never_started") -> dict[str, Any]:
-        """Refund a lock that never got a game result. Required before the pair can rematch."""
-        from gaming.src.stack.agentic import ledger
-        from gaming.src.stack.agentic.disbursement import authorize_abort
-        from gaming.src.stack.agentic.matches import get_match_service
+        """Refund a lock that never got a game result. Required before the pair can rematch.
 
-        svc = get_match_service()
-        m = svc.get(match_id)
-        if not m:
-            raise ValueError("match not found")
-        if m.get("status") == "playing":
-            raise ValueError("cannot abort a playing table — wait for a result")
-        if m.get("result"):
-            raise ValueError("match already has a result — settle, do not abort")
-        auth = authorize_abort(m, reason=reason)
-        onchain_out = None
-        if m.get("onchain") or m.get("settlement_mode") == "onchain":
-            from gaming.src.stack.agentic.onchain import read_onchain_match, resolve_onchain
-
-            try:
-                on = read_onchain_match(match_id, chain_id=m.get("chain_id") or "arc")
-            except Exception:
-                on = None
-            if on and int(on.get("status") or -1) in {0, 1, 2}:
-                onchain_out = resolve_onchain(
-                    match_id,
-                    m.get("agent_a_wallet") or on.get("player1"),
-                    chain_id=m.get("chain_id") or "arc",
-                    draw=True,
-                    authorization=auth,
-                )
-        try:
-            ledger.settle(match_id, m["agent_a_wallet"], result="draw")
-        except Exception:
-            pass
-        rec = _set_status(
-            match_id,
-            "cancelled",
-            abort_reason=reason,
-            disbursement=auth.to_dict(),
-            onchain_abort=onchain_out,
-        )
-        return {"match_id": match_id, "status": "cancelled", "reason": reason, "onchain": onchain_out, "match": rec}
+        Journaled and lease-guarded (see ``abort_table``). A ``playing`` table
+        is refused unless ``reason="interrupted"`` (crash recovery found its
+        worker dead and the game cannot be resumed).
+        """
+        return abort_table(match_id, reason=reason)
 
     def release_stale_pair(self, agent_a_id: str, agent_b_id: str) -> list[dict[str, Any]]:
         """Cancel leftover locks for this pair that never produced a result."""
