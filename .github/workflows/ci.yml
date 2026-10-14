@@ -65,6 +65,71 @@ jobs:
       - name: pytest
         run: pytest -q tests --timeout=300
 
+  python-postgres:
+    # Production runs the agentic store on Supabase Postgres; the job above
+    # only ever exercises SQLite, whose global write lock hides races that
+    # Postgres row locks do not. Run the storage and money tests against a
+    # real Postgres 16 (a throwaway service container, trust auth, loopback
+    # only), one schema per test (tests/conftest.py).
+    name: python (money paths on Postgres 16)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: boardman_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d boardman_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      PYTHONDONTWRITEBYTECODE: "1"
+      BOARDMAN_AGENTIC_ONCHAIN: "0"
+      SPECTATOR_ONCHAIN: "0"
+      BOARDMAN_TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/boardman_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: src/backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r src/backend/requirements.txt
+          pip install "psycopg[binary]>=3.2" pytest pytest-asyncio pytest-timeout
+
+      - name: Materialize gaming/ and backend/ import shims
+        run: |
+          mkdir -p gaming
+          ln -sfn ../src gaming/src
+          ln -sfn ../config gaming/config
+          touch gaming/__init__.py
+          ln -sfn src/backend backend
+
+      - name: pytest (storage + money paths on Postgres)
+        run: |
+          python -c "import psycopg; print('psycopg', psycopg.__version__)"
+          pytest -q --timeout=300 -rs \
+            tests/test_storage_*.py \
+            tests/test_ledger_*.py \
+            tests/test_settlement_*.py \
+            tests/test_escrow_replay.py \
+            tests/test_spectator_*.py \
+            tests/test_house_*.py \
+            tests/test_afm_betting.py \
+            tests/test_afm_market_settlement.py \
+            tests/test_sec_football_*.py
+
   frontend:
     name: frontend (tsc + next build)
     runs-on: ubuntu-latest

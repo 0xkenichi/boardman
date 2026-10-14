@@ -73,6 +73,11 @@ IGNORE_DATA_MTIME = os.environ.get("HERMETIC_IGNORE_DATA_MTIME", "") == "1"
 
 _KEEP = {"PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "TERM", "PWD"}
 
+# Opt-in: run the storage layer against a real (loopback) Postgres instead of
+# SQLite. Read before the scrub below removes it; each test then gets its own
+# schema in that database (see section 4b). Unset -> SQLite, nothing changes.
+PG_TEST_URL = (os.environ.get("BOARDMAN_TEST_DATABASE_URL") or "").strip()
+
 for _name in list(os.environ):
     if _name in _KEEP:
         continue
@@ -286,11 +291,37 @@ def _record_block(addr: str) -> None:
     entry[0] += 1
 
 
+def _pg_test_target(url: str) -> tuple[str, int]:
+    """(host, port) of BOARDMAN_TEST_DATABASE_URL; refuses anything not loopback."""
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(url)
+    if parts.scheme not in {"postgres", "postgresql"}:
+        raise SystemExit("BOARDMAN_TEST_DATABASE_URL must be postgres:// or postgresql://")
+    host = parts.hostname or "localhost"
+    if not _is_loopback(host):
+        raise SystemExit(
+            f"BOARDMAN_TEST_DATABASE_URL host {host!r} is not loopback — tests stay hermetic; "
+            "point it at a local or CI service-container Postgres"
+        )
+    return host, int(parts.port or 5432)
+
+
+# Loopback ports a test may reach without having bound them (the opt-in test
+# Postgres). libpq connects from C and bypasses this guard anyway; listing the
+# port keeps any Python-level client to it working too.
+_ALLOWED_LOOPBACK_PORTS: set[int] = set()
+if PG_TEST_URL:
+    _ALLOWED_LOOPBACK_PORTS.add(_pg_test_target(PG_TEST_URL)[1])
+
+
 def _check_addr(sock: socket.socket, address) -> None:
     if sock.family not in (socket.AF_INET, socket.AF_INET6):
         return  # AF_UNIX etc.
     host, port = address[0], address[1]
     if _is_loopback(host):
+        if port in _ALLOWED_LOOPBACK_PORTS:
+            return
         with _bound_lock:
             if port in _bound_ports:
                 return
@@ -334,6 +365,89 @@ socket.socket.bind = _tracking_bind  # type: ignore[method-assign]
 socket.getaddrinfo = _guarded_getaddrinfo
 
 
+# ── 4b. Opt-in Postgres (BOARDMAN_TEST_DATABASE_URL) ─────────────────────────
+# With no DATABASE_URL / BOARDMAN_DATABASE_URL configured the app normally
+# opens SQLite in the data dir. In Postgres mode that default becomes "this
+# test's schema for this data dir" instead (tests/_pgtest.py), so every test,
+# and every fresh data dir within a test, starts from an empty store exactly as
+# on SQLite. A test that sets a URL itself still gets what it asked for.
+from tests import _pgtest  # noqa: E402
+
+_PG_ADMIN = None
+_PG_ADMIN_LOCK = threading.Lock()
+_PG_PREFIX = f"bmt{os.getpid()}_"
+_pg_seq = 0
+_pg_base: str | None = None
+_pg_made: set[str] = set()
+
+
+def _pg_admin():
+    global _PG_ADMIN
+    if _PG_ADMIN is None or _PG_ADMIN.closed:
+        import psycopg  # type: ignore
+
+        _PG_ADMIN = psycopg.connect(PG_TEST_URL, autocommit=True, application_name="boardman-tests-admin")
+    return _PG_ADMIN
+
+
+def _pg_schema_url(data_dir) -> str:
+    base = _pg_base
+    assert base is not None
+    schema = _pgtest.schema_for(base, data_dir)
+    with _PG_ADMIN_LOCK:
+        if schema not in _pg_made:
+            _pgtest.create_schema(_pg_admin(), schema)
+            _pg_made.add(schema)
+    return _pgtest.url_for(PG_TEST_URL, schema)
+
+
+def _install_pg_default_store() -> None:
+    from gaming.src.stack.agentic.db import engine
+
+    configured = engine.database_url
+
+    def database_url() -> str:
+        url = configured()
+        if url or _pg_base is None:
+            return url
+        return _pg_schema_url(engine._data_dir())
+
+    database_url.__wrapped__ = configured  # type: ignore[attr-defined]
+    engine.database_url = database_url
+
+
+def _pg_begin_test() -> str:
+    global _pg_seq, _pg_base
+    _pg_seq += 1
+    _pg_base = f"{_PG_PREFIX}{_pg_seq}"
+    return _pg_base
+
+
+def _pg_end_test(base: str) -> None:
+    global _pg_base
+    _pg_base = None
+    _close_app_databases()
+    with _PG_ADMIN_LOCK:
+        conn = _pg_admin()
+        like = base.replace("_", r"\_") + r"\_%"
+        conn.execute(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            "WHERE application_name LIKE %s AND pid <> pg_backend_pid()",
+            (like,),
+        )
+        for (name,) in conn.execute(
+            "SELECT nspname FROM pg_namespace WHERE nspname LIKE %s", (like,)
+        ).fetchall():
+            conn.execute(f'DROP SCHEMA IF EXISTS "{name}" CASCADE')
+            _pg_made.discard(name)
+
+
+def _close_app_databases() -> None:
+    engine = sys.modules.get("gaming.src.stack.agentic.db.engine")
+    if engine is not None:
+        engine.reset_databases()
+
+
 # ── 5. Fixtures ──────────────────────────────────────────────────────────────
 def pytest_configure(config):
     config.addinivalue_line(
@@ -342,6 +456,30 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "builder_webhooks: allow house.ensure_builder_webhooks to run"
     )
+    config.addinivalue_line(
+        "markers",
+        "sqlite_only(reason): exercises SQLite itself (file paths, read-only copies); "
+        "skipped when BOARDMAN_TEST_DATABASE_URL selects Postgres",
+    )
+    if PG_TEST_URL:
+        try:
+            _pg_admin().execute("SELECT 1")
+        except Exception as exc:  # never echo the URL: it may carry a password
+            raise pytest.UsageError(
+                f"BOARDMAN_TEST_DATABASE_URL is set but unusable ({type(exc).__name__}); "
+                "install psycopg[binary] and start the server"
+            ) from None
+        _install_pg_default_store()
+
+
+def pytest_collection_modifyitems(config, items):
+    if not PG_TEST_URL:
+        return
+    for item in items:
+        mark = item.get_closest_marker("sqlite_only")
+        if mark is not None:
+            why = mark.args[0] if mark.args else mark.kwargs.get("reason", "SQLite-specific")
+            item.add_marker(pytest.mark.skip(reason=f"sqlite_only: {why}"))
 
 
 @pytest.fixture(autouse=True)
@@ -353,6 +491,11 @@ def _hermetic(request, tmp_path_factory, monkeypatch):
     for k, v in _FORCED_ENV.items():
         if k != "BOARDMAN_AGENTIC_DATA":
             monkeypatch.setenv(k, v)
+
+    pg_base = None
+    if PG_TEST_URL:
+        pg_base = _pg_begin_test()
+        monkeypatch.setenv(_pgtest.CHILD_ENV, _pgtest.child_env(PG_TEST_URL, pg_base))
 
     # Process-wide singletons must not carry one test's store into the next.
     for mod_name, fn_name in (
@@ -374,7 +517,11 @@ def _hermetic(request, tmp_path_factory, monkeypatch):
         if house is None:
             from gaming.src.stack.agentic import house
         monkeypatch.setattr(house, "ensure_builder_webhooks", lambda *a, **k: None)
-    yield
+    try:
+        yield
+    finally:
+        if pg_base is not None:
+            _pg_end_test(pg_base)
 
 
 @pytest.fixture
@@ -431,4 +578,9 @@ def pytest_sessionfinish(session, exitstatus):
 def pytest_unconfigure(config):
     global _guard_on
     _guard_on = False
+    if PG_TEST_URL and _PG_ADMIN is not None and not _PG_ADMIN.closed:
+        try:  # anything a crashed teardown left behind
+            _pg_end_test(_PG_PREFIX.rstrip("_"))
+        finally:
+            _PG_ADMIN.close()
     shutil.rmtree(SANDBOX, ignore_errors=True)

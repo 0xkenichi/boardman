@@ -30,9 +30,18 @@ def _install_aliases() -> None:
         sys.modules[name] = alias
 
 
-def proc_credit(data_dir: str, wallet: str, n: int) -> None:
+def _use_store(data_dir: str) -> None:
+    """The parent test's store for ``data_dir``: its SQLite file, or its
+    Postgres schema when BOARDMAN_TEST_DATABASE_URL is on (tests/_pgtest.py)."""
     _install_aliases()
     os.environ["BOARDMAN_AGENTIC_DATA"] = data_dir
+    from tests._pgtest import use_in_child
+
+    use_in_child(data_dir)
+
+
+def proc_credit(data_dir: str, wallet: str, n: int) -> None:
+    _use_store(data_dir)
     from gaming.src.stack.agentic import ledger as L
 
     for _ in range(n):
@@ -44,8 +53,7 @@ def proc_credit(data_dir: str, wallet: str, n: int) -> None:
 
 
 def bump(data_dir: str, n: int) -> None:
-    _install_aliases()
-    os.environ["BOARDMAN_AGENTIC_DATA"] = data_dir
+    _use_store(data_dir)
     from gaming.src.stack.agentic import store as s
 
     for _ in range(n):

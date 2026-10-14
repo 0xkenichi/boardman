@@ -92,6 +92,18 @@ class DocTable:
         )
         return self._load(tx, row["doc"]) if row else None
 
+    def _get_for_write(self, tx: Tx, key: str) -> Optional[dict[str, Any]]:
+        """``get_locked`` for a write that may create the row.
+
+        A miss takes a per-key lock and reads again, so two creators of the
+        same key queue up instead of both inserting (see ``Tx.lock_key``).
+        """
+        cur = self.get_locked(tx, key)
+        if cur is None:
+            tx.lock_key(self.table, key)
+            cur = self.get_locked(tx, key)
+        return cur
+
     def exists(self, key: str) -> bool:
         with reading() as tx:
             return tx.one(f"SELECT 1 AS x FROM {self.table} WHERE {self.key_col} = ?", (key,)) is not None
@@ -166,7 +178,7 @@ class DocTable:
     def insert_if_absent(self, key: str, doc: dict[str, Any]) -> tuple[dict[str, Any], bool]:
         """Atomic create. Returns (stored doc, created?)."""
         with transaction() as tx:
-            cur = self.get_locked(tx, key)
+            cur = self._get_for_write(tx, key)
             if cur is not None:
                 return cur, False
             self._insert(tx, key, doc)
@@ -175,7 +187,7 @@ class DocTable:
     def put(self, key: str, doc: dict[str, Any]) -> dict[str, Any]:
         """Upsert the whole document (imports, new records)."""
         with transaction() as tx:
-            if self.get_locked(tx, key) is None:
+            if self._get_for_write(tx, key) is None:
                 self._insert(tx, key, doc)
             else:
                 self._write(tx, key, doc)
@@ -186,7 +198,7 @@ class DocTable:
     ) -> Optional[dict[str, Any]]:
         """``fn(current or None) -> new doc`` (None = leave as is), atomically."""
         with transaction() as tx:
-            cur = self.get_locked(tx, key)
+            cur = self._get_for_write(tx, key)
             new = fn(json.loads(dumps(cur)) if cur is not None else None)
             if new is None:
                 return cur

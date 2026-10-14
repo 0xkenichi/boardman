@@ -158,11 +158,17 @@ class PostgresDialect(Dialect):
 
 
 def _pg_safe(obj: Any) -> Any:
-    """JSONB has no NaN/Infinity — map them to null (JSON text allowed them)."""
+    """JSONB has no NaN/Infinity — map them to null (JSON text allowed them).
+
+    Nor can it hold a NUL character (``\\u0000``): one in any user-supplied
+    string would make the whole document unwritable, so it becomes U+FFFD.
+    """
     if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
         return None
+    if isinstance(obj, str):
+        return obj.replace("\x00", "\ufffd") if "\x00" in obj else obj
     if isinstance(obj, dict):
-        return {k: _pg_safe(v) for k, v in obj.items()}
+        return {_pg_safe(k) if isinstance(k, str) else k: _pg_safe(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
         return [_pg_safe(v) for v in obj]
     return obj
@@ -195,6 +201,20 @@ class Tx:
 
     def unjson(self, val: Any) -> Any:
         return self.dialect.unjson(val)
+
+    def lock_key(self, *parts: Any) -> None:
+        """Serialize this transaction against others locking the same key.
+
+        ``SELECT ... FOR UPDATE`` cannot lock a row that does not exist yet,
+        so on Postgres two "read, nothing there, insert" transactions both
+        miss and the loser's INSERT aborts on a unique violation (or both act).
+        Taking this lock before the read closes that window: it is held until
+        commit/rollback. SQLite needs nothing (``BEGIN IMMEDIATE`` already
+        serializes every writer).
+        """
+        if self.dialect.name == "postgres":
+            key = "\x1f".join(str(p) for p in parts)
+            self.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", (key,))
 
     def execute(self, sql: str, params: tuple | list = ()) -> Any:
         if self.db.readonly and not self._is_read(sql):
@@ -258,12 +278,13 @@ class _ConnHolder:
     connection open per thread for the life of the process.
     """
 
-    __slots__ = ("conn", "closed", "pid", "__weakref__")
+    __slots__ = ("conn", "closed", "pid", "thread", "__weakref__")
 
     def __init__(self, conn: Any) -> None:
         self.conn = conn
         self.closed = False
         self.pid = os.getpid()
+        self.thread = threading.get_ident()
 
     def close(self) -> None:
         if self.closed:
@@ -345,6 +366,9 @@ class Database:
 
     def connection(self) -> Any:
         if self.closed:
+            mine = getattr(self._local, "holder", None)
+            if mine is not None:
+                mine.close()  # left open by close_all() while this thread was busy
             raise StorageError("database handle closed")
         if self._pid != os.getpid():
             # Forked child: never touch the parent's connections (SQLite and
@@ -355,6 +379,9 @@ class Database:
                 self._holders = weakref.WeakSet()
             self._pid = os.getpid()
         holder = getattr(self._local, "holder", None)
+        if holder is not None and not holder.closed and self._dead(holder.conn):
+            # Server side gone (pooler restart, failover, idle kill): replace it.
+            holder.close()
         if holder is None or holder.closed:
             holder = _ConnHolder(self._new_connection())
             self._local.holder = holder
@@ -365,6 +392,9 @@ class Database:
             # never migrated) must keep refusing, not slip through on retry.
             self._ensure_schema(holder.conn)
         return holder.conn
+
+    def _dead(self, conn: Any) -> bool:
+        return self.is_postgres and bool(getattr(conn, "closed", False) or getattr(conn, "broken", False))
 
     def _ensure_schema(self, conn: Any) -> None:
         if self._schema_ready:
@@ -411,12 +441,23 @@ class Database:
         )
 
     def close_all(self) -> None:
+        """Close this handle's connections.
+
+        Only the caller's own and those of threads that have exited: closing a
+        connection another live thread may be using right now is unsafe (an
+        sqlite3 handle closed mid-query crashes the interpreter; libpq is no
+        better). Those close themselves on that thread's next call, which
+        refuses a closed handle, or when the thread exits.
+        """
         self.closed = True
         with self._conns_lock:
             holders = list(self._holders)
             self._holders = weakref.WeakSet()
+        me = threading.get_ident()
+        live = {t.ident for t in threading.enumerate()}
         for h in holders:
-            h.close()
+            if h.thread == me or h.thread not in live:
+                h.close()
 
     # -- execution helpers --
 
@@ -466,7 +507,16 @@ class Database:
 
         conn = self.connection()
         ro = readonly or self.readonly
-        self._begin(conn, ro)
+        try:
+            self._begin(conn, ro)
+        except Exception:
+            # A connection killed while idle only shows it on first use, and
+            # nothing has run yet: reconnect and begin once more.
+            if not self._dead(conn):
+                raise
+            logger.warning("[storage] connection lost; reconnecting")
+            conn = self.connection()
+            self._begin(conn, ro)
         tx = Tx(self, conn, readonly=ro)
         token = _CURRENT.set(tx)
         try:
@@ -551,6 +601,15 @@ def transaction(*, readonly: bool = False) -> Iterator[Tx]:
         db = outer.db
     with db.transaction(readonly=readonly) as tx:
         yield tx
+
+
+# Postgres aborts one side of a deadlock (40P01) or a serialization conflict
+# (40001); the whole transaction was rolled back and may simply be re-run.
+RETRYABLE_SQLSTATES = frozenset({"40P01", "40001"})
+
+
+def is_retryable(exc: BaseException) -> bool:
+    return getattr(exc, "sqlstate", None) in RETRYABLE_SQLSTATES
 
 
 def now_ms() -> int:

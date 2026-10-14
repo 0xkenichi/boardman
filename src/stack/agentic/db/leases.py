@@ -74,6 +74,21 @@ def _row(tx: Tx, match_id: str) -> Optional[dict[str, Any]]:
     )
 
 
+def _insert_new(tx: Tx, match_id: str, owner: str, now: int, ttl: int) -> bool:
+    """Create the lease row unless one appeared meanwhile.
+
+    ``FOR UPDATE`` cannot lock a missing row, so two processes can both miss
+    it; ``ON CONFLICT DO NOTHING`` makes the loser wait for the winner's
+    commit and then see 0 rows instead of aborting on a unique violation.
+    """
+    return tx.rowcount(
+        "INSERT INTO match_leases (match_id, owner, epoch, acquired_at_ms, "
+        "heartbeat_at_ms, expires_at_ms) VALUES (?, ?, 1, ?, ?, ?) "
+        "ON CONFLICT (match_id) DO NOTHING",
+        (match_id, owner, now, now, now + ttl),
+    ) == 1
+
+
 def try_acquire(match_id: str, *, owner: Optional[str] = None) -> Optional[dict[str, Any]]:
     """Take or renew the lease. Returns the lease row, or None if someone else holds it."""
     me = owner or process_owner()
@@ -82,12 +97,11 @@ def try_acquire(match_id: str, *, owner: Optional[str] = None) -> Optional[dict[
         now = now_ms()
         row = _row(tx, match_id)
         if row is None:
-            tx.execute(
-                "INSERT INTO match_leases (match_id, owner, epoch, acquired_at_ms, "
-                "heartbeat_at_ms, expires_at_ms) VALUES (?, ?, 1, ?, ?, ?)",
-                (match_id, me, now, now, now + ttl),
-            )
-            return {"match_id": match_id, "owner": me, "epoch": 1, "expires_at_ms": now + ttl, "taken_over": False}
+            if _insert_new(tx, match_id, me, now, ttl):
+                return {"match_id": match_id, "owner": me, "epoch": 1, "expires_at_ms": now + ttl, "taken_over": False}
+            row = _row(tx, match_id)  # a concurrent creator won: judge its row
+            if row is None:  # created and already released again
+                return None
         if row["owner"] == me:
             tx.execute(
                 "UPDATE match_leases SET heartbeat_at_ms = ?, expires_at_ms = ? WHERE match_id = ?",
@@ -188,13 +202,11 @@ def assert_held(tx: Tx, match_id: str) -> None:
     me = process_owner()
     if row is None:
         # Released or never taken (direct ops call): claim it for this step.
-        now = now_ms()
-        tx.execute(
-            "INSERT INTO match_leases (match_id, owner, epoch, acquired_at_ms, "
-            "heartbeat_at_ms, expires_at_ms) VALUES (?, ?, 1, ?, ?, ?)",
-            (match_id, me, now, now, now + lease_ttl_ms()),
-        )
-        return
+        if _insert_new(tx, match_id, me, now_ms(), lease_ttl_ms()):
+            return
+        row = _row(tx, match_id)
+        if row is None:
+            raise LeaseLost(f"match {match_id} lease changed hands mid-step; retry")
     if row["owner"] != me:
         if int(row["expires_at_ms"]) > now_ms():
             raise LeaseLost(f"match {match_id} lease belongs to {row['owner']}")

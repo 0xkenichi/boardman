@@ -401,3 +401,40 @@ curl -s localhost:8000/api/health/deep
 `boardman-api` (webhooks + API), `boardman-bot` and `boardman-house` share
 the named volume `boardman-data` at `/data`. `docker compose down` keeps it;
 `docker compose down -v` deletes every balance — do not.
+
+---
+
+## 7. Running against Postgres
+
+The agentic store (ledger, matches, books, LP pools, settlement journal,
+leases, nonces) runs on SQLite unless a Postgres URL is set:
+`BOARDMAN_DATABASE_URL` wins over `DATABASE_URL`. Production points it at
+Supabase; `psycopg[binary]` must be installed (it is in
+`src/backend/requirements.txt`).
+
+- **Schema.** Apply `supabase/migrations/20261014120000_agentic_ledger.sql`
+  once (it is idempotent). The app also creates anything missing on its
+  first connection, but when the catalog already matches it runs no DDL,
+  so a replica starting up never locks tables under live traffic.
+- **Row-level security** is on for every table with no policies: only the
+  owner / service role (the API's URL) can read or write, never the anon or
+  authenticated keys. Do not add policies to these tables.
+- **Pooler.** Server-side prepared statements are off, so the Supabase
+  transaction-mode pooler URL works.
+
+Run the tests against a real Postgres (opt-in; without it the suite stays
+on SQLite):
+
+```bash
+docker run -d --name bm-pg -p 127.0.0.1:5432:5432 \
+  -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=boardman_test postgres:16
+pip install "psycopg[binary]"
+BOARDMAN_TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:5432/boardman_test \
+  pytest -q tests/test_storage_*.py tests/test_ledger_*.py tests/test_settlement_*.py
+docker rm -f bm-pg
+```
+
+The URL must be loopback (the tests stay hermetic). Each test gets its own
+schema, dropped afterwards. Never point it at Supabase. CI runs the same
+money/storage subset on a `postgres:16` service container (job
+`python-postgres` in `.github/workflows/ci.yml`).

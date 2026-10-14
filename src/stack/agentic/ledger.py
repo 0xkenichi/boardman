@@ -99,6 +99,27 @@ def _apply_delta(tx: Tx, wallet: str, delta: int, *, scale: int = 0, need_msg: s
     return _Bal(int(row["balance_micro"]), int(row["scale"]))
 
 
+def hold_wallets(tx: Tx, *wallets: str) -> None:
+    """Lock several balance rows up front, in one global (sorted) order.
+
+    A transaction that moves money for two wallets one after the other locks
+    their rows in call order; two such transactions with the wallets swapped
+    (the same agents in opposite seats at two tables) deadlock on Postgres.
+    Taking every row first, sorted, makes the order the same for everyone.
+    SQLite needs nothing: its writers are already serialized.
+    """
+    if not tx.for_update:
+        return
+    keys = sorted({w.lower() for w in wallets if w})
+    if len(keys) < 2:
+        return
+    marks = ",".join("?" for _ in keys)
+    tx.all(
+        f"SELECT wallet FROM ledger_balances WHERE wallet IN ({marks}) ORDER BY wallet{tx.for_update}",
+        keys,
+    )
+
+
 def _log(tx: Tx, doc: dict[str, Any], *, amount_micro: Optional[int] = None,
          balance_after_micro: Optional[int] = None) -> dict[str, Any]:
     tx.execute(
@@ -191,6 +212,9 @@ def ensure_funded(wallet: str, min_amount: Decimal = Decimal("100")) -> None:
     key = wallet.lower()
     target = to_micro(min_amount)
     with transaction() as tx:
+        # Check-then-credit: two concurrent callers must not both top up.
+        tx.lock_key("ledger_balances", key)
+        tx.one(f"SELECT balance_micro FROM ledger_balances WHERE wallet = ?{tx.for_update}", (key,))
         have, sc = _balance_row(tx, key)
         if have < target:
             # Same Decimal the old code computed (min_amount - balance).
@@ -231,12 +255,16 @@ def open_escrow(
             "payout": None,
             "fee": None,
         }
-        tx.execute(
+        created = tx.rowcount(
             "INSERT INTO ledger_escrows (match_id, status, stake_micro, agent_a_wallet, "
-            "agent_b_wallet, result, created_at, settled_at, doc) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, ?)",
+            "agent_b_wallet, result, created_at, settled_at, doc) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, ?) "
+            "ON CONFLICT (match_id) DO NOTHING",
             (match_id, "open", stake_micro, rec["agent_a_wallet"], rec["agent_b_wallet"],
              rec["created_at"], tx.json(rec)),
         )
+        if not created:
+            # Opened concurrently (FOR UPDATE cannot lock a missing row).
+            return _escrow_locked(tx, match_id)
         _log(tx, {"ts": _now(), "type": "escrow_open", "ref": match_id, "stake": stake_text})
         return rec
 
@@ -388,14 +416,16 @@ def txs(*, wallet: Optional[str] = None, ref: Optional[str] = None,
     sql = "SELECT doc FROM ledger_txs"
     if where:
         sql += " WHERE " + " AND ".join(where)
-    sql += " ORDER BY id"
     if limit is not None:
-        sql = f"SELECT doc FROM ({sql.replace(' ORDER BY id', ' ORDER BY id DESC')} LIMIT ?) t"
+        # Newest ``limit`` rows, returned oldest-first. The outer ORDER BY is
+        # explicit: Postgres does not promise to keep a subquery's order.
+        sql = sql.replace("SELECT doc FROM", "SELECT id, doc FROM", 1)
+        sql = f"SELECT doc FROM ({sql} ORDER BY id DESC LIMIT ?) t ORDER BY id"
         args.append(int(limit))
+    else:
+        sql += " ORDER BY id"
     with reading() as tx:
         rows = [tx.unjson(r["doc"]) for r in tx.all(sql, args)]
-    if limit is not None:
-        rows.reverse()
     return rows
 
 

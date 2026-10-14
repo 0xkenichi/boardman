@@ -14,6 +14,7 @@ from typing import Any, Callable, Optional
 
 from gaming.src.stack.agentic import ledger
 from gaming.src.stack.agentic.db import journal, leases, nonces, transaction
+from gaming.src.stack.agentic.db.engine import current_tx, is_retryable
 from gaming.src.stack.agentic.db.tables import HOT_SETTLED_MATCHES, MATCHES, hot_matches
 from gaming.src.stack.agentic.registry import get_registry
 
@@ -238,6 +239,28 @@ def _close_book_onchain_async(match_id: str, chain_id: str) -> None:
             logger.warning("[agentic] SpectatorPool close %s failed (closeAt still applies)", match_id, exc_info=True)
 
     threading.Thread(target=_run, name=f"book-close-{match_id}", daemon=True).start()
+
+
+def lock_escrow_and_seeds(
+    match_id: str, wallet_a: str, wallet_b: str, *, seed_a: Decimal, seed_b: Decimal, seed_draw: Decimal
+) -> dict[str, Any]:
+    """Both stake locks and the spectator seed debits, as ONE transaction.
+
+    All or nothing, and a retry never debits the seeds twice (journal row).
+    """
+    with transaction() as tx:
+        ledger.hold_wallets(tx, wallet_a, wallet_b)  # same row order at every table
+        ledger.lock(match_id, wallet_a)
+        esc = ledger.lock(match_id, wallet_b)
+        if journal.record(tx, match_id, "lock:seeds", {"a": str(seed_a), "b": str(seed_b), "draw": str(seed_draw)}):
+            if seed_a > 0:
+                ledger.debit(wallet_a, seed_a, reason="spectator_seed", ref=match_id)
+            if seed_b > 0:
+                ledger.debit(wallet_b, seed_b, reason="spectator_seed", ref=match_id)
+            if seed_draw > 0:
+                ledger.debit(wallet_a, seed_draw, reason="draw_seed", ref=match_id)
+                ledger.debit(wallet_b, seed_draw, reason="draw_seed", ref=match_id)
+    return esc
 
 
 class AgentMatchService:
@@ -729,17 +752,10 @@ class AgentMatchService:
         seed_a = Decimal(str(eco.get("spectator_seed_a") or "0"))
         seed_b = Decimal(str(eco.get("spectator_seed_b") or "0"))
         seed_draw = Decimal(str(eco.get("spectator_seed_draw") or "0"))
-        with transaction() as tx:
-            ledger.lock(match_id, m["agent_a_wallet"])
-            esc = ledger.lock(match_id, m["agent_b_wallet"])
-            if journal.record(tx, match_id, "lock:seeds", {"a": str(seed_a), "b": str(seed_b), "draw": str(seed_draw)}):
-                if seed_a > 0:
-                    ledger.debit(m["agent_a_wallet"], seed_a, reason="spectator_seed", ref=match_id)
-                if seed_b > 0:
-                    ledger.debit(m["agent_b_wallet"], seed_b, reason="spectator_seed", ref=match_id)
-                if seed_draw > 0:
-                    ledger.debit(m["agent_a_wallet"], seed_draw, reason="draw_seed", ref=match_id)
-                    ledger.debit(m["agent_b_wallet"], seed_draw, reason="draw_seed", ref=match_id)
+        esc = lock_escrow_and_seeds(
+            match_id, m["agent_a_wallet"], m["agent_b_wallet"],
+            seed_a=seed_a, seed_b=seed_b, seed_draw=seed_draw,
+        )
         if onchain_result:
             esc = dict(esc)
             esc["mode"] = "onchain"
@@ -813,13 +829,26 @@ class AgentMatchService:
         in ONE transaction, under a fresh check that this process still holds
         the match lease. A retry finds the row and reuses its recorded detail.
         """
-        with transaction() as tx:
-            leases.assert_held(tx, match_id)
-            row = journal.get(tx, match_id, name)
-            if row is not None:
-                return row["detail"]
-            out = fn()
-            journal.record(tx, match_id, name, out, owner=leases.process_owner())
+        attempt = 0
+        while True:
+            try:
+                with transaction() as tx:
+                    leases.assert_held(tx, match_id)
+                    row = journal.get(tx, match_id, name)
+                    if row is not None:
+                        return row["detail"]
+                    out = fn()
+                    journal.record(tx, match_id, name, out, owner=leases.process_owner())
+                break
+            except Exception as exc:
+                # A step credits several wallets; two settlements sharing
+                # bettors can deadlock on Postgres, which rolls one back
+                # whole. Nothing of it committed, so run it again.
+                attempt += 1
+                if attempt > 3 or current_tx() is not None or not is_retryable(exc):
+                    raise
+                logger.warning("[agentic] %s step %s rolled back (%s); retry %d", match_id, name, exc, attempt)
+                time.sleep(0.05 * attempt)
         _after_step(name)
         return out
 

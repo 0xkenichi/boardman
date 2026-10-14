@@ -236,13 +236,24 @@ def _claim_place(tournament_key: str, place: int, profile_id: str, amount: Decim
             (tournament_key, int(place)),
         )
         if row is None:
-            tx.execute(
+            # ON CONFLICT: a concurrent claimer may have inserted the place
+            # after our (row-less, so lock-less) FOR UPDATE read. No target:
+            # its idempotency_key collides too, and either unique index may
+            # be the one Postgres checks first.
+            if tx.rowcount(
                 "INSERT INTO tournament_payouts (tournament_key, place, profile_id, amount_micro, "
                 "idempotency_key, status, claimed_by, claimed_at_ms, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, 'claimed', ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, 'claimed', ?, ?, ?) "
+                "ON CONFLICT DO NOTHING",
                 (tournament_key, int(place), profile_id, to_micro(amount), key, me, now, stamp),
+            ):
+                return "pay", {"idempotency_key": key}
+            row = tx.one(
+                "SELECT * FROM tournament_payouts WHERE tournament_key = ? AND place = ?" + tx.for_update,
+                (tournament_key, int(place)),
             )
-            return "pay", {"idempotency_key": key}
+            if row is None:
+                return "busy", {}
         if row["status"] == "paid":
             return "paid", row
         if row["status"] in {"claimed", "sent"} and now - int(row.get("claimed_at_ms") or 0) < PAYOUT_CLAIM_STALE_MS:
