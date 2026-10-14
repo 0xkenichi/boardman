@@ -147,7 +147,10 @@ def check_persistent_data() -> Optional[str]:
     try:
         data.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
-        msg = f"data dir {data} cannot be created ({exc.__class__.__name__}: {exc})"
+        msg = (
+            f"data dir {data} cannot be created ({exc.__class__.__name__}: {exc}); "
+            "on Railway set RAILWAY_RUN_UID=0 so the root-owned volume can be prepared"
+        )
         if require:
             return msg
         log(f"WARN {msg}")
