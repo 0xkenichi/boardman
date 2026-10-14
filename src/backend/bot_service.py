@@ -8,9 +8,10 @@ import os
 import asyncio
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")  # this checkout only, never a parent .env
 
 # Health check server
 class HealthHandler(BaseHTTPRequestHandler):

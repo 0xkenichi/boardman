@@ -1,8 +1,9 @@
 import os
 import aiohttp
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")  # this checkout only, never a parent .env
 
 class XboxLayer:
     def __init__(self):

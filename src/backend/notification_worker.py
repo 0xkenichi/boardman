@@ -9,10 +9,11 @@ import logging
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from supabase import create_async_client, Client
+from pathlib import Path
 from dotenv import load_dotenv
 import json
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")  # this checkout only, never a parent .env
 
 logger = logging.getLogger(__name__)
 

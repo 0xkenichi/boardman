@@ -8,9 +8,10 @@ Test wallet creation, balance checks, and USDC transfers.
 import os
 import sys
 import time
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")  # this checkout only, never a parent .env
 
 sys.path.insert(0, os.path.dirname(__file__))
 

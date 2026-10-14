@@ -16,12 +16,13 @@ import json
 import logging
 import requests
 import hashlib
+from pathlib import Path
 from dotenv import load_dotenv
 from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")  # this checkout only, never a parent .env
 
 
 def _circle_fee_level() -> str:

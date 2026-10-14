@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from backend.supabase_client import get_supabase
+from pathlib import Path
 from dotenv import load_dotenv
 
 # ─── Import all repository functions as private names ─────────────────────────
@@ -139,7 +140,7 @@ from backend.repositories.analytics import (
 
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")  # this checkout only, never a parent .env
 
 # ─── Allowed values for enum-like fields ─────────────────────────────────────
 VALID_PLATFORMS = frozenset([

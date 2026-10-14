@@ -27,6 +27,7 @@ import sys
 import asyncio
 import datetime
 import logging
+from pathlib import Path
 from dotenv import load_dotenv
 from pyrogram import Client
 from pyrogram.errors import FloodWait
@@ -205,7 +206,7 @@ class BotMonitor:
 async def main():
     """Entry point (also used by start_monitor.py)."""
     # Load .env here, not at import, so importing this module has no side effects.
-    load_dotenv()
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")  # this checkout only, never a parent .env
     try:
         monitor = BotMonitor()
         await monitor.run()
