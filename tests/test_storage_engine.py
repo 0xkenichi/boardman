@@ -47,6 +47,8 @@ def test_postgres_dialect_shim():
     ],
 )
 def test_backend_is_selected_by_url(monkeypatch, env, expect):
+    # The real selection logic, not the Postgres test-mode default (conftest).
+    monkeypatch.setattr(engine, "database_url", getattr(engine.database_url, "__wrapped__", engine.database_url))
     for k in ("DATABASE_URL", "BOARDMAN_DATABASE_URL"):
         monkeypatch.delenv(k, raising=False)
     for k, v in env.items():
@@ -77,6 +79,7 @@ def test_postgres_without_psycopg_fails_loudly(monkeypatch):
         db.connection()
 
 
+@pytest.mark.sqlite_only("opens a read-only copy of the SQLite file")
 def test_read_only_transaction_can_read_but_not_write():
     from gaming.src.stack.agentic import ledger
 
