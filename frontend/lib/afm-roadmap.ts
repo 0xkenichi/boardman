@@ -416,7 +416,7 @@ export const SECTIONS: RoadmapSection[] = [
       {
         label: 'On-chain agent identity + escrow contracts',
         status: 'needs-work',
-        note: 'Building blocks exist (Cardano mint scripts, Solidity escrow incl. SpectatorPool) but are not connected to any AFM match/odds/UI',
+        note: 'Building blocks exist (Solidity escrow incl. SpectatorPool) but are not connected to any AFM match/odds/UI',
       },
       {
         label: 'Live league breadth',

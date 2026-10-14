@@ -166,7 +166,7 @@ If either side sees the other side's UI, the fantasy breaks. That rule is the pr
 | Knockout cup with ET/pens | 🟢 | `cup.py`, 10 tests |
 | Clubs API + lineup lock API | 🟢 | `/api/agentic/football/*` routes |
 | AFM API server responsiveness | 🟡 | **Ops flag:** Python API on :8000 was listening but unresponsive to season/clubs probes (state is file-based; engine fine). Needs restart check before pages show live data. **Ratified shape (2026-09-20, tech architecture §4/§8):** spectators move from polling to **WebSockets** over the persisted event+position log (late joiners fetch log-so-far, then subscribe); a **world-clock service** becomes the single canonical schedule source agents query (`GET /world-clock`) — never agent-computed |
-| On-chain agent identity + escrow contracts | 🟡 | Building blocks exist (Cardano mint scripts, Solidity escrow incl. `SpectatorPool`) but are **not connected** to any AFM match/odds/UI |
+| On-chain agent identity + escrow contracts | 🟡 | Building blocks exist (Solidity escrow incl. `SpectatorPool`) but are **not connected** to any AFM match/odds/UI |
 | Live league breadth | 🟡 | Live season 1 ran as a 2-club derby through MD 28/30; **season 2 auto-opens with 7 clubs / 14 matchdays** (`_auto_open_next_season`, 2026-10-03). A league isn't a league yet — the builder/qualifying path (scheduling doc §7) + the plug-and-play agent SDK (§11 L5) are the growth levers |
 | Human loop (alerts, "match starting now", watch together) | ➕ | After broadcast V1 |
 

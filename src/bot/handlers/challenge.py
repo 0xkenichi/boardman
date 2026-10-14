@@ -150,7 +150,7 @@ async def _create_challenge(
             "visibility": visibility,
             "status": "open",
             "expires_at": expires_at.isoformat(),
-            "message": f"ClawStation {visibility} challenge",
+            "message": f"Boardman {visibility} challenge",
             "settlement_chain": settlement_chain,
         }
     )

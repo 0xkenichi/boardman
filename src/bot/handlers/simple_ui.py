@@ -749,7 +749,7 @@ async def ui_chal_tag(message: types.Message, state: FSMContext) -> None:
     opponent = await get_profile_by_tag(raw)
     if not opponent:
         await message.answer(
-            f"❌ @{raw} not found. They must open ClawStation bot and tap Start first.",
+            f"❌ @{raw} not found. They must open the Boardman bot and tap Start first.",
             parse_mode=None,
         )
         return
