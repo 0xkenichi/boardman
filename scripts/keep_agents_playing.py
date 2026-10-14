@@ -207,7 +207,10 @@ def main() -> int:
         _spawn(spec)
 
     def _afm_tick() -> None:
-        """Daily AFM heartbeat — open season matchdays / cup rounds, resolve due ones."""
+        """Daily AFM heartbeat — open season matchdays / cup rounds, resolve due
+        ones, and roll a finished season over into the next one (season.tick
+        does that after AFM_SEASON_BREAK_HOURS; open/tick routes are
+        admin-only, so this clock is what keeps production playing)."""
         try:
             import sys
 
@@ -218,7 +221,8 @@ def main() -> int:
             )
 
             out = afm_tick()
-            if out.get("opened") or out.get("resolved") or out.get("season_status") == "finished":
+            # log what happened, not the idle state (this runs every few seconds)
+            if out.get("opened") or out.get("resolved") or out.get("action") in ("auto_open", "auto_open_failed"):
                 print(f"[afm] season tick → {out}", flush=True)
         except Exception as exc:  # never let the keeper die on AFM state
             print(f"[afm] season tick failed: {exc!r}", flush=True)
@@ -228,7 +232,7 @@ def main() -> int:
             )
 
             out = afm_cup_tick()
-            if out.get("opened") or out.get("resolved") or out.get("cup_status") == "finished":
+            if out.get("opened") or out.get("resolved"):
                 print(f"[afm] cup tick → {out}", flush=True)
         except Exception as exc:  # never let the keeper die on cup state
             print(f"[afm] cup tick failed: {exc!r}", flush=True)

@@ -544,8 +544,10 @@ def open_season(
                 except ValueError:
                     entries[aid] = {"paid": False, "entry_usdc": str(SEASON_ENTRY_USDC), "ai_filler": True}
         if _fill is not None and not [a for a in entered if not _fill.is_filler(a)]:
+            _refund_entries(pot, entered, no)
             raise ValueError("need at least one real club to open a season")
         if len(entered) < 2:
+            _refund_entries(pot, entered, no)
             raise ValueError("fewer than two clubs could pay the season entry")
 
         ids = entered
@@ -572,15 +574,58 @@ def open_season(
             "created_at": _iso(_now()),
             "updated_at": _iso(_now()),
         }
+        if cur and cur.get("status") == "finished":
+            _archive_season(st, cur)
         st["season"] = season
         st["pending_joins"] = []
         _save(st)
         return _snapshot(season)
 
 
+def _refund_entries(pot: str, entered: list[str], season_no: int) -> None:
+    """A season that fails to open hands every collected entry back.
+
+    Without this a failed open (too few payers) left the entries stranded in
+    the next season's pot, and every retry by the house clock took them again.
+    """
+    for aid in entered:
+        w = _wallet(aid)
+        if not w:
+            continue
+        got, _short = _debit_budget(pot, SEASON_ENTRY_USDC, reason="afm_season_entry_refund", ref=f"s{season_no}")
+        if got > 0:
+            L.credit(w, got, reason="afm_season_entry_refund", ref=f"s{season_no}")
+
+
+HISTORY_KEEP = 20
+
+
+def _archive_season(st: dict[str, Any], finished: dict[str, Any]) -> None:
+    """Keep a compact record of a finished season (the table, not the replays)."""
+    rec = {
+        "season_no": finished.get("season_no"),
+        "champion": finished.get("champion"),
+        "division": list(finished.get("division") or []),
+        "standings": [_row_dict(r) for r in ranked(_standings_from(finished))],
+        "started_at": finished.get("started_at"),
+        "finished_at": finished.get("finished_at"),
+    }
+    hist = [h for h in (st.get("history") or []) if h.get("season_no") != rec["season_no"]]
+    st["history"] = (hist + [rec])[-HISTORY_KEEP:]
+
+
 def tick(now: Optional[datetime] = None) -> dict[str, Any]:
     """Advance the season clock: open due matchdays, resolve past deadlines."""
     now = now or _now()
+    # The house clock calls this every few seconds: answer the idle case from
+    # the shared read-only view instead of deep-copying the whole season file.
+    view = _state_view().get("season")
+    if not view or view.get("status") != "open":
+        if view and view.get("status") == "finished":
+            rolled = _auto_open_next_season(view, now)
+            if rolled is not None:
+                return rolled
+        return {"action": "idle", "reason": "no open season", "season_status": view.get("status") if view else None}
     with _lock:
         st = _state()
         s = st.get("season")
@@ -628,10 +673,9 @@ def tick(now: Optional[datetime] = None) -> dict[str, Any]:
             md += 1
         if s["current_matchday"] > total:
             _finalize_season(s)
-            _auto_open_next_season(s)
         s["updated_at"] = _iso(_now())
         _save(st)
-        return {
+        out = {
             "action": "tick",
             "season_no": no,
             "opened": opened,
@@ -640,6 +684,15 @@ def tick(now: Optional[datetime] = None) -> dict[str, Any]:
             "season_status": s["status"],
             "champion": s.get("champion"),
         }
+    # Only after the finished season is saved: open_season reads the state
+    # file itself, and inside the block above it still saw the season "open"
+    # and refused — which is how production stalled after season 1.
+    if out["season_status"] == "finished":
+        # finished_at was stamped with the wall clock during this tick
+        rolled = _auto_open_next_season(s, max(now, _now()))
+        if rolled is not None:
+            out["next_season"] = rolled
+    return out
 
 
 def matchday_news_items(matchday: int) -> list[dict[str, Any]]:
@@ -1270,27 +1323,69 @@ def _finalize_season(s: dict[str, Any]) -> None:
     _M.open_window(no, "end")
 
 
-def _auto_open_next_season(finished: dict[str, Any]) -> None:
-    """Open the next season automatically once one is finalized.
+# finished season → next season, on the house clock (keeper / API tick)
+SEASON_BREAK_HOURS = 12  # final whistle → next season opens (end window runs meanwhile)
+AUTO_OPEN_RETRY_MINUTES = 60  # a failed roll-over is retried this often, not every tick
+_auto_open_failures: dict[str, datetime] = {}
 
-    The new division is whatever clubs exist at that moment (plus queued
-    joins), so managers registered mid-season join the *next* one. Gated by
-    AFM_AUTO_NEXT_SEASON (default on); failures never break the tick — the
-    season just stays closed until a human opens one.
+
+def _season_break_hours() -> float:
+    import os
+
+    try:
+        return max(0.0, float(os.getenv("AFM_SEASON_BREAK_HOURS", str(SEASON_BREAK_HOURS))))
+    except ValueError:
+        return float(SEASON_BREAK_HOURS)
+
+
+def _auto_open_next_season(finished: dict[str, Any], now: Optional[datetime] = None) -> Optional[dict[str, Any]]:
+    """Open the next season once a finished one has had its break.
+
+    Runs from tick() on the house clock, so production rolls seasons over
+    unattended now that open/tick are platform-admin routes. The new division
+    is whatever clubs exist at that moment (plus queued joins), so managers
+    registered mid-season join the *next* one. Gated by AFM_AUTO_NEXT_SEASON
+    (default on); the break is AFM_SEASON_BREAK_HOURS (default 12). A failed
+    open never breaks the tick: it is reported and retried hourly.
+
+    Returns a tick-shaped result when it acted (opened, or failed), else None.
     """
     import os
 
-    if finished.get("status") != "finished":
-        return
+    if not finished or finished.get("status") != "finished":
+        return None
     if os.getenv("AFM_AUTO_NEXT_SEASON", "1").strip().lower() in ("0", "false", "off"):
-        return
+        return None
+    now = now or _now()
+    finished_at = _parse(finished.get("finished_at")) or now
+    if now < finished_at + timedelta(hours=_season_break_hours()):
+        return None
+    key = f"{finished.get('season_no')}@{finished.get('finished_at')}"
+    last_fail = _auto_open_failures.get(key)
+    if last_fail is not None and now < last_fail + timedelta(minutes=AUTO_OPEN_RETRY_MINUTES):
+        return None
     try:
-        open_season(
-            start_at=_now().replace(minute=0, second=0, microsecond=0)
-            + timedelta(hours=1)
-        )
-    except Exception:
-        pass  # the keeper ticks again later; a human can open it too
+        snap = open_season(start_at=now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1))
+    except Exception as exc:  # the season just stays closed until the next try
+        _auto_open_failures[key] = now
+        return {
+            "action": "auto_open_failed",
+            "season_no": finished.get("season_no"),
+            "season_status": "finished",
+            "opened": [],
+            "resolved": [],
+            "auto_open_error": str(exc),
+        }
+    _auto_open_failures.pop(key, None)
+    return {
+        "action": "auto_open",
+        "season_no": snap.get("season_no"),
+        "season_status": snap.get("status"),
+        "opened": [],
+        "resolved": [],
+        "division": [d.get("agent_id") for d in snap.get("division") or []],
+        "started_at": snap.get("started_at"),
+    }
 
 
 def reset_season() -> dict[str, Any]:
