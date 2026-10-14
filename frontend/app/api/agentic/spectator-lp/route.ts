@@ -50,6 +50,10 @@ export async function POST(req: NextRequest) {
 
   const res = await stackFetch("/api/rematch/web/spectator/lp", {
     method: "POST",
+    // an always-approved spend can deposit on-chain before answering
+    timeoutMs: 30_000,
+    clientReq: req,
+    headers: { "X-Boardman-Caller": session.profileId },
     body: JSON.stringify({
       profile_id: session.profileId,
       amount,
