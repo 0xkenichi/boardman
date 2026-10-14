@@ -416,14 +416,16 @@ def txs(*, wallet: Optional[str] = None, ref: Optional[str] = None,
     sql = "SELECT doc FROM ledger_txs"
     if where:
         sql += " WHERE " + " AND ".join(where)
-    sql += " ORDER BY id"
     if limit is not None:
-        sql = f"SELECT doc FROM ({sql.replace(' ORDER BY id', ' ORDER BY id DESC')} LIMIT ?) t"
+        # Newest ``limit`` rows, returned oldest-first. The outer ORDER BY is
+        # explicit: Postgres does not promise to keep a subquery's order.
+        sql = sql.replace("SELECT doc FROM", "SELECT id, doc FROM", 1)
+        sql = f"SELECT doc FROM ({sql} ORDER BY id DESC LIMIT ?) t ORDER BY id"
         args.append(int(limit))
+    else:
+        sql += " ORDER BY id"
     with reading() as tx:
         rows = [tx.unjson(r["doc"]) for r in tx.all(sql, args)]
-    if limit is not None:
-        rows.reverse()
     return rows
 
 

@@ -158,11 +158,17 @@ class PostgresDialect(Dialect):
 
 
 def _pg_safe(obj: Any) -> Any:
-    """JSONB has no NaN/Infinity — map them to null (JSON text allowed them)."""
+    """JSONB has no NaN/Infinity — map them to null (JSON text allowed them).
+
+    Nor can it hold a NUL character (``\\u0000``): one in any user-supplied
+    string would make the whole document unwritable, so it becomes U+FFFD.
+    """
     if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
         return None
+    if isinstance(obj, str):
+        return obj.replace("\x00", "\ufffd") if "\x00" in obj else obj
     if isinstance(obj, dict):
-        return {k: _pg_safe(v) for k, v in obj.items()}
+        return {_pg_safe(k) if isinstance(k, str) else k: _pg_safe(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
         return [_pg_safe(v) for v in obj]
     return obj
@@ -369,6 +375,9 @@ class Database:
                 self._holders = weakref.WeakSet()
             self._pid = os.getpid()
         holder = getattr(self._local, "holder", None)
+        if holder is not None and not holder.closed and self._dead(holder.conn):
+            # Server side gone (pooler restart, failover, idle kill): replace it.
+            holder.close()
         if holder is None or holder.closed:
             holder = _ConnHolder(self._new_connection())
             self._local.holder = holder
@@ -379,6 +388,9 @@ class Database:
             # never migrated) must keep refusing, not slip through on retry.
             self._ensure_schema(holder.conn)
         return holder.conn
+
+    def _dead(self, conn: Any) -> bool:
+        return self.is_postgres and bool(getattr(conn, "closed", False) or getattr(conn, "broken", False))
 
     def _ensure_schema(self, conn: Any) -> None:
         if self._schema_ready:
@@ -480,7 +492,16 @@ class Database:
 
         conn = self.connection()
         ro = readonly or self.readonly
-        self._begin(conn, ro)
+        try:
+            self._begin(conn, ro)
+        except Exception:
+            # A connection killed while idle only shows it on first use, and
+            # nothing has run yet: reconnect and begin once more.
+            if not self._dead(conn):
+                raise
+            logger.warning("[storage] connection lost; reconnecting")
+            conn = self.connection()
+            self._begin(conn, ro)
         tx = Tx(self, conn, readonly=ro)
         token = _CURRENT.set(tx)
         try:

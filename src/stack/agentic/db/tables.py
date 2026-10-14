@@ -48,8 +48,10 @@ MATCHES = DocTable("agentic_matches", "match_id", root_key="matches", guard=matc
 BOOKS = DocTable("spectator_books", "match_id", root_key="books", guard=book_guard)
 LP_POOLS = DocTable("lp_pools", "agent_id", root_key="pools", default_status="active")
 
-MATCH_SETTLED_ORDER = "settled_at DESC, updated_at DESC"
-BOOK_SETTLED_ORDER = "settled_at DESC, created_at DESC"
+# NULLS LAST spelled out: SQLite sorts NULL last in DESC, Postgres first, and
+# an undated settled record must never push the newest ones out of "hot".
+MATCH_SETTLED_ORDER = "settled_at DESC NULLS LAST, updated_at DESC NULLS LAST"
+BOOK_SETTLED_ORDER = "settled_at DESC NULLS LAST, created_at DESC NULLS LAST"
 
 
 _PROJ_CACHE: dict[tuple, dict[str, tuple[int, Any]]] = {}
