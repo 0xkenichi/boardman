@@ -897,6 +897,11 @@ class AgentMatchService:
                 if not prev:
                     r["pending_result"] = result
             else:
+                prev = r.get("pending_result") or {}
+                if prev and result and _result_key(prev) != _result_key(result):
+                    # e.g. a settle_failed table retried with another result.
+                    outcome["conflict"] = prev
+                    return False
                 # The first transfer happens only after this commits.
                 r["status"] = "settling"
                 r["pending_result"] = result

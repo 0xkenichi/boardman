@@ -165,6 +165,9 @@ def test_unmigrated_store_refuses_to_start(tmp_path, monkeypatch):
 
     with pytest.raises(engine.StorageNotMigrated, match="migrate_json_to_db"):
         ledger.balance("0xaa")
+    # ...and keeps refusing on the same thread's cached connection.
+    with pytest.raises(engine.StorageNotMigrated):
+        ledger.credit("0xaa", Decimal("1"), reason="x")
     engine.reset_databases()
     code, _ = _script().run(data, apply=True)
     assert code == 0

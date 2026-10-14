@@ -31,6 +31,7 @@ import os
 import sqlite3
 import threading
 import time
+import weakref
 from collections import OrderedDict
 from contextlib import contextmanager
 from pathlib import Path
@@ -250,6 +251,36 @@ def current_tx(db: Optional["Database"] = None) -> Optional[Tx]:
 # ── database ─────────────────────────────────────────────────────────────────
 
 
+class _ConnHolder:
+    """One thread's connection; closed when the thread (and its locals) go away.
+
+    Short-lived threads (payout DMs, book-close txs) would otherwise leave a
+    connection open per thread for the life of the process.
+    """
+
+    __slots__ = ("conn", "closed", "pid", "__weakref__")
+
+    def __init__(self, conn: Any) -> None:
+        self.conn = conn
+        self.closed = False
+        self.pid = os.getpid()
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        if self.pid != os.getpid():
+            return  # inherited across fork: not ours to close
+        try:
+            self.conn.close()
+        except Exception:
+            pass
+
+    def __del__(self) -> None:  # pragma: no cover - GC timing
+        self.close()
+
+
+
 class Database:
     """One configured store. Connections are per thread."""
 
@@ -262,7 +293,7 @@ class Database:
         self.readonly = readonly
         self.dialect: Dialect = PostgresDialect() if is_postgres_url(url) else SQLiteDialect()
         self._local = threading.local()
-        self._conns: list[Any] = []
+        self._holders: "weakref.WeakSet[_ConnHolder]" = weakref.WeakSet()
         self._conns_lock = threading.Lock()
         self._schema_lock = threading.Lock()
         self._schema_ready = False
@@ -285,7 +316,11 @@ class Database:
                     "DATABASE_URL is Postgres but psycopg is not installed — "
                     "pip install 'psycopg[binary]' (see src/backend/requirements.txt)"
                 ) from exc
-            conn = psycopg.connect(self.url, autocommit=True, row_factory=dict_row)
+            # prepare_threshold=None: no server-side prepared statements, so a
+            # Supabase pooler URL (pgbouncer, transaction mode) works too.
+            conn = psycopg.connect(
+                self.url, autocommit=True, row_factory=dict_row, prepare_threshold=None
+            )
             return conn
         assert self.sqlite_path is not None
         self.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
@@ -313,19 +348,23 @@ class Database:
             raise StorageError("database handle closed")
         if self._pid != os.getpid():
             # Forked child: never touch the parent's connections (SQLite and
-            # libpq handles are not fork-safe). Abandon them without closing.
+            # libpq handles are not fork-safe). Abandon them without closing
+            # (each holder only closes in the process that opened it).
             self._local = threading.local()
             with self._conns_lock:
-                self._conns = []
+                self._holders = weakref.WeakSet()
             self._pid = os.getpid()
-        conn = getattr(self._local, "conn", None)
-        if conn is None:
-            conn = self._new_connection()
-            self._local.conn = conn
+        holder = getattr(self._local, "holder", None)
+        if holder is None or holder.closed:
+            holder = _ConnHolder(self._new_connection())
+            self._local.holder = holder
             with self._conns_lock:
-                self._conns.append(conn)
-            self._ensure_schema(conn)
-        return conn
+                self._holders.add(holder)
+        if not self._schema_ready:
+            # Re-checked on every call until it passes: a refused start (e.g.
+            # never migrated) must keep refusing, not slip through on retry.
+            self._ensure_schema(holder.conn)
+        return holder.conn
 
     def _ensure_schema(self, conn: Any) -> None:
         if self._schema_ready:
@@ -374,12 +413,10 @@ class Database:
     def close_all(self) -> None:
         self.closed = True
         with self._conns_lock:
-            conns, self._conns = self._conns, []
-        for c in conns:
-            try:
-                c.close()
-            except Exception:
-                pass
+            holders = list(self._holders)
+            self._holders = weakref.WeakSet()
+        for h in holders:
+            h.close()
 
     # -- execution helpers --
 
