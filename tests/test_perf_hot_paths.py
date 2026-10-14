@@ -81,7 +81,9 @@ def test_archive_projection_drops_move_lists():
 
     _seed_hot_and_archive(datetime.now(timezone.utc))
     ms = metric_matches()["matches"]
-    assert "moves" not in ms["a0"]
+    # Matches live in the database: "hot" is the live tables plus the newest
+    # settled ones, the long tail ("old", settled 3 days ago) is slimmed.
+    assert "moves" not in ms["old"]
     assert "moves" in ms["h0"]  # hot records are passed through untouched
 
 

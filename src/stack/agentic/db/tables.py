@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+import threading
+from typing import Any, Callable
 
 from gaming.src.stack.agentic.db.docs import DocTable
 
@@ -49,6 +50,43 @@ LP_POOLS = DocTable("lp_pools", "agent_id", root_key="pools", default_status="ac
 
 MATCH_SETTLED_ORDER = "settled_at DESC, updated_at DESC"
 BOOK_SETTLED_ORDER = "settled_at DESC, created_at DESC"
+
+
+_PROJ_CACHE: dict[tuple, dict[str, tuple[int, Any]]] = {}
+_PROJ_LOCK = threading.Lock()
+
+
+def all_matches_projected(project: Callable[[dict[str, Any]], Any], *, chunk: int = 400) -> dict[str, Any]:
+    """Every match (live and long-settled) through ``project``, cached.
+
+    Each call reads only ``(match_id, version)`` for all rows (small ints);
+    documents are fetched and projected again only for rows whose version
+    changed since the last call. Every write bumps ``version``, so the cache
+    can never serve a stale record. Returned values are shared read-only views.
+    """
+    from gaming.src.stack.agentic.db.docs import reading
+    from gaming.src.stack.agentic.db.engine import get_db
+    from gaming.src.stack.agentic.json_cache import freeze
+
+    key = (get_db().key, id(project))
+    with _PROJ_LOCK:
+        cached = _PROJ_CACHE.setdefault(key, {})
+        with reading() as tx:
+            versions = {str(r["match_id"]): int(r["version"]) for r in tx.all(
+                "SELECT match_id, version FROM agentic_matches", ()
+            )}
+            stale = [mid for mid, v in versions.items() if (cached.get(mid) or (None,))[0] != v]
+            for i in range(0, len(stale), chunk):
+                part = stale[i:i + chunk]
+                marks = ",".join("?" for _ in part)
+                for r in tx.all(
+                    f"SELECT match_id, version, doc FROM agentic_matches WHERE match_id IN ({marks})", part
+                ):
+                    doc = tx.unjson(r["doc"]) or {}
+                    cached[str(r["match_id"])] = (int(r["version"]), freeze(project(doc)))
+        for gone in set(cached) - set(versions):
+            cached.pop(gone, None)
+        return {mid: val for mid, (_v, val) in cached.items()}
 
 
 def hot_matches() -> list[dict[str, Any]]:
