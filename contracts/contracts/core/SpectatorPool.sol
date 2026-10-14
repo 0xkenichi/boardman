@@ -486,12 +486,15 @@ contract SpectatorPool is Ownable2Step, ReentrancyGuard, Pausable {
         emit BookSwept(matchId, amt);
     }
 
+    /// @notice Owner rotates the resolver. Emits ResolverUpdated.
     function setResolver(address _resolver) external onlyOwner {
         if (_resolver == address(0)) revert ZeroAddress();
         emit ResolverUpdated(resolver, _resolver);
         resolver = _resolver;
     }
 
+    /// @notice Owner rotates the treasury; accrued fees go to the new one on
+    ///         the next withdrawFees. Emits FeeRecipientUpdated.
     function setFeeRecipient(address _feeRecipient) external onlyOwner {
         if (_feeRecipient == address(0)) revert ZeroAddress();
         emit FeeRecipientUpdated(feeRecipient, _feeRecipient);
@@ -536,6 +539,7 @@ contract SpectatorPool is Ownable2Step, ReentrancyGuard, Pausable {
 
     // ─── Views ────────────────────────────────────────────────────────────────
 
+    /// @notice Full book record (positions 0..23 as in v1, v2 fields appended).
     function getBook(bytes32 matchId) external view returns (Book memory) {
         return books[matchId];
     }

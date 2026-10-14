@@ -410,12 +410,15 @@ contract BoardmanEscrow is Ownable2Step, ReentrancyGuard, Pausable {
 
     // ─── Admin (owner = multisig) ─────────────────────────────────────────────
 
+    /// @notice Owner rotates the resolver. Emits ResolverUpdated. Outstanding create permits signed by the old resolver stop working.
     function setResolver(address _resolver) external onlyOwner {
         if (_resolver == address(0)) revert ZeroAddress();
         emit ResolverUpdated(resolver, _resolver);
         resolver = _resolver;
     }
 
+    /// @notice Owner rotates the treasury; accrued fees go to the new one on
+    ///         the next withdrawFees. Emits FeeRecipientUpdated.
     function setFeeRecipient(address _feeRecipient) external onlyOwner {
         if (_feeRecipient == address(0)) revert ZeroAddress();
         emit FeeRecipientUpdated(feeRecipient, _feeRecipient);
@@ -477,6 +480,7 @@ contract BoardmanEscrow is Ownable2Step, ReentrancyGuard, Pausable {
         return (m.player1, m.player2, m.stakePerPlayer, m.status, m.createdAt, m.lockedAt);
     }
 
+    /// @notice Full match record including the fee snapshot.
     function getMatch(bytes32 matchId) external view returns (Match memory) {
         return _matches[matchId];
     }
