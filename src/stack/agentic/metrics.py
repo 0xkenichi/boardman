@@ -1,4 +1,4 @@
-"""Public match / PNL aggregation from matches.json.
+"""Public match / PNL aggregation over every match (hot matches.json + archive).
 
 No secrets. Skill escrow PNL + on-chain lock/join/settle proofs.
 Spectator bets publish SpectatorPool deposit/resolve hashes when present.
@@ -245,6 +245,104 @@ def _public_row(
     }
 
 
+# ---------------------------------------------------------------- data source
+#
+# The hot matches.json only keeps live tables plus the last few settled games
+# (AgentMatchService._archive_cold moves the rest to matches_archive.json), so
+# metrics read from it alone only ever described a handful of recent games.
+# Every metrics read now goes through `metric_matches()`.
+#
+# TODO(ledger-db): when matches move into the DB, re-point metric_matches()
+# (and settled_since()) at it — a query that returns the fields _slim_match
+# keeps — and drop the archive projection below. Callers don't change.
+
+MATCHES_FILE = "matches.json"
+ARCHIVE_FILE = "matches_archive.json"
+# Fields metrics never read and that dominate the archive's size (~190MB,
+# mostly move lists): dropped from the cached projection.
+_HEAVY_FIELDS = ("moves", "clock", "live_odds", "odds_history", "disbursement")
+
+
+def _slim_match(m: dict[str, Any]) -> dict[str, Any]:
+    out = {k: v for k, v in m.items() if k not in _HEAVY_FIELDS}
+    pgn = out.get("pgn")
+    if isinstance(pgn, str) and len(pgn) > 161:
+        out["pgn"] = pgn[:161]  # enough for pgn_preview's "> 160 → …" check
+    return out
+
+
+def _slim_archive(raw: Any) -> dict[str, Any]:
+    ms = (raw or {}).get("matches") or {}
+    return {"matches": {mid: _slim_match(m) for mid, m in ms.items() if isinstance(m, dict)}}
+
+
+def _archived_matches() -> dict[str, Any]:
+    from gaming.src.stack.agentic.json_cache import get_cache
+
+    arch = get_cache().view_swr(ARCHIVE_FILE, {"matches": {}}, transform=_slim_archive)
+    return arch.get("matches") or {}
+
+
+def metric_matches() -> dict[str, Any]:
+    """Every match metrics should count: archive merged under the hot file.
+
+    Same shape as matches.json ({"matches": {id: record}}); records may be
+    read-only cached views and must not be mutated.
+    """
+    from gaming.src.stack.agentic.json_cache import get_cache
+
+    hot = get_cache().view(MATCHES_FILE, {"matches": {}}).get("matches") or {}
+    merged = dict(_archived_matches())
+    merged.update(hot)  # a match mid-archive can sit in both — hot wins
+    return {"matches": merged}
+
+
+def _parse_ts(ts: Any) -> Optional[datetime]:
+    try:
+        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except Exception:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _settled_at(m: dict[str, Any]) -> Optional[str]:
+    return m.get("settled_at") or (m.get("escrow") or {}).get("settled_at")
+
+
+def house_activity(*, now: Optional[datetime] = None, matches: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """Counts for the operator desk, over every match (hot + archive).
+
+    games_24h       settled in the last 24h (uncapped)
+    games_live      tables open / locking / locked / playing
+    last_settled    the most recently settled match (public row)
+    """
+    from datetime import timedelta
+
+    now = now or datetime.now(timezone.utc)
+    store = matches if matches is not None else metric_matches()
+    rows = list((store.get("matches") or {}).values())
+    since = now - timedelta(hours=24)
+    games_24h = 0
+    last: Optional[dict[str, Any]] = None
+    last_dt: Optional[datetime] = None
+    for m in rows:
+        if m.get("status") != "settled":
+            continue
+        dt = _parse_ts(_settled_at(m))
+        if dt is None:
+            continue
+        if dt >= since:
+            games_24h += 1
+        if last_dt is None or dt > last_dt:
+            last, last_dt = m, dt
+    live = sum(1 for m in rows if m.get("status") in {"playing", "locking", "locked", "open"})
+    last_row: dict[str, Any] = {}
+    if last is not None:
+        agents = (load_json("agents.json", {"agents": {}}).get("agents") or {})
+        last_row = _public_row(last, agents)
+    return {"games_24h": games_24h, "games_live": live, "last_settled": last_row}
+
+
 def _lp_realized(agent_id: str, lp_pools: dict[str, Any]) -> Decimal:
     pool = (lp_pools.get("pools") or {}).get(agent_id) or {}
     total = Decimal("0")
@@ -260,7 +358,7 @@ def build_public_metrics(
     lp_pools: Optional[dict[str, Any]] = None,
     limit: int = 100,
 ) -> dict[str, Any]:
-    store = matches if matches is not None else load_json("matches.json", {"matches": {}})
+    store = matches if matches is not None else metric_matches()
     agent_store = agents if agents is not None else load_json("agents.json", {"agents": {}})
     lp_store = lp_pools if lp_pools is not None else load_json("agent_lp_pools.json", {"pools": {}})
     from gaming.src.stack.agentic.economy.spectator import all_books
@@ -483,7 +581,7 @@ def build_public_metrics(
     return {
         "success": True,
         "generated_at": _now(),
-        "source": "matches.json",
+        "source": "matches.json+matches_archive.json",
         "log": "data/agentic/house_log.db",
         "note": (
             "Games and on-chain hashes are stored in house_log.db. "

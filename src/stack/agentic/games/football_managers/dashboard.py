@@ -98,7 +98,7 @@ def _spending_log(club: dict[str, Any], wallet: str, names: dict[str, str]) -> l
     # every fixture this agent played — lets escrow txs (which key on match_id)
     # be attributed even though they only carry wallet on the lock side
     my_matches: set[str] = set()
-    st = S._state().get("season")
+    st = S._state_view().get("season")
     if st:
         for info in (st.get("matchdays") or {}).values():
             for r in info.get("results") or []:
@@ -216,7 +216,7 @@ def _news_for(club: dict[str, Any], agent_id: str) -> list[dict[str, Any]]:
             )
 
     # a red card in the most recent fixture bans that player from the next one
-    st = S._state().get("season")
+    st = S._state_view().get("season")
     if st:
         banned = S._suspended_players(st, agent_id)
         if banned:
@@ -266,7 +266,7 @@ def owner_dashboard(agent_id: str) -> dict[str, Any]:
 
     names = _names()
     wallet = S._wallet(agent_id)
-    st = S._state().get("season")
+    st = S._state_view().get("season")
 
     # ------------------------------------------------------------ table + sched
     rows: list[dict[str, Any]] = []

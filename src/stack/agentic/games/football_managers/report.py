@@ -107,7 +107,7 @@ def match_report(
     Raises ValueError when the fixture has not been played (replays of
     pre-feed-storage matchdays are not reported — nothing to fold).
     """
-    from gaming.src.stack.agentic.games.football_managers.season import _state
+    from gaming.src.stack.agentic.games.football_managers.season import _state_view as _state
 
     s = _state().get("season")
     if not s or int(s.get("season_no") or 0) != int(season_no):
@@ -193,7 +193,7 @@ def latest_report_for_agent(agent_id: str) -> dict[str, Any]:
 
     Raises ValueError when the agent has no club or no played fixture yet.
     """
-    from gaming.src.stack.agentic.games.football_managers.season import _state
+    from gaming.src.stack.agentic.games.football_managers.season import _state_view as _state
 
     s = _state().get("season")
     if not s:

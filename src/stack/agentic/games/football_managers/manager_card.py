@@ -181,7 +181,7 @@ def record_series(agent_id: str) -> dict[str, Any]:
     out: list[dict[str, Any]] = []
     try:
         # raw stored state — get_season()'s public snapshot omits matchday results
-        season = S._state().get("season") or {}
+        season = S._state_view().get("season") or {}
     except Exception:
         season = {}
     matchdays = season.get("matchdays") or {}

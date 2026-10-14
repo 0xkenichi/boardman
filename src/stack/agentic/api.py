@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
@@ -251,7 +251,7 @@ class HouseOpenBody(BaseModel):
 
 
 @router.post("/house/matches")
-async def house_open_match(body: HouseOpenBody, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def house_open_match(body: HouseOpenBody, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.house import get_house
 
     try:
@@ -269,7 +269,7 @@ async def house_open_match(body: HouseOpenBody, _: ApiKeyPrincipal = Depends(req
 
 
 @router.post("/house/matches/{match_id}/lock")
-async def house_lock(match_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def house_lock(match_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.house import get_house
 
     try:
@@ -319,7 +319,7 @@ class HouseRematchBody(BaseModel):
 
 
 @router.post("/house/rematch")
-async def house_rematch(body: HouseRematchBody = HouseRematchBody(), _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def house_rematch(body: HouseRematchBody = HouseRematchBody(), _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Raja vs Nero via House — same path as scripts/run_house_session.py."""
     from gaming.src.stack.agentic.house import get_house
     from gaming.src.stack.agentic.disbursement import DisbursementDenied
@@ -350,6 +350,42 @@ class HouseScheduleBody(BaseModel):
     cadence_sec: Optional[int] = Field(None, ge=0, le=86400, description="seconds between session games (0 = continuous)")
     burst_games: Optional[int] = Field(None, ge=0, le=1000, description="play N games back-to-back, then resume cadence")
     enabled: Optional[bool] = None
+    cadence_mode: Optional[Literal["after_game", "on_the_hour"]] = Field(
+        None,
+        description="after_game = cadence_sec after each settle; on_the_hour = clock-aligned rounds every cadence_sec (0 → hourly)",
+    )
+
+
+def _next_table(sched: dict[str, Any], now: Any) -> tuple[Optional[str], Optional[int]]:
+    """When the house session will seat its next scheduled table.
+
+    Mirrors the session's pacing in scripts/run_house_session.py:
+      on_the_hour — next clock boundary of period cadence_sec, where a
+                    cadence of 0 means hourly (the session's 3600 fallback);
+      after_game  — last_settled_at + cadence_sec (now when never settled);
+                    cadence 0 is continuous play, so there is no countdown.
+    """
+    from datetime import datetime, timedelta
+
+    from gaming.src.stack.agentic.house_schedule import next_round_wait_sec
+
+    if not sched.get("enabled"):
+        return None, None
+    cadence = int(sched.get("cadence_sec") or 0)
+    mode = str(sched.get("cadence_mode") or "after_game")
+    if mode == "on_the_hour":
+        wait = next_round_wait_sec(now, period_sec=cadence if cadence > 0 else 3600)
+    elif cadence > 0:
+        try:
+            last = datetime.fromisoformat(str(sched.get("last_settled_at")).replace("Z", "+00:00"))
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=now.tzinfo)
+        except Exception:
+            last = now
+        wait = max(1, int((last + timedelta(seconds=cadence) - now).total_seconds()))
+    else:
+        return None, None
+    return (now + timedelta(seconds=wait)).isoformat(), wait
 
 
 @router.get("/house/schedule")
@@ -360,32 +396,12 @@ async def house_schedule_get(_: ApiKeyPrincipal = Depends(require_stack_api_key)
     (clock-aligned rounds in on_the_hour mode), so the arena countdown is
     never a guess.
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timezone
 
-    from gaming.src.stack.agentic.house_schedule import (
-        PRESETS,
-        next_round_wait_sec,
-        read_schedule,
-    )
+    from gaming.src.stack.agentic.house_schedule import PRESETS, read_schedule
 
     sched = read_schedule()
-    next_game_at: Optional[str] = None
-    next_in_sec: Optional[int] = None
-    cadence = int(sched.get("cadence_sec") or 0)
-    if sched.get("enabled") and cadence > 0:
-        now = datetime.now(timezone.utc)
-        mode = str(sched.get("cadence_mode") or "after_game")
-        if mode == "on_the_hour":
-            wait = next_round_wait_sec(now, period_sec=cadence)
-        else:
-            anchor = sched.get("last_settled_at")
-            try:
-                last = datetime.fromisoformat(str(anchor).replace("Z", "+00:00"))
-            except Exception:
-                last = now
-            wait = max(1, int((last + timedelta(seconds=cadence) - now).total_seconds()))
-        next_game_at = (now + timedelta(seconds=wait)).isoformat()
-        next_in_sec = wait
+    next_game_at, next_in_sec = _next_table(sched, datetime.now(timezone.utc))
     return {
         "success": True,
         "schedule": sched,
@@ -415,20 +431,26 @@ async def house_schedule_set(
         changes["burst_games"] = clamp_burst(body.burst_games)
     if body.enabled is not None:
         changes["enabled"] = bool(body.enabled)
+    if body.cadence_mode is not None:
+        changes["cadence_mode"] = body.cadence_mode
     sched = write_schedule(set_by="admin_desk", **changes)
     return {"success": True, "schedule": sched, "clerk": "agent_boardman_house"}
 
 
 @router.get("/house/status")
-async def house_status(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
-    """Operator status: schedule, agent health, bot process, last settlement."""
+def house_status(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
+    """Operator status: schedule, agent health, bot process, last settlement.
+
+    Plain def: socket probes and the /proc scan block, so FastAPI runs this in
+    its threadpool instead of on the event loop.
+    """
     import os
     import socket
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timezone
 
     from gaming.src.stack.agentic.house import get_house
     from gaming.src.stack.agentic.house_schedule import PRESETS, read_schedule
-    from gaming.src.stack.agentic.metrics import build_public_metrics
+    from gaming.src.stack.agentic.metrics import house_activity
     from gaming.src.stack.agentic.registry import get_registry
     from gaming.src.stack.agentic.store import load_json
 
@@ -502,33 +524,13 @@ async def house_status(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     )
 
     now = datetime.now(timezone.utc)
-    metrics = build_public_metrics(limit=10)
-    last_settled: dict[str, Any] = {}
-    games_24h = 0
-    for m in metrics.get("matches") or []:
-        if m.get("status") != "settled":
-            continue
-        if not last_settled:
-            last_settled = m
-        try:
-            sa = m.get("settled_at") or ""
-            if sa:
-                settled_dt = datetime.fromisoformat(sa.replace("Z", "+00:00"))
-                if settled_dt >= now - timedelta(hours=24):
-                    games_24h += 1
-        except Exception:
-            pass
-
-    next_game_at: Optional[str] = None
-    next_in_sec: Optional[int] = None
-    if sched.get("enabled") and sched.get("cadence_sec", 0) > 0 and sched.get("last_settled_at"):
-        try:
-            last_dt = datetime.fromisoformat(str(sched["last_settled_at"]).replace("Z", "+00:00"))
-            nxt = last_dt + timedelta(seconds=int(sched["cadence_sec"]))
-            next_game_at = nxt.isoformat()
-            next_in_sec = max(0, int((nxt - now).total_seconds()))
-        except Exception:
-            pass
+    # Over every match (hot + archive) — games_24h is no longer capped by a
+    # 10-row metrics page.
+    activity = house_activity(now=now)
+    last_settled: dict[str, Any] = activity.get("last_settled") or {}
+    games_24h = int(activity.get("games_24h") or 0)
+    # Same arithmetic as GET /house/schedule and the session (on_the_hour aware).
+    next_game_at, next_in_sec = _next_table(sched, now)
 
     api_ok = True
     try:
@@ -545,7 +547,7 @@ async def house_status(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
         "presets": PRESETS,
         "agents": agents_out,
         "games_24h": games_24h,
-        "games_live": metrics.get("volume", {}).get("games_live"),
+        "games_live": activity.get("games_live"),
         "last_settled": {
             "match_id": last_settled.get("match_id"),
             "result": last_settled.get("result"),
@@ -560,7 +562,7 @@ async def house_status(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
 
 
 @router.post("/house/matches/{match_id}/play")
-async def house_play(match_id: str, body: HousePlayBody = HousePlayBody(), _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def house_play(match_id: str, body: HousePlayBody = HousePlayBody(), _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.house import get_house
 
     try:
@@ -593,7 +595,7 @@ async def seed_demo_agents(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
 
 
 @router.get("/agents/onchain_volume")
-async def agents_onchain_volume(
+def agents_onchain_volume(
     chain: int = 0,
     days: Optional[int] = None,
     _: ApiKeyPrincipal = Depends(require_stack_api_key),
@@ -646,16 +648,29 @@ def _agents_onchain_transfer_volume(days: Optional[int] = None) -> dict[str, Any
     from gaming.src.stack.agentic.registry import get_registry
     from gaming.src.stack.agentic.onchain import usdc_transfer_volume
 
+    from concurrent.futures import ThreadPoolExecutor
+
     res: dict[str, Any] = {}
     try:
-        for a in get_registry().list_agents():
-            wid = a.get("wallet_address") or ""
-            if not wid:
-                continue
+        agents = [a for a in get_registry().list_agents() if a.get("wallet_address")]
+
+        def _scan(a: dict[str, Any]) -> Any:
             try:
-                vol = usdc_transfer_volume(
-                    wid, chain_id=a.get("chain_id") or "arc", days=days
+                return usdc_transfer_volume(
+                    a["wallet_address"], chain_id=a.get("chain_id") or "arc", days=days
                 )
+            except Exception as exc:  # reported per agent below
+                return exc
+
+        # Wallet scans are independent RPC paging; a few at a time instead of
+        # strictly one after another (bounded to stay inside RPC rate limits).
+        with ThreadPoolExecutor(max_workers=3, thread_name_prefix="volume") as pool:
+            scans = list(pool.map(_scan, agents))
+        for a, vol in zip(agents, scans):
+            wid = a.get("wallet_address") or ""
+            try:
+                if isinstance(vol, Exception):
+                    raise vol
                 res[a["agent_id"]] = {
                     "wallet": wid,
                     "in_usdc": vol["in_usdc"],
@@ -675,7 +690,7 @@ def _agents_onchain_transfer_volume(days: Optional[int] = None) -> dict[str, Any
 
 
 @router.get("/agents/{agent_id}/onchain_volume")
-async def agent_onchain_volume(
+def agent_onchain_volume(
     agent_id: str,
     days: Optional[int] = None,
     _: ApiKeyPrincipal = Depends(require_stack_api_key),
@@ -707,7 +722,7 @@ async def agent_onchain_volume(
 
 
 @router.get("/agents/{agent_id}")
-async def get_agent(
+def get_agent(
     agent_id: str,
     _: ApiKeyPrincipal = Depends(require_stack_api_key),
 ):
@@ -753,7 +768,7 @@ async def get_agent(
 
 
 @router.get("/agents/{agent_id}/wallet")
-async def get_agent_wallet(
+def get_agent_wallet(
     agent_id: str,
     _: ApiKeyPrincipal = Depends(require_stack_api_key),
 ):
@@ -813,7 +828,7 @@ async def get_match(match_id: str, _: ApiKeyPrincipal = Depends(require_stack_ap
 
 
 @router.post("/matches")
-async def create_match(body: CreateMatchBody, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def create_match(body: CreateMatchBody, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.matches import get_match_service
 
     try:
@@ -831,7 +846,7 @@ async def create_match(body: CreateMatchBody, _: ApiKeyPrincipal = Depends(requi
 
 
 @router.post("/matches/{match_id}/lock")
-async def lock_match(match_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def lock_match(match_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.matches import get_match_service
 
     try:
@@ -842,7 +857,7 @@ async def lock_match(match_id: str, _: ApiKeyPrincipal = Depends(require_stack_a
 
 
 @router.post("/matches/{match_id}/play")
-async def play_match(match_id: str, body: RunBody = RunBody(), _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def play_match(match_id: str, body: RunBody = RunBody(), _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.matches import get_match_service
 
     try:
@@ -868,7 +883,7 @@ class DemoGameBody(BaseModel):
 
 
 @router.post("/demo/game")
-async def demo_any_game(body: DemoGameBody = DemoGameBody(), _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def demo_any_game(body: DemoGameBody = DemoGameBody(), _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Raja vs Nero on any catalog game — lock, play, fees, spectator pot."""
     from gaming.src.stack.agentic.matches import get_match_service
 
@@ -959,7 +974,7 @@ async def register_agent(body: RegisterAgentBody, principal: ApiKeyPrincipal = D
 
 
 @router.post("/demo/chess")
-async def demo_chess(body: DemoBody = DemoBody(), _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def demo_chess(body: DemoBody = DemoBody(), _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """
     Seed Raja vs Nero, dual-lock USDC, play live chess, settle.
     """
@@ -1216,7 +1231,7 @@ async def match_odds(match_id: str, eval_pawns: Optional[float] = None, ply: int
 
 
 @router.get("/public/metrics")
-async def public_metrics(limit: int = 100):
+def public_metrics(limit: int = 100):
     """Unauthenticated Raja vs Nero PNL + match proofs.
 
     Sanitized: no private keys, no full move lists, no spectator bettor ids.
@@ -1227,18 +1242,49 @@ async def public_metrics(limit: int = 100):
     return _metrics(limit=cap)
 
 
+_WALLET_BALANCE_TTL_SEC = 30.0
+# wallet (lowercased) -> (monotonic fetched_at, balance str | "unknown")
+_wallet_balance_cache: dict[str, tuple[float, str]] = {}
+
+
+def _cached_usdc_balance(wallet: str) -> str:
+    """On-chain USDC balance with a short TTL — the admin desk polls, and one
+    RPC per agent wallet per poll was the whole cost of the endpoint."""
+    import time
+
+    key = wallet.lower()
+    hit = _wallet_balance_cache.get(key)
+    now = time.monotonic()
+    if hit is not None and now - hit[0] < _WALLET_BALANCE_TTL_SEC:
+        return hit[1]
+    try:
+        from gaming.src.stack.agentic.onchain import usdc_balance
+
+        val = str(usdc_balance(wallet))
+    except Exception:
+        val = "unknown"
+    _wallet_balance_cache[key] = (now, val)
+    return val
+
+
 @router.get("/admin/metrics-detail")
-async def admin_metrics_detail(_: StackCaller = Depends(require_platform_admin)):
-    """Detailed admin metrics: human vs agent volume, wallet balances, user count, running totals."""
-    from gaming.src.stack.agentic.metrics import build_public_metrics
+def admin_metrics_detail(_: StackCaller = Depends(require_platform_admin)):
+    """Detailed admin metrics: human vs agent volume, wallet balances, user count, running totals.
+
+    Plain def (threadpool): balance RPCs and the metrics pass are blocking.
+    """
+    from gaming.src.stack.agentic.metrics import build_public_metrics, metric_matches
     from gaming.src.stack.agentic.store import load_json
     from decimal import Decimal
     from datetime import datetime, timezone
 
-    metrics = build_public_metrics(limit=500)
+    all_matches = metric_matches()
+    metrics = build_public_metrics(matches=all_matches, limit=1)
     vol = metrics.get("volume", {})
     agents = metrics.get("agents", [])
-    matches = metrics.get("matches", [])
+    # Raw records (hot + archive), not the capped public rows: the split below
+    # needs agent ids and spectator books, which public rows don't carry.
+    matches = list((all_matches.get("matches") or {}).values())
 
     # Wallet balances
     agent_store = load_json("agents.json", {"agents": {}})
@@ -1247,20 +1293,11 @@ async def admin_metrics_detail(_: StackCaller = Depends(require_platform_admin))
     for aid, rec in agent_map.items():
         wallet = rec.get("wallet_address") or ""
         if wallet:
-            try:
-                from gaming.src.stack.agentic.onchain import usdc_balance
-                bal = usdc_balance(wallet)
-                wallet_balances[aid] = {
-                    "wallet": wallet,
-                    "balance_usdc": str(bal),
-                    "name": rec.get("name") or aid,
-                }
-            except Exception:
-                wallet_balances[aid] = {
-                    "wallet": wallet,
-                    "balance_usdc": "unknown",
-                    "name": rec.get("name") or aid,
-                }
+            wallet_balances[aid] = {
+                "wallet": wallet,
+                "balance_usdc": _cached_usdc_balance(wallet),
+                "name": rec.get("name") or aid,
+            }
 
     # Human vs Agent volume split
     human_volume = Decimal("0")
@@ -1275,6 +1312,9 @@ async def admin_metrics_detail(_: StackCaller = Depends(require_platform_admin))
     agent_ids = {RAJA, NERO}
 
     for m in matches:
+        # same definition as summary.total_skill_volume_usdc (stakes that locked)
+        if m.get("status") not in {"settled", "locked"}:
+            continue
         a = m.get("agent_a_id") or ""
         b = m.get("agent_b_id") or ""
         is_agent_match = a in agent_ids and b in agent_ids
