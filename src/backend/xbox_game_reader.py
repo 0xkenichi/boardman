@@ -13,9 +13,8 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 import aiohttp
-from dotenv import load_dotenv
 
-load_dotenv()
+# .env is loaded by the entrypoint (see __main__), never at import.
 
 
 @dataclass
@@ -295,28 +294,40 @@ class XboxGameReader:
         }
 
 
-# Export convenience functions
-reader = XboxGameReader()
+# Export convenience functions (reader built lazily so importing this module
+# has no side effects and sees env loaded by the entrypoint).
+_reader: Optional[XboxGameReader] = None
+
+
+def _get_reader() -> XboxGameReader:
+    global _reader
+    if _reader is None:
+        _reader = XboxGameReader()
+    return _reader
 
 
 async def verify_xbox_identity(gamertag: str) -> Dict:
     """Quick access to Xbox identity verification"""
-    return await reader.verify_identity(gamertag)
+    return await _get_reader().verify_identity(gamertag)
 
 
 async def check_recent_gameplay_xbox(gamertag: str, game_type: str, hours_back: int = 2) -> Dict:
     """Quick access to recent gameplay check"""
-    return await reader.check_recent_gameplay(gamertag, game_type, hours_back)
+    return await _get_reader().check_recent_gameplay(gamertag, game_type, hours_back)
 
 
 async def get_xbox_profile(gamertag: str) -> Optional[XboxUserProfile]:
     """Quick access to full profile"""
-    return await reader.get_full_profile(gamertag)
+    return await _get_reader().get_full_profile(gamertag)
 
 
 if __name__ == "__main__":
     import asyncio
     import sys
+
+    from dotenv import load_dotenv
+
+    load_dotenv()
     
     async def test():
         if len(sys.argv) > 1:

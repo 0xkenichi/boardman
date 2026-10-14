@@ -15,37 +15,71 @@ illegal position or a result the rules don't support:
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 
 import chess
 import pytest
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
+# Hermetic by default: the games under test are played fresh in a sandbox.
+# To audit a real store read-only (e.g. production data/agentic), point
+# RULEBOOK_AUDIT_DATA at that directory.
+_AUDIT_DIR = os.environ.get("RULEBOOK_AUDIT_DATA", "").strip()
+_SEEDS = (1, 2, 3)
 
 
-def _load_matches() -> list[dict]:
-    """Every stored match: hot store + archive + whatever the service sees."""
+def _read_store(data_dir: pathlib.Path) -> dict[str, dict]:
     out: dict[str, dict] = {}
-
-    for rel in ("data/agentic/matches.json", "data/agentic/matches_archive.json"):
-        p = ROOT / rel
+    for name in ("matches.json", "matches_archive.json"):
+        p = data_dir / name
         if not p.exists():
             continue
         doc = json.loads(p.read_text())
         for mid, rec in (doc.get("matches") or doc).items():
             out[str(mid)] = rec
+    return out
 
-    try:
-        from gaming.src.stack.agentic.matches import get_match_service
 
-        for rec in get_match_service().list_matches(200):
-            mid = str(rec.get("match_id") or "")
-            if mid:
-                out[mid] = rec
-    except Exception:  # service optional — file reads above are the source of truth
-        pass
+def _play_sandbox_games(tmp_dir: pathlib.Path) -> dict[str, dict]:
+    """Play a few real house games (agents → engine → settle) in tmp_dir."""
+    from gaming.src.stack.agentic import clock
+    from gaming.src.stack.agentic import house as house_mod
+    from gaming.src.stack.agentic.matches import get_match_service
+    from gaming.src.stack.agentic.registry import get_registry
 
-    return [r for r in out.values() if r.get("moves")]
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("BOARDMAN_AGENTIC_DATA", str(tmp_dir))
+        mp.setenv("BOARDMAN_BET_WINDOW_SEC", "0")
+        mp.setattr(clock, "reasoning_delay_sec", lambda *a, **k: 0.0)
+        mp.setattr(house_mod, "ensure_builder_webhooks", lambda *a, **k: None)
+        get_registry.cache_clear()
+        get_match_service.cache_clear()
+        try:
+            agents = {a["agent_id"]: a for a in get_registry().ensure_demo_agents()}
+            rt = house_mod.get_house()
+            for seed in _SEEDS:
+                m = rt.open_match(
+                    agent_a_id=agents["agent_raja_kia_alekhine"]["agent_id"],
+                    agent_b_id=agents["agent_nero_sicilian_french"]["agent_id"],
+                    stake_usdc=1,
+                    game_id="agentic.chess_standard",
+                )
+                rt.lock(m["match_id"])
+                out = rt.play(m["match_id"], move_delay_sec=0, wait=True, seed=seed)
+                assert out["status"] == "settled", out.get("status")
+            return _read_store(tmp_dir)
+        finally:
+            get_registry.cache_clear()
+            get_match_service.cache_clear()
+
+
+@pytest.fixture(scope="module")
+def recorded_matches(tmp_path_factory) -> list[dict]:
+    if _AUDIT_DIR:
+        stored = _read_store(pathlib.Path(_AUDIT_DIR))
+    else:
+        stored = _play_sandbox_games(tmp_path_factory.mktemp("rulebook"))
+    return [r for r in stored.values() if r.get("moves")]
 
 
 def _replay(rec: dict) -> chess.Board:
@@ -72,15 +106,16 @@ def _replay(rec: dict) -> chess.Board:
     return board
 
 
-def test_every_recorded_game_replays_legally():
-    matches = _load_matches()
-    assert matches, "expected stored matches to validate"
-    for rec in matches:
+@pytest.mark.slow
+def test_every_recorded_game_replays_legally(recorded_matches):
+    assert recorded_matches, "expected stored matches to validate"
+    for rec in recorded_matches:
         _replay(rec)
 
 
-def test_terminations_match_the_engine():
-    for rec in _load_matches():
+@pytest.mark.slow
+def test_terminations_match_the_engine(recorded_matches):
+    for rec in recorded_matches:
         if rec.get("status") != "settled":
             continue
         term = str(rec.get("termination") or "").lower()
@@ -116,9 +151,10 @@ def test_terminations_match_the_engine():
             ), f"{mid}: final position is mate but no winner recorded"
 
 
-def test_check_flags_in_move_log_match_position():
+@pytest.mark.slow
+def test_check_flags_in_move_log_match_position(recorded_matches):
     checked = 0
-    for rec in _load_matches():
+    for rec in recorded_matches:
         board = chess.Board()
         for mv in rec["moves"]:
             uci = mv.get("uci")

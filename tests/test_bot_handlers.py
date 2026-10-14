@@ -232,6 +232,13 @@ def _patch_supabase(monkeypatch):
     """Replace the shared Supabase client with a fresh in-memory mock."""
     sb = _MockSupabase()
 
+    import backend.supabase_client as _real_sc
+
+    real = {_real_sc.get_supabase}
+    gsc = sys.modules.get("gaming.src.backend.supabase_client")
+    if gsc is not None:
+        real.add(gsc.get_supabase)
+
     # The bot modules import ``get_supabase`` locally; patch each binding so
     # every code path sees the in-memory mock.
     targets = [
@@ -247,9 +254,20 @@ def _patch_supabase(monkeypatch):
         "gaming.src.bot.handlers.submit_score.get_supabase",
         "gaming.src.bot.jobs.expiry.get_supabase",
         "gaming.src.bot.jobs.expiry._get_supabase",
+        # challenge gate (lazy-imported by cmd_challenge / accept callback)
+        "gaming.src.backend.services.play_points.get_supabase",
     ]
     for target in targets:
         monkeypatch.setattr(target, lambda _sb=sb: _sb)
+
+    # Any other already-imported module still bound to the real client
+    # factory would reach the live database — rebind those too.
+    for name, mod in list(sys.modules.items()):
+        if mod is None or not name.startswith(("gaming.", "backend.")):
+            continue
+        for attr in ("get_supabase", "_get_supabase"):
+            if getattr(mod, attr, None) in real:
+                monkeypatch.setattr(mod, attr, lambda _sb=sb: _sb)
     return sb
 
 

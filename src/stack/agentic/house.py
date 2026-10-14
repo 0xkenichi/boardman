@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import logging
 import os
+import queue
 import threading
 import time
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Optional
@@ -90,19 +91,87 @@ def _wait_bet_window(match_id: str) -> bool:
     return True
 
 
+class _DaemonTablePool:
+    """Bounded pool of *daemon* table threads with the executor API we use.
+
+    ThreadPoolExecutor workers are non-daemon and are joined at interpreter
+    exit (concurrent.futures registers that hook), so a table still mid-game
+    kept the process alive after main() returned (pytest never exited).
+    Flipping ``daemon`` after the fact is impossible: workers are created
+    lazily on submit and can't change daemon status once started. Leftover
+    tables are recovered by ``rescue_orphans`` on the next boot.
+    """
+
+    def __init__(self, max_workers: int, thread_name_prefix: str = "house-table") -> None:
+        self._max_workers = max(1, int(max_workers))
+        self._prefix = thread_name_prefix
+        self._queue: queue.SimpleQueue = queue.SimpleQueue()
+        self._idle = threading.Semaphore(0)
+        self._threads: list[threading.Thread] = []
+        self._lock = threading.Lock()
+        self._shutdown = False
+
+    def submit(self, fn, /, *args, **kwargs) -> Future:
+        fut: Future = Future()
+        with self._lock:
+            if self._shutdown:
+                raise RuntimeError("cannot schedule new tables after shutdown")
+            self._queue.put((fut, fn, args, kwargs))
+            # Reuse an idle worker if there is one, else grow up to the cap.
+            if not self._idle.acquire(blocking=False) and len(self._threads) < self._max_workers:
+                t = threading.Thread(
+                    target=self._work,
+                    name=f"{self._prefix}_{len(self._threads)}",
+                    daemon=True,
+                )
+                t.start()
+                self._threads.append(t)
+        return fut
+
+    def _work(self) -> None:
+        while True:
+            item = self._queue.get()
+            if item is None:
+                return
+            fut, fn, args, kwargs = item
+            if fut.set_running_or_notify_cancel():
+                try:
+                    fut.set_result(fn(*args, **kwargs))
+                except BaseException as exc:  # mirror ThreadPoolExecutor
+                    fut.set_exception(exc)
+            del item, fut
+            self._idle.release()
+
+    def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
+        with self._lock:
+            self._shutdown = True
+            if cancel_futures:
+                while True:
+                    try:
+                        item = self._queue.get_nowait()
+                    except queue.Empty:
+                        break
+                    if item is not None:
+                        item[0].cancel()
+            for _ in self._threads:
+                self._queue.put(None)
+            threads = list(self._threads)
+        if wait:
+            for t in threads:
+                t.join()
+
+
 _floor_lock = threading.RLock()
 _workers: dict[str, Future] = {}
-_pool: Optional[ThreadPoolExecutor] = None
+_pool: Optional[_DaemonTablePool] = None
 
 
-def _executor() -> ThreadPoolExecutor:
+def _executor() -> _DaemonTablePool:
     global _pool
     with _floor_lock:
         if _pool is None:
-            _pool = ThreadPoolExecutor(max_workers=max_tables(), thread_name_prefix="house-table")
             # Don't pin the process on leftover tables (pytest / laptop hub).
-            for t in getattr(_pool, "_threads", []):
-                t.daemon = True
+            _pool = _DaemonTablePool(max_workers=max_tables(), thread_name_prefix="house-table")
         return _pool
 
 HOUSE_NAMES = {n.lower() for n in (MANIFEST.get("display_names") or [])} | {
@@ -238,7 +307,13 @@ def _set_status(match_id: str, status: str, **extra: Any) -> dict[str, Any]:
 
 
 def ensure_builder_webhooks() -> None:
-    """Boot Raja + Nero webhooks if they are not already listening (two builders)."""
+    """Boot Raja + Nero webhooks if they are not already listening (two builders).
+
+    No-op when BOARDMAN_WEBHOOKS_SUPERVISED=1: a supervisor
+    (deploy/start_akash.py) owns the builder processes and their logs.
+    """
+    if (os.getenv("BOARDMAN_WEBHOOKS_SUPERVISED") or "").strip() == "1":
+        return
     import socket
     import subprocess
     import sys

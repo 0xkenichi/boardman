@@ -44,59 +44,88 @@ def test_best_move_startpos_when_binary_present():
     assert mv in legal
 
 
+# Since 853f9ae the shared brain (agent_brain → HybridEngine) plays
+# mate → authored opening book → LLM → local UCI multipv (best_candidates) →
+# remote API → styled fallback. These tests use quiet middlegame positions
+# past the book's ply limit so the local-engine step is what's exercised,
+# and stub the engine so results never depend on a Stockfish binary.
+_W_MIDDLEGAME = "r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQ1RK1 w - - 0 7"
+_B_MIDDLEGAME = "r1bq1rk1/ppp2ppp/2np1n2/2b1p1B1/2B1P3/2NP1N2/PPP2PPP/R2Q1RK1 b - - 1 7"
+# Sources that can only come from lichess_uci.best_candidates (local engine).
+_LOCAL_UCI_SOURCES = ("local_sf", "blend")
+
+
+def _legal(fen: str) -> list[str]:
+    return [m.uci() for m in chess.Board(fen).legal_moves]
+
+
+def _local_engine(monkeypatch, move: str | None, seen: dict | None = None):
+    """Stockfish on, local UCI returns ``move`` (or nothing), remote API off."""
+    from gaming.src.stack.agentic.chess import lichess_uci
+    from gaming.src.stack.agentic.chess import stockfish_client
+
+    monkeypatch.setenv("BOARDMAN_USE_STOCKFISH", "1")
+
+    def fake_candidates(fen, **kwargs):
+        if seen is not None:
+            seen["fen"] = fen
+            seen.update(kwargs)
+        return [{"uci": move, "eval_pawns": 0.3, "mate": None}] if move else []
+
+    def no_remote(*_a, **_k):
+        raise RuntimeError("remote Stockfish disabled in tests")
+
+    monkeypatch.setattr(lichess_uci, "best_candidates", fake_candidates)
+    monkeypatch.setattr(stockfish_client, "analyze", no_remote)
+
+
 def test_raja_uses_uci_when_ready(monkeypatch):
     from gaming.src.stack.agentic.agents.raja import runtime
 
-    called = {}
-
-    def fake_best(fen, **kwargs):
-        called["fen"] = fen
-        return "e2e4"
-
-    monkeypatch.setattr(runtime.lichess_uci, "best_move", fake_best)
-    board = chess.Board()
-    legal = [m.uci() for m in board.legal_moves]
-    mv = runtime.pick_move(fen=board.fen(), legal_moves=legal)
-    assert mv == "e2e4"
-    assert runtime.LAST_SOURCE == "lichess_uci"
-    assert called["fen"] == board.fen()
+    seen: dict = {}
+    _local_engine(monkeypatch, "c1g5", seen)
+    legal = _legal(_W_MIDDLEGAME)
+    assert "c1g5" in legal
+    mv = runtime.pick_move(fen=_W_MIDDLEGAME, legal_moves=legal)
+    assert mv == "c1g5"
+    assert runtime.LAST_SOURCE.startswith(_LOCAL_UCI_SOURCES), runtime.LAST_SOURCE
+    assert seen["fen"] == _W_MIDDLEGAME
 
 
 def test_raja_falls_back_when_uci_missing(monkeypatch):
     from gaming.src.stack.agentic.agents.raja import runtime
 
-    monkeypatch.setattr(runtime.lichess_uci, "best_move", lambda *a, **k: None)
-    board = chess.Board()
-    legal = [m.uci() for m in board.legal_moves]
-    mv = runtime.pick_move(fen=board.fen(), legal_moves=legal)
+    _local_engine(monkeypatch, None)
+    legal = _legal(_W_MIDDLEGAME)
+    mv = runtime.pick_move(fen=_W_MIDDLEGAME, legal_moves=legal)
     assert mv in legal
-    assert runtime.LAST_SOURCE != "lichess_uci"
+    assert runtime.LAST_SOURCE == "local_styled_fallback"
 
 
 def test_handle_webhook_reads_clocks(monkeypatch):
     from gaming.src.stack.agentic.agents.raja import runtime
+    from gaming.src.stack.agentic.chess import lichess_uci
 
-    seen = {}
+    body = {
+        "game_id": "agentic.chess_standard",
+        "state": {
+            "fen": _B_MIDDLEGAME,
+            "clocks": {"wtime_ms": 20000, "btime_ms": 10000, "inc_ms": 2000},
+        },
+        "legal_moves": _legal(_B_MIDDLEGAME),
+    }
+    clocks = lichess_uci.clocks_from_webhook(body)
+    assert clocks["wtime_ms"] == 20000
+    assert clocks["btime_ms"] == 10000
+    assert clocks["winc_ms"] == 2000
+    assert clocks["binc_ms"] == 2000
 
-    def fake_best(fen, **kwargs):
-        seen.update(kwargs)
-        return "e7e5"
-
-    monkeypatch.setattr(runtime.lichess_uci, "best_move", fake_best)
-    mv = runtime.handle_webhook(
-        {
-            "game_id": "agentic.chess_standard",
-            "state": {
-                "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
-                "clocks": {"wtime_ms": 180000, "btime_ms": 179000, "inc_ms": 2000},
-            },
-            "legal_moves": ["e7e5", "c7c5"],
-        }
-    )
-    assert mv == "e7e5"
-    assert seen.get("wtime_ms") == 180000
-    assert seen.get("btime_ms") == 179000
-    assert seen.get("winc_ms") == 2000
+    seen: dict = {}
+    _local_engine(monkeypatch, "h7h6", seen)
+    mv = runtime.handle_webhook(body)
+    assert mv == "h7h6"
+    # Clock-aware budget: 5% of the tighter clock (10s) → 500 ms think.
+    assert seen.get("movetime_ms") == 500
 
 
 def test_homemade_raja_search_legal(monkeypatch):
@@ -118,12 +147,10 @@ def test_homemade_raja_search_legal(monkeypatch):
 def test_nero_uses_uci_when_ready(monkeypatch):
     from gaming.src.stack.agentic.agents.nero import runtime
 
-    monkeypatch.setattr(runtime.lichess_uci, "best_move", lambda *a, **k: "e7e5")
-    board = chess.Board()
-    board.push_uci("e2e4")
-    legal = [m.uci() for m in board.legal_moves]
-    assert runtime.pick_move(fen=board.fen(), legal_moves=legal) == "e7e5"
-    assert runtime.LAST_SOURCE == "lichess_uci"
+    _local_engine(monkeypatch, "h7h6")
+    legal = _legal(_B_MIDDLEGAME)
+    assert runtime.pick_move(fen=_B_MIDDLEGAME, legal_moves=legal) == "h7h6"
+    assert runtime.LAST_SOURCE.startswith(_LOCAL_UCI_SOURCES), runtime.LAST_SOURCE
 
 
 def test_lichess_identity_links_wallet_without_storing_token(tmp_path, monkeypatch):

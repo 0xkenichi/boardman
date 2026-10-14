@@ -32,9 +32,6 @@ from pyrogram import Client
 from pyrogram.errors import FloodWait
 import pytz
 
-# Load environment variables from .env file
-load_dotenv()
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
@@ -206,7 +203,9 @@ class BotMonitor:
 
 
 async def main():
-    """Entry point"""
+    """Entry point (also used by start_monitor.py)."""
+    # Load .env here, not at import, so importing this module has no side effects.
+    load_dotenv()
     try:
         monitor = BotMonitor()
         await monitor.run()

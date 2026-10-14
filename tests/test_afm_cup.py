@@ -203,6 +203,7 @@ def test_byes_advance_without_playing(monkeypatch) -> None:
         assert not t.get("score")  # no engine result for a bye
 
 
+@pytest.mark.slow
 def test_knockout_draws_are_settled_extra_time_or_penalties(_world) -> None:
     """A level 90' knockout tie must go to extra time / pens — never a draw."""
     deciders = 0

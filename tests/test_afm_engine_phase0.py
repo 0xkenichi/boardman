@@ -100,6 +100,7 @@ def test_feed_frame_and_events(_fake_players):
     assert {"halftime", "possession", "added_time"} <= types
 
 
+@pytest.mark.slow
 def test_attribute_model_drives_outcomes(_fake_players):
     """A materially stronger XI must outscore a weaker one across seeds."""
     strong = weak = 0
@@ -199,6 +200,7 @@ def test_stats_are_a_fold_of_the_feed(_fake_players):
         assert stats["yellow_cards_home"] + stats["red_cards_home"] >= 0
 
 
+@pytest.mark.slow
 def test_half_time_adjustment_changes_the_second_half_only(_fake_players):
     base = {"formation": "4-3-3", "tags": ["balanced"], "mentality": "balanced"}
     attacking_2h = {"formation": "4-3-3", "tags": ["gegenpress"], "mentality": "attacking"}
@@ -230,6 +232,7 @@ def test_half_time_feed_is_identical_until_the_break(_fake_players):
     assert a[ht + 1:] != b[ht + 1:], "2nd-half tactics must alter the 2nd half"
 
 
+@pytest.mark.slow
 def test_extra_time_and_penalties_settle_a_draw(_fake_players):
     kw = dict(home_xi=_STRONG_XI, away_xi=_WEAK_XI, home_bench=_STRONG_BN,
               away_bench=_WEAK_BN, home_tactics={"formation": "4-3-3", "tags": ["balanced"]},

@@ -5,6 +5,8 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
@@ -200,6 +202,7 @@ def test_abort_never_started_frees_pair(tmp_path, monkeypatch):
     assert get_match_service().get(m["match_id"])["status"] == "cancelled"
 
 
+@pytest.mark.slow
 def test_house_play_settles_only_with_disbursement(tmp_path, monkeypatch):
     """Happy path: lock → play → settle records a contract trigger, never a random payee."""
     reg = _iso(tmp_path, monkeypatch)
@@ -314,3 +317,75 @@ def test_rematch_attaches_to_locked_pair(tmp_path, monkeypatch):
     out = rt.rematch(agent_a_id=raja, agent_b_id=nero, stake_usdc=1, wait=False)
     assert out.get("attached") is True
     assert out.get("match_id") == m["match_id"]
+
+
+def _fake_popen(monkeypatch):
+    import subprocess
+
+    spawned: list[list[str]] = []
+
+    class _FakePopen:
+        def __init__(self, args, **_kw):
+            spawned.append(list(args))
+
+    monkeypatch.setattr(subprocess, "Popen", _FakePopen)
+    return spawned
+
+
+@pytest.mark.builder_webhooks
+def test_supervised_webhooks_are_not_spawned(monkeypatch):
+    from gaming.src.stack.agentic import house as house_mod
+
+    spawned = _fake_popen(monkeypatch)
+    monkeypatch.setenv("BOARDMAN_WEBHOOKS_SUPERVISED", "1")
+    house_mod.ensure_builder_webhooks()
+    assert spawned == []
+
+
+@pytest.mark.builder_webhooks
+def test_unsupervised_webhooks_still_spawn_when_ports_are_free(monkeypatch):
+    from gaming.src.stack.agentic import house as house_mod
+
+    spawned = _fake_popen(monkeypatch)
+    monkeypatch.delenv("BOARDMAN_WEBHOOKS_SUPERVISED", raising=False)
+    house_mod.ensure_builder_webhooks()  # port probes are refused by the test net guard
+    mods = [args[-1] for args in spawned]
+    assert "gaming.src.stack.agentic.agents.raja.serve" in mods
+    assert "gaming.src.stack.agentic.agents.nero.serve" in mods
+
+
+def test_table_pool_threads_are_daemon_and_run_work():
+    import threading
+
+    from gaming.src.stack.agentic.house import _DaemonTablePool
+
+    pool = _DaemonTablePool(max_workers=2, thread_name_prefix="t")
+    gate = threading.Event()
+    blocked = pool.submit(gate.wait, 30)
+    quick = pool.submit(lambda x: x * 2, 21)
+    assert quick.result(timeout=5) == 42
+    assert pool._threads and all(t.daemon for t in pool._threads)
+    gate.set()
+    assert blocked.result(timeout=5) is True
+    pool.shutdown(wait=True)
+
+
+def test_process_exits_with_a_table_still_playing():
+    """A table mid-game must not keep the interpreter alive (pytest used to hang)."""
+    import subprocess
+
+    code = (
+        "import sys, types, time\n"
+        f"root = {str(_REPO_ROOT)!r}\n"
+        "sys.path.insert(0, root)\n"
+        "m = types.ModuleType('gaming'); m.__path__ = [root]\n"
+        "sys.modules.setdefault('gaming', m)\n"
+        "from gaming.src.stack.agentic import house\n"
+        "house._executor().submit(time.sleep, 600)\n"
+        "print('submitted', flush=True)\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, timeout=60
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    assert "submitted" in proc.stdout

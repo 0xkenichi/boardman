@@ -1,41 +1,37 @@
 """Unit tests for Naira/USD fiat top-up quotes and store."""
 from __future__ import annotations
 
-import os
 from decimal import Decimal
-from pathlib import Path
 
 import pytest
 
-# Ensure repo root on path
-import sys
+from gaming.src.backend.services import fiat_topup as ft
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-os.environ.setdefault("FIAT_NGN_PER_USD", "1650")
-os.environ.setdefault("FIAT_FEE_FLOOR_USDC", "2")
-os.environ.setdefault("FIAT_FEE_PCT", "0.05")
-os.environ.setdefault("FIAT_MIN_NGN", "5000")
-os.environ.setdefault("FIAT_MIN_USD", "5")
-os.environ.setdefault("FIAT_MIN_CREDIT_USDC", "1")
-os.environ["FIAT_TOPUP_STORE"] = str(
-    Path(__file__).resolve().parent / "_tmp_fiat_topups_test.json"
-)
-
-
-from gaming.src.backend.services import fiat_topup as ft  # noqa: E402
-
-
-def setup_function(_fn):
-    p = Path(os.environ["FIAT_TOPUP_STORE"])
-    if p.exists():
-        p.unlink()
+# Pricing knobs these tests are written against. Pinned with setenv (the old
+# os.environ.setdefault lost to FIAT_* values leaked from the real .env, which
+# moved the rate to 1520 and broke two quotes). Schedule under test:
+# fee = max($2 floor, 5% of gross), credit capped at $100 per top-up.
+_KNOBS = {
+    "FIAT_NGN_PER_USD": "1650",
+    "FIAT_NGN_OFFRAMP_PER_USD": "1500",
+    "FIAT_FEE_FLOOR_USDC": "2",
+    "FIAT_FEE_PCT": "0.05",
+    "FIAT_MIN_NGN": "5000",
+    "FIAT_MAX_NGN": "200000",
+    "FIAT_MIN_USD": "5",
+    "FIAT_MAX_USD": "200",
+    "FIAT_MIN_CREDIT_USDC": "1",
+    "FIAT_MAX_CREDIT_USDC": "100",
+}
 
 
-def teardown_function(_fn):
-    p = Path(os.environ["FIAT_TOPUP_STORE"])
-    if p.exists():
-        p.unlink()
+@pytest.fixture(autouse=True)
+def _pinned_pricing_and_store(tmp_path, monkeypatch):
+    for k, v in _KNOBS.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.delenv("REMATCH_FIAT_TOPUP_FILE", raising=False)
+    # was tests/_tmp_fiat_topups_test.json inside the repo
+    monkeypatch.setenv("FIAT_TOPUP_STORE", str(tmp_path / "fiat_topups.json"))
 
 
 def test_parse_ngn():
