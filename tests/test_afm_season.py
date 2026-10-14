@@ -96,6 +96,7 @@ def test_tick_resolves_due_matchday(_world):
     assert float(snap["pot_usdc"]) == 50.0
 
 
+@pytest.mark.slow
 def test_full_season_crowns_champion_and_pays_pot(_world):
     import gaming.src.stack.agentic.ledger as L
     from gaming.src.stack.agentic.games.football_managers import season as S
@@ -141,6 +142,7 @@ def test_tick_is_idempotent_never_double_counts(_world):
     assert len(snap["recent"]) == 1
 
 
+@pytest.mark.slow
 def test_join_season_queues_for_next_season(_world):
     from gaming.src.stack.agentic.games.football_managers import season as S
 

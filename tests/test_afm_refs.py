@@ -138,6 +138,7 @@ def _cards(d: dict) -> int:
     return sum(1 for e in d["feed"] if e["type"] in ("yellow", "red"))
 
 
+@pytest.mark.slow
 def test_strict_ref_books_far_more_than_lenient_ref():
     xi, players = _squad("ref")
     opp, opp_players = _squad("refopp")

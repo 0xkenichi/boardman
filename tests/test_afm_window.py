@@ -372,6 +372,7 @@ def test_agent_signs_a_player_through_the_plan_reply(_world, monkeypatch):
 # ----------------------------------------------------------- the season clock
 
 
+@pytest.mark.slow
 def test_mid_window_opens_and_closes_on_the_season_clock(_world, monkeypatch):
     monkeypatch.setenv("AFM_FILLER_TARGET", "6")
     import gaming.src.stack.agentic.games.football_managers.season as S
@@ -391,6 +392,7 @@ def test_mid_window_opens_and_closes_on_the_season_clock(_world, monkeypatch):
     assert S.get_season()["transfer_window"]["open"] is False
 
 
+@pytest.mark.slow
 def test_end_window_opens_when_the_season_finishes(_world):
     import gaming.src.stack.agentic.games.football_managers.season as S
 

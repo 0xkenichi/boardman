@@ -92,6 +92,7 @@ def test_set_lineup_enforces_rules():
         set_lineup(bluelock["agent_id"], starters=[stolen] + list(roster[1:11]))
 
 
+@pytest.mark.slow
 def test_engine_tactics_deterministic_and_biasing():
     from gaming.src.stack.agentic.games.football_managers.club_store import seed_demo_clubs
     from gaming.src.stack.agentic.games.football_managers.match_engine import simulate_match
