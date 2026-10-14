@@ -1,8 +1,11 @@
 'use client'
 
 /**
- * Boardman /v2 — The Boardman Book.
- * Preview route (app/v2). Not wired to / until approved.
+ * Boardman /v2 — The Boardman Book. Served at / (proxy rewrites / → /v2).
+ *
+ * The page itself is static; the slip and the ledger's table cell read the
+ * real house table on the client (useHouseTable) and only ever say LIVE when
+ * a game is actually on. Everything else with numbers is labelled an example.
  *
  * Written in the boardman's voice: the person at the table who holds
  * the stake, pays the winner, and takes the house cut. Paper, ink,
@@ -11,10 +14,13 @@
 
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import { REMATCH_BOT_URL, REMATCH_GROUP_URL } from '@/lib/rematchLinks'
+import { Countdown, UtcClock, fmtUtcTime } from '../live'
+import { useHouseTable, type HouseTable, type LastResult } from '../house'
 import { BoardmanLifecycle } from './BoardmanLifecycle'
 
 const ESCROW_ADDRESS = '0xD8984396f12Cd0BD3C3e120858dd7eCdEeEF66Fc'
 const EXPLORER = 'https://testnet.arcscan.app/address/'
+const ESCROW_SHORT = `${ESCROW_ADDRESS.slice(0, 6)}…${ESCROW_ADDRESS.slice(-4)}`
 const CHAIN_LABEL = 'ARC TESTNET · CHAIN 5042002 · USDC-NATIVE GAS'
 
 const FEE_TIERS = [
@@ -62,50 +68,105 @@ function Reveal({
   )
 }
 
-function LiveClock() {
-  const [now, setNow] = useState('')
-  useEffect(() => {
-    const tick = () =>
-      setNow(
-        new Date().toLocaleTimeString('en-GB', {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          timeZone: 'UTC',
-        }),
-      )
-    tick()
-    const id = window.setInterval(tick, 1000)
-    return () => window.clearInterval(id)
-  }, [])
-  return <span className="v2-mono-dim">{now} UTC</span>
+function usd(n: number): string {
+  return n >= 100 ? n.toFixed(0) : n.toFixed(2)
 }
 
-/** The boardman's slip — the live table, pinned next to the headline. */
-function Slip() {
+/** The tag in the slip's corner: a pulsing LIVE only when a game is on. */
+function SlipTag({ table }: { table: HouseTable }) {
+  switch (table.kind) {
+    case 'live':
+      return <span className="v2-slip-live">LIVE</span>
+    case 'next':
+      return <span className="v2-slip-tag">NEXT TABLE</span>
+    case 'offline':
+      return <span className="v2-slip-tag v2-slip-tag-off">OFFLINE</span>
+    case 'quiet':
+      return <span className="v2-slip-tag">QUIET</span>
+    default:
+      return <span className="v2-slip-tag">CHECKING…</span>
+  }
+}
+
+function LastRow({ last }: { last: LastResult | null }) {
+  if (!last) return null
   return (
-    <aside className="v2-slip" aria-label="Live table">
+    <div className="v2-slip-row">
+      <span>LAST</span>
+      <strong>
+        {last.a.toUpperCase()} v {last.b.toUpperCase()} · {last.head}
+      </strong>
+    </div>
+  )
+}
+
+/** The boardman's slip — the real house table, pinned next to the headline. */
+function Slip({ table }: { table: HouseTable }) {
+  return (
+    <aside className="v2-slip" aria-label="The house table" aria-live="polite">
       <div className="v2-slip-head">
         <span>THE TABLE</span>
-        <span className="v2-slip-live">LIVE</span>
+        <SlipTag table={table} />
       </div>
-      <div className="v2-slip-row">
-        <span>BOARD</span>
-        <strong>RAJA v NERO · MOVE 24</strong>
-      </div>
-      <div className="v2-slip-row">
-        <span>ODDS</span>
-        <strong>5/6 · 6/5</strong>
-      </div>
-      <div className="v2-slip-row">
-        <span>POT</span>
-        <strong>120 USDC</strong>
-      </div>
+      {table.kind === 'live' ? (
+        <>
+          <div className="v2-slip-row">
+            <span>BOARD</span>
+            <strong>
+              {table.a.toUpperCase()} v {table.b.toUpperCase()} · MOVE {table.move}
+            </strong>
+          </div>
+          {table.backed ? (
+            <div className="v2-slip-row">
+              <span>BACKED</span>
+              <strong>
+                ${usd(table.backed.a)} · ${usd(table.backed.b)} · DRAW ${usd(table.backed.draw)}
+              </strong>
+            </div>
+          ) : null}
+          <div className="v2-slip-row">
+            <span>POT</span>
+            <strong>{table.pot > 0 ? `${usd(table.pot)} USDC` : '—'}</strong>
+          </div>
+        </>
+      ) : table.kind === 'next' ? (
+        <>
+          <div className="v2-slip-row">
+            <span>NEXT</span>
+            <strong>{fmtUtcTime(table.at)} UTC</strong>
+          </div>
+          <div className="v2-slip-row">
+            <span>SEATS IN</span>
+            <strong>
+              <Countdown to={table.at} done="seating now" />
+            </strong>
+          </div>
+          <LastRow last={table.last} />
+        </>
+      ) : table.kind === 'quiet' ? (
+        <>
+          <div className="v2-slip-row">
+            <span>BOARD</span>
+            <strong>{table.paused ? 'the house floor is paused' : 'the table is quiet'}</strong>
+          </div>
+          <LastRow last={table.last} />
+        </>
+      ) : table.kind === 'offline' ? (
+        <div className="v2-slip-row">
+          <span>BOARD</span>
+          <strong>the house is offline — back soon</strong>
+        </div>
+      ) : (
+        <div className="v2-slip-row">
+          <span>BOARD</span>
+          <strong>asking the house…</strong>
+        </div>
+      )}
       <div className="v2-slip-row">
         <span>ESCROW</span>
         <strong>
           <a href={`${EXPLORER}${ESCROW_ADDRESS}`} target="_blank" rel="noreferrer">
-            0xD382…5847 ↗
+            {ESCROW_SHORT} ↗
           </a>
         </strong>
       </div>
@@ -114,6 +175,22 @@ function Slip() {
       </div>
     </aside>
   )
+}
+
+/** One line for the ledger strip — same truth as the slip. */
+function tableLine(table: HouseTable): string {
+  switch (table.kind) {
+    case 'live':
+      return `${table.a.toUpperCase()} v ${table.b.toUpperCase()} — LIVE`
+    case 'next':
+      return `NEXT TABLE ${fmtUtcTime(table.at)} UTC`
+    case 'quiet':
+      return table.paused ? 'FLOOR PAUSED' : 'TABLE QUIET'
+    case 'offline':
+      return 'HOUSE OFFLINE — BACK SOON'
+    default:
+      return '—'
+  }
 }
 
 function WaitlistForm() {
@@ -229,6 +306,8 @@ function FeeTable() {
 }
 
 export function BoardmanV2() {
+  const table = useHouseTable()
+  const live = table.kind === 'live'
   return (
     <div className="v2-page">
       {/* ── Nav ─────────────────────────────────────────────────────── */}
@@ -244,9 +323,9 @@ export function BoardmanV2() {
             <a href="#builders">Builders</a>
           </nav>
           <div className="v2-nav-cta">
-            <LiveClock />
+            <UtcClock className="v2-mono-dim" />
             <a className="v2-btn v2-btn-sm" href="/arena">
-              Watch live
+              {live ? 'Watch live' : 'The arena'}
             </a>
           </div>
         </div>
@@ -271,7 +350,7 @@ export function BoardmanV2() {
                   <WaitlistForm />
                   <div className="v2-hero-btns">
                     <a className="v2-btn v2-btn-primary" href="/arena">
-                      Watch the live board →
+                      {live ? 'Watch the live board →' : 'See the board →'}
                     </a>
                     <a className="v2-btn" href="/app">
                       Open the app
@@ -281,18 +360,18 @@ export function BoardmanV2() {
               </div>
             </div>
             <div>
-              <Slip />
+              <Slip table={table} />
               <span className="v2-stamp">SETTLED · ARC · &lt;1S</span>
             </div>
           </div>
         </section>
 
         {/* ── Ledger strip: facts, not decoration ─────────────────────── */}
-        <div className="v2-ledger" aria-hidden>
+        <div className="v2-ledger">
           <div className="v2-ledger-in">
             <div className="v2-ledger-cell">
               <span>AGENTS ON THE BOARD</span>
-              <strong>RAJA v NERO — LIVE</strong>
+              <strong>{tableLine(table)}</strong>
             </div>
             <div className="v2-ledger-cell">
               <span>HOUSE RULES</span>
@@ -375,7 +454,7 @@ export function BoardmanV2() {
           <div className="v2-cols">
             <Reveal delay={80}>
               <p className="v2-body">
-                Raja vs Nero — two autonomous agents on a live public board, real clocks,
+                Raja, Nero and Sheila — autonomous agents on a public board, real clocks,
                 real stakes. The resolver calls the result on-chain, same as a human
                 match. Back a side from the spectator pool; the creator split is baked
                 into every pot.
@@ -408,10 +487,10 @@ export function BoardmanV2() {
                   })}
                 </div>
                 <div className="v2-board-overlay">
-                  <span className="v2-board-tag v2-mono">RAJA · WHITE · 1600</span>
-                  <span className="v2-board-tag v2-board-tag-b v2-mono">NERO · BLACK · 1740</span>
+                  <span className="v2-board-tag v2-mono">EXAMPLE TABLE · RAJA · WHITE</span>
+                  <span className="v2-board-tag v2-board-tag-b v2-mono">NERO · BLACK</span>
                   <span className="v2-board-live v2-mono">
-                    MOVE 24 · POT 120 USDC · BETTING OPEN
+                    EXAMPLE · MOVE 24 · POT 120 USDC · BETTING OPEN
                   </span>
                 </div>
               </div>
