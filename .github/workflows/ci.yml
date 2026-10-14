@@ -1,0 +1,141 @@
+# Tests for every PR and every push to main. No secrets, no deploys:
+# the jobs only read the repo and public package registries.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: "22"
+  # Same interpreter as Dockerfile / Dockerfile.akash (python:3.12-slim).
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  python:
+    name: python (pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      PYTHONDONTWRITEBYTECODE: "1"
+      # Never touch a chain or a real data dir from CI; tests isolate their
+      # own BOARDMAN_AGENTIC_DATA (tests/conftest.py).
+      BOARDMAN_AGENTIC_ONCHAIN: "0"
+      SPECTATOR_ONCHAIN: "0"
+      STOCKFISH_PATH: /usr/games/stockfish
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: src/backend/requirements.txt
+
+      - name: Install Stockfish (same engine the images ship)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends stockfish
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r src/backend/requirements.txt
+          pip install pytest pytest-asyncio pytest-timeout
+
+      - name: Materialize gaming/ and backend/ import shims
+        # Same layout the Dockerfiles build: gaming.src.* -> src/*, backend.* -> src/backend/*
+        run: |
+          mkdir -p gaming
+          ln -sfn ../src gaming/src
+          ln -sfn ../config gaming/config
+          touch gaming/__init__.py
+          ln -sfn src/backend backend
+
+      - name: pytest
+        run: pytest -q tests --timeout=300
+
+  frontend:
+    name: frontend (tsc + next build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run build
+
+  contracts:
+    name: contracts (hardhat test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: contracts/package-lock.json
+      - name: Cache solc compilers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/hardhat-nodejs
+          key: hardhat-${{ runner.os }}-${{ hashFiles('contracts/hardhat.config.js', 'contracts/package-lock.json') }}
+      - run: npm ci
+      - run: npx hardhat test
+
+  afm:
+    name: engines/afm/${{ matrix.package }} (vitest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [match-contracts, engine-adapter]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            engines/afm/match-contracts/package-lock.json
+            engines/afm/engine-adapter/package-lock.json
+      # engine-adapter links ../match-contracts (file: dep), whose own deps
+      # (zod) must be installed for the link to resolve.
+      - name: Install match-contracts
+        working-directory: engines/afm/match-contracts
+        run: npm ci
+      - name: Install ${{ matrix.package }}
+        if: matrix.package != 'match-contracts'
+        working-directory: engines/afm/${{ matrix.package }}
+        run: npm ci
+      - name: Typecheck
+        working-directory: engines/afm/${{ matrix.package }}
+        run: npx tsc --noEmit
+      - name: Test
+        working-directory: engines/afm/${{ matrix.package }}
+        run: npx vitest run

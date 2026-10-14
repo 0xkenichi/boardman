@@ -17,6 +17,7 @@ on:
       - "Dockerfile.akash"
       - "deploy/start_akash.sh"
       - "deploy/start_akash.py"
+      - "scripts/run_house_session.py"
       - "src/**"
       - "config/**"
       - ".github/workflows/akash-image.yml"
@@ -68,4 +69,7 @@ jobs:
           import backend.supabase_client
           import gaming.src.backend.main
           print('SMOKE_OK backend+api import')
+          from gaming.src.stack.agentic.chess import lichess_uci
+          assert lichess_uci.engine_ready(), 'no local stockfish in image'
+          print('SMOKE_OK engine', lichess_uci.find_stockfish())
           "
