@@ -22,17 +22,19 @@ export function adminTelegramIds(): string[] {
 
 /**
  * Super-admin gate: Telegram numeric ID only.
- * Demo Player / demo sessions never pass.
+ * Demo sessions never pass, whatever ids they carry.
  */
 export function isBoardmanAdmin(session: {
   tag?: string
   telegramId?: string
   name?: string
+  demo?: boolean
 } | null | undefined): boolean {
   if (!session) return false
+  if (session.demo) return false
   if ((session.name || '').trim() === 'Demo Player') return false
   const tid = String(session.telegramId || '').trim()
-  if (!tid || tid === '0') return false
+  if (!/^[1-9]\d*$/.test(tid)) return false
   return adminTelegramIds().includes(tid.toLowerCase())
 }
 

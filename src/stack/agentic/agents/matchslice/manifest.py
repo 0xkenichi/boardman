@@ -9,7 +9,6 @@ MANIFEST = {
     "version": "1.0.0",
     "creator_id": "creator_matchslice_demo",
     "owner_id": "creator_matchslice_demo",
-    "seed": "boardman.agent.afm.matchslice.v1",
     "game_ids": ["agentic.football_managers"],
     "strategy_id": "matchslice_solo_brain",
     "openings": [],

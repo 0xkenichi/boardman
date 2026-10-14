@@ -1,7 +1,7 @@
 """
 On-chain dual-lock for agent matches on Arc (BoardmanEscrow V1).
 
-Uses each agent's deterministic private key (data/agentic/secrets_*.json)
+Uses each agent's random spend key sealed in the keystore (keystore.py)
 to approve USDC + createMatch / joinMatch. Resolver key settles the winner.
 
 Mode selection:
@@ -300,26 +300,29 @@ def usdc_to_raw(amount: Decimal) -> int:
 
 
 def load_agent_private_key(agent_id: str) -> str:
-    from gaming.src.stack.agentic.store import load_json
-    from gaming.src.stack.agentic.wallets import seed_to_private_key
+    """Unseal an agent's spend key from the keystore. Fails closed.
+
+    Never re-derives a key from a seed or agent_id, and never reads legacy
+    plaintext ``secrets_*.json`` keys (those were seed-derived and public).
+    """
     from gaming.src.stack.agentic.agents.boardman.manifest import HOUSE_ID
+    from gaming.src.stack.agentic.keystore import get_keystore
+    from gaming.src.stack.agentic.registry import get_registry
 
     if agent_id == HOUSE_ID:
         raise RuntimeError(
             "House has no spend key — resolver signs BoardmanEscrow only"
         )
-    secrets = load_json(f"secrets_{agent_id}.json", {})
-    if secrets.get("sealed"):
-        raise RuntimeError(f"agent {agent_id} secrets are sealed — no spend key")
-    pk = secrets.get("private_key")
-    if pk:
-        return pk if str(pk).startswith("0x") else "0x" + str(pk)
-    # Re-derive from seed (same as registry)
-    from gaming.src.stack.agentic.chess.personas import get_persona
-
-    p = get_persona(agent_id) or {}
-    seed = p.get("seed") or agent_id
-    return seed_to_private_key(seed)
+    ks = get_keystore()
+    pk = ks.private_key(agent_id)  # KeyNotFound / KeystoreLocked → no signing
+    rec = get_registry().get_agent(agent_id) or {}
+    registered = str(rec.get("wallet_address") or "").lower()
+    if registered and registered != str(ks.address(agent_id) or "").lower():
+        raise RuntimeError(
+            f"agent {agent_id} wallet rotation pending: registry address differs "
+            "from keystore — run scripts/rotate_agent_wallets.py"
+        )
+    return pk
 
 
 def _w3(cfg: dict[str, Any]):

@@ -6,6 +6,9 @@
  * Link-first model: `intent: 'login'` resolves the profile the wallet is
  * already linked to; `intent: 'link'` binds the wallet to the current
  * Telegram session (POST needs the session cookie).
+ *
+ * Flow (EIP-4361): GET /wallet-nonce → sign a message carrying that nonce,
+ * this host and the wallet's chain id → POST /session, which checks all three.
  */
 import { useCallback, useState } from 'react'
 import { api } from '@/lib/appClient'
@@ -68,10 +71,27 @@ export function WalletLogin({ intent = 'login', onAuth, label, className }: Prop
         profileId = sess.data.profileId
       }
 
+      // Single-use server nonce (also set as an HttpOnly cookie the POST checks).
+      const nonceRes = await api<{ nonce?: string }>('/api/rematch/app/wallet-nonce')
+      const nonce = nonceRes.ok ? nonceRes.data?.nonce : undefined
+      if (!nonce) {
+        setErr('Could not start wallet sign-in. Try again.')
+        return
+      }
+      const chainHex = (await window.ethereum.request({ method: 'eth_chainId' })) as string
+      const chainId = parseInt(String(chainHex || ''), 16)
+      if (!Number.isSafeInteger(chainId) || chainId <= 0) {
+        setErr('Could not read the wallet network.')
+        return
+      }
+
       const message = buildWalletSignMessage({
         domain: window.location.host,
+        uri: window.location.origin,
         address,
         action: intent,
+        chainId,
+        nonce,
         profileId,
       })
       const signature = (await window.ethereum.request({

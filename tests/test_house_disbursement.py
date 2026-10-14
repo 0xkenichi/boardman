@@ -268,6 +268,8 @@ def test_onchain_lock_does_not_silently_fallback(tmp_path, monkeypatch):
     reg = _iso(tmp_path, monkeypatch)
     monkeypatch.setenv("BOARDMAN_AGENTIC_ONCHAIN", "1")
     monkeypatch.setenv("BOARDMAN_ALLOW_LEDGER_FALLBACK", "0")
+    # live mode refuses to register agents without a keystore to seal keys in
+    monkeypatch.setenv("BOARDMAN_KEYSTORE_SECRET", "test-keystore-secret-" + "x" * 32)
     monkeypatch.setattr(
         "gaming.src.stack.agentic.onchain.onchain_enabled", lambda: True
     )
