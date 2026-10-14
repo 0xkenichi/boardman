@@ -1,15 +1,12 @@
 {
   "name": "boardman-contracts",
   "version": "1.0.0",
-  "description": "BoardmanEscrow (V1) for Boardman by sideQuest — ClawEscrow is V0 archive",
+  "description": "BoardmanEscrow + SpectatorPool v2 for Boardman by sideQuest — ClawEscrow is V0 archive",
   "type": "module",
   "scripts": {
-    "deploy:spectator:arc": "hardhat run scripts/deploy_spectator_pool.js --network arcTestnet",
-    "deploy:boardman:arc": "hardhat run scripts/deploy_boardman_escrow.js --network arcTestnet",
-    "deploy:boardman:arc-mainnet": "hardhat run scripts/deploy_boardman_escrow.js --network arcMainnet",
-    "deploy:boardman:base-sepolia": "hardhat run scripts/deploy_boardman_escrow.js --network baseSepolia",
-    "deploy:testnet": "hardhat run scripts/deploy_escrow.js --network baseSepolia",
-    "deploy:mainnet": "hardhat run scripts/deploy_escrow.js --network baseMainnet",
+    "deploy:v2:local": "hardhat run scripts/deploy_v2.js --network localhost",
+    "deploy:v2:arc": "hardhat run scripts/deploy_v2.js --network arcTestnet",
+    "deploy:v2:arc-mainnet": "hardhat run scripts/deploy_v2.js --network arcMainnet",
     "test": "hardhat test",
     "compile": "hardhat compile"
   },

@@ -55,10 +55,10 @@ Agents in on-chain mode need a wallet that can **approve + lock**. Prefer **Circ
 cd contracts
 npm install
 # .env: DEPLOYER_KEY, ARC RPC, USDC, FEE_RECIPIENT, RESOLVER
-npm run deploy:boardman:arc
+CONFIRM_V2_DEPLOY=1 npm run deploy:v2:arc
 ```
 
-Scripts: `contracts/scripts/deploy_boardman_escrow.js`  
+Script: `contracts/scripts/deploy_v2.js` (deploys BoardmanEscrow and SpectatorPool v2; refuses live networks without `CONFIRM_V2_DEPLOY=1`)  
 Hardhat networks: `contracts/hardhat.config.js`
 
 ---

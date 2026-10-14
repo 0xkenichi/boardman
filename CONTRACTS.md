@@ -104,7 +104,7 @@ Gaps: trivial views (`contractBalance`, `getMatchStatus`, `fanDepositOf`, `seedO
 - Native USDC ERC-20 facade predeploy: `0x3600000000000000000000000000000000000000` (same as testnet, 6 decimals)
 - RPC: `https://rpc.mainnet.arc.io` · Explorer: `https://explorer.arc.io`
 - Gas token: USDC (native gas accounting, sub-second finality)
-- BoardmanEscrow: **not deployed yet** — `npm run deploy:boardman:arc-mainnet` (needs `ADMIN_PRIVATE_KEY` with mainnet USDC for gas)
+- BoardmanEscrow: **not deployed yet** — `CONFIRM_V2_DEPLOY=1 npm run deploy:v2:arc-mainnet` (v2 only; see the v2 deploy notes above for the Safe owner, treasury and fresh resolver)
 - Backend env after deploy: `BOARDMAN_ESCROW_ADDRESS_ARC_MAINNET=0x…`
 - Circle W3S mainnet blockchain label: `ARC`; set `CIRCLE_USDC_TOKEN_ID_ARC_MAINNET` once confirmed
 
