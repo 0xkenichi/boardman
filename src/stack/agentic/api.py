@@ -7,6 +7,7 @@ Auth (required for all routes except GET /health when keys are configured):
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -72,6 +73,80 @@ def require_stack_api_key(
             detail="invalid or missing Stack API key (X-Rematch-Key / Bearer)",
         )
     return principal
+
+
+# ---------------------------------------------------------------- caller identity
+#
+# Who is acting on a football / marketplace write. Never the request body:
+#
+# - master key + X-Boardman-Caller: the Next BFF vouches for a signed-in
+#   profile (it overwrites every body id with the session profile, too).
+# - master key, no caller header: the platform acting for itself (ops,
+#   schedulers) — the only principal admin routes accept.
+# - builder key: acts as its own builder_id only; a caller header or body id
+#   naming anyone else is refused.
+#
+# BOARDMAN_STACK_ALLOW_OPEN (local demos without keys) is treated like the
+# master key — it is already wide open by configuration.
+
+CALLER_HEADER = "X-Boardman-Caller"
+
+
+@dataclass(frozen=True)
+class StackCaller:
+    principal: ApiKeyPrincipal
+    party_id: Optional[str] = None  # the acting party; None = platform itself
+    trusted: bool = False  # master (or open demo) key
+
+    @property
+    def is_platform(self) -> bool:
+        return self.trusted and not self.party_id
+
+
+def _principal_trusted(principal: ApiKeyPrincipal) -> bool:
+    return bool(principal.is_master or principal.key_id == "open")
+
+
+def require_stack_caller(
+    principal: ApiKeyPrincipal = Depends(require_stack_api_key),
+    x_boardman_caller: Optional[str] = Header(default=None, alias=CALLER_HEADER),
+) -> StackCaller:
+    claimed = (x_boardman_caller or "").strip()
+    if _principal_trusted(principal):
+        return StackCaller(principal=principal, party_id=claimed or None, trusted=True)
+    if claimed and claimed != principal.builder_id:
+        raise HTTPException(status_code=403, detail="a builder key acts only as its own builder")
+    return StackCaller(principal=principal, party_id=principal.builder_id, trusted=False)
+
+
+def require_platform_admin(caller: StackCaller = Depends(require_stack_caller)) -> StackCaller:
+    """Admin / ops routes: the master key acting as the platform itself."""
+    if not caller.is_platform:
+        raise HTTPException(status_code=403, detail="platform admin only")
+    return caller
+
+
+def _acting_party(caller: StackCaller, body_id: Optional[str], *, field: str) -> Optional[str]:
+    """The party a write acts for. A body id may only repeat the caller; the
+    platform (master key, no caller header) may name the party itself."""
+    claimed = (body_id or "").strip()
+    if caller.party_id:
+        if claimed and claimed != caller.party_id:
+            raise HTTPException(status_code=403, detail=f"{field} must be the signed-in caller")
+        return caller.party_id
+    return claimed or None
+
+
+def _require_owner_of(caller: StackCaller, agent_id: str) -> Optional[str]:
+    """Owner-only writes on one club/manager. Returns the acting party (None
+    for the platform itself)."""
+    if not caller.party_id:
+        return None
+    from gaming.src.stack.agentic.games.football_managers.club_store import club_owner_id
+
+    if club_owner_id(agent_id) != caller.party_id:
+        raise HTTPException(status_code=403, detail=f"only the owner of {agent_id} can do that")
+    return caller.party_id
 
 
 class CreateMatchBody(BaseModel):
@@ -1160,7 +1235,7 @@ async def public_metrics(limit: int = 100):
 
 
 @router.get("/admin/metrics-detail")
-async def admin_metrics_detail():
+async def admin_metrics_detail(_: StackCaller = Depends(require_platform_admin)):
     """Detailed admin metrics: human vs agent volume, wallet balances, user count, running totals."""
     from gaming.src.stack.agentic.metrics import build_public_metrics
     from gaming.src.stack.agentic.store import load_json
@@ -1314,6 +1389,7 @@ async def football_catalog(
     pos: Optional[str] = None,
     limit: int = 200,
     offset: int = 0,
+    _: ApiKeyPrincipal = Depends(require_stack_api_key),
 ):
     """Public AFM catalog — real seed names, slots, ratings, in-game price."""
     from gaming.src.stack.agentic.games.football_managers.catalog import (
@@ -1370,7 +1446,7 @@ class FootballSeasonOpenBody(BaseModel):
 
 
 @router.post("/football/simulate")
-async def football_simulate(body: FootballSimBody):
+async def football_simulate(body: FootballSimBody, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Run the AFM match engine on two submitted XIs (watchable friendly sim).
 
     The engine stays authoritative server-side: same seeded `simulate_match`
@@ -1427,7 +1503,7 @@ async def football_simulate(body: FootballSimBody):
 
 
 @router.get("/football/clubs")
-async def football_clubs():
+async def football_clubs(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Agent-owned AFM clubs: formation, tactics, roster + locked lineup."""
     from gaming.src.stack.agentic.games.football_managers.club_store import (
         list_clubs,
@@ -1439,7 +1515,7 @@ async def football_clubs():
 
 
 @router.get("/football/clubs/{agent_id}")
-async def football_club(agent_id: str):
+async def football_club(agent_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.games.football_managers.club_store import (
         get_club,
         seed_demo_clubs,
@@ -1454,14 +1530,17 @@ async def football_club(agent_id: str):
 
 
 @router.put("/football/clubs/{agent_id}/lineup")
-async def football_club_lineup(agent_id: str, body: FootballLineupBody):
-    """Set a club's lineup + tactics (agent afm_set_lineup / board Save)."""
+async def football_club_lineup(agent_id: str, body: FootballLineupBody, caller: StackCaller = Depends(require_stack_caller)):
+    """Set a club's lineup + tactics (agent afm_set_lineup / board Save).
+    Owner only."""
     from gaming.src.stack.agentic.games.football_managers.club_store import (
+        NotOwnerError,
         seed_demo_clubs,
         set_lineup,
     )
 
     seed_demo_clubs()
+    by = _require_owner_of(caller, agent_id)
     try:
         club = set_lineup(
             agent_id,
@@ -1469,7 +1548,10 @@ async def football_club_lineup(agent_id: str, body: FootballLineupBody):
             starters=body.starters,
             bench=body.bench,
             tactical_tags=body.tactical_tags,
+            set_by=by,
         )
+    except NotOwnerError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return {"success": True, "club": club}
@@ -1479,7 +1561,7 @@ async def football_club_lineup(agent_id: str, body: FootballLineupBody):
 
 
 @router.get("/football/owner/{agent_id}")
-async def football_owner_dashboard(agent_id: str):
+async def football_owner_dashboard(agent_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Owner seat, step 5 — follow one club: results, the agent's decisions,
     table position, the spending log and suspension/injury news."""
     from gaming.src.stack.agentic.games.football_managers.club_store import (
@@ -1498,7 +1580,7 @@ async def football_owner_dashboard(agent_id: str):
 
 
 @router.get("/football/report/{agent_id}")
-async def football_agent_report(agent_id: str, matchday: Optional[int] = None):
+async def football_agent_report(agent_id: str, matchday: Optional[int] = None, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Agent FM post-match report — ratings, xG, errors for the club's latest
     (or a given) played fixture. The "why we lost" file the agent reads."""
     from gaming.src.stack.agentic.games.football_managers.club_store import seed_demo_clubs
@@ -1527,7 +1609,7 @@ async def football_agent_report(agent_id: str, matchday: Optional[int] = None):
 
 
 @router.get("/football/season/report")
-async def football_match_report(season_no: int, matchday: int, home: str, away: str):
+async def football_match_report(season_no: int, matchday: int, home: str, away: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Full FM post-match report for one recorded fixture (both sides):
     per-player ratings, xG, error attribution and the "why" headline lines."""
     from gaming.src.stack.agentic.games.football_managers import report as R
@@ -1540,7 +1622,7 @@ async def football_match_report(season_no: int, matchday: int, home: str, away: 
 
 
 @router.get("/football/season")
-async def football_season():
+async def football_season(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Season state for humans + agents (afm_view_season): standings, fixtures,
     recent results, pot, next matchday deadline."""
     from gaming.src.stack.agentic.games.football_managers.season import get_season
@@ -1549,10 +1631,11 @@ async def football_season():
 
 
 @router.post("/football/season/join")
-async def football_season_join(body: FootballSeasonJoinBody):
-    """afm_join_season — queue the club for the next season."""
+async def football_season_join(body: FootballSeasonJoinBody, caller: StackCaller = Depends(require_stack_caller)):
+    """afm_join_season — queue the club for the next season (owner only)."""
     from gaming.src.stack.agentic.games.football_managers.season import join_season
 
+    _require_owner_of(caller, body.agent_id)
     try:
         return {"success": True, **join_season(body.agent_id)}
     except ValueError as exc:
@@ -1560,7 +1643,7 @@ async def football_season_join(body: FootballSeasonJoinBody):
 
 
 @router.post("/football/season/open")
-async def football_season_open(body: FootballSeasonOpenBody):
+async def football_season_open(body: FootballSeasonOpenBody, _: StackCaller = Depends(require_platform_admin)):
     """Open a season: collect USDC entries, build schedule, zero standings."""
     from datetime import datetime
 
@@ -1575,7 +1658,7 @@ async def football_season_open(body: FootballSeasonOpenBody):
 
 
 @router.post("/football/season/tick")
-async def football_season_tick():
+async def football_season_tick(_: StackCaller = Depends(require_platform_admin)):
     """Advance the season clock: open due matchdays, resolve past deadlines.
     Called by the daily scheduler (and by the standings page's watch button)."""
     from gaming.src.stack.agentic.games.football_managers.season import tick
@@ -1584,7 +1667,7 @@ async def football_season_tick():
 
 
 @router.post("/football/season/reset")
-async def football_season_reset():
+async def football_season_reset(_: StackCaller = Depends(require_platform_admin)):
     """Dev/ops: drop the current season state (no money moves)."""
     from gaming.src.stack.agentic.games.football_managers.season import reset_season
 
@@ -1594,7 +1677,7 @@ async def football_season_reset():
 # ---------------------------------------------------------------- betting
 
 class FootballBetBody(BaseModel):
-    better: str
+    better: Optional[str] = None  # must be the caller (filled from it when omitted)
     matchday: int
     home: str
     away: str
@@ -1621,7 +1704,7 @@ def _afm_season_no() -> Optional[int]:
 
 @router.get("/football/betting/odds")
 async def football_betting_odds(
-    season_no: Optional[int] = None, matchday: Optional[int] = None
+    season_no: Optional[int] = None, matchday: Optional[int] = None, _: ApiKeyPrincipal = Depends(require_stack_api_key)
 ):
     """Parimutuel odds boards: pot per side + implied odds per USDC staked."""
     from gaming.src.stack.agentic.games.football_managers.betting import (
@@ -1635,16 +1718,20 @@ async def football_betting_odds(
 
 
 @router.post("/football/betting/bet")
-async def football_betting_bet(body: FootballBetBody):
-    """Back a fixture outcome: debit the better, pool into the fixture pot."""
+async def football_betting_bet(body: FootballBetBody, caller: StackCaller = Depends(require_stack_caller)):
+    """Back a fixture outcome: debit the better, pool into the fixture pot.
+    The better is always the caller."""
     from gaming.src.stack.agentic.games.football_managers.betting import place_bet
 
+    better = _acting_party(caller, body.better, field="better")
+    if not better:
+        raise HTTPException(status_code=422, detail="better is required")
     sn = body.season_no or _afm_season_no()
     if not sn:
         raise HTTPException(status_code=422, detail="no season running")
     try:
         out = place_bet(
-            body.better.strip(),
+            better,
             sn,
             int(body.matchday),
             body.home.strip(),
@@ -1658,16 +1745,20 @@ async def football_betting_bet(body: FootballBetBody):
 
 
 @router.get("/football/betting/my")
-async def football_betting_my(better: str, season_no: Optional[int] = None):
-    """A spectator's bets with status (open/settled) beside each."""
+async def football_betting_my(better: str = "", season_no: Optional[int] = None, caller: StackCaller = Depends(require_stack_caller)):
+    """A spectator's bets with status (open/settled) beside each — the
+    caller's own only."""
     from gaming.src.stack.agentic.games.football_managers.betting import my_bets
 
+    who = _acting_party(caller, better, field="better")
+    if not who:
+        raise HTTPException(status_code=422, detail="better is required")
     sn = season_no or _afm_season_no()
-    return {"success": True, "bets": my_bets(better.strip(), sn)}
+    return {"success": True, "bets": my_bets(who, sn)}
 
 
 @router.post("/football/betting/settle")
-async def football_betting_settle(body: FootballBetSettleBody):
+async def football_betting_settle(body: FootballBetSettleBody, _: StackCaller = Depends(require_platform_admin)):
     """Dev/ops: settle a matchday's books against its stored results."""
     from gaming.src.stack.agentic.games.football_managers.betting import (
         settle_matchday,
@@ -1685,7 +1776,7 @@ async def football_betting_settle(body: FootballBetSettleBody):
 
 
 @router.get("/football/season/replay")
-async def football_season_replay(matchday: int, home: str, away: str):
+async def football_season_replay(matchday: int, home: str, away: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """A recorded season fixture, replayable on the tactics board (feed + lineups)."""
     from gaming.src.stack.agentic.games.football_managers.season import get_replay
 
@@ -1697,7 +1788,7 @@ async def football_season_replay(matchday: int, home: str, away: str):
 
 
 @router.get("/football/season/prematch")
-async def football_season_prematch(matchday: int, home: str, away: str):
+async def football_season_prematch(matchday: int, home: str, away: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """The pre-match board for one fixture: locked lineups + tactics, HT plans,
     press quotes and ban/injury news — everything a human reads before kickoff."""
     from gaming.src.stack.agentic.games.football_managers.season import prematch_view
@@ -1710,7 +1801,7 @@ async def football_season_prematch(matchday: int, home: str, away: str):
 
 
 @router.get("/football/market")
-async def football_market():
+async def football_market(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """afm_market (v1): free agents — catalog players with no club owner."""
     from gaming.src.stack.agentic.games.football_managers.catalog import list_players
     from gaming.src.stack.agentic.games.football_managers.club_store import (
@@ -1830,7 +1921,7 @@ class FootballWalletBindBody(BaseModel):
     wallet) so purchases can move real USDC out of it.
     """
 
-    party_id: str
+    party_id: Optional[str] = None  # must be the caller (filled from it when omitted)
     address: str = Field(
         ..., description="Arc USDC payout address (0x…)", min_length=42, max_length=42
     )
@@ -1840,12 +1931,12 @@ class FootballWalletBindBody(BaseModel):
 class FootballWalletUnbindBody(BaseModel):
     """Owner seat: remove a party's wallet binding."""
 
-    party_id: str
+    party_id: Optional[str] = None  # must be the caller (filled from it when omitted)
     address: Optional[str] = None
 
 
 @router.get("/football/agents")
-async def football_agents():
+async def football_agents(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """The manager marketplace — every AFM agent an owner can adopt."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
         list_market_agents,
@@ -1855,7 +1946,7 @@ async def football_agents():
 
 
 @router.post("/football/agents/create")
-async def football_agents_create(body: FootballAgentCreateBody):
+async def football_agents_create(body: FootballAgentCreateBody, caller: StackCaller = Depends(require_stack_caller)):
     """Create a manager agent + seed its club (owner seat, step 1)."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
         create_manager_agent,
@@ -1867,7 +1958,7 @@ async def football_agents_create(body: FootballAgentCreateBody):
             club_name=body.club_name,
             archetype=body.archetype,
             formation=body.formation,
-            owner_id=body.owner_id,
+            owner_id=_acting_party(caller, body.owner_id, field="owner_id"),
             list_price_usdc=str(body.list_price_usdc) if body.list_price_usdc is not None else None,
             creator_cut_bps=body.creator_cut_bps,
         )
@@ -1877,21 +1968,26 @@ async def football_agents_create(body: FootballAgentCreateBody):
 
 
 @router.post("/football/agents/acquire")
-async def football_agents_acquire(body: FootballAgentAcquireBody):
+async def football_agents_acquire(body: FootballAgentAcquireBody, caller: StackCaller = Depends(require_stack_caller)):
     """Adopt an unlisted developer-built manager: ownership moves to the caller."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
         acquire_manager_agent,
     )
 
+    from gaming.src.stack.agentic.games.football_managers.club_store import NotOwnerError
+
+    owner_id = _acting_party(caller, body.owner_id, field="owner_id")
     try:
-        out = acquire_manager_agent(agent_id=body.agent_id, owner_id=body.owner_id)
+        out = acquire_manager_agent(agent_id=body.agent_id, owner_id=owner_id)
+    except NotOwnerError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     return {"success": True, **out}
 
 
 @router.post("/football/agents/webhook")
-async def football_agents_webhook(body: FootballAgentWebhookBody):
+async def football_agents_webhook(body: FootballAgentWebhookBody, caller: StackCaller = Depends(require_stack_caller)):
     """Owner seat: point your manager at the webhook hosting its brain.
 
     From the next matchday ask on, the House POSTs the matchday context here
@@ -1906,7 +2002,7 @@ async def football_agents_webhook(body: FootballAgentWebhookBody):
         out = set_manager_webhook(
             agent_id=body.agent_id,
             webhook_url=body.webhook_url,
-            owner_id=body.owner_id,
+            owner_id=_acting_party(caller, body.owner_id, field="owner_id"),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -1914,7 +2010,7 @@ async def football_agents_webhook(body: FootballAgentWebhookBody):
 
 
 @router.post("/football/agents/list")
-async def football_agents_list(body: FootballAgentListBody):
+async def football_agents_list(body: FootballAgentListBody, caller: StackCaller = Depends(require_stack_caller)):
     """Owner seat: list your manager for sale (price + creator cut)."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
         list_manager_for_sale,
@@ -1926,7 +2022,7 @@ async def football_agents_list(body: FootballAgentListBody):
             price_usdc=str(body.price_usdc),
             creator_cut_bps=body.creator_cut_bps,
             reserve_price_usdc=str(body.reserve_price_usdc) if body.reserve_price_usdc is not None else None,
-            listed_by=body.listed_by,
+            listed_by=_acting_party(caller, body.listed_by, field="listed_by"),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -1934,21 +2030,24 @@ async def football_agents_list(body: FootballAgentListBody):
 
 
 @router.post("/football/agents/delist")
-async def football_agents_delist(body: FootballAgentDelistBody):
+async def football_agents_delist(body: FootballAgentDelistBody, caller: StackCaller = Depends(require_stack_caller)):
     """Owner seat: pull your manager off the marketplace."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
         delist_manager_agent,
     )
 
     try:
-        out = delist_manager_agent(agent_id=body.agent_id, listed_by=body.listed_by)
+        out = delist_manager_agent(
+            agent_id=body.agent_id,
+            listed_by=_acting_party(caller, body.listed_by, field="listed_by"),
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"success": True, **out}
 
 
 @router.post("/football/agents/offer")
-async def football_agents_offer(body: FootballAgentOfferBody):
+async def football_agents_offer(body: FootballAgentOfferBody, caller: StackCaller = Depends(require_stack_caller)):
     """A buyer names their price on a listed manager. Offers below the owner's
     reserve are auto-declined; the rest land pending for the owner."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
@@ -1959,7 +2058,7 @@ async def football_agents_offer(body: FootballAgentOfferBody):
         out = make_manager_offer(
             agent_id=body.agent_id,
             offer_usdc=str(body.offer_usdc),
-            buyer_id=body.buyer_id,
+            buyer_id=_acting_party(caller, body.buyer_id, field="buyer_id"),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -1967,7 +2066,7 @@ async def football_agents_offer(body: FootballAgentOfferBody):
 
 
 @router.post("/football/agents/offer/accept")
-async def football_agents_offer_accept(body: FootballAgentOfferDecisionBody):
+async def football_agents_offer_accept(body: FootballAgentOfferDecisionBody, caller: StackCaller = Depends(require_stack_caller)):
     """The owner accepts a buyer's offer — sale settles at the offered price.
     Same settlement rail as buy-now (auto | onchain | ledger)."""
     import asyncio
@@ -1982,7 +2081,7 @@ async def football_agents_offer_accept(body: FootballAgentOfferDecisionBody):
             accept_manager_offer,
             agent_id=body.agent_id,
             offer_id=body.offer_id,
-            accept_by=body.decided_by,
+            accept_by=_acting_party(caller, body.decided_by, field="decided_by"),
             settlement=body.settlement,
         )
     except (ValueError, RuntimeError) as e:
@@ -1991,7 +2090,7 @@ async def football_agents_offer_accept(body: FootballAgentOfferDecisionBody):
 
 
 @router.post("/football/agents/offer/reject")
-async def football_agents_offer_reject(body: FootballAgentOfferDecisionBody):
+async def football_agents_offer_reject(body: FootballAgentOfferDecisionBody, caller: StackCaller = Depends(require_stack_caller)):
     """The owner turns a buyer's offer down — the listing stays up."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
         reject_manager_offer,
@@ -2001,7 +2100,7 @@ async def football_agents_offer_reject(body: FootballAgentOfferDecisionBody):
         out = reject_manager_offer(
             agent_id=body.agent_id,
             offer_id=body.offer_id,
-            reject_by=body.decided_by,
+            reject_by=_acting_party(caller, body.decided_by, field="decided_by"),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -2009,7 +2108,7 @@ async def football_agents_offer_reject(body: FootballAgentOfferDecisionBody):
 
 
 @router.post("/football/agents/purchase")
-async def football_agents_purchase(body: FootballAgentPurchaseBody):
+async def football_agents_purchase(body: FootballAgentPurchaseBody, caller: StackCaller = Depends(require_stack_caller)):
     """Buy a listed manager: the price settles and ownership transfers to the
     buyer (creator cut paid to the developer). Default ``auto`` settles in
     real USDC from the buyer's bound Circle wallet when every party has one,
@@ -2026,7 +2125,7 @@ async def football_agents_purchase(body: FootballAgentPurchaseBody):
         out = await asyncio.to_thread(
             purchase_manager_agent,
             agent_id=body.agent_id,
-            buyer_id=body.buyer_id,
+            buyer_id=_acting_party(caller, body.buyer_id, field="buyer_id"),
             settlement=body.settlement,
         )
     except (ValueError, RuntimeError) as e:
@@ -2035,7 +2134,7 @@ async def football_agents_purchase(body: FootballAgentPurchaseBody):
 
 
 @router.get("/football/agents/wallet")
-async def football_agents_wallet(party_id: str):
+async def football_agents_wallet(party_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Wallet status for a marketplace party: what they pay with and get paid
     to — demo ledger wallet vs a bound real (Circle) wallet on Arc."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
@@ -2046,7 +2145,7 @@ async def football_agents_wallet(party_id: str):
 
 
 @router.get("/football/agents/sales")
-async def football_agents_sales(party_id: str = ""):
+async def football_agents_sales(party_id: str = "", _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Owner dashboard desk: money a party has earned from manager sales and
     the listing history — earnings (seller proceeds + developer creator cuts),
     the managers they own with their live listing state, and the timeline of
@@ -2059,33 +2158,48 @@ async def football_agents_sales(party_id: str = ""):
 
 
 @router.post("/football/agents/wallet/bind")
-async def football_agents_wallet_bind(body: FootballWalletBindBody):
+async def football_agents_wallet_bind(body: FootballWalletBindBody, caller: StackCaller = Depends(require_stack_caller)):
     """Bind a real (Circle) wallet to a marketplace party so purchases can
     settle in real USDC (the demo ledger stays the fallback until then)."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
+        NotOwnerError,
         bind_party_wallet,
     )
 
+    # a signed-in caller binds only their own party; a Circle send wallet
+    # only when it is provably theirs (the platform itself may bind any)
+    party = _acting_party(caller, body.party_id, field="party_id")
+    if not party:
+        raise HTTPException(status_code=422, detail="party_id is required")
     try:
         rec = bind_party_wallet(
-            party_id=body.party_id,
+            party_id=party,
             address=body.address,
             wallet_id=body.wallet_id,
+            bound_by=caller.party_id,
         )
+    except NotOwnerError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"success": True, "wallet": rec}
 
 
 @router.post("/football/agents/wallet/unbind")
-async def football_agents_wallet_unbind(body: FootballWalletUnbindBody):
+async def football_agents_wallet_unbind(body: FootballWalletUnbindBody, caller: StackCaller = Depends(require_stack_caller)):
     """Remove a marketplace party's wallet binding (back to demo ledger)."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
+        NotOwnerError,
         unbind_party_wallet,
     )
 
+    party = _acting_party(caller, body.party_id, field="party_id")
+    if not party:
+        raise HTTPException(status_code=422, detail="party_id is required")
     try:
-        removed = unbind_party_wallet(party_id=body.party_id, address=body.address)
+        removed = unbind_party_wallet(party_id=party, address=body.address, unbound_by=caller.party_id)
+    except NotOwnerError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"success": True, "removed": removed}
@@ -2105,7 +2219,7 @@ class FootballCupOpenBody(BaseModel):
 
 
 @router.get("/football/cup")
-async def football_cup():
+async def football_cup(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Knockout cup state: bracket rounds, played ties, champion."""
     from gaming.src.stack.agentic.games.football_managers.cup import get_cup
 
@@ -2113,7 +2227,7 @@ async def football_cup():
 
 
 @router.post("/football/cup/open")
-async def football_cup_open(body: FootballCupOpenBody):
+async def football_cup_open(body: FootballCupOpenBody, _: StackCaller = Depends(require_platform_admin)):
     """Open a single-elimination cup. Knockout rules: a level 90' tie goes to
     extra time and, if still level, a penalty shootout (require_result)."""
     from datetime import datetime
@@ -2135,7 +2249,7 @@ async def football_cup_open(body: FootballCupOpenBody):
 
 
 @router.post("/football/cup/tick")
-async def football_cup_tick():
+async def football_cup_tick(_: StackCaller = Depends(require_platform_admin)):
     """Advance the cup clock: open due rounds, resolve past deadlines (winner
     required — draws are settled in extra time / on penalties)."""
     from gaming.src.stack.agentic.games.football_managers.cup import tick
@@ -2144,7 +2258,7 @@ async def football_cup_tick():
 
 
 @router.post("/football/cup/reset")
-async def football_cup_reset():
+async def football_cup_reset(_: StackCaller = Depends(require_platform_admin)):
     """Dev/ops: drop the current cup state (no money moves)."""
     from gaming.src.stack.agentic.games.football_managers.cup import reset_cup
 
@@ -2152,7 +2266,7 @@ async def football_cup_reset():
 
 
 @router.get("/football/cup/replay")
-async def football_cup_replay(round_no: int, home: str, away: str):
+async def football_cup_replay(round_no: int, home: str, away: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """A recorded cup tie, replayable on the tactics board (feed + lineups)."""
     from gaming.src.stack.agentic.games.football_managers.cup import get_cup_replay
 
