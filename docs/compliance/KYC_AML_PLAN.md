@@ -96,6 +96,13 @@ tooling, not the decisions.
 
 Implementer: Ledger engineer (later wave). This spec is normative.
 
+> **Founder decision, 2026-10-14:** betting is on for testnet and off by default
+> on mainnet until counsel signs off. "Chain is mainnet" is decided by the money
+> chain only (`NETWORK=mainnet`, `CLAW_DEFAULT_CHAIN`/`SPECTATOR_CHAIN`/
+> `BOARDMAN_SETTLEMENT_RAIL`/default chain = Arc mainnet). A production deploy of
+> the testnet site (`BOARDMAN_ENV=production`) is **not** mainnet. This
+> supersedes the `geo_fence.is_production()` clause in §6.1.
+
 ### 6.1 Configuration
 
 | Env var | Values | Default |

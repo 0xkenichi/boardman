@@ -9,7 +9,6 @@ from gaming.src.backend.services import spectator_policy as sp
 
 MASTER = "sk_master_test"
 MAINNET_SIGNALS = [
-    ("BOARDMAN_ENV", "production"),
     ("NETWORK", "mainnet"),
     ("CLAW_DEFAULT_CHAIN", "arc_mainnet"),
     ("BOARDMAN_SETTLEMENT_RAIL", "arc_mainnet"),
@@ -37,6 +36,14 @@ def test_default_off_on_every_mainnet_signal(monkeypatch, name, value):
 def test_default_on_for_testnet():
     assert not sp.is_mainnet()
     assert sp.spectator_betting_decision(None) == (True, "ok")
+
+
+@pytest.mark.parametrize("name", ["BOARDMAN_ENV", "APP_ENV", "ENVIRONMENT"])
+def test_production_deploy_of_testnet_keeps_betting_on(monkeypatch, name):
+    # A hosted testnet site runs in production mode; only the chain makes it mainnet.
+    monkeypatch.setenv(name, "production")
+    assert not sp.is_mainnet()
+    assert sp.spectator_betting_decision("KE") == (True, "ok")
 
 
 def test_chain_resolution_error_counts_as_mainnet(monkeypatch):

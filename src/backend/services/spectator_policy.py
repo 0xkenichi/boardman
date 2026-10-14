@@ -47,9 +47,12 @@ def request_country() -> Optional[str]:
 def is_mainnet() -> bool:
     """§6.1 "chain is mainnet". Any resolution error counts as mainnet."""
     try:
-        from gaming.src.backend.middleware.geo_fence import is_production
-
-        if is_production():
+        # Chain signals only. A production *deploy* of the testnet site
+        # (BOARDMAN_ENV/APP_ENV=production) is not mainnet and must keep
+        # betting on; only the money chain decides (founder, 2026-10-14).
+        if (os.getenv("NETWORK") or "").strip().lower() == "mainnet":
+            return True
+        if (os.getenv("CLAW_DEFAULT_CHAIN") or "").strip().lower() == "arc_mainnet":
             return True
         raw = (
             os.getenv("SPECTATOR_CHAIN")
