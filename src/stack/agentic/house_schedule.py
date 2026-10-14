@@ -17,7 +17,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from gaming.src.stack.agentic.store import load_json, save_json
+from gaming.src.stack.agentic.store import load_json, update_json
 
 SCHEDULE_FILE = "house_schedule.json"
 
@@ -49,14 +49,21 @@ def read_schedule() -> dict[str, Any]:
 
 
 def write_schedule(*, set_by: str = "admin", **changes: Any) -> dict[str, Any]:
-    cur = read_schedule()
-    for k, v in changes.items():
-        if k in DEFAULTS:
-            cur[k] = v
-    cur["set_by"] = set_by
-    cur["updated_at"] = datetime.now(timezone.utc).isoformat()
-    save_json(SCHEDULE_FILE, cur)
-    return cur
+    """Apply ``changes`` atomically: the admin API and the house session write
+    this file from different processes, so the read-modify-write runs under
+    a cross-process file lock (neither can drop the other's fields)."""
+
+    def _apply(raw: Any) -> dict[str, Any]:
+        cur = dict(DEFAULTS)
+        cur.update({k: v for k, v in (raw or {}).items() if k in DEFAULTS})
+        for k, v in changes.items():
+            if k in DEFAULTS:
+                cur[k] = v
+        cur["set_by"] = set_by
+        cur["updated_at"] = datetime.now(timezone.utc).isoformat()
+        return cur
+
+    return update_json(SCHEDULE_FILE, _apply, {})
 
 
 def clamp_cadence(sec: Any) -> int:
