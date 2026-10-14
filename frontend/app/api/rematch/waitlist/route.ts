@@ -121,6 +121,7 @@ async function trySupabase(entry: Entry): Promise<boolean> {
   try {
     const res = await fetch(`${url}/rest/v1/boardman_waitlist`, {
       method: 'POST',
+      signal: AbortSignal.timeout(8000),
       headers: {
         apikey: key,
         Authorization: `Bearer ${key}`,
@@ -165,6 +166,7 @@ async function notifyTelegram(entry: Entry, duplicate: boolean) {
       try {
         await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
           method: 'POST',
+          signal: AbortSignal.timeout(5000),
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: chatId,
