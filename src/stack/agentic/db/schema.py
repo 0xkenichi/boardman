@@ -10,11 +10,13 @@ a negative balance at the database level.
 """
 from __future__ import annotations
 
+import re
 import textwrap
 from datetime import datetime, timezone
 from typing import Any
 
 SCHEMA_VERSION = 1
+_INDEX_RE = re.compile(r"CREATE INDEX IF NOT EXISTS (\w+)")
 
 TEMPLATE = [
     """
@@ -231,17 +233,65 @@ def postgres_rls() -> list[str]:
     return [f"ALTER TABLE {t} ENABLE ROW LEVEL SECURITY" for t in TABLES]
 
 
+def _index_names() -> list[str]:
+    return [m.group(1) for stmt in TEMPLATE for m in [_INDEX_RE.search(stmt)] if m]
+
+
+def _pg_relations(conn: Any) -> dict[str, bool]:
+    """{table or index name: row security on?} in the current schema.
+
+    Catalog reads only, so no table locks: safe while other processes write.
+    """
+    cur = conn.execute(
+        "SELECT c.relname AS name, c.relrowsecurity AS rls FROM pg_class c "
+        "JOIN pg_namespace n ON n.oid = c.relnamespace "
+        "WHERE n.nspname = current_schema() AND c.relname = ANY(%s)",
+        (list(TABLES) + _index_names(),),
+    )
+    out: dict[str, bool] = {}
+    for row in cur.fetchall():
+        name, rls = (row["name"], row["rls"]) if isinstance(row, dict) else (row[0], row[1])
+        out[str(name)] = bool(rls)
+    return out
+
+
+def _pg_schema_current(conn: Any) -> bool:
+    rels = _pg_relations(conn)
+    if any(name not in rels for name in _index_names()):
+        return False
+    if any(not rels.get(t) for t in TABLES):
+        return False  # missing, or row security still off
+    cur = conn.execute("SELECT value FROM storage_meta WHERE key = %s", ("schema_version",))
+    row = cur.fetchone()
+    value = (row["value"] if isinstance(row, dict) else row[0]) if row is not None else None
+    return value == str(SCHEMA_VERSION)
+
+
 def ensure_schema(db: Any, conn: Any) -> None:
     """Idempotent CREATE ... IF NOT EXISTS on first connect."""
     stmts = render(db.dialect)
     now = datetime.now(timezone.utc).isoformat()
     if db.is_postgres:
+        # Every process runs this on its first connection. Re-running the DDL
+        # on a live database is not free on Postgres: ALTER TABLE ... ENABLE
+        # ROW LEVEL SECURITY takes an ACCESS EXCLUSIVE lock and CREATE INDEX IF
+        # NOT EXISTS a SHARE lock even when there is nothing to do, so a
+        # replica starting up stalled (and could deadlock) the money writes of
+        # the processes already running. Check the catalog first, lock-free.
+        if _pg_schema_current(conn):
+            return
         conn.execute("BEGIN")
         try:
             # One process at a time on a fresh database.
             conn.execute("SELECT pg_advisory_xact_lock(724100231)")
-            for s in stmts + postgres_rls():
+            # Never queue behind long transactions holding everyone else up.
+            conn.execute("SET LOCAL lock_timeout = '15s'")
+            for s in stmts:
                 conn.execute(s)
+            rels = _pg_relations(conn)
+            for t, stmt in zip(TABLES, postgres_rls()):
+                if not rels.get(t):
+                    conn.execute(stmt)
             conn.execute(
                 "INSERT INTO storage_meta (key, value, updated_at) VALUES (%s, %s, %s) "
                 "ON CONFLICT (key) DO NOTHING",
