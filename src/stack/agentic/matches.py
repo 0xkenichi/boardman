@@ -2,23 +2,28 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 import uuid
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from decimal import Decimal
 from functools import lru_cache
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from gaming.src.stack.agentic import ledger
+from gaming.src.stack.agentic.db import journal, leases, nonces, transaction
+from gaming.src.stack.agentic.db.tables import HOT_SETTLED_MATCHES, MATCHES, hot_matches
 from gaming.src.stack.agentic.registry import get_registry
-from gaming.src.stack.agentic.store import data_dir, load_json, save_json
 
 logger = logging.getLogger(__name__)
 
+# Legacy file names (imported by scripts/migrate_json_to_db.py). Matches are
+# one database row each; "archived" reads are primary-key lookups.
 MATCHES_FILE = "matches.json"
 ARCHIVE_FILE = "matches_archive.json"
-HOT_SETTLED = 8
+HOT_SETTLED = HOT_SETTLED_MATCHES
 
 
 class TableBusy(RuntimeError):
@@ -26,7 +31,8 @@ class TableBusy(RuntimeError):
 
 
 # match_id -> monotonic start time of the thread currently driving the table.
-# Guards against double-driving (two run_match calls racing the same game).
+# Guards against double-driving inside this process; the database lease
+# (db/leases.py) guards across processes.
 _RUNNING: dict[str, float] = {}
 _RUNNING_LOCK = threading.Lock()
 
@@ -142,73 +148,171 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# Statuses from which run_match may start, continue or resume a table.
+RUNNABLE_STATUSES = frozenset({"open", "partial_lock", "locked", "playing", "queued", "settling"})
+DRAW_RESULT_CODES = frozenset({"draw", "stalemate", "insufficient_material"})
+# A table stuck in "settling" is retried at most this many times, then parked
+# as settle_failed for a human (each retry skips the steps already journaled).
+DEFAULT_MAX_SETTLE_ATTEMPTS = 5
+
+# Test seam: called with the step name right after each settlement step
+# commits (the crash-and-retry property test raises from here).
+_SETTLE_STEP_HOOK: Optional[Callable[[str], None]] = None
+
+
+def _after_step(name: str) -> None:
+    hook = _SETTLE_STEP_HOOK
+    if hook is not None:
+        hook(name)
+
+
+def _max_settle_attempts() -> int:
+    try:
+        return max(1, int(os.getenv("BOARDMAN_MAX_SETTLE_ATTEMPTS") or DEFAULT_MAX_SETTLE_ATTEMPTS))
+    except ValueError:
+        return DEFAULT_MAX_SETTLE_ATTEMPTS
+
+
+def _result_kind(result: dict[str, Any]) -> str:
+    return "draw" if result.get("result") in DRAW_RESULT_CODES else "win"
+
+
+def _result_key(result: dict[str, Any]) -> tuple[str, str]:
+    return (str(result.get("result") or ""), str(result.get("winner_agent_id") or ""))
+
+
+def _onchain_already_final(match_id: str, chain_id: str) -> Optional[dict[str, Any]]:
+    """After a crash, the escrow may already be resolved/cancelled on-chain."""
+    try:
+        from gaming.src.stack.agentic.onchain import ONCHAIN_STATUS, read_onchain_match
+
+        on = read_onchain_match(match_id, chain_id=chain_id)
+        st = int(on.get("status") or -1)
+        if st in {3, 4}:
+            return {"tx_hash": None, "already_final": True, "status": ONCHAIN_STATUS.get(st, str(st))}
+    except Exception:
+        logger.debug("[agentic] on-chain status probe failed for %s", match_id, exc_info=True)
+    return None
+
+
+def _adjust_already_applied(profile_id: str, reason: str) -> bool:
+    """Reconcile a play_adjust payout whose journal row never got written."""
+    try:
+        from gaming.src.stack.agentic.store import load_json
+
+        rec = (load_json("play_adjust.json", {"profiles": {}}).get("profiles") or {}).get(profile_id) or {}
+        return any(str(h.get("reason") or "") == reason[:80] for h in rec.get("history") or [])
+    except Exception:
+        return False
+
+
+def freeze_book(match_id: str, *, reason: str, chain_id: str = "arc") -> dict[str, Any]:
+    """Ply-N betting freeze: close the demo book, and the SpectatorPool book too.
+
+    The on-chain close() is a resolver tx (up to minutes); it runs on a daemon
+    thread so the game loop never waits on it. It is idempotent on-chain, and
+    a v2 pool's closeAt deadline is the backstop if it never lands.
+    """
+    from gaming.src.stack.agentic.economy.spectator import SpectatorBook
+
+    before = SpectatorBook().get(match_id) or {}
+    book = SpectatorBook().close_book(match_id, reason=reason)
+    just_closed = before.get("status") in {"open", "full"} and book.get("status") == "closed"
+    if just_closed and book.get("onchain"):
+        _close_book_onchain_async(match_id, chain_id)
+    return book
+
+
+def _close_book_onchain_async(match_id: str, chain_id: str) -> None:
+    def _run() -> None:
+        try:
+            from gaming.src.stack.agentic.spectator_onchain import (
+                close_book_onchain,
+                spectator_onchain_enabled,
+            )
+
+            if spectator_onchain_enabled():
+                out = close_book_onchain(match_id, chain_id=chain_id)
+                logger.info("[agentic] SpectatorPool close %s tx=%s", match_id, out.get("tx_hash"))
+        except Exception:
+            logger.warning("[agentic] SpectatorPool close %s failed (closeAt still applies)", match_id, exc_info=True)
+
+    threading.Thread(target=_run, name=f"book-close-{match_id}", daemon=True).start()
+
+
 class AgentMatchService:
+    """Match lifecycle over the ``agentic_matches`` table.
+
+    Every write is an atomic read-modify-write of one row (``_update``); no
+    method ever saves a copy of the record it read before a slow step.
+    """
+
     def __init__(self) -> None:
-        self._mem: dict[str, Any] = {"data": None, "mtime": None}
+        self._mem: dict[str, Any] = {}
+
+    # ── storage ──────────────────────────────────────────────────────────────
 
     def _load(self) -> dict[str, Any]:
-        # Cache the parsed file, but only while the file on disk is unchanged —
-        # writers that go through the store directly (status setters, tests)
-        # must be visible immediately. stat() is far cheaper than re-parsing.
-        try:
-            mtime = (data_dir() / MATCHES_FILE).stat().st_mtime_ns
-        except OSError:
-            mtime = None
-        cached = self._mem.get("data")
-        if cached is not None and self._mem.get("mtime") == mtime:
-            return cached
-        data = load_json(MATCHES_FILE, {"matches": {}})
-        self._mem["data"] = data
-        self._mem["mtime"] = mtime
-        return data
-
-    def _archive_cold(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Keep live tables + the last few settled games in the hot file."""
-        items = list((data.get("matches") or {}).values())
-        live = [m for m in items if m.get("status") != "settled"]
-        settled = [m for m in items if m.get("status") == "settled"]
-        settled.sort(
-            key=lambda m: m.get("settled_at") or m.get("updated_at") or "",
-            reverse=True,
-        )
-        if len(settled) <= HOT_SETTLED:
-            return data
-        keep = {m["match_id"]: m for m in live}
-        for m in settled[:HOT_SETTLED]:
-            keep[m["match_id"]] = m
-        drop = settled[HOT_SETTLED:]
-        arch = load_json(ARCHIVE_FILE, {"matches": {}})
-        arch.setdefault("matches", {})
-        for m in drop:
-            mid = m.get("match_id")
-            if mid:
-                arch["matches"][mid] = m
-        save_json(ARCHIVE_FILE, arch, compact=True)
-        data["matches"] = keep
-        return data
+        """Legacy whole-file view (live tables + the newest settled ones)."""
+        return MATCHES.snapshot(hot_matches(), "match_id")
 
     def _save(self, data: dict[str, Any], *, upsert_id: Optional[str] = None) -> None:
-        data = self._archive_cold(data)
-        save_json(MATCHES_FILE, data, compact=True)
-        self._mem["data"] = data
-        try:
-            self._mem["mtime"] = (data_dir() / MATCHES_FILE).stat().st_mtime_ns
-        except OSError:
-            self._mem["mtime"] = None
-        mid = upsert_id
-        if not mid:
-            return
+        """Write back only what the caller changed in a ``_load()`` snapshot."""
+        MATCHES.save_snapshot(data)
+        if upsert_id:
+            self._log_if_settled(upsert_id)
+
+    @staticmethod
+    def _log_if_settled(match_id: str, rec: Optional[dict[str, Any]] = None) -> None:
         try:
             from gaming.src.stack.agentic.tx_log import upsert_match
 
-            rec = (data.get("matches") or {}).get(mid)
+            rec = rec or MATCHES.get(match_id)
             if rec and rec.get("status") == "settled":
                 upsert_match(rec)
         except Exception:
-            pass
+            logger.debug("[agentic] house log upsert failed for %s", match_id, exc_info=True)
+
+    @staticmethod
+    def _record(match_id: str) -> Optional[dict[str, Any]]:
+        return MATCHES.get(match_id)
+
+    @staticmethod
+    def _update(match_id: str, fn: Callable[[dict[str, Any]], Any]) -> Optional[dict[str, Any]]:
+        return MATCHES.update(match_id, fn)
+
+    def _set(self, match_id: str, **fields: Any) -> dict[str, Any]:
+        def _apply(r: dict[str, Any]) -> None:
+            r.update(fields)
+            r["updated_at"] = _now()
+
+        rec = self._update(match_id, _apply)
+        if rec is None:
+            raise ValueError("match not found")
+        return rec
+
+    def set_status(self, match_id: str, status: str, **extra: Any) -> dict[str, Any]:
+        """Atomic status change that can never rewind a settlement."""
+
+        def _apply(r: dict[str, Any]) -> None:
+            cur = str(r.get("status") or "")
+            if cur == "settled" and status != "settled":
+                raise ValueError(f"match {match_id} is settled; refusing to set {status}")
+            if cur == "settling" and status not in {"settling", "settled", "settle_failed"}:
+                raise ValueError(f"match {match_id} is settling; refusing to set {status}")
+            r["status"] = status
+            r["updated_at"] = _now()
+            r.update(extra)
+
+        rec = self._update(match_id, _apply)
+        if rec is None:
+            raise ValueError("match not found")
+        return rec
+
+    # ── reads ────────────────────────────────────────────────────────────────
 
     def list_matches(self, limit: int = 50) -> list[dict[str, Any]]:
-        ms = list(self._load()["matches"].values())
+        ms = hot_matches()
         ms.sort(key=lambda m: m.get("updated_at") or m.get("created_at") or "", reverse=True)
         slim: list[dict[str, Any]] = []
         for m in ms[:limit]:
@@ -241,10 +345,8 @@ class AgentMatchService:
         return slim
 
     def get(self, match_id: str) -> Optional[dict[str, Any]]:
-        m = self._load()["matches"].get(match_id)
-        if not m:
-            arch = load_json(ARCHIVE_FILE, {"matches": {}})
-            m = (arch.get("matches") or {}).get(match_id)
+        """Indexed lookup — live or long-settled, no archive file to parse."""
+        m = self._record(match_id)
         if m:
             self._overlay_live_book(m)
         return m
@@ -278,23 +380,20 @@ class AgentMatchService:
         m["spectator_book"] = snap
 
     def persist_spectator_snapshot(self, match_id: str, book: dict[str, Any]) -> None:
-        data = self._load()
-        rec = data["matches"].get(match_id)
-        if not rec:
-            return
-        rec["spectator_book"] = {
-            "match_id": match_id,
-            "totals": book.get("totals"),
-            "status": book.get("status"),
-            "pot_cap_usdc": book.get("pot_cap_usdc"),
-            "bets": book.get("bets") or [],
-            "payouts": book.get("payouts"),
-            "odds_live": book.get("odds_live"),
-            "closed_reason": book.get("closed_reason"),
-        }
-        rec["updated_at"] = _now()
-        data["matches"][match_id] = rec
-        self._save(data)
+        def _apply(rec: dict[str, Any]) -> None:
+            rec["spectator_book"] = {
+                "match_id": match_id,
+                "totals": book.get("totals"),
+                "status": book.get("status"),
+                "pot_cap_usdc": book.get("pot_cap_usdc"),
+                "bets": book.get("bets") or [],
+                "payouts": book.get("payouts"),
+                "odds_live": book.get("odds_live"),
+                "closed_reason": book.get("closed_reason"),
+            }
+            rec["updated_at"] = _now()
+
+        self._update(match_id, _apply)
 
     def _record_live_odds(self, rec: dict[str, Any], eval_pawns: Optional[float]) -> None:
         from gaming.src.stack.agentic.economy.odds import build_market
@@ -318,6 +417,8 @@ class AgentMatchService:
         )
         SpectatorBook().record_odds(mid, snap.to_dict())
         rec["odds_live"] = snap.to_dict()
+
+    # ── create / lock ────────────────────────────────────────────────────────
 
     def create_match(
         self,
@@ -376,7 +477,10 @@ class AgentMatchService:
             budget_from_manifest,
             negotiate_match_stake,
         )
-        from gaming.src.stack.agentic.economy.spectator import SpectatorBook
+        from gaming.src.stack.agentic.economy.spectator import (
+            SpectatorBook,
+            betting_open_for_new_books,
+        )
         from gaming.src.stack.agentic.chess.personas import get_persona
 
         # Enrich from silo personas
@@ -447,6 +551,13 @@ class AgentMatchService:
                 "reason": "manual stake (auto_negotiate=false)",
             }
 
+        # Spectator-betting kill switch: no seeding, and the book never opens.
+        book_closed_reason = ""
+        if not betting_open_for_new_books():
+            seed_a = seed_b = seed_draw = Decimal("0")
+            book_closed_reason = "betting_disabled"
+            negotiation = {**negotiation, "spectator_seeds": "off (spectator betting disabled)"}
+
         tc = negotiate_time_control(
             list(a.get("preferred_time_controls") or bud_a.preferred_time_controls),
             list(b.get("preferred_time_controls") or bud_b.preferred_time_controls),
@@ -477,6 +588,7 @@ class AgentMatchService:
             pot_cap_usdc=pot_cap,
             agent_a_wallet=a["wallet_address"],
             agent_b_wallet=b["wallet_address"],
+            closed_reason=book_closed_reason,
         )
 
         rec = {
@@ -531,10 +643,8 @@ class AgentMatchService:
             "locked_at": None,
             "settled_at": None,
         }
-        data = self._load()
-        data["matches"][match_id] = rec
-        self._save(data)
-        return rec
+        stored, _ = MATCHES.insert_if_absent(match_id, rec)
+        return stored
 
     def lock_both(self, match_id: str) -> dict[str, Any]:
         from gaming.src.stack.agentic.onchain import dual_lock_onchain, onchain_enabled
@@ -544,21 +654,24 @@ class AgentMatchService:
             authorize_skill_lock,
         )
 
-        data = self._load()
-        m = data["matches"].get(match_id)
+        m = self._record(match_id)
         if not m:
             raise ValueError("match not found")
         existing = ledger.get_escrow(match_id)
         if existing and existing.get("status") == "locked":
-            m["escrow"] = existing
-            if m.get("status") in {"open", "partial_lock", "queued"}:
-                m["status"] = "locked"
-                m["updated_at"] = _now()
-                data["matches"][match_id] = m
-                self._save(data)
-            return m
+
+            def _mark_locked(r: dict[str, Any]) -> None:
+                r["escrow"] = existing
+                if r.get("status") in {"open", "partial_lock", "queued"}:
+                    r["status"] = "locked"
+                    r["updated_at"] = _now()
+
+            return self._update(match_id, _mark_locked) or m
         authorize_skill_lock(m)
 
+        # Fields to apply to the *current* row at the end. On-chain calls below
+        # take up to minutes; nothing read before them is ever saved back whole.
+        changes: dict[str, Any] = {}
         onchain_result = None
         if onchain_enabled():
             try:
@@ -574,19 +687,19 @@ class AgentMatchService:
                     chain_id=m.get("chain_id") or "arc",
                     player1_is_a=white_is_a,
                 )
-                m["onchain"] = onchain_result
-                m["settlement_mode"] = "onchain"
+                changes["onchain"] = onchain_result
+                changes["settlement_mode"] = "onchain"
                 p1 = onchain_result.get("player1")
                 p2 = onchain_result.get("player2")
                 if p1 and p2:
-                    m["onchain_player1"] = p1
-                    m["onchain_player2"] = p2
+                    changes["onchain_player1"] = p1
+                    changes["onchain_player2"] = p2
                     if white_is_a:
-                        m["agent_a_wallet"] = p1
-                        m["agent_b_wallet"] = p2
+                        changes["agent_a_wallet"] = p1
+                        changes["agent_b_wallet"] = p2
                     else:
-                        m["agent_a_wallet"] = p2
-                        m["agent_b_wallet"] = p1
+                        changes["agent_a_wallet"] = p2
+                        changes["agent_b_wallet"] = p1
                 logger.info(
                     "[agentic] on-chain dual-lock ok match=%s create=%s join=%s",
                     match_id,
@@ -595,53 +708,38 @@ class AgentMatchService:
                 )
             except Exception as exc:
                 logger.exception("[agentic] on-chain lock failed: %s", exc)
-                m["onchain_error"] = str(exc)
+                if isinstance(exc, nonces.TxPendingConfirmation):
+                    # The lock tx may still mine; record it so ops/abort can
+                    # reconcile against the escrow instead of guessing.
+                    changes["onchain_pending_tx"] = {"label": exc.label, "tx_hash": exc.tx_hash}
                 if not allow_ledger_fallback():
-                    m["status"] = "lock_failed"
-                    m["updated_at"] = _now()
-                    data["matches"][match_id] = m
-                    self._save(data)
+                    self._set(match_id, onchain_error=str(exc), status="lock_failed", **changes)
                     raise DisbursementDenied(
                         f"on-chain lock failed and ledger fallback is off: {exc}"
                     ) from exc
-                m["settlement_mode"] = "demo_ledger_fallback"
+                changes["onchain_error"] = str(exc)
+                changes["settlement_mode"] = "demo_ledger_fallback"
                 onchain_result = None
+        m.update(changes)
 
-        # Mirror lock in demo ledger (always) for balances UI
-        esc = ledger.lock(match_id, m["agent_a_wallet"])
-        esc = ledger.lock(match_id, m["agent_b_wallet"])
-        # Debit spectator seeds from agent bankrolls into pot holding (not skill escrow)
+        # Mirror lock in demo ledger (always) for balances UI. Both locks and
+        # the spectator seed debits are ONE transaction: all or nothing, and a
+        # retry never debits the seeds twice.
         eco = m.get("economy") or {}
         seed_a = Decimal(str(eco.get("spectator_seed_a") or "0"))
         seed_b = Decimal(str(eco.get("spectator_seed_b") or "0"))
         seed_draw = Decimal(str(eco.get("spectator_seed_draw") or "0"))
-        if seed_a > 0:
-            ledger.debit(
-                m["agent_a_wallet"],
-                seed_a,
-                reason="spectator_seed",
-                ref=match_id,
-            )
-        if seed_b > 0:
-            ledger.debit(
-                m["agent_b_wallet"],
-                seed_b,
-                reason="spectator_seed",
-                ref=match_id,
-            )
-        if seed_draw > 0:
-            ledger.debit(
-                m["agent_a_wallet"],
-                seed_draw,
-                reason="draw_seed",
-                ref=match_id,
-            )
-            ledger.debit(
-                m["agent_b_wallet"],
-                seed_draw,
-                reason="draw_seed",
-                ref=match_id,
-            )
+        with transaction() as tx:
+            ledger.lock(match_id, m["agent_a_wallet"])
+            esc = ledger.lock(match_id, m["agent_b_wallet"])
+            if journal.record(tx, match_id, "lock:seeds", {"a": str(seed_a), "b": str(seed_b), "draw": str(seed_draw)}):
+                if seed_a > 0:
+                    ledger.debit(m["agent_a_wallet"], seed_a, reason="spectator_seed", ref=match_id)
+                if seed_b > 0:
+                    ledger.debit(m["agent_b_wallet"], seed_b, reason="spectator_seed", ref=match_id)
+                if seed_draw > 0:
+                    ledger.debit(m["agent_a_wallet"], seed_draw, reason="draw_seed", ref=match_id)
+                    ledger.debit(m["agent_b_wallet"], seed_draw, reason="draw_seed", ref=match_id)
         if onchain_result:
             esc = dict(esc)
             esc["mode"] = "onchain"
@@ -655,6 +753,7 @@ class AgentMatchService:
                 "txs": onchain_result.get("txs"),
             }
 
+        book_snap: Optional[dict[str, Any]] = None
         try:
             from gaming.src.stack.agentic.spectator_onchain import (
                 open_book_onchain,
@@ -662,60 +761,238 @@ class AgentMatchService:
             )
             from gaming.src.stack.agentic.economy.spectator import SpectatorBook
 
-            if spectator_onchain_enabled():
+            live_book = SpectatorBook().get(match_id) or {}
+            if spectator_onchain_enabled() and live_book.get("closed_reason") != "betting_disabled":
                 opened = open_book_onchain(m, chain_id=m.get("chain_id") or "arc")
                 SpectatorBook().mark_onchain(
                     match_id,
                     pool=str(opened.get("pool") or ""),
                     open_tx_hash=str(opened.get("tx_hash") or ""),
                 )
-                m["spectator_pool"] = {
+                changes["spectator_pool"] = {
                     "pool": opened.get("pool"),
                     "open_tx_hash": opened.get("tx_hash"),
                     "explorer": opened.get("explorer"),
                     "already_open": opened.get("already_open"),
                 }
-                snap = dict(m.get("spectator_book") or {})
-                snap["onchain"] = True
-                snap["pool"] = opened.get("pool")
-                snap["open_tx_hash"] = opened.get("tx_hash")
-                m["spectator_book"] = snap
+                book_snap = {
+                    "onchain": True,
+                    "pool": opened.get("pool"),
+                    "open_tx_hash": opened.get("tx_hash"),
+                }
         except Exception as exc:
             logger.warning("[agentic] SpectatorPool openBook: %s", exc)
-            m["spectator_pool_error"] = str(exc)
+            changes["spectator_pool_error"] = str(exc)
 
-        m["escrow"] = esc
-        m["status"] = "locked" if esc.get("status") == "locked" else "partial_lock"
-        if m["status"] == "locked":
-            m["locked_at"] = _now()
-        m["updated_at"] = _now()
-        data["matches"][match_id] = m
-        self._save(data)
-        return m
+        def _finish(r: dict[str, Any]) -> None:
+            r.update(changes)
+            if book_snap:
+                snap = dict(r.get("spectator_book") or {})
+                snap.update(book_snap)
+                r["spectator_book"] = snap
+            r["escrow"] = esc
+            # Only move forward from a pre-lock status; a table cancelled or
+            # started meanwhile keeps its newer status.
+            if r.get("status") in {"open", "partial_lock", "queued", "locking", "locked"}:
+                r["status"] = "locked" if esc.get("status") == "locked" else "partial_lock"
+                if r["status"] == "locked" and not r.get("locked_at"):
+                    r["locked_at"] = _now()
+            r["updated_at"] = _now()
 
-    def _settle(self, match_id: str, m: dict[str, Any], result: dict[str, Any], white: dict, black: dict) -> dict[str, Any]:
-        # Idempotency guard: a second settle attempt (retry, watchdog, raced
-        # worker) must never re-run fee debits, escrow moves, or book payouts.
-        # This is what allowed a draw-refund to slip in before the real result
-        # on agm_91dadd7c75f5 and strand the spectator pool.
-        fresh = (self._load()["matches"] or {}).get(match_id) or m
-        if str(fresh.get("status") or "") == "settled":
-            prev_esc = fresh.get("escrow") or {}
+        rec = self._update(match_id, _finish)
+        if rec is None:
+            raise ValueError("match not found")
+        return rec
+
+    # ── settlement ───────────────────────────────────────────────────────────
+
+    def _step(self, match_id: str, name: str, fn: Callable[[], Any]) -> Any:
+        """Run a money step exactly once.
+
+        The journal row and every ledger/book/pool change the step makes commit
+        in ONE transaction, under a fresh check that this process still holds
+        the match lease. A retry finds the row and reuses its recorded detail.
+        """
+        with transaction() as tx:
+            leases.assert_held(tx, match_id)
+            row = journal.get(tx, match_id, name)
+            if row is not None:
+                return row["detail"]
+            out = fn()
+            journal.record(tx, match_id, name, out, owner=leases.process_owner())
+        _after_step(name)
+        return out
+
+    def _external_step(self, match_id: str, name: str, fn: Callable[[], Any]) -> Any:
+        """A step that leaves the database (chain, registry file, Telegram).
+
+        Journaled right after it returns; ``fn`` must itself be safe to repeat
+        (it is re-run only if the process died between the call and the row).
+        """
+        if journal.done(match_id, name):
+            with transaction(readonly=True) as tx:
+                row = journal.get(tx, match_id, name)
+            return (row or {}).get("detail")
+        out = fn()
+        with transaction() as tx:
+            leases.assert_held(tx, match_id)
+            journal.record(tx, match_id, name, out, owner=leases.process_owner())
+        _after_step(name)
+        return out
+
+    def _players(self, m: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+        reg = get_registry()
+        # p1 = white_agent_id (first mover)
+        white = reg.get_agent(m["white_agent_id"])
+        black = reg.get_agent(m["black_agent_id"])
+        if not white or not black:
+            raise ValueError("agents missing")
+        from gaming.src.stack.agentic.chess.personas import get_persona
+
+        for agent in (white, black):
+            p = get_persona(agent["agent_id"])
+            if p:
+                agent["mind"] = p["mind"]
+                agent.setdefault("name", p.get("name"))
+                agent.setdefault("economy", p.get("economy"))
+                agent.setdefault("preferred_time_controls", p.get("preferred_time_controls"))
+                agent.setdefault("creator_id", p.get("creator_id"))
+                agent.setdefault("creator_fee_bps", p.get("creator_fee_bps"))
+        return white, black
+
+    def settle_result(self, match_id: str, result: dict[str, Any]) -> dict[str, Any]:
+        """Settle a match from a terminal result (resume / ops), under its lease."""
+        m = self._record(match_id)
+        if not m:
+            raise ValueError("match not found")
+        white, black = self._players(m)
+        try:
+            with leases.hold(match_id):
+                return self._finish_settlement(match_id, result, white, black)
+        except leases.LeaseBusy as exc:
+            raise TableBusy(str(exc)) from exc
+
+    def _finish_settlement(
+        self, match_id: str, result: dict[str, Any], white: dict, black: dict
+    ) -> dict[str, Any]:
+        """Claim the match for settlement, run the journaled steps, mark settled."""
+        outcome: dict[str, Any] = {}
+        max_attempts = _max_settle_attempts()
+
+        def _claim(r: dict[str, Any]) -> Any:
+            st = str(r.get("status") or "")
+            if st == "settled":
+                outcome["settled"] = True
+                return False
+            if st == "settling":
+                prev = r.get("pending_result") or {}
+                if prev and _result_key(prev) != _result_key(result) and result:
+                    outcome["conflict"] = prev
+                    return False
+                r["settle_attempts"] = int(r.get("settle_attempts") or 0) + 1
+                if r["settle_attempts"] > max_attempts:
+                    r["status"] = "settle_failed"
+                    r["settle_error"] = f"settlement retried {max_attempts}x — needs ops"
+                    outcome["parked"] = True
+                if not prev:
+                    r["pending_result"] = result
+            else:
+                # The first transfer happens only after this commits.
+                r["status"] = "settling"
+                r["pending_result"] = result
+                r["settle_attempts"] = 1
+                r["settling_since"] = _now()
+            r["updated_at"] = _now()
+            return None
+
+        rec = self._update(match_id, _claim)
+        if rec is None:
+            logger.error("[agentic] match %s vanished before settle", match_id)
+            return {"match_id": match_id, "status": "error", "play_error": "match missing after play"}
+        if outcome.get("settled"):
+            prev_esc = rec.get("escrow") or {}
             prev_result = str(prev_esc.get("result") or "")
-            new_result = "draw" if result.get("result") in {"draw", "stalemate", "insufficient_material"} else "win"
-            if prev_result and prev_result != new_result:
+            if prev_result and result and prev_result != _result_kind(result):
                 logger.error(
                     "[agentic] settle conflict %s: already settled as %s, refusing %s",
-                    match_id,
-                    prev_result,
-                    new_result,
+                    match_id, prev_result, _result_kind(result),
                 )
                 raise RuntimeError(
                     f"match {match_id} already settled ({prev_result}); conflicting re-settle refused"
                 )
             logger.warning("[agentic] settle %s: already settled, no-op", match_id)
-            return dict(prev_esc) if prev_esc else fresh
+            return rec
+        if outcome.get("conflict"):
+            raise RuntimeError(
+                f"match {match_id} is settling with a different result; conflicting re-settle refused"
+            )
+        if outcome.get("parked"):
+            raise RuntimeError(f"match {match_id}: settlement attempts exhausted — parked as settle_failed")
 
+        res = rec.get("pending_result") or result
+        if not res:
+            raise RuntimeError(f"match {match_id} is settling with no recorded result")
+        updates: dict[str, Any] = {}
+        esc = self._settle(match_id, rec, res, white, black, updates=updates)
+
+        game_id = rec.get("game_id") or "agentic.chess_standard"
+
+        def _finalize() -> dict[str, Any]:
+            def _apply(m: dict[str, Any]) -> None:
+                m.update(updates)
+                m["status"] = "settled"
+                m["result"] = res["result"]
+                m["winner_agent_id"] = res.get("winner_agent_id")
+                m["termination"] = res.get("termination")
+                m["pgn"] = res.get("pgn")
+                m["moves"] = res.get("moves")
+                m["final_fen"] = res.get("final_fen")
+                m["final_state"] = res.get("final_state")
+                m["seed"] = res.get("seed")
+                m["time_control_id"] = res.get("time_control_id") or m.get("time_control_id")
+                m["clock"] = res.get("clock")
+                m["escrow"] = esc
+                m["settled_at"] = _now()
+                m["updated_at"] = _now()
+                m["play"] = {
+                    "result_pgn": res.get("result_pgn"),
+                    "plies": res.get("plies"),
+                    "started_at": res.get("started_at"),
+                    "ended_at": res.get("ended_at"),
+                    "engines": res.get("engines"),
+                    "time_control_id": res.get("time_control_id"),
+                    "game_id": game_id,
+                }
+                m.pop("pending_result", None)
+
+            done = self._update(match_id, _apply) or {}
+            return {"settled_at": done.get("settled_at")}
+
+        self._step(match_id, "finalize", _finalize)
+        final = self._record(match_id) or rec
+        self._log_if_settled(match_id, final)
+        return final
+
+    def _settle(
+        self,
+        match_id: str,
+        m: dict[str, Any],
+        result: dict[str, Any],
+        white: dict,
+        black: dict,
+        *,
+        updates: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
+        """Move the money, one journaled step at a time.
+
+        Steps: onchain_resolve → escrow → stats → creator_fee → lp_profit →
+        lp_loss → opening_stats → spectator_resolve_onchain → spectator_settle
+        → play_adjust:<i> → notify. Each money step commits with its journal
+        row; a retry after a crash skips completed steps, so nothing is paid
+        twice and nothing is skipped.
+        """
+        if updates is None:
+            updates = {}
         from gaming.src.stack.agentic.onchain import onchain_enabled, resolve_onchain
         from gaming.src.stack.agentic.economy.fees import FeeRouter
         from gaming.src.stack.agentic.economy.spectator import SpectatorBook
@@ -739,12 +1016,11 @@ class AgentMatchService:
         try:
             auth = authorize_skill_settlement(m, result, white=white, black=black)
         except DisbursementDenied:
-            m["status"] = "settle_failed"
-            m["settle_error"] = "disbursement denied — result is not a contract trigger"
-            m["updated_at"] = _now()
-            data = self._load()
-            data["matches"][match_id] = m
-            self._save(data)
+            self._set(
+                match_id,
+                status="settle_failed",
+                settle_error="disbursement denied — result is not a contract trigger",
+            )
             raise
 
         draw = auth.action == "cancel"
@@ -772,7 +1048,7 @@ class AgentMatchService:
             # Pay the authorized (on-chain) wallet, not a stale registry copy.
             winner = {**winner, "wallet_address": auth.winner_wallet}
 
-        m["disbursement"] = auth.to_dict()
+        updates["disbursement"] = auth.to_dict()
 
         fee_split = FeeRouter().split_skill_pot(
             stake_usdc=Decimal(str(m["stake_usdc"])),
@@ -780,45 +1056,55 @@ class AgentMatchService:
             loser_agent=loser,
             draw=draw,
         )
-        m["fee_split"] = fee_split.to_dict()
+        updates["fee_split"] = fee_split.to_dict()
 
+        chain = m.get("chain_id") or "arc"
         onchain_settle = None
         onchain_needed = require_onchain_settlement(m) or (
             onchain_enabled() and m.get("onchain") and not m.get("onchain_error")
         )
         if onchain_needed:
+
+            def _resolve() -> dict[str, Any]:
+                if int(m.get("settle_attempts") or 1) > 1:
+                    # A previous attempt may have resolved it (or left the tx
+                    # pending): never send a second resolve for a final escrow.
+                    final = _onchain_already_final(match_id, chain)
+                    if final is not None:
+                        return final
+                try:
+                    return resolve_onchain(
+                        match_id,
+                        white["wallet_address"] if draw else auth.winner_wallet,
+                        chain_id=chain,
+                        draw=draw,
+                        authorization=auth,
+                    )
+                except Exception:
+                    # A retry after a crash may find the escrow already final.
+                    final = _onchain_already_final(match_id, chain)
+                    if final is not None:
+                        return final
+                    raise
+
             try:
-                if draw:
-                    onchain_settle = resolve_onchain(
-                        match_id,
-                        white["wallet_address"],
-                        chain_id=m.get("chain_id") or "arc",
-                        draw=True,
-                        authorization=auth,
-                    )
-                else:
-                    onchain_settle = resolve_onchain(
-                        match_id,
-                        auth.winner_wallet,
-                        chain_id=m.get("chain_id") or "arc",
-                        draw=False,
-                        authorization=auth,
-                    )
-                m["onchain_settle"] = onchain_settle
+                onchain_settle = self._external_step(match_id, "onchain_resolve", _resolve)
+                updates["onchain_settle"] = onchain_settle
                 logger.info(
                     "[agentic] on-chain settle ok match=%s tx=%s",
                     match_id,
-                    onchain_settle.get("tx_hash"),
+                    (onchain_settle or {}).get("tx_hash"),
                 )
+            except nonces.TxPendingConfirmation:
+                # Broadcast but unconfirmed: NOT a failure. Stay "settling";
+                # the retry probes the escrow before sending anything again.
+                logger.warning("[agentic] on-chain settle %s pending confirmation — will retry", match_id)
+                raise
             except Exception as exc:
                 logger.exception("[agentic] on-chain settle failed: %s", exc)
-                m["onchain_settle_error"] = str(exc)
+                updates["onchain_settle_error"] = str(exc)
                 if not allow_ledger_fallback():
-                    m["status"] = "settle_failed"
-                    m["updated_at"] = _now()
-                    data = self._load()
-                    data["matches"][match_id] = m
-                    self._save(data)
+                    self._set(match_id, status="settle_failed", **updates)
                     raise DisbursementDenied(
                         f"on-chain settle failed and ledger fallback is off: {exc}"
                     ) from exc
@@ -830,37 +1116,58 @@ class AgentMatchService:
         eco = m.get("economy") or {}
 
         if draw:
-            esc = ledger.settle(match_id, white["wallet_address"], result="draw")
-            reg.update_stats(white["agent_id"], "draw")
-            reg.update_stats(black["agent_id"], "draw")
+            esc = self._step(
+                match_id, "escrow", lambda: ledger.settle(match_id, white["wallet_address"], result="draw")
+            )
+
+            def _stats_draw() -> dict[str, Any]:
+                reg.update_stats(white["agent_id"], "draw")
+                reg.update_stats(black["agent_id"], "draw")
+                return {"draw": [white["agent_id"], black["agent_id"]]}
+
+            self._external_step(match_id, "stats", _stats_draw)
             winner_side = None
         else:
+            assert winner is not None and loser is not None
             # Pay full winner_gross to agent, then debit creator fee (no mint inflation)
-            esc = ledger.settle(match_id, winner["wallet_address"], result="win")
-            reg.update_stats(winner["agent_id"], "win")
-            reg.update_stats(loser["agent_id"], "loss")
+            esc = self._step(
+                match_id, "escrow", lambda: ledger.settle(match_id, winner["wallet_address"], result="win")
+            )
+
+            def _stats_win() -> dict[str, Any]:
+                reg.update_stats(winner["agent_id"], "win")
+                reg.update_stats(loser["agent_id"], "loss")
+                return {"win": winner["agent_id"], "loss": loser["agent_id"]}
+
+            self._external_step(match_id, "stats", _stats_win)
             c_fee = Decimal(fee_split.creator_fee)
             if c_fee > 0:
-                try:
-                    ledger.debit(
-                        winner["wallet_address"],
-                        c_fee,
-                        reason="creator_fee_skill_out",
-                        ref=match_id,
-                    )
-                except ValueError as exc:
-                    logger.warning("[agentic] creator fee debit failed: %s", exc)
                 creator_wallet = f"creator:{(winner.get('creator_id') or winner.get('owner_id'))}"
-                ledger.credit(
-                    creator_wallet,
-                    c_fee,
-                    reason="creator_fee_skill",
-                    ref=match_id,
-                )
-                reg.credit_creator_fee(winner["agent_id"], str(c_fee))
+
+                def _creator_fee() -> dict[str, Any]:
+                    try:
+                        ledger.debit(
+                            winner["wallet_address"],
+                            c_fee,
+                            reason="creator_fee_skill_out",
+                            ref=match_id,
+                        )
+                    except ValueError as exc:
+                        # Never credit a fee nobody paid (that would mint USDC).
+                        logger.warning("[agentic] creator fee debit failed: %s", exc)
+                        return {"skipped": str(exc)}
+                    ledger.credit(creator_wallet, c_fee, reason="creator_fee_skill", ref=match_id)
+                    return {"amount": str(c_fee), "creator_wallet": creator_wallet}
+
+                fee_out = self._step(match_id, "creator_fee", _creator_fee) or {}
+                if not fee_out.get("skipped"):
+                    self._external_step(
+                        match_id,
+                        "creator_fee_registry",
+                        lambda: (reg.credit_creator_fee(winner["agent_id"], str(c_fee)), {"amount": str(c_fee)})[1],
+                    )
 
             # Net skill profit that stayed on agent after creator cut = owner_payout - stake
-            # (they put in stake, got owner_payout back; profit = owner_payout - stake)
             owner_payout = Decimal(fee_split.owner_payout)
             stake = Decimal(str(m["stake_usdc"]))
             net_profit = owner_payout - stake
@@ -870,48 +1177,54 @@ class AgentMatchService:
                     eco.get(f"lp_profit_share_bps_{'a' if winner['agent_id'] == m['agent_a_id'] else 'b'}")
                     or bud_w.lp_profit_share_bps
                 )
-                dist = lp.distribute_skill_profit(
-                    winner["agent_id"],
-                    net_profit_usdc=net_profit,
-                    lp_profit_share_bps=lp_share_bps,
-                )
-                m["lp_distribution"] = dist
-                # Credit LP pseudo-wallets for realized profit share (claim already compounded in pool)
-                for p in dist.get("lp_payouts") or []:
-                    ledger.credit(
-                        f"lp:{p['lp_id']}",
-                        Decimal(str(p["amount"])),
-                        reason="lp_skill_profit",
-                        ref=match_id,
+
+                def _lp_profit() -> dict[str, Any]:
+                    dist = lp.distribute_skill_profit(
+                        winner["agent_id"],
+                        net_profit_usdc=net_profit,
+                        lp_profit_share_bps=lp_share_bps,
                     )
+                    # Credit LP pseudo-wallets for realized profit share (claim already compounded in pool)
+                    for p in dist.get("lp_payouts") or []:
+                        ledger.credit(
+                            f"lp:{p['lp_id']}",
+                            Decimal(str(p["amount"])),
+                            reason="lp_skill_profit",
+                            ref=match_id,
+                        )
+                    return dist
+
+                updates["lp_distribution"] = self._step(match_id, "lp_profit", _lp_profit)
+
             # Loser: mark LP haircut on lost stake
-            if loser:
+            def _lp_loss() -> dict[str, Any]:
                 br_before = ledger.balance(loser["wallet_address"]) + stake
-                lp.mark_loss(
-                    loser["agent_id"],
-                    loss_usdc=stake,
-                    agent_bankroll_before=br_before,
-                )
+                out = dict(lp.mark_loss(loser["agent_id"], loss_usdc=stake, agent_bankroll_before=br_before))
+                out.pop("pool", None)
+                return out
+
+            self._step(match_id, "lp_loss", _lp_loss)
             winner_side = "a" if winner["agent_id"] == m["agent_a_id"] else "b"
 
         # Opening-line learning — remember which repertoire line produced this
         # result so the next book pick weights it (and rotates openers).
-        try:
-            from gaming.src.stack.agentic.chess import opening_stats
+        def _opening() -> dict[str, Any]:
+            try:
+                from gaming.src.stack.agentic.chess import opening_stats
 
-            opening_stats.record_result(
-                agent_a_id=str(m.get("agent_a_id") or ""),
-                agent_b_id=str(m.get("agent_b_id") or ""),
-                sans=[
-                    str(mv.get("san"))
-                    for mv in (m.get("moves") or [])
-                    if mv.get("san")
-                ],
-                winner_side=winner_side,
-                match_id=match_id,
-            )
-        except Exception as exc:
-            logger.warning("[agentic] opening stats record failed: %s", exc)
+                opening_stats.record_result(
+                    agent_a_id=str(m.get("agent_a_id") or ""),
+                    agent_b_id=str(m.get("agent_b_id") or ""),
+                    sans=[str(mv.get("san")) for mv in (result.get("moves") or m.get("moves") or []) if mv.get("san")],
+                    winner_side=winner_side,
+                    match_id=match_id,
+                )
+                return {"ok": True}
+            except Exception as exc:
+                logger.warning("[agentic] opening stats record failed: %s", exc)
+                return {"ok": False, "error": str(exc)}
+
+        self._external_step(match_id, "opening_stats", _opening)
 
         # Spectator pot settle
         try:
@@ -923,8 +1236,8 @@ class AgentMatchService:
             spec_book = SpectatorBook()
             live = spec_book.get(match_id) or {}
             if not live:
-                # Self-heal: a book lost to a failed save (disk full) must not
-                # block settlement — recreate it from the match economy fields.
+                # Self-heal: a lost book must not block settlement — recreate
+                # it from the match economy fields.
                 try:
                     live = spec_book.ensure_from_match(m)
                     logger.warning("[agentic] spectator book recreated for %s", match_id)
@@ -933,94 +1246,124 @@ class AgentMatchService:
             onchain_spec = bool(live.get("onchain")) and spectator_onchain_enabled()
             if onchain_spec:
                 try:
-                    resolved = resolve_spectator_pool(
+                    resolved = self._external_step(
                         match_id,
-                        winner_side,
-                        chain_id=m.get("chain_id") or "arc",
-                    )
+                        "spectator_resolve_onchain",
+                        lambda: resolve_spectator_pool(match_id, winner_side, chain_id=chain),
+                    ) or {}
                     if resolved.get("tx_hash"):
                         spec_book.project_resolve(
                             match_id,
                             tx_hash=str(resolved.get("tx_hash") or ""),
                             explorer=str(resolved.get("explorer") or ""),
                         )
-                    m["spectator_pool_resolve"] = resolved
+                    updates["spectator_pool_resolve"] = resolved
+                except leases.LeaseLost:
+                    raise
                 except Exception as exc:
                     logger.warning("[agentic] SpectatorPool resolve: %s", exc)
-                    m["spectator_pool_resolve_error"] = str(exc)
-            spec = (
-                spec_book.settle(match_id, winner_side=winner_side)
-                if live
-                else {
-                    "status": "missing",
-                    "totals": {},
-                    "payouts": {},
-                    "onchain": False,
-                    "pool": "",
-                    "open_tx_hash": "",
-                    "resolve_tx_hash": "",
+                    updates["spectator_pool_resolve_error"] = str(exc)
+
+            def _spectator_settle() -> dict[str, Any]:
+                spec = (
+                    spec_book.settle(match_id, winner_side=winner_side)
+                    if live
+                    else {
+                        "status": "missing",
+                        "totals": {},
+                        "payouts": {},
+                        "onchain": False,
+                        "pool": "",
+                        "open_tx_hash": "",
+                        "resolve_tx_hash": "",
+                    }
+                )
+                # On-chain books push creator fees in the contract. Ledger only
+                # refunds JSON seeds (those were never deposited to the pool).
+                if not onchain_spec:
+                    for c in (spec.get("payouts") or {}).get("creators") or []:
+                        ledger.credit(
+                            f"creator:{c['creator_id']}",
+                            Decimal(str(c["amount"])),
+                            reason="creator_fee_spectator",
+                            ref=match_id,
+                        )
+                for sr in (spec.get("payouts") or {}).get("seed_refunds") or []:
+                    w = sr.get("wallet")
+                    amt = Decimal(str(sr.get("amount") or "0"))
+                    if w and amt > 0:
+                        ledger.credit(w, amt, reason=str(sr.get("reason") or "seed_refund_draw"), ref=match_id)
+                draw_book = (spec.get("payouts") or {}).get("draw_book") or {}
+                for sp in draw_book.get("agent_split") or []:
+                    w = sp.get("wallet")
+                    amt = Decimal(str(sp.get("amount") or "0"))
+                    if w and amt > 0:
+                        ledger.credit(w, amt, reason="draw_underwrite_win", ref=match_id)
+                for bt in draw_book.get("bettors") or []:
+                    bid = bt.get("bettor_id")
+                    amt = Decimal(str(bt.get("amount") or "0"))
+                    if bid and amt > 0:
+                        ledger.credit(str(bid), amt, reason="draw_win", ref=match_id)
+                fan_pays = list((spec.get("payouts") or {}).get("bettors") or [])
+                for bt in fan_pays:
+                    bid = str(bt.get("bettor_id") or "")
+                    amt = Decimal(str(bt.get("amount") or "0"))
+                    if not bid or amt <= 0:
+                        continue
+                    ledger.credit(bid, amt, reason=f"spectator_{bt.get('reason') or 'win'}", ref=match_id)
+                return {
+                    "book": {
+                        "status": spec.get("status"),
+                        "totals": spec.get("totals"),
+                        "payouts": spec.get("payouts"),
+                        "onchain": bool(spec.get("onchain")),
+                        "pool": spec.get("pool"),
+                        "open_tx_hash": spec.get("open_tx_hash"),
+                        "resolve_tx_hash": spec.get("resolve_tx_hash"),
+                    },
+                    "fan_pays": fan_pays,
+                    "bets": list(spec.get("bets") or []),
                 }
-            )
-            m["spectator_book"] = {
-                "status": spec.get("status"),
-                "totals": spec.get("totals"),
-                "payouts": spec.get("payouts"),
-                "onchain": bool(spec.get("onchain")),
-                "pool": spec.get("pool"),
-                "open_tx_hash": spec.get("open_tx_hash"),
-                "resolve_tx_hash": spec.get("resolve_tx_hash"),
-            }
-            # On-chain books push creator fees in the contract. Ledger only
-            # refunds JSON seeds (those were never deposited to the pool).
-            if not onchain_spec:
-                for c in (spec.get("payouts") or {}).get("creators") or []:
-                    ledger.credit(
-                        f"creator:{c['creator_id']}",
-                        Decimal(str(c["amount"])),
-                        reason="creator_fee_spectator",
-                        ref=match_id,
-                    )
-            for sr in (spec.get("payouts") or {}).get("seed_refunds") or []:
-                w = sr.get("wallet")
-                amt = Decimal(str(sr.get("amount") or "0"))
-                if w and amt > 0:
-                    ledger.credit(w, amt, reason=str(sr.get("reason") or "seed_refund_draw"), ref=match_id)
-            draw_book = (spec.get("payouts") or {}).get("draw_book") or {}
-            for sp in draw_book.get("agent_split") or []:
-                w = sp.get("wallet")
-                amt = Decimal(str(sp.get("amount") or "0"))
-                if w and amt > 0:
-                    ledger.credit(w, amt, reason="draw_underwrite_win", ref=match_id)
-            for bt in draw_book.get("bettors") or []:
-                bid = bt.get("bettor_id")
-                amt = Decimal(str(bt.get("amount") or "0"))
-                if bid and amt > 0:
-                    ledger.credit(str(bid), amt, reason="draw_win", ref=match_id)
-            fan_pays = list((spec.get("payouts") or {}).get("bettors") or [])
-            for bt in fan_pays:
+
+            spec_out = self._step(match_id, "spectator_settle", _spectator_settle) or {}
+            updates["spectator_book"] = spec_out.get("book") or {}
+            fan_pays = list(spec_out.get("fan_pays") or [])
+            for i, bt in enumerate(fan_pays):
                 bid = str(bt.get("bettor_id") or "")
                 amt = Decimal(str(bt.get("amount") or "0"))
                 if not bid or amt <= 0:
                     continue
-                reason = str(bt.get("reason") or "win")
-                try:
-                    ledger.credit(bid, amt, reason=f"spectator_{reason}", ref=match_id)
-                except Exception:
-                    logger.warning("[agentic] spectator credit failed %s", bid, exc_info=True)
-                try:
+                tag = f"payout:{match_id}:{bt.get('reason') or 'win'}#{i}"
+
+                def _adjust(bid: str = bid, amt: Decimal = amt, tag: str = tag) -> dict[str, Any]:
+                    if _adjust_already_applied(bid, tag):
+                        return {"reconciled": True}
                     from gaming.src.backend.services.play_adjust import add_adjust
 
-                    add_adjust(bid, amt, reason=f"payout:{match_id}:{reason}")
+                    add_adjust(bid, amt, reason=tag)
+                    return {"applied": str(amt)}
+
+                try:
+                    self._external_step(match_id, f"play_adjust:{i}", _adjust)
+                except leases.LeaseLost:
+                    raise
                 except Exception:
                     logger.warning("[agentic] play_adjust payout failed %s", bid, exc_info=True)
-            _notify_spectator_outcomes(
-                match_id,
-                winner_side,
-                fan_pays,
-                book=spec,
-                result_code=str(result.get("result") or ""),
-                termination=str(result.get("termination") or ""),
-            )
+
+            def _notify() -> dict[str, Any]:
+                _notify_spectator_outcomes(
+                    match_id,
+                    winner_side,
+                    fan_pays,
+                    book={**(spec_out.get("book") or {}), "bets": spec_out.get("bets") or []},
+                    result_code=str(result.get("result") or ""),
+                    termination=str(result.get("termination") or ""),
+                )
+                return {"sent": len(fan_pays)}
+
+            self._external_step(match_id, "notify", _notify)
+        except leases.LeaseLost:
+            raise
         except Exception as exc:
             logger.warning("[agentic] spectator settle: %s", exc)
 
@@ -1030,7 +1373,10 @@ class AgentMatchService:
             esc["onchain_settle"] = onchain_settle
         esc = dict(esc)
         esc["fee_split"] = fee_split.to_dict()
+        m.update(updates)
         return esc
+
+    # ── play ─────────────────────────────────────────────────────────────────
 
     def run_chess(
         self,
@@ -1053,12 +1399,16 @@ class AgentMatchService:
         seed: Optional[int] = None,
         on_move=None,
     ) -> dict[str, Any]:
-        """Lock if needed, play any registered game, settle escrow + fees + spectator."""
-        data = self._load()
-        m = data["matches"].get(match_id)
+        """Lock if needed, play any registered game, settle escrow + fees + spectator.
+
+        Runs under the match lease: a table another process is driving raises
+        TableBusy; a table whose driver died (expired lease) is taken over, and
+        a table that died mid-settlement resumes from its journal.
+        """
+        m = self._record(match_id)
         if not m:
             raise ValueError("match not found")
-        if m["status"] not in {"open", "partial_lock", "locked", "playing", "queued"}:
+        if m["status"] not in RUNNABLE_STATUSES:
             raise ValueError(f"cannot play from status {m['status']}")
 
         with _RUNNING_LOCK:
@@ -1068,7 +1418,14 @@ class AgentMatchService:
                 )
             _RUNNING[match_id] = time.monotonic()
         try:
-            return self._run_match_inner(match_id, move_delay_sec=move_delay_sec, seed=seed, on_move=on_move)
+            with ExitStack() as stack:
+                try:
+                    stack.enter_context(leases.hold(match_id))
+                except leases.LeaseBusy as exc:
+                    raise TableBusy(str(exc)) from exc
+                return self._run_match_inner(
+                    match_id, move_delay_sec=move_delay_sec, seed=seed, on_move=on_move
+                )
         finally:
             with _RUNNING_LOCK:
                 _RUNNING.pop(match_id, None)
@@ -1081,102 +1438,101 @@ class AgentMatchService:
         seed: Optional[int] = None,
         on_move=None,
     ) -> dict[str, Any]:
-        # Fresh load: the wrapper checked availability; the actual game state
-        # may have moved while this thread waited on the registry lock.
-        data = self._load()
-        m = data["matches"].get(match_id)
+        # Fresh read: the game state may have moved while we waited.
+        m = self._record(match_id)
         if not m:
             raise ValueError("match not found")
+        if m["status"] == "settling":
+            white, black = self._players(m)
+            logger.warning("[agentic] resuming settlement of %s from its journal", match_id)
+            return self._finish_settlement(match_id, m.get("pending_result") or {}, white, black)
         if m["status"] in {"open", "partial_lock", "queued"}:
             m = self.lock_both(match_id)
 
-        reg = get_registry()
-        # p1 = white_agent_id (first mover)
-        white = reg.get_agent(m["white_agent_id"])
-        black = reg.get_agent(m["black_agent_id"])
-        if not white or not black:
-            raise ValueError("agents missing")
+        white, black = self._players(m)
 
-        from gaming.src.stack.agentic.chess.personas import get_persona
+        def _start(r: dict[str, Any]) -> None:
+            st = str(r.get("status") or "")
+            if st not in RUNNABLE_STATUSES or st == "settling":
+                raise ValueError(f"cannot play from status {st}")
+            r["status"] = "playing"
+            r["updated_at"] = _now()
 
-        for agent in (white, black):
-            p = get_persona(agent["agent_id"])
-            if p:
-                agent["mind"] = p["mind"]
-                agent.setdefault("name", p.get("name"))
-                agent.setdefault("economy", p.get("economy"))
-                agent.setdefault("preferred_time_controls", p.get("preferred_time_controls"))
-                agent.setdefault("creator_id", p.get("creator_id"))
-                agent.setdefault("creator_fee_bps", p.get("creator_fee_bps"))
-
-        m["status"] = "playing"
-        m["updated_at"] = _now()
-        data = self._load()
-        data["matches"][match_id] = m
-        self._save(data)
+        m = self._update(match_id, _start) or m
 
         game_id = m.get("game_id") or "agentic.chess_standard"
+        chain = m.get("chain_id") or "arc"
 
         def _persist_live(ev) -> None:
             payload = ev.__dict__ if hasattr(ev, "__dict__") else dict(ev)
-            live = self._load()
-            rec = live["matches"].get(match_id)
-            if not rec:
-                return
-            moves = list(rec.get("moves") or [])
-            ply = payload.get("ply")
-            if ply is not None and any(x.get("ply") == ply for x in moves):
-                return
-            clk = payload.get("clock") or {}
-            ev_eval = payload.get("eval_pawns")
-            moves.append(
-                {
-                    "ply": ply,
-                    "san": payload.get("san"),
-                    "uci": payload.get("uci"),
-                    "fen": payload.get("fen"),
-                    "side": payload.get("side"),
-                    "agent_id": payload.get("agent_id"),
-                    "source": payload.get("engine_source"),
-                    "eval_pawns": ev_eval,
-                    "clock": clk or None,
-                }
-            )
-            rec["moves"] = moves
-            rec["status"] = "playing"
-            rec["updated_at"] = _now()
-            rec["ply"] = ply
-            if ev_eval is not None:
-                rec["last_eval"] = ev_eval
-            if clk:
-                snap = dict(rec.get("clock") or {})
-                snap["control_id"] = rec.get("time_control_id") or snap.get("control_id")
-                side = clk.get("side") or payload.get("side")
-                if side in {"white", "black"}:
-                    snap[side] = {
-                        "remaining_ms": clk.get("remaining_ms"),
-                        "flag": bool(clk.get("flag")),
-                    }
-                rec["clock"] = snap
-            try:
-                from gaming.src.stack.agentic.economy.spectator import (
-                    SpectatorBook,
-                    book_close_plies,
-                )
+            flags: dict[str, Any] = {}
 
-                close_at = book_close_plies()
-                if ply is not None and int(ply) >= close_at:
-                    book = SpectatorBook().close_book(match_id, reason=f"ply_{ply}")
-                    snap_b = dict(rec.get("spectator_book") or {})
-                    snap_b["status"] = book.get("status")
-                    snap_b["closed_reason"] = book.get("closed_reason")
-                    rec["spectator_book"] = snap_b
-                if ev_eval is not None or (ply and int(ply) % 2 == 0):
-                    self._record_live_odds(rec, ev_eval)
-            except Exception:
-                logger.warning("[agentic] live book/odds update failed", exc_info=True)
-            live["matches"][match_id] = rec
-            self._save(live)
+            def _apply(rec: dict[str, Any]) -> Any:
+                moves = list(rec.get("moves") or [])
+                ply = payload.get("ply")
+                if ply is not None and any(x.get("ply") == ply for x in moves):
+                    flags["dup"] = True
+                    return False
+                clk = payload.get("clock") or {}
+                ev_eval = payload.get("eval_pawns")
+                moves.append(
+                    {
+                        "ply": ply,
+                        "san": payload.get("san"),
+                        "uci": payload.get("uci"),
+                        "fen": payload.get("fen"),
+                        "side": payload.get("side"),
+                        "agent_id": payload.get("agent_id"),
+                        "source": payload.get("engine_source"),
+                        "eval_pawns": ev_eval,
+                        "clock": clk or None,
+                    }
+                )
+                rec["moves"] = moves
+                if rec.get("status") in {"locked", "playing", "partial_lock", "queued"}:
+                    rec["status"] = "playing"
+                rec["updated_at"] = _now()
+                rec["ply"] = ply
+                if ev_eval is not None:
+                    rec["last_eval"] = ev_eval
+                if clk:
+                    snap = dict(rec.get("clock") or {})
+                    snap["control_id"] = rec.get("time_control_id") or snap.get("control_id")
+                    side = clk.get("side") or payload.get("side")
+                    if side in {"white", "black"}:
+                        snap[side] = {
+                            "remaining_ms": clk.get("remaining_ms"),
+                            "flag": bool(clk.get("flag")),
+                        }
+                    rec["clock"] = snap
+                try:
+                    from gaming.src.stack.agentic.economy.spectator import (
+                        SpectatorBook,
+                        book_close_plies,
+                    )
+
+                    close_at = book_close_plies()
+                    if ply is not None and int(ply) >= close_at:
+                        before = (SpectatorBook().get(match_id) or {}).get("status")
+                        book = SpectatorBook().close_book(match_id, reason=f"ply_{ply}")
+                        snap_b = dict(rec.get("spectator_book") or {})
+                        snap_b["status"] = book.get("status")
+                        snap_b["closed_reason"] = book.get("closed_reason")
+                        rec["spectator_book"] = snap_b
+                        if before in {"open", "full"} and book.get("onchain"):
+                            flags["close_onchain"] = True
+                    if ev_eval is not None or (ply and int(ply) % 2 == 0):
+                        self._record_live_odds(rec, ev_eval)
+                except Exception:
+                    logger.warning("[agentic] live book/odds update failed", exc_info=True)
+                return None
+
+            self._update(match_id, _apply)
+            if flags.get("dup"):
+                return
+            if flags.get("close_onchain"):
+                # Ply-N freeze on the SpectatorPool too (after our commit).
+                _close_book_onchain_async(match_id, chain)
             if on_move:
                 on_move(ev)
 
@@ -1212,39 +1568,7 @@ class AgentMatchService:
             elif result.get("result") == "p2_win":
                 result["result"] = "black_win"
 
-        data = self._load()
-        m = data["matches"].get(match_id)
-        if not m:
-            logger.error("[agentic] match %s vanished after play", match_id)
-            return {"match_id": match_id, "status": "error", "play_error": "match missing after play"}
-        esc = self._settle(match_id, m, result, white, black)
-
-        m["status"] = "settled"
-        m["result"] = result["result"]
-        m["winner_agent_id"] = result.get("winner_agent_id")
-        m["termination"] = result.get("termination")
-        m["pgn"] = result.get("pgn")
-        m["moves"] = result.get("moves")
-        m["final_fen"] = result.get("final_fen")
-        m["final_state"] = result.get("final_state")
-        m["seed"] = result.get("seed")
-        m["time_control_id"] = result.get("time_control_id") or m.get("time_control_id")
-        m["clock"] = result.get("clock")
-        m["escrow"] = esc
-        m["settled_at"] = _now()
-        m["updated_at"] = _now()
-        m["play"] = {
-            "result_pgn": result.get("result_pgn"),
-            "plies": result.get("plies"),
-            "started_at": result.get("started_at"),
-            "ended_at": result.get("ended_at"),
-            "engines": result.get("engines"),
-            "time_control_id": result.get("time_control_id"),
-            "game_id": game_id,
-        }
-        data["matches"][match_id] = m
-        self._save(data, upsert_id=match_id)
-        return m
+        return self._finish_settlement(match_id, result, white, black)
 
     def demo_raja_vs_nero(
         self,

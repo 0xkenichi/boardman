@@ -25,8 +25,10 @@ from gaming.src.stack.agentic.registry import get_registry
 logger = logging.getLogger(__name__)
 
 LIVE_STATUSES = frozenset(
-    {"open", "locked", "partial_lock", "playing", "queued", "settle_failed", "locking"}
+    {"open", "locked", "partial_lock", "playing", "queued", "settle_failed", "locking", "settling"}
 )
+# Statuses a worker owns; orphaned ones (no live lease) are re-seated.
+WORKER_STATUSES = frozenset({"playing", "settling", "locking", "locked"})
 BET_STATUSES = frozenset(
     {"open", "locked", "partial_lock", "playing", "queued", "locking"}
 )
@@ -291,19 +293,10 @@ def _queued() -> list[dict[str, Any]]:
 
 
 def _set_status(match_id: str, status: str, **extra: Any) -> dict[str, Any]:
-    from gaming.src.stack.agentic.store import load_json, save_json
-    from datetime import datetime, timezone
+    """Atomic status change (one row, one transaction; never rewinds a settle)."""
+    from gaming.src.stack.agentic.matches import get_match_service
 
-    store = load_json("matches.json", {"matches": {}})
-    rec = store["matches"].get(match_id)
-    if not rec:
-        raise ValueError("match not found")
-    rec["status"] = status
-    rec["updated_at"] = datetime.now(timezone.utc).isoformat()
-    rec.update(extra)
-    store["matches"][match_id] = rec
-    save_json("matches.json", store)
-    return rec
+    return get_match_service().set_status(match_id, status, **extra)
 
 
 def ensure_builder_webhooks() -> None:
@@ -362,7 +355,14 @@ def ensure_builder_webhooks() -> None:
 
 
 def rescue_orphans() -> list[str]:
-    """Re-seat playing/locking tables whose worker died (API restart)."""
+    """Re-seat tables whose worker died (API restart, crashed session).
+
+    Only tables whose lease is free or EXPIRED are taken: a table another
+    process is driving (live lease, renewed by its heartbeat) is left alone.
+    The worker itself then acquires the lease atomically, so two processes
+    rescuing at once still end with exactly one driver.
+    """
+    from gaming.src.stack.agentic.db import leases
     from gaming.src.stack.agentic.matches import get_match_service
 
     resumed: list[str] = []
@@ -370,9 +370,15 @@ def rescue_orphans() -> list[str]:
         for m in get_match_service().list_matches(200):
             st = m.get("status")
             mid = m.get("match_id")
-            if not mid or mid in _workers:
+            if not mid or mid in _workers or st not in WORKER_STATUSES:
                 continue
-            if st == "playing":
+            try:
+                if leases.active_holder(mid) is not None:
+                    continue
+            except Exception:
+                logger.warning("[house] lease check failed for %s — not rescuing", mid, exc_info=True)
+                continue
+            if st in {"playing", "settling"}:
                 delay = float(m.get("play_delay_sec") or 0.05)
                 fut = _executor().submit(_run_table, mid, delay, m.get("play_seed"))
                 _workers[mid] = fut
@@ -387,10 +393,19 @@ def rescue_orphans() -> list[str]:
     return resumed
 
 
-def _lock_and_run(match_id: str, move_delay_sec: float, seed: Optional[int]) -> None:
+def _lock_and_run(match_id: str, move_delay_sec: float, seed: Optional[int], claimed: bool = False) -> None:
+    from gaming.src.stack.agentic.db import leases
     from gaming.src.stack.agentic.matches import TableBusy, get_match_service
 
     try:
+        # The lease covers lock -> bet window -> play -> settle, so no other
+        # process "rescues" this table while it waits for bets.
+        if not claimed:
+            try:
+                leases.acquire(match_id)
+            except leases.LeaseBusy as exc:
+                raise TableBusy(str(exc)) from exc
+            claimed = True
         get_match_service().lock_both(match_id)
         if not _wait_bet_window(match_id):
             return
@@ -405,17 +420,20 @@ def _lock_and_run(match_id: str, move_delay_sec: float, seed: Optional[int]) -> 
         logger.exception("[house] rematch %s failed", match_id)
         try:
             cur = get_match_service().get(match_id) or {}
-            if cur.get("status") not in {"settle_failed", "lock_failed", "settled", "cancelled"}:
+            if cur.get("status") not in {"settle_failed", "lock_failed", "settled", "cancelled", "settling"}:
                 _set_status(match_id, "error", play_error="rematch failed")
         except Exception:
             pass
     finally:
+        if claimed:
+            leases.release(match_id)
         with _floor_lock:
             _workers.pop(match_id, None)
         _pump_queue()
 
 
-def _run_table(match_id: str, move_delay_sec: float, seed: Optional[int]) -> None:
+def _run_table(match_id: str, move_delay_sec: float, seed: Optional[int], claimed: bool = False) -> None:
+    from gaming.src.stack.agentic.db import leases
     from gaming.src.stack.agentic.matches import TableBusy, get_match_service
 
     try:
@@ -430,11 +448,15 @@ def _run_table(match_id: str, move_delay_sec: float, seed: Optional[int]) -> Non
         logger.exception("[house] table %s failed", match_id)
         try:
             cur = get_match_service().get(match_id) or {}
-            if cur.get("status") not in {"settle_failed", "lock_failed", "settled"}:
+            # A table that died mid-settlement stays "settling": its journal
+            # lets the next worker finish it exactly once.
+            if cur.get("status") not in {"settle_failed", "lock_failed", "settled", "settling"}:
                 _set_status(match_id, "error", play_error="run_match failed")
         except Exception:
             pass
     finally:
+        if claimed:
+            leases.release(match_id)
         with _floor_lock:
             _workers.pop(match_id, None)
         _pump_queue()
@@ -453,12 +475,32 @@ def _pump_queue() -> None:
                 return
             delay = float(nxt[0].get("play_delay_sec") or 0)
             seed = nxt[0].get("play_seed")
+            if not _claim_table(mid):
+                return
             try:
                 _set_status(mid, "playing")
             except ValueError:
+                _release_table(mid)
                 return
-            fut = _executor().submit(_run_table, mid, delay, seed)
+            fut = _executor().submit(_run_table, mid, delay, seed, True)
             _workers[mid] = fut
+
+
+def _claim_table(match_id: str) -> bool:
+    """Take the match lease for a worker about to be submitted (False if taken)."""
+    from gaming.src.stack.agentic.db import leases
+
+    try:
+        leases.acquire(match_id)
+        return True
+    except leases.LeaseBusy:
+        return False
+
+
+def _release_table(match_id: str) -> None:
+    from gaming.src.stack.agentic.db import leases
+
+    leases.release(match_id)
 
 
 class HouseRuntime:
@@ -517,15 +559,11 @@ class HouseRuntime:
             chain_id=chain_id,
             game_id=game_id,
         )
-        from gaming.src.stack.agentic.store import load_json, save_json
+        def _clerk(rec: dict[str, Any]) -> None:
+            rec["house_agent_id"] = HOUSE_ID
+            rec["clerk"] = "boardman_house"
 
-        store = load_json("matches.json", {"matches": {}})
-        rec = store["matches"].get(m["match_id"]) or m
-        rec["house_agent_id"] = HOUSE_ID
-        rec["clerk"] = "boardman_house"
-        store["matches"][m["match_id"]] = rec
-        save_json("matches.json", store)
-        return rec
+        return get_match_service()._update(m["match_id"], _clerk) or m
 
     def lock(self, match_id: str) -> dict[str, Any]:
         from gaming.src.stack.agentic.disbursement import authorize_skill_lock
@@ -559,7 +597,9 @@ class HouseRuntime:
 
         ply = len(m.get("moves") or [])
         if ply >= book_close_plies():
-            SpectatorBook().close_book(match_id, reason=f"ply_{ply}")
+            from gaming.src.stack.agentic.matches import freeze_book
+
+            freeze_book(match_id, reason=f"ply_{ply}", chain_id=m.get("chain_id") or "arc")
             raise ValueError(f"book closed after {book_close_plies()} plies")
         slot = resolve_side(m, side)
         existing = SpectatorBook().get(match_id) or {}
@@ -669,8 +709,15 @@ class HouseRuntime:
                     "cap": max_tables(),
                     "match": rec,
                 }
-            rec = _set_status(match_id, "playing", **extra)
-            fut = _executor().submit(_run_table, match_id, move_delay_sec, seed)
+            if not _claim_table(match_id):
+                # Another process already drives this table.
+                return {"match_id": match_id, "status": m.get("status"), "seated": True, "attached": True}
+            try:
+                rec = _set_status(match_id, "playing", **extra)
+                fut = _executor().submit(_run_table, match_id, move_delay_sec, seed, True)
+            except BaseException:
+                _release_table(match_id)
+                raise
             _workers[match_id] = fut
         return {"match_id": match_id, "status": "playing", "seated": True, "match": rec}
 
@@ -750,12 +797,8 @@ class HouseRuntime:
                 # Re-mark through the service so its 0.25s _mem cache is updated
                 # too — otherwise open_match's busy check in the same call reads
                 # the stale settle_failed copy and refuses to proceed.
-                data = get_match_service()._load()
-                rec = data["matches"].get(mid) or {}
-                rec["status"] = "settled"
-                rec["settle_error"] = ""
-                data["matches"][mid] = rec
-                get_match_service()._save(data, upsert_id=mid)
+                get_match_service()._set(mid, status="settled", settle_error="")
+                get_match_service()._log_if_settled(mid)
                 logger.info("[house] re-marked completed table %s as settled", mid)
                 out.append({"match_id": mid, "action": "re-marked_settled"})
                 continue
@@ -830,14 +873,15 @@ class HouseRuntime:
                     "settlement_mode": locked.get("settlement_mode"),
                 },
             }
-        rec = _set_status(
-            mid,
-            "locking",
-            play_delay_sec=move_delay_sec,
-            play_seed=seed,
-        )
         with _floor_lock:
-            fut = _executor().submit(_lock_and_run, mid, move_delay_sec, seed)
+            claimed = _claim_table(mid)
+            rec = _set_status(
+                mid,
+                "locking",
+                play_delay_sec=move_delay_sec,
+                play_seed=seed,
+            )
+            fut = _executor().submit(_lock_and_run, mid, move_delay_sec, seed, claimed)
             _workers[mid] = fut
         return {
             "released_stale": [r["match_id"] for r in released],

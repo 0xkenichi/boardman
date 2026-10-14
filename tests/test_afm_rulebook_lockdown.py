@@ -67,7 +67,10 @@ def _play_sandbox_games(tmp_dir: pathlib.Path) -> dict[str, dict]:
                 rt.lock(m["match_id"])
                 out = rt.play(m["match_id"], move_delay_sec=0, wait=True, seed=seed)
                 assert out["status"] == "settled", out.get("status")
-            return _read_store(tmp_dir)
+            # Matches live in the agentic database now (one row each).
+            from gaming.src.stack.agentic.db.tables import MATCHES
+
+            return {str(m["match_id"]): m for m in MATCHES.query()}
         finally:
             get_registry.cache_clear()
             get_match_service.cache_clear()
