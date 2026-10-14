@@ -94,8 +94,17 @@ class _Entry:
 class JsonFileCache:
     def __init__(self) -> None:
         self._entries: dict[tuple, _Entry] = {}
-        self._lock = threading.RLock()
+        self._lock = threading.RLock()  # guards the dicts below, never held while parsing
+        self._slot_locks: dict[tuple, threading.Lock] = {}
+        self._refreshing: set[tuple] = set()
         self.parses = 0  # observability for tests / benchmarks
+
+    def _slot_lock(self, slot: tuple) -> threading.Lock:
+        with self._lock:
+            lk = self._slot_locks.get(slot)
+            if lk is None:
+                lk = self._slot_locks[slot] = threading.Lock()
+            return lk
 
     def _entry(self, name: str, transform: Optional[Callable[[Any], Any]]) -> Optional[_Entry]:
         path = str(data_dir() / name)
@@ -107,7 +116,8 @@ class JsonFileCache:
         ent = self._entries.get(slot)
         if ent is not None and ent.key == key:
             return ent
-        with self._lock:
+        # One parse per file at a time (single-flight); other files stay readable.
+        with self._slot_lock(slot):
             ent = self._entries.get(slot)
             ident = _identity(path)
             if ident is None:
@@ -134,6 +144,49 @@ class JsonFileCache:
         ent = self._entry(name, transform)
         if ent is None:
             return freeze(default)
+        return ent.frozen
+
+    def view_swr(
+        self,
+        name: str,
+        default: Any,
+        *,
+        transform: Optional[Callable[[Any], Any]] = None,
+        sync_below_bytes: int = 8 * 1024 * 1024,
+    ) -> Any:
+        """Like `view`, but stale-while-revalidate for big files.
+
+        When a cached version exists and the file changed, return the stale
+        version immediately and re-parse once in a background thread, so a
+        multi-second parse (the ~190MB match archive) never sits in a request.
+        Small files and the first read parse synchronously.
+        """
+        path = str(data_dir() / name)
+        ident = _identity(path)
+        slot = (path, id(transform) if transform else None)
+        ent = self._entries.get(slot)
+        if ident is None or ent is None or ident[2] < sync_below_bytes:
+            return self.view(name, default, transform=transform)
+        if ent.key == (*slot, *ident):
+            return ent.frozen
+        with self._lock:
+            start = slot not in self._refreshing
+            if start:
+                self._refreshing.add(slot)
+        if start:
+            env_dir = data_dir()
+
+            def _refresh() -> None:
+                try:
+                    if data_dir() == env_dir:
+                        self._entry(name, transform)
+                except Exception:
+                    pass
+                finally:
+                    with self._lock:
+                        self._refreshing.discard(slot)
+
+            threading.Thread(target=_refresh, name=f"json-cache:{name}", daemon=True).start()
         return ent.frozen
 
     def copy(self, name: str, default: Any, *, transform: Optional[Callable[[Any], Any]] = None) -> Any:
