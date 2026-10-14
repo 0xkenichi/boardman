@@ -929,6 +929,7 @@ class AgentMatchService:
         if outcome.get("parked"):
             raise RuntimeError(f"match {match_id}: settlement attempts exhausted — parked as settle_failed")
 
+        _after_step("settling")
         res = rec.get("pending_result") or result
         if not res:
             raise RuntimeError(f"match {match_id} is settling with no recorded result")

@@ -36,6 +36,8 @@ from gaming.src.stack.agentic.db.engine import now_ms, transaction
 logger = logging.getLogger(__name__)
 
 IN_FLIGHT = ("reserved", "sent", "pending_confirmation")
+# Mined either way: the nonce is spent for good, whatever a lagging node says.
+MINED = ("confirmed", "reverted")
 # A reservation/send older than this no longer blocks its nonce (crashed
 # process or dropped tx) — the chain's pending count is the truth again.
 DEFAULT_STALE_SEC = 900
@@ -131,10 +133,11 @@ def _reserve(chain_key: str, signer: str, label: str, pending_count: int) -> Slo
             (chain_key, signer),
         )
         marks = ",".join("?" for _ in IN_FLIGHT)
+        used = ",".join("?" for _ in MINED)
         rows = tx.all(
             f"SELECT nonce FROM onchain_txs WHERE chain_key = ? AND signer = ? AND nonce >= ? "
-            f"AND status IN ({marks}) AND updated_at_ms > ?",
-            (chain_key, signer, int(pending_count), *IN_FLIGHT, now - stale_ms()),
+            f"AND (status IN ({used}) OR (status IN ({marks}) AND updated_at_ms > ?))",
+            (chain_key, signer, int(pending_count), *MINED, *IN_FLIGHT, now - stale_ms()),
         )
         taken = {int(r["nonce"]) for r in rows}
         nonce = int(pending_count)
