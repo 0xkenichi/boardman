@@ -10,6 +10,7 @@ a negative balance at the database level.
 """
 from __future__ import annotations
 
+import textwrap
 from datetime import datetime, timezone
 from typing import Any
 
@@ -215,11 +216,19 @@ TABLES = (
 )
 
 
-def render(dialect: Any) -> list[str]:
-    return [
-        " ".join(stmt.split()).replace("{AUTOID}", dialect.autoid).replace("{JSON}", dialect.json_type)
-        for stmt in TEMPLATE
-    ]
+def render(dialect: Any, *, pretty: bool = False) -> list[str]:
+    out = []
+    for stmt in TEMPLATE:
+        text = textwrap.dedent(stmt).strip() if pretty else " ".join(stmt.split())
+        out.append(text.replace("{AUTOID}", dialect.autoid).replace("{JSON}", dialect.json_type))
+    return out
+
+
+def postgres_rls() -> list[str]:
+    """Supabase exposes public tables over PostgREST: enable row-level
+    security with no policies, so only the owner / service role (the API's
+    DATABASE_URL) can read or write these tables, never the anon key."""
+    return [f"ALTER TABLE {t} ENABLE ROW LEVEL SECURITY" for t in TABLES]
 
 
 def ensure_schema(db: Any, conn: Any) -> None:
@@ -231,7 +240,7 @@ def ensure_schema(db: Any, conn: Any) -> None:
         try:
             # One process at a time on a fresh database.
             conn.execute("SELECT pg_advisory_xact_lock(724100231)")
-            for s in stmts:
+            for s in stmts + postgres_rls():
                 conn.execute(s)
             conn.execute(
                 "INSERT INTO storage_meta (key, value, updated_at) VALUES (%s, %s, %s) "
@@ -264,13 +273,16 @@ def postgres_migration_sql() -> str:
 
     head = (
         "-- Boardman agentic ledger v2: ledger, matches, spectator books, LP pools,\n"
-        "-- settlement journal, match leases, signer nonces, tournament payouts.\n"
+        "-- settlement journal, match leases, on-chain tx/nonce records,\n"
+        "-- tournament payouts and the house log.\n"
         "-- Generated from src/stack/agentic/db/schema.py — edit there, then\n"
         "-- regenerate: python -m gaming.src.stack.agentic.db.schema > <this file>\n"
         "-- Money columns are integer micro-USDC (6 decimals).\n\n"
         "BEGIN;\n\n"
     )
-    body = ";\n\n".join(render(PostgresDialect())) + ";\n\n"
+    body = ";\n\n".join(render(PostgresDialect(), pretty=True)) + ";\n\n"
+    body += "-- Never reachable with the anon/authenticated keys.\n"
+    body += ";\n".join(postgres_rls()) + ";\n\n"
     tail = (
         "INSERT INTO storage_meta (key, value, updated_at)\n"
         f"VALUES ('schema_version', '{SCHEMA_VERSION}', now()::text)\n"
