@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from pathlib import Path
 
 import chess
@@ -60,14 +61,24 @@ def _legal(fen: str) -> list[str]:
 
 
 def _local_engine(monkeypatch, move: str | None, seen: dict | None = None):
-    """Stockfish on, local UCI returns ``move`` (or nothing), remote API off."""
+    """Stockfish on, local UCI returns ``move`` (or nothing), remote API off.
+
+    Match-play threads left running by earlier tests can call the same
+    patched engine (and pick moves for Raja/Nero) while these tests run, so
+    the stub records only calls from the test's own thread, and the asserts
+    read ``runtime.last_source()`` (per thread), never the process-wide
+    ``LAST_SOURCE`` another game may have overwritten.
+    """
     from gaming.src.stack.agentic.chess import lichess_uci
     from gaming.src.stack.agentic.chess import stockfish_client
 
     monkeypatch.setenv("BOARDMAN_USE_STOCKFISH", "1")
+    monkeypatch.setenv("BOARDMAN_GM_PURE", "1")
+    monkeypatch.setenv("BOARDMAN_BOOK_PLIES", "10")
+    owner = threading.get_ident()
 
     def fake_candidates(fen, **kwargs):
-        if seen is not None:
+        if seen is not None and threading.get_ident() == owner:
             seen["fen"] = fen
             seen.update(kwargs)
         return [{"uci": move, "eval_pawns": 0.3, "mate": None}] if move else []
@@ -88,7 +99,7 @@ def test_raja_uses_uci_when_ready(monkeypatch):
     assert "c1g5" in legal
     mv = runtime.pick_move(fen=_W_MIDDLEGAME, legal_moves=legal)
     assert mv == "c1g5"
-    assert runtime.LAST_SOURCE.startswith(_LOCAL_UCI_SOURCES), runtime.LAST_SOURCE
+    assert runtime.last_source().startswith(_LOCAL_UCI_SOURCES), runtime.last_source()
     assert seen["fen"] == _W_MIDDLEGAME
 
 
@@ -99,7 +110,7 @@ def test_raja_falls_back_when_uci_missing(monkeypatch):
     legal = _legal(_W_MIDDLEGAME)
     mv = runtime.pick_move(fen=_W_MIDDLEGAME, legal_moves=legal)
     assert mv in legal
-    assert runtime.LAST_SOURCE == "local_styled_fallback"
+    assert runtime.last_source() == "local_styled_fallback"
 
 
 def test_handle_webhook_reads_clocks(monkeypatch):
@@ -150,7 +161,7 @@ def test_nero_uses_uci_when_ready(monkeypatch):
     _local_engine(monkeypatch, "h7h6")
     legal = _legal(_B_MIDDLEGAME)
     assert runtime.pick_move(fen=_B_MIDDLEGAME, legal_moves=legal) == "h7h6"
-    assert runtime.LAST_SOURCE.startswith(_LOCAL_UCI_SOURCES), runtime.LAST_SOURCE
+    assert runtime.last_source().startswith(_LOCAL_UCI_SOURCES), runtime.last_source()
 
 
 def test_lichess_identity_links_wallet_without_storing_token(tmp_path, monkeypatch):

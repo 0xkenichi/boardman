@@ -18,8 +18,11 @@ The owner seat, step 1: "Create or acquire an agent." Three doors:
 
 Settlement runs on one of two rails (never mixed, recorded per sale):
 
-- **ledger** (default) — book-entry demo USDC (buyer wallet → seller
-  proceeds + creator cut), faucet-topping the buyer's demo wallet when short.
+- **ledger** (default off mainnet) — book-entry USDC (buyer wallet → seller
+  proceeds + creator cut). The buyer pays from their real ledger balance or
+  the sale fails with ``InsufficientBalance`` and nothing moves; the demo
+  faucet tops a buyer up only when ``BOARDMAN_DEMO_FAUCET=1`` is set
+  explicitly (local demos). On mainnet this rail is refused outright.
 - **onchain** — real Arc USDC from the buyer's **bound Circle wallet** to
   the seller (plus the developer's creator cut on a resale). Parties bind a
   payout address / wallet via ``bind_party_wallet``; a sale settles on this
@@ -146,9 +149,26 @@ DEMO_OWNER_ID = "demo_owner"
 #             when the party is itself a registered AFM agent.
 #   creator — same resolver; on a resale the developer's cut is a second leg.
 #
-# Dual mode: when the rail isn't ready the sale settles on the demo ledger
-# exactly as before. A sale never silently mixes rails — ``mode`` is recorded
-# on every receipt.
+# Dual mode: when the rail isn't ready the sale settles on the book-entry
+# ledger (testnet only — on mainnet ``auto`` refuses instead of falling back).
+# A sale never silently mixes rails — ``mode`` is recorded on every receipt.
+
+
+class InsufficientBalance(ValueError, RuntimeError):
+    """The buyer cannot cover the price on either rail; nothing moved (HTTP
+    402). Also a RuntimeError, which the real-USDC rail raised before."""
+
+
+class LedgerRailRefused(ValueError):
+    """The book-entry rail is not allowed here (mainnet); nothing moved."""
+
+
+def ledger_rail_allowed() -> bool:
+    """Book-entry sales are testnet-only: on mainnet a ledger "sale" would
+    pay the seller in money that does not exist on chain."""
+    from gaming.src.stack.agentic import ledger as L
+
+    return not L._money_chain_is_mainnet()
 
 PARTY_WALLETS_FILE = "party_wallets.json"
 
@@ -875,16 +895,23 @@ def _ledger_settle(
     buyer_id: str,
     price: Decimal,
 ) -> dict[str, Any]:
-    """Demo rail: book-entry USDC. The buyer's demo wallet is faucet-topped
-    when short (the same demo-ledger treatment the season service gives clubs)
-    so a clean demo sale settles.
+    """Book-entry rail. The buyer pays from their real ledger balance; when
+    short the sale raises ``InsufficientBalance`` and nothing moves (the debit
+    and every credit are one transaction). Only an explicit
+    ``BOARDMAN_DEMO_FAUCET=1`` (local demos, never mainnet) tops the buyer up.
 
       price paid by the buyer's wallet
       ├─ creator cut (developer's ``creator_cut_bps`` of the price) → ``creator:{creator}``
       └─ remainder → the seller (full price when the developer sells their own build)
     """
     from gaming.src.stack.agentic import ledger as L
+    from gaming.src.stack.agentic.db import transaction
 
+    if not ledger_rail_allowed():
+        raise LedgerRailRefused(
+            "book-entry settlement is disabled on mainnet — bind Circle wallets "
+            "for the buyer and seller to settle in real USDC"
+        )
     seller = str(a.get("owner_id") or a.get("creator_id") or "")
     creator = str(a.get("creator_id") or seller)
     cut_bps = _listing_cut(a)
@@ -894,19 +921,29 @@ def _ledger_settle(
 
     buyer_wallet = _owner_party_wallet(buyer_id)
     seller_wallet = _owner_party_wallet(seller)
-    L.ensure_funded(buyer_wallet, price)  # demo faucet so the demo sale settles
-    L.debit(buyer_wallet, price, reason="afm_agent_sale_buy", ref=agent_id)
-    if first_sale:
-        # developer selling their own build keeps the full price
-        L.credit(seller_wallet, seller_payout, reason="afm_agent_sale_payout", ref=agent_id)
-    else:
-        L.credit(
-            f"creator:{creator}",
-            creator_cut,
-            reason="afm_agent_sale_creator_cut",
-            ref=agent_id,
-        )
-        L.credit(seller_wallet, seller_payout, reason="afm_agent_sale_payout", ref=agent_id)
+    if L.demo_faucet_explicit():
+        L.ensure_funded(buyer_wallet, price)  # local demo only (explicit flag)
+    try:
+        # one transaction: the seller is paid only out of a debit that landed
+        with transaction():
+            L.debit(buyer_wallet, price, reason="afm_agent_sale_buy", ref=agent_id)
+            if first_sale:
+                # developer selling their own build keeps the full price
+                L.credit(seller_wallet, seller_payout, reason="afm_agent_sale_payout", ref=agent_id)
+            else:
+                L.credit(
+                    f"creator:{creator}",
+                    creator_cut,
+                    reason="afm_agent_sale_creator_cut",
+                    ref=agent_id,
+                )
+                L.credit(seller_wallet, seller_payout, reason="afm_agent_sale_payout", ref=agent_id)
+    except L.InsufficientFunds as e:
+        have = L.balance(buyer_wallet)
+        raise InsufficientBalance(
+            f"insufficient balance: {buyer_id} has {have} USDC, the price is {price} USDC "
+            "— top up your wallet and try again (nothing was charged)"
+        ) from e
 
     legs: list[dict[str, Any]] = [
         {
@@ -1015,7 +1052,7 @@ def _onchain_settle(
         )
     have = Decimal(str(bal.get("balance_usdc") or 0))
     if have < total:
-        raise RuntimeError(
+        raise InsufficientBalance(
             f"buyer wallet {buyer['address']} has ${have} USDC, need ${total} — "
             "top up from the Arc faucet (faucet.circle.com)"
         )
@@ -1074,9 +1111,10 @@ def _execute_sale(
     Mutates the agent record ``a`` in place (caller persists). ``settlement``:
 
       * ``auto``   — onchain when Circle is configured and every party has a
-        bound wallet, else the demo ledger.
+        bound wallet, else the book-entry ledger (testnet only; on mainnet
+        it raises ``LedgerRailRefused`` instead of falling back).
       * ``onchain`` — real USDC required; raises when the rail isn't ready.
-      * ``ledger``  — force the demo book-entry rail.
+      * ``ledger``  — force the book-entry rail (refused on mainnet).
 
     A sale settles on exactly one rail and ``mode`` is recorded on the receipt;
     a failing live transfer never falls back to the ledger silently.
@@ -1093,6 +1131,11 @@ def _execute_sale(
     ready, reasons = onchain_ready_for_sale(a, buyer_id)
     if settlement == "onchain" and not ready:
         raise ValueError("real-USDC settlement unavailable: " + "; ".join(reasons))
+    if (settlement == "ledger" or not ready) and not ledger_rail_allowed():
+        why = "; ".join(reasons) if reasons else "the book-entry rail was requested"
+        raise LedgerRailRefused(
+            "real-USDC settlement is required on mainnet and is unavailable: " + why
+        )
     if settlement == "ledger" or not ready:
         receipt = _ledger_settle(a, agent_id=agent_id, buyer_id=buyer_id, price=price)
     else:
@@ -1371,7 +1414,12 @@ def wallet_status(party_id: str) -> dict[str, Any]:
         "note": (
             "This party pays with a bound Circle wallet (real Arc USDC)."
             if real and real.get("can_send")
-            else "No Circle wallet bound — purchases settle on the demo ledger."
+            else (
+                "No Circle wallet bound — purchases settle on the book-entry ledger "
+                "from this party's ledger balance."
+                if ledger_rail_allowed()
+                else "No Circle wallet bound — bind one to buy on mainnet."
+            )
         ),
     }
 

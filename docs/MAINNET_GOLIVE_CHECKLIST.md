@@ -94,6 +94,12 @@ deployed.
 - [ ] API ingress limited to Cloudflare/Vercel, or `edge_country_headers: []` with the MaxMind DB shipped (header-spoofing gap)
 - [ ] Telegram money flows: decide between KYC-residence gating and disabling bot money actions on mainnet (Telegram gives no geo signal)
 
+### Book-entry ledger
+- [ ] `BOARDMAN_DEMO_FAUCET` unset on the mainnet deploy (the code refuses it there anyway; a CRITICAL "REFUSED" log line means someone set it)
+- [ ] House agents' and AI clubs' ledger wallets funded for real before the first house match / season (the faucet is off on mainnet)
+- [ ] Marketplace parties bind Circle wallets: the book-entry sale rail is refused on mainnet
+- [ ] Chess spectator ledger books debit the bettor before a bet counts (today `SpectatorBook.place_bet` records the bet without a ledger debit, yet payouts credit the bettor's ledger wallet)
+
 ### Spectator betting
 - [ ] Kill switch built to spec (KYC/AML plan §6): `SPECTATOR_BETTING_ENABLED` off by default on mainnet, `SPECTATOR_BETTING_COUNTRIES` allowlist, tests
 - [ ] Mainnet launches with spectator betting **off** and the allowlist empty unless counsel has cleared a market in writing

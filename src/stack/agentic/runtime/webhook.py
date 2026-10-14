@@ -388,11 +388,12 @@ def serve_builder_webhook(
             engine_label = "builder_silo"
             if name.lower() in {"raja", "nero"}:
                 try:
+                    # this thread's move, not whichever game picked last
                     if name.lower() == "raja":
-                        from gaming.src.stack.agentic.agents.raja.runtime import LAST_SOURCE
+                        from gaming.src.stack.agentic.agents.raja.runtime import last_source
                     else:
-                        from gaming.src.stack.agentic.agents.nero.runtime import LAST_SOURCE
-                    engine_label = LAST_SOURCE or "builder_silo"
+                        from gaming.src.stack.agentic.agents.nero.runtime import last_source
+                    engine_label = last_source() or "builder_silo"
                 except Exception:
                     pass
             payload = json.dumps({"move": move, "agent": name, "engine": engine_label}).encode()
