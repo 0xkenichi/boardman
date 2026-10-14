@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import threading
 import time
 from decimal import Decimal
 from pathlib import Path
@@ -589,13 +590,6 @@ def usdc_transfer_volume(
         addr_l = "0x" + addr_l
     addr_topic = "0x" + addr_l.replace("0x", "").rjust(64, "0")
 
-    if to_block is None:
-        to_block = latest_block(cfg)
-    if days is not None and from_block is None:
-        from_block = from_block_for_days(cfg, days)
-    if from_block is None:
-        from_block = 0
-
     # Rolling windows are keyed separately from the full-history cache so a
     # 30-day read never mixes with the lifetime entry.
     cache_key = (
@@ -604,6 +598,54 @@ def usdc_transfer_volume(
         else f"{chain_id}:{addr_l}"
     )
 
+    # One scan per address/window at a time: a concurrent caller waits and
+    # then finds the fresh cache entry instead of paging the same logs again.
+    with _volume_key_lock(cache_key):
+        # A rolling window can't be extended incrementally (its start moves),
+        # so each call used to re-page every log in the window plus three
+        # block lookups. Within the TTL the last scan of that window is served.
+        if use_cache and days is not None and from_block is None and to_block is None:
+            entry = _load_volume_cache().get(cache_key) or {}
+            age = time.time() - float(entry.get("scanned_at") or 0)
+            if entry and age < VOLUME_CACHE_TTL_SEC:
+                return {**entry, "cached": True, "chain_id": chain_id, "address": address, "window_days": days}
+
+        if to_block is None:
+            to_block = latest_block(cfg)
+        if days is not None and from_block is None:
+            from_block = from_block_for_days(cfg, days)
+        if from_block is None:
+            from_block = 0
+        return _usdc_transfer_volume_locked(
+            cfg, address, addr_topic, chain_id, cache_key,
+            from_block=from_block, to_block=to_block, days=days, use_cache=use_cache,
+        )
+
+
+_VOLUME_CACHE_LOCK = threading.RLock()
+_VOLUME_KEY_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _volume_key_lock(key: str) -> threading.Lock:
+    with _VOLUME_CACHE_LOCK:
+        lk = _VOLUME_KEY_LOCKS.get(key)
+        if lk is None:
+            lk = _VOLUME_KEY_LOCKS[key] = threading.Lock()
+        return lk
+
+
+def _usdc_transfer_volume_locked(
+    cfg: dict[str, Any],
+    address: str,
+    addr_topic: str,
+    chain_id: str,
+    cache_key: str,
+    *,
+    from_block: int,
+    to_block: int,
+    days: Optional[int],
+    use_cache: bool,
+) -> dict[str, Any]:
     cache = _load_volume_cache()
     entry = cache.get(cache_key) or {}
     cached_to = int(entry.get("scanned_to") or -1)
@@ -634,12 +676,19 @@ def usdc_transfer_volume(
         base_in = base_out = 0.0
         base_count_in = base_count_out = 0
 
-    logs_from = _get_logs_paged(
-        cfg, cfg["usdc"], [TRANSFER_TOPIC, addr_topic, None], start, to_block
-    )
-    logs_to = _get_logs_paged(
-        cfg, cfg["usdc"], [TRANSFER_TOPIC, None, addr_topic], start, to_block
-    )
+    # Outgoing and incoming transfers are independent scans: page them in
+    # parallel (each keeps its own chunking, backoff and pacing).
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="getlogs") as pool:
+        f_from = pool.submit(
+            _get_logs_paged, cfg, cfg["usdc"], [TRANSFER_TOPIC, addr_topic, None], start, to_block
+        )
+        f_to = pool.submit(
+            _get_logs_paged, cfg, cfg["usdc"], [TRANSFER_TOPIC, None, addr_topic], start, to_block
+        )
+        logs_from = f_from.result()
+        logs_to = f_to.result()
 
     add_in = sum(int(l.get("data", "0x0"), 16) for l in logs_to or []) / 10**6
     add_out = sum(int(l.get("data", "0x0"), 16) for l in logs_from or []) / 10**6
@@ -658,8 +707,12 @@ def usdc_transfer_volume(
         "window_days": days,
     }
     if use_cache:
-        cache[cache_key] = result
-        _save_volume_cache(cache)
+        # Re-read under the lock so concurrent scans of other addresses (the
+        # aggregate route fans out per agent) don't overwrite each other.
+        with _VOLUME_CACHE_LOCK:
+            latest = _load_volume_cache()
+            latest[cache_key] = result
+            _save_volume_cache(latest)
     return result
 
 
