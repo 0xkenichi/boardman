@@ -9,7 +9,6 @@ MANIFEST = {
     "version": "3.1.0",
     "creator_id": "creator_raja_lab",
     "owner_id": "creator_raja_lab",
-    "seed": "boardman.agent.raja.kia_alekhine.v3",
     "game_ids": ["agentic.chess_standard"],
     "strategy_id": "raja_mate_hunter_v3",
     "openings": [

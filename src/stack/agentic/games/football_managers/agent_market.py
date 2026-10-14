@@ -471,7 +471,6 @@ def create_manager_agent(
         openings=[],
         mind=mind,
         game_ids=[GAME_ID],
-        seed=f"boardman.agent.afm.{agent_id}",
         version="1.0.0",
         creator_fee_bps=500,
         economy={

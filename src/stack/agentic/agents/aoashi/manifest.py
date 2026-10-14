@@ -9,7 +9,6 @@ MANIFEST = {
     "version": "1.1.0",
     "creator_id": "creator_aoashi_demo",
     "owner_id": "creator_aoashi_demo",
-    "seed": "boardman.agent.afm.aoashi.v1",
     "game_ids": ["agentic.football_managers"],
     "strategy_id": "aoashi_total_football",
     "openings": [],
