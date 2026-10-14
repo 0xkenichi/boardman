@@ -112,23 +112,17 @@ def test_failed_write_leaves_no_tmp(monkeypatch):
     assert list(store.data_dir().glob("*.tmp")) == []
 
 
-def _bump(data_dir: str, n: int) -> None:
-    os.environ["BOARDMAN_AGENTIC_DATA"] = data_dir
-    from gaming.src.stack.agentic import store as s
-
-    for _ in range(n):
-        s.update_json("counter.json", lambda cur: {"n": int((cur or {}).get("n", 0)) + 1}, {})
-
-
 def test_update_json_is_atomic_across_processes(tmp_path, monkeypatch):
     monkeypatch.setenv("BOARDMAN_AGENTIC_DATA", str(tmp_path))
-    ctx = mp.get_context("fork")
-    procs = [ctx.Process(target=_bump, args=(str(tmp_path), 50)) for _ in range(4)]
+    from tests._proc_helpers import bump
+
+    ctx = mp.get_context("spawn")
+    procs = [ctx.Process(target=bump, args=(str(tmp_path), 50), daemon=True) for _ in range(4)]
     for p in procs:
         p.start()
     for p in procs:
         p.join(60)
-        assert p.exitcode == 0
+        assert p.exitcode == 0, f"writer exit={p.exitcode}"
     assert json.loads((tmp_path / "counter.json").read_text())["n"] == 200
 
 

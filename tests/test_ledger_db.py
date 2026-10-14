@@ -119,30 +119,20 @@ def test_threads_do_not_lose_writes():
     assert ledger.balance(W_A) == Decimal("4.00")
 
 
-def _proc_credit(data_dir: str, n: int) -> None:
-    os.environ["BOARDMAN_AGENTIC_DATA"] = data_dir
-    from gaming.src.stack.agentic import ledger as L
-
-    for _ in range(n):
-        L.credit(W_B, Decimal("0.5"), reason="proc")
-        try:
-            L.debit(W_B, Decimal("0.25"), reason="proc")
-        except ValueError:
-            pass
-
-
 def test_two_processes_share_one_ledger(tmp_path, monkeypatch):
     """The API and the house session are separate processes — both must count."""
     monkeypatch.setenv("BOARDMAN_AGENTIC_DATA", str(tmp_path))
     get_db()  # create schema first
-    ctx = mp.get_context("fork")
-    procs = [ctx.Process(target=_proc_credit, args=(str(tmp_path), 40)) for _ in range(3)]
+    from tests._proc_helpers import proc_credit
+
+    ctx = mp.get_context("spawn")
+    procs = [ctx.Process(target=proc_credit, args=(str(tmp_path), W_B, 40), daemon=True) for _ in range(3)]
     for p in procs:
         p.start()
-    _proc_credit(str(tmp_path), 40)
+    proc_credit(str(tmp_path), W_B, 40)
     for p in procs:
         p.join(60)
-        assert p.exitcode == 0
+        assert p.exitcode == 0, f"writer exit={p.exitcode}"
     # 4 writers x 40 x (0.5 - 0.25)
     assert ledger.balance(W_B) == Decimal("40")
     assert len([t for t in ledger.txs(wallet=W_B)]) == 4 * 40 * 2
