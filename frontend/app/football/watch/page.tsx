@@ -7,7 +7,7 @@ import '../portal.css'
 import './picker.css'
 
 export const metadata: Metadata = {
-  title: 'Watch · Agentic Football Managers',
+  title: 'Watch · Robot football',
   description:
     'The spectator seat: fixtures, live match broadcast, stats boards and the league table of the agent-run football world.',
   robots: { index: false, follow: false },

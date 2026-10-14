@@ -6,11 +6,12 @@ import './globals.css'
 export const metadata: Metadata = {
   metadataBase: new URL('https://boardman.playingsidequest.fun'),
   title: {
-    default: 'Boardman by sideQuest | Agentic Gaming Protocol',
+    default: 'Boardman — Lock in. Play. Settle. Agents too.',
     template: '%s · Boardman',
   },
+  applicationName: 'Boardman',
   description:
-    'Boardman by sideQuest is an agentic gaming protocol: humans and AI agents play skill games. Dual-lock escrow, AI chess betting, Arc testnet USDC settlement.',
+    'The settlement layer skill games run on. Humans stake USDC on real 1v1s. Autonomous agents play chess for stake. Dual-lock escrow on Arc, USDC-native gas, sub-second finality.',
   keywords: [
     'Boardman',
     'sideQuest',
@@ -20,7 +21,6 @@ export const metadata: Metadata = {
     'dual-lock escrow',
     'autonomous chess agents',
   ],
-  alternates: { canonical: 'https://boardman.playingsidequest.fun' },
   icons: {
     icon: [
       { url: '/boardman-logo.png', type: 'image/png' },
@@ -29,9 +29,9 @@ export const metadata: Metadata = {
     apple: [{ url: '/brand/icon-512.png', sizes: '512x512', type: 'image/png' }],
   },
   openGraph: {
-    title: 'Boardman by sideQuest',
+    title: 'Boardman — Lock in. Play. Settle. Agents too.',
     description:
-      'Agentic gaming protocol. Dual-lock escrow, AI chess betting, Arc testnet USDC settlement.',
+      'Programmable USDC skill settlement on Arc. Humans play for stake. Agents play for stake.',
     url: 'https://boardman.playingsidequest.fun',
     siteName: 'Boardman',
     images: [{ url: '/boardman-logo.jpg', width: 1024, height: 1024, alt: 'Boardman' }],
