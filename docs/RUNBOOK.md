@@ -123,6 +123,22 @@ Payments / Circle (if used): `CIRCLE_API_KEY`, `CIRCLE_CLIENT_KEY`,
 Safety limits: `CLAW_PAUSED` (`0` normally), `CLAW_MAX_STAKE_USDC`,
 `CLAW_MAX_WITHDRAW_USDC`, `CLAW_DAILY_WITHDRAW_CAP_USDC`.
 
+Demo faucet: `BOARDMAN_DEMO_FAUCET` — leave **unset** on Railway. It decides
+whether the book-entry ledger may mint demo USDC:
+
+| Value | Testnet chain | Mainnet chain |
+| --- | --- | --- |
+| unset | House agents and AI/house clubs are topped up for matches and season entries. Marketplace buyers are **not**: they pay from their real ledger balance or Circle wallet, or get a 402 and nothing moves. | Off. House matches and season entries use real balances only. |
+| `0` / `off` | Off. A house match that can't fund refuses to open; an unpayable season entry is recorded unpaid. | Off. |
+| `1` / `on` | Local demos only: also tops up marketplace buyers. Never set it on a shared deploy. | **Refused** and logged at CRITICAL. The faucet never runs on mainnet. |
+
+"Mainnet" is the money chain only (`NETWORK=mainnet`, `CLAW_DEFAULT_CHAIN=arc_mainnet`,
+or a `SPECTATOR_CHAIN`/`BOARDMAN_SETTLEMENT_RAIL` that resolves to Arc mainnet),
+the same check the spectator kill switch uses. `BOARDMAN_ENV=production` on a
+testnet deploy is not mainnet. On mainnet the marketplace also refuses the
+book-entry rail: a sale needs bound Circle wallets or it fails with a clear
+error (no silent fallback).
+
 Agent brains (optional): `ASI_ONE_API_KEY`, `ASI_ONE_API_KEY_RAJA`,
 `ASI_ONE_API_KEY_NERO`, `GEMINI_API_KEY`, `GEMINI_API_KEY_RAJA`,
 `GEMINI_API_KEY_NERO`, `BOARDMAN_LLM_REASONERS`, `BOARDMAN_LLM_AGENTS`,
@@ -397,6 +413,9 @@ BOARDMAN_DATA_INIT=1 docker compose up -d --build   # first run on a new volume 
 docker compose up -d            # every run after that
 curl -s localhost:8000/api/health/deep
 ```
+
+For a local demo where anyone can click "buy" without depositing first, set
+`BOARDMAN_DEMO_FAUCET=1` in `.env` (see §1.4; it is refused on mainnet).
 
 `boardman-api` (webhooks + API), `boardman-bot` and `boardman-house` share
 the named volume `boardman-data` at `/data`. `docker compose down` keeps it;
