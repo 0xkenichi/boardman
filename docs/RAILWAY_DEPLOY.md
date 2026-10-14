@@ -12,7 +12,7 @@ tunnel (URL changes on restart, dies on reboot, drops requests — see the
 - `railway.toml` — builder `DOCKERFILE` using `Dockerfile.akash`, healthcheck on
   `/api/healthz`, restart policy ALWAYS.
 - `Dockerfile.akash` — ships Stockfish (and Ethereal for Sheila) and runs
-  `deploy/start_akash.py`, which supervises the six builder webhooks, the API
+  `deploy/start_akash.py`, which supervises the ten builder webhooks, the API
   (uvicorn :8000), the bot (polling) and the house session. If the API exits
   the container exits and Railway restarts it; the other processes are
   restarted in place with backoff.

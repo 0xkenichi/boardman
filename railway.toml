@@ -1,7 +1,7 @@
 # Railway deploy config — Boardman API + Telegram bot + house session
 # Builds Dockerfile.akash; deploy/start_akash.py supervises the API (critical:
 # if it dies the container exits and Railway restarts it), the bot and the
-# house session (restarted with backoff) and the six builder webhooks.
+# house session (restarted with backoff) and the ten builder webhooks.
 #
 # NOT configurable here — set in the Railway dashboard (docs/RUNBOOK.md §1):
 #   * Volume mounted at /data (state lives in /data/agentic). Without it every

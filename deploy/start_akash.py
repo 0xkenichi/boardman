@@ -3,8 +3,8 @@
 
 Supervises the Boardman processes inside one container:
 
-  webhooks  six builder-webhook servers (Raja, Nero, Sheila, Blue Lock,
-            Ao Ashi, Match-Slice). Started first so the API and the house
+  webhooks  ten builder-webhook servers (Raja, Nero, Sheila and the seven
+            football managers). Started first so the API and the house
             session find them already listening and do not spawn their own
             unsupervised copies. Output is prefixed ``[wh:<name>]``.
   api       uvicorn gaming.src.backend.main:app. If it dies the container
@@ -57,6 +57,11 @@ WEBHOOKS: list[tuple[str, int, str, str]] = [
     ("bluelock", 18771, "gaming.src.stack.agentic.agents.bluelock.serve", "BLUELOCK_WEBHOOK_PORT"),
     ("aoashi", 18772, "gaming.src.stack.agentic.agents.aoashi.serve", "AOASHI_WEBHOOK_PORT"),
     ("matchslice", 18773, "gaming.src.stack.agentic.agents.matchslice.serve", "MATCHSLICE_WEBHOOK_PORT"),
+    # season-2 football managers
+    ("academy", 18774, "gaming.src.stack.agentic.agents.academy.serve", "ACADEMY_WEBHOOK_PORT"),
+    ("galactico", 18775, "gaming.src.stack.agentic.agents.galactico.serve", "GALACTICO_WEBHOOK_PORT"),
+    ("catenaccio", 18776, "gaming.src.stack.agentic.agents.catenaccio.serve", "CATENACCIO_WEBHOOK_PORT"),
+    ("tinkerer", 18777, "gaming.src.stack.agentic.agents.tinkerer.serve", "TINKERER_WEBHOOK_PORT"),
 ]
 
 

@@ -10,7 +10,7 @@ browser ──▶ boardman.playingsidequest.fun (Vercel, frontend/)
              ├─ api      uvicorn :8000  (critical: if it dies the container restarts)
              ├─ bot      Telegram bot, polling          (restarted with backoff)
              ├─ house    scripts/run_house_session.py   (restarted with backoff)
-             └─ webhooks Raja/Nero/Sheila/Blue Lock/Ao Ashi/Match-Slice :1876x/1877x
+             └─ webhooks 3 chess + 7 football builders on 127.0.0.1:18761-18777
            Volume /data  →  /data/agentic  (ledger.json, matches.json, agents.json,
                                             spectator_books.json, house_log.db,
                                             secrets_agent_*.json, house_heartbeat.json)
@@ -152,7 +152,7 @@ and decide per table (see §3) — do not carry silent stuck locks into prod.
 
 1. Deploy. In the logs expect, in order: `[akash] roles: …`,
    `data dir OK (volume, writable, marker present): /data/agentic`,
-   `webhooks listening: raja, nero, sheila, bluelock, aoashi, matchslice`,
+   `webhooks listening: raja, nero, sheila, bluelock, …, tinkerer` (ten names),
    `starting API on :8000`, `starting Telegram bot`, `starting house session`.
    A line starting `[akash] FATAL:` explains exactly what is missing.
 2. `curl -s https://<service>.up.railway.app/api/healthz` → `"status":"ok"`.
@@ -223,7 +223,9 @@ Public (shipped to the browser — never put a secret here):
 `NEXT_PUBLIC_BOT_USERNAME`, `NEXT_PUBLIC_TELEGRAM_BOT_NAME`,
 `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`, `NEXT_PUBLIC_TELEGRAM_BOT_URL`,
 `NEXT_PUBLIC_TELEGRAM_GROUP_URL`, `NEXT_PUBLIC_REMATCH_TG_GROUP`,
-`NEXT_PUBLIC_MINIPAY_ENTRY_URL`, `NEXT_PUBLIC_ALLOW_DEMO_LOGIN` (unset in prod)
+`NEXT_PUBLIC_MINIPAY_ENTRY_URL`, `NEXT_PUBLIC_SITE_HOST` (wallet sign-in
+message domain — `boardman.playingsidequest.fun`), `NEXT_PUBLIC_ALLOW_DEMO_LOGIN`
+(unset in prod)
 
 Regenerate this list with:
 
