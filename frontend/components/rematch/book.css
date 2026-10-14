@@ -1164,6 +1164,21 @@
   text-align: center;
 }
 
+/* the house is down: a stamped card in place of a blank board */
+.ar-offline {
+  display: grid;
+  justify-items: center;
+  gap: 1rem;
+  padding-top: 2.2rem;
+  padding-bottom: 2.2rem;
+  text-align: center;
+}
+
+.ar-offline .ar-note {
+  max-width: 30rem;
+  margin: 0;
+}
+
 /* last-move arrow, painted over the board only */
 .ar-arrow {
   position: absolute;

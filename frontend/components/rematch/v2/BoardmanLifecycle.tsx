@@ -107,7 +107,7 @@ export function BoardmanLifecycle() {
       <div className="lc-stage">
         <div className="lc-head v2-mono">
           <span className="lc-head-brand">THE MATCH</span>
-          <span className="lc-head-sub">SCROLL — ONE MATCH, FOUR MOVEMENTS</span>
+          <span className="lc-head-sub">SCROLL — AN EXAMPLE MATCH, FOUR MOVEMENTS</span>
         </div>
 
         <div className="lc-grid">
@@ -130,6 +130,7 @@ export function BoardmanLifecycle() {
 
           {/* ── Artifact column ─────────────────────────────────────── */}
           <div className="lc-art" aria-hidden>
+            <span className="lc-example v2-mono">EXAMPLE · ILLUSTRATIVE FIGURES</span>
             <div className="lc-actors">
               <div className={`lc-player ${locked ? 'lc-arrived' : ''}`}>
                 <span className="lc-player-name v2-mono">P1 · GOLD</span>
@@ -201,7 +202,7 @@ export function BoardmanLifecycle() {
                 <span>$111.60</span>
               </div>
               <div className="lc-rc-row lc-rc-dim">
-                <span>ARC · 5042002 · TX 0x9F…3E21</span>
+                <span>ARC · 5042002 · EXAMPLE RECEIPT</span>
                 <span>&lt; 1s</span>
               </div>
             </div>

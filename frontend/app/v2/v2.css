@@ -366,6 +366,22 @@
   border-bottom: 1px dotted var(--v2-ink);
 }
 
+/* long live values wrap on the right instead of pushing the slip wide */
+.v2-slip-row strong {
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* the corner tag when nothing is live — plain ink, no pulse */
+.v2-slip-tag {
+  color: var(--v2-dim);
+}
+
+.v2-slip-tag-off {
+  color: var(--v2-red);
+}
+
 .v2-slip-foot {
   margin-top: 0.7rem;
   padding-top: 0.7rem;
@@ -813,7 +829,8 @@
 
 .v2-footer-links {
   display: flex;
-  gap: 1.4rem;
+  flex-wrap: wrap; /* six links don't fit a 375px phone on one line */
+  gap: 0.8rem 1.4rem;
   margin-left: auto;
 }
 
@@ -875,6 +892,10 @@
   .v2-ledger-cell {
     border-right: 0;
     border-bottom: var(--v2-hairline);
+    /* live values (e.g. "HOUSE OFFLINE — BACK SOON") wrap instead of clipping */
+    white-space: normal;
+    flex-wrap: wrap;
+    gap: 0.2rem 1rem;
   }
 
   .v2-ledger-cell:last-child {

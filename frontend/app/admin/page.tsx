@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { TelegramLogin } from '@/components/TelegramLogin'
+import { Ago, Countdown, usePolling } from '@/components/rematch/live'
 
 type Session = {
   authenticated?: boolean
@@ -117,16 +118,6 @@ function usd(v: unknown) {
   return '$' + n.toFixed(n >= 100 ? 0 : 2)
 }
 
-function fmtAgo(iso?: string | null) {
-  if (!iso) return '—'
-  const t = Date.parse(iso)
-  if (!Number.isFinite(t)) return '—'
-  const s = Math.max(0, Math.floor((Date.now() - t) / 1000))
-  if (s < 60) return `${s}s ago`
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`
-  return `${Math.floor(s / 3600)}h ago`
-}
-
 function Dot({ ok, label }: { ok: boolean; label: string }) {
   return (
     <span className="bm-admin-dot">
@@ -148,7 +139,8 @@ export default function AdminPage() {
   const [busy, setBusy] = useState(true)
   const [acting, setActing] = useState(false)
   const [burstN, setBurstN] = useState(5)
-  const [, setTick] = useState(0)
+  /** When the status probe (and its next_in_sec) arrived — the countdown runs from here. */
+  const [statusAt, setStatusAt] = useState(0)
   const [platformMetrics, setPlatformMetrics] = useState<any>(null)
 
   const refresh = useCallback(async (opts?: { quiet?: boolean }) => {
@@ -194,7 +186,10 @@ export default function AdminPage() {
       setDesk(mj)
       if (w.ok) setWaitlist(wj)
       if (sc.ok) setSchedule(scj)
-      if (st.ok) setStatus(stj)
+      if (st.ok) {
+        setStatus(stj)
+        setStatusAt(Date.now())
+      }
       if (pmj?.success) setPlatformMetrics(pmj)
     } catch (e: any) {
       if (!opts?.quiet) setErr(String(e?.message || e))
@@ -207,17 +202,10 @@ export default function AdminPage() {
     refresh()
   }, [refresh])
 
-  // Live desk: re-poll every 25s so status/metrics stay fresh.
-  useEffect(() => {
-    const id = setInterval(() => refresh({ quiet: true }), 25000)
-    return () => clearInterval(id)
-  }, [refresh])
-
-  // Countdown tick for "next game in".
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 1000)
-    return () => clearInterval(id)
-  }, [])
+  // Live desk: re-poll every 25s so status/metrics stay fresh (paused while
+  // the tab is hidden). The "ago" stamps and the countdown tick on their own.
+  const quietRefresh = useCallback(() => refresh({ quiet: true }), [refresh])
+  usePolling(quietRefresh, { intervalMs: 25_000, enabled: Boolean(session?.admin), immediate: false })
 
   async function onTelegramAuth(user: Record<string, string | number>) {
     setErr('')
@@ -395,13 +383,24 @@ export default function AdminPage() {
                   <p className="bm-admin-muted">
                     {sc.enabled === false
                       ? 'Paused — bots are idle. Resume from Match control.'
-                      : `Active: one session game every ${cadenceMin} min${sc.burst_games ? ` · burst: ${sc.burst_games} left` : ''}${status?.next_in_sec != null ? ` · next game in ${Math.ceil(status.next_in_sec / 60)}m` : ''}`}
+                      : `Active: one session game every ${cadenceMin} min${sc.burst_games ? ` · burst: ${sc.burst_games} left` : ''}`}
+                    {sc.enabled !== false && nextIn != null ? (
+                      <>
+                        {' · next game in '}
+                        <Countdown to={statusAt + nextIn * 1000} done="now" />
+                      </>
+                    ) : null}
                   </p>
                   <p className="bm-admin-muted">
                     Games in last 24h: <strong>{status?.games_24h ?? '—'}</strong> · last settled:{' '}
-                    {status?.last_settled?.match_id
-                      ? `${status.last_settled.match_id} (${status.last_settled.result}) ${fmtAgo(status.last_settled.settled_at)}`
-                      : '—'}
+                    {status?.last_settled?.match_id ? (
+                      <>
+                        {`${status.last_settled.match_id} (${status.last_settled.result}) `}
+                        <Ago iso={status.last_settled.settled_at} />
+                      </>
+                    ) : (
+                      '—'
+                    )}
                   </p>
                 </section>
               </>
@@ -501,7 +500,11 @@ export default function AdminPage() {
                   </div>
                   <p className="bm-admin-muted">
                     Current: {cadenceMin > 0 ? `every ${cadenceMin} min (${Math.round(86400 / Number(sc.cadence_sec || 86400))}/day)` : 'continuous'} · set by {sc.set_by}{' '}
-                    {sc.updated_at ? `· ${fmtAgo(sc.updated_at)}` : ''}
+                    {sc.updated_at ? (
+                      <>
+                        · <Ago iso={sc.updated_at} />
+                      </>
+                    ) : null}
                   </p>
                 </section>
 
@@ -600,7 +603,13 @@ export default function AdminPage() {
                     ))}
                   </div>
                   <p className="bm-admin-muted">
-                    {status?.generated_at ? `Last probe ${fmtAgo(status.generated_at)} · auto-refreshes every 25s` : 'Probe unavailable — House API unreachable.'}
+                    {status?.generated_at ? (
+                      <>
+                        Last probe <Ago iso={status.generated_at} /> · auto-refreshes every 25s
+                      </>
+                    ) : (
+                      'Probe unavailable — House API unreachable.'
+                    )}
                   </p>
                 </section>
 
@@ -623,14 +632,17 @@ export default function AdminPage() {
                     <p className="bm-admin-muted">
                       {status.last_settled.match_id} · {status.last_settled.result} · winner{' '}
                       {status.last_settled.winner || '—'} · stake ${status.last_settled.stake_usdc} ·{' '}
-                      {fmtAgo(status.last_settled.settled_at)}
+                      <Ago iso={status.last_settled.settled_at} />
                     </p>
                   ) : (
                     <p className="bm-admin-muted">No settled match yet.</p>
                   )}
                   {nextIn != null ? (
                     <p className="bm-admin-muted">
-                      Next scheduled game in <strong>{Math.floor(nextIn / 60)}m {nextIn % 60}s</strong>
+                      Next scheduled game in{' '}
+                      <strong>
+                        <Countdown to={statusAt + nextIn * 1000} done="now" />
+                      </strong>
                     </p>
                   ) : null}
                 </section>

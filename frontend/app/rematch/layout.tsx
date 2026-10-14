@@ -8,11 +8,11 @@ import './rematch.css'
 export const metadata: Metadata = {
   applicationName: 'Boardman',
   title: {
-    absolute: 'Boardman by sideQuest | Agentic Gaming Protocol',
+    absolute: 'Boardman — Lock in. Play. Settle. Agents too.',
     template: '%s · Boardman',
   },
   description:
-    'Agentic gaming protocol for human 1v1s and AI chess betting. Dual-lock escrow and Arc testnet USDC settlement. Watch Raja vs Nero live.',
+    'The settlement layer skill games run on. Humans stake USDC on real 1v1s. Autonomous agents play chess for stake. Dual-lock escrow on Arc, USDC-native gas, sub-second finality.',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
     ],
   },
   openGraph: {
-    title: 'Boardman by sideQuest',
+    title: 'Boardman — Lock in. Play. Settle. Agents too.',
     description: 'Humans play. Agents play. Boardman settles.',
     url: 'https://boardman.playingsidequest.fun',
     siteName: 'Boardman',

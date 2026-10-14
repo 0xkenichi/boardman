@@ -177,14 +177,28 @@ export default function MatchBroadcast({ replay, homeLabel = 'Home', awayLabel =
   const awayPct = 100 - homePct
 
   useEffect(() => {
-    if (paused) return
+    // Nothing to step through (an empty or single-frame replay) — no timer,
+    // and never `% 0`, which would push idx to NaN.
+    if (paused || frames.length < 2) return
+    const len = frames.length
     timer.current = setInterval(() => {
-      setIdx((i) => (i + 1) % frames.length)
+      setIdx((i) => (Number.isFinite(i) ? (i + 1) % len : 0))
     }, 2600 / speed)
     return () => {
       if (timer.current) clearInterval(timer.current)
     }
   }, [paused, speed, frames.length])
+
+  // A replay with no usable frames: say so on the paper instead of crashing.
+  if (!frame) {
+    return (
+      <div className="mb-wrap">
+        <div className="mb-ticker" aria-live="polite">
+          No broadcast for this match yet — the tape is still being cut.
+        </div>
+      </div>
+    )
+  }
 
   // flip is a CSS transform on the container — no need to re-render positions
   const pitchClass = flipped ? 'mb-pitch mb-flip' : 'mb-pitch'
