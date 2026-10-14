@@ -534,7 +534,8 @@ class AgentMatchService:
                         "[agentic] on-chain balance read failed for %s: %s", w[:12], exc
                     )
             lb = ledger.balance(w) if w else Decimal("0")
-            if lb > 0:
+            if lb > 0 or not ledger.demo_faucet_mode():
+                # faucet off: the real balance is the bankroll, even at zero
                 return lb
             return Decimal(str(bud.bankroll_usdc))
 
@@ -586,9 +587,23 @@ class AgentMatchService:
             list(b.get("preferred_time_controls") or bud_b.preferred_time_controls),
         )
 
-        # Demo ledger: fund to at least policy bankroll so unequal agents work
-        ledger.ensure_funded(a["wallet_address"], Decimal(str(bud_a.bankroll_usdc)))
-        ledger.ensure_funded(b["wallet_address"], Decimal(str(bud_b.bankroll_usdc)))
+        if ledger.demo_faucet_mode():
+            # Demo faucet (testnet default): fund house agents to at least their
+            # policy bankroll so unequal agents work.
+            ledger.ensure_funded(a["wallet_address"], Decimal(str(bud_a.bankroll_usdc)))
+            ledger.ensure_funded(b["wallet_address"], Decimal(str(bud_b.bankroll_usdc)))
+        elif not onchain_enabled():
+            # Faucet off and the book-entry ledger is the rail: refuse to open
+            # a match the agents can't actually fund (stake + their seeds).
+            for ag, label, seed in ((a, "A", seed_a), (b, "B", seed_b)):
+                need = stake + seed + seed_draw
+                have = ledger.balance(ag["wallet_address"])
+                if have < need:
+                    raise ValueError(
+                        f"agent {label} ({ag['agent_id']}) cannot fund this match: ledger "
+                        f"balance {have} USDC, needs {need} USDC (stake + seeds) — the demo "
+                        "faucet is off, so the wallet must be funded for real"
+                    )
         esc = ledger.open_escrow(
             match_id,
             agent_a_wallet=a["wallet_address"],
@@ -1219,14 +1234,30 @@ class AgentMatchService:
                         net_profit_usdc=net_profit,
                         lp_profit_share_bps=lp_share_bps,
                     )
-                    # Credit LP pseudo-wallets for realized profit share (claim already compounded in pool)
-                    for p in dist.get("lp_payouts") or []:
-                        ledger.credit(
-                            f"lp:{p['lp_id']}",
-                            Decimal(str(p["amount"])),
-                            reason="lp_skill_profit",
-                            ref=match_id,
-                        )
+                    # Credit LP pseudo-wallets for realized profit share — moved
+                    # out of the winner's payout, never minted: the winner debit
+                    # and the LP credits are one transaction.
+                    lp_pays = list(dist.get("lp_payouts") or [])
+                    lp_total = sum((Decimal(str(p["amount"])) for p in lp_pays), Decimal("0"))
+                    if lp_total > 0:
+                        try:
+                            with transaction():
+                                ledger.debit(
+                                    winner["wallet_address"],
+                                    lp_total,
+                                    reason="lp_skill_profit_out",
+                                    ref=match_id,
+                                )
+                                for p in lp_pays:
+                                    ledger.credit(
+                                        f"lp:{p['lp_id']}",
+                                        Decimal(str(p["amount"])),
+                                        reason="lp_skill_profit",
+                                        ref=match_id,
+                                    )
+                        except ledger.InsufficientFunds as exc:
+                            logger.warning("[agentic] LP profit share not paid: %s", exc)
+                            dist = {**dist, "ledger_skipped": str(exc)}
                     return dist
 
                 updates["lp_distribution"] = self._step(match_id, "lp_profit", _lp_profit)

@@ -30,6 +30,16 @@ def _world():
     return {"create": create_manager_agent, "list": list_manager_for_sale}
 
 
+def _deposit(party: str, amount: str) -> None:
+    """A buyer's real ledger balance (a deposit) — the marketplace never
+    faucet-funds a human buyer."""
+    from decimal import Decimal
+
+    from gaming.src.stack.agentic import ledger as L
+
+    L.credit(f"owner:{party}", Decimal(amount), reason="test_deposit")
+
+
 def _market_history(agent_id: str) -> list[dict]:
     from gaming.src.stack.agentic.registry import get_registry
 
@@ -70,6 +80,7 @@ def test_developer_keeps_full_price_of_own_build(_world):
     dev = _world["create"](manager_name="Forge Desk", owner_id="dev_desk")["agent"]
     aid = dev["agent_id"]
     list_manager_for_sale(agent_id=aid, price_usdc="30.00", listed_by="dev_desk")
+    _deposit("alice_desk", "30.00")
     res = purchase_manager_agent(agent_id=aid, buyer_id="alice_desk")
 
     # the sold event carries the money split
@@ -108,10 +119,12 @@ def test_creator_cuts_accumulate_on_resales(_world):
 
     # first sale: dev keeps the full $40
     list_manager_for_sale(agent_id=aid, price_usdc="40.00", creator_cut_bps=500, listed_by="dev_roy")
+    _deposit("alice_roy", "40.00")
     purchase_manager_agent(agent_id=aid, buyer_id="alice_roy")
 
     # alice resells at $50 → the dev gets 5% = $2.50
     list_manager_for_sale(agent_id=aid, price_usdc="50.00", creator_cut_bps=500, listed_by="alice_roy")
+    _deposit("bob_roy", "50.00")
     purchase_manager_agent(agent_id=aid, buyer_id="bob_roy")
 
     view = party_sales_view("dev_roy")
@@ -185,6 +198,7 @@ def test_legacy_demo_sales_fall_back_to_ledger_rows(_world):
     dev = _world["create"](manager_name="Legacy Desk", owner_id="dev_leg")["agent"]
     aid = dev["agent_id"]
     list_manager_for_sale(agent_id=aid, price_usdc="22.00", creator_cut_bps=500, listed_by="dev_leg")
+    _deposit("alice_leg", "22.00")
     purchase_manager_agent(agent_id=aid, buyer_id="alice_leg")
 
     # simulate a sale that happened before the event log: wipe the history but

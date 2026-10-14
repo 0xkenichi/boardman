@@ -4,6 +4,7 @@ Move order: local UCI Stockfish (lichess-bot stack via python-chess) → HybridE
 """
 from __future__ import annotations
 
+import threading
 from typing import Any, Optional
 
 import chess
@@ -17,7 +18,15 @@ from gaming.src.stack.agentic.chess.openings import register_book
 SHIPPED_GAMES = ("agentic.chess_standard",)
 
 _books_ready = False
+# Process-wide "latest move source" (health checks). Concurrent games pick in
+# parallel threads, so a caller reporting on ITS move reads last_source().
 LAST_SOURCE = "none"
+_tls = threading.local()
+
+
+def last_source() -> str:
+    """Source of the move the calling thread picked last."""
+    return getattr(_tls, "source", None) or LAST_SOURCE
 
 
 def _ensure_books() -> None:
@@ -56,6 +65,7 @@ def pick_move(
     if not fen:
         raise ValueError("missing fen")
     LAST_SOURCE = "thinking"  # reset per request — only report what THIS move used
+    _tls.source = "thinking"
     _ensure_books()
     out, source = pick_with_brain(
         mind=_mind(),
@@ -70,6 +80,7 @@ def pick_move(
         movetime_ms=movetime_ms,
     )
     LAST_SOURCE = source
+    _tls.source = source
     return out
 
 

@@ -122,6 +122,16 @@ ALICE_ADDR = "0x3333333333333333333333333333333333333333"
 # ------------------------------------------------------------ binding store
 
 
+def _deposit(party: str, amount: str) -> None:
+    """A buyer's real ledger balance (a deposit) — the marketplace never
+    faucet-funds a human buyer."""
+    from decimal import Decimal
+
+    from gaming.src.stack.agentic import ledger as L
+
+    L.credit(f"owner:{party}", Decimal(amount), reason="test_deposit")
+
+
 def test_bind_resolve_and_unbind_party_wallets(_world):
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
         bind_party_wallet,
@@ -286,7 +296,8 @@ def test_auto_falls_back_to_ledger_and_force_ledger_never_touches_circle(_world,
     aid = dev["agent_id"]
     _world["list"](agent_id=aid, price_usdc="25.00", listed_by="dev_dual")
 
-    # nobody bound → auto settles on the demo ledger exactly as before
+    # nobody bound → auto settles on the book-entry ledger from the buyer's balance
+    _deposit("buyer_x", "25.00")
     res = purchase_manager_agent(agent_id=aid, buyer_id="buyer_x")
     assert res["sale"]["mode"] == "ledger"
     assert str(L.balance("owner:dev_dual")) == "25.00"
@@ -298,6 +309,7 @@ def test_auto_falls_back_to_ledger_and_force_ledger_never_touches_circle(_world,
     bind_party_wallet(party_id="dev_dual2", address=DEV_ADDR)
     bind_party_wallet(party_id="payer_y", address=BUYER_ADDR, wallet_id="wallet_y")
     _world["list"](agent_id=aid2, price_usdc="10.00", listed_by="dev_dual2")
+    _deposit("payer_y", "10.00")
     res2 = purchase_manager_agent(agent_id=aid2, buyer_id="payer_y", settlement="ledger")
     assert res2["sale"]["mode"] == "ledger"
     assert _live["transfers"].calls == []

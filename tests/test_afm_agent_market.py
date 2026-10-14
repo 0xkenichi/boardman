@@ -19,6 +19,16 @@ def _isolate_store(tmp_path, monkeypatch):
         cat.set_owner(p["player_id"], None)
 
 
+def _deposit(party: str, amount: str) -> None:
+    """A buyer's real ledger balance (a deposit) — the marketplace never
+    faucet-funds a human buyer."""
+    from decimal import Decimal
+
+    from gaming.src.stack.agentic import ledger as L
+
+    L.credit(f"owner:{party}", Decimal(amount), reason="test_deposit")
+
+
 @pytest.fixture()
 def _world():
     """Demo AFM managers + clubs + the marketplace service, under tmp store."""
@@ -220,6 +230,7 @@ def test_developer_lists_manager_then_buyer_purchases(_world):
         purchase_manager_agent(agent_id=aid, buyer_id="dev_mint")
 
     # first sale — the developer keeps the full price
+    _deposit("buyer_alice", "30.00")
     res = purchase_manager_agent(agent_id=aid, buyer_id="buyer_alice")
     sale = res["sale"]
     assert sale["first_sale"] is True and sale["price_usdc"] == "30.00"
@@ -228,10 +239,11 @@ def test_developer_lists_manager_then_buyer_purchases(_world):
     assert res["agent"]["listed"] is False
     assert res["agent"]["sales_count"] == 1
     assert str(L.balance("owner:dev_mint")) == "30.00"
-    assert L.balance("owner:buyer_alice") == 0  # faucet exactly covered the price
+    assert L.balance("owner:buyer_alice") == 0  # the deposit exactly covered the price
 
     # resale by the new owner — the developer still earns their creator cut
     list_manager_for_sale(agent_id=aid, price_usdc="40.00", creator_cut_bps=500, listed_by="buyer_alice")
+    _deposit("buyer_bob", "40.00")
     res2 = purchase_manager_agent(agent_id=aid, buyer_id="buyer_bob")
     s2 = res2["sale"]
     assert s2["first_sale"] is False
@@ -309,6 +321,7 @@ def test_builtin_demo_managers_ship_listed_and_are_buyable(_world):
     assert ms["seller_id"] == ms["creator_id"] == "creator_matchslice_demo"
 
     # buying the developer's built-in pays the developer studio wallet
+    _deposit("demo_owner", "25.00")
     res = purchase_manager_agent(agent_id="agent_bluelock_demo", buyer_id="demo_owner")
     assert res["agent"]["owner_id"] == "demo_owner"
     assert res["sale"]["first_sale"] is True
@@ -380,6 +393,7 @@ def test_reserve_declines_low_offers_and_owner_accepts(_world):
     )
 
     # owner accepts buyer B at $40 — full price to the developer (their own build)
+    _deposit("buyer_b", "40.00")
     res = accept_manager_offer(agent_id=aid, offer_id=offer_b_id, accept_by="dev_sell")
     sale = res["sale"]
     assert sale["price_usdc"] == "40.00" and sale["source"] == "offer_accepted"
@@ -403,6 +417,7 @@ def test_offer_accepted_on_resale_pays_developer_cut(_world):
     dev = _world["create"](manager_name="Royalty FC", owner_id="dev_two")["agent"]
     aid = dev["agent_id"]
     list_manager_for_sale(agent_id=aid, price_usdc="60.00", creator_cut_bps=1000, listed_by="dev_two")
+    _deposit("alice_owner", "60.00")
     purchase_manager_agent(agent_id=aid, buyer_id="alice_owner")  # first sale → dev_two keeps $60
 
     # alice relists and accepts an offer below buy-now but above her reserve
@@ -416,6 +431,7 @@ def test_offer_accepted_on_resale_pays_developer_cut(_world):
     offer = make_manager_offer(agent_id=aid, offer_usdc="50.00", buyer_id="bob_buyer")
     oid = next(p["offer_id"] for p in offer["agent"]["pending_offers"])
 
+    _deposit("bob_buyer", "50.00")
     res = accept_manager_offer(agent_id=aid, offer_id=oid, accept_by="alice_owner")
     s = res["sale"]
     assert s["first_sale"] is False and s["price_usdc"] == "50.00"
@@ -454,6 +470,7 @@ def test_reject_keeps_listing_and_buy_now_cancels_offers(_world):
         reject_manager_offer(agent_id=aid, offer_id=reject_id, reject_by="dev_decide")
 
     # buy-now by a third party voids the outstanding offer
+    _deposit("buyer_c", "25.00")
     res = purchase_manager_agent(agent_id=aid, buyer_id="buyer_c")
     assert res["agent"]["owner_id"] == "buyer_c"
     assert res["agent"]["pending_offers"] == []
