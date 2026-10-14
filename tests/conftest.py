@@ -354,6 +354,16 @@ def _hermetic(request, tmp_path_factory, monkeypatch):
         if k != "BOARDMAN_AGENTIC_DATA":
             monkeypatch.setenv(k, v)
 
+    # Process-wide singletons must not carry one test's store into the next.
+    for mod_name, fn_name in (
+        ("gaming.src.stack.agentic.registry", "get_registry"),
+        ("gaming.src.stack.agentic.matches", "get_match_service"),
+    ):
+        mod = sys.modules.get(mod_name)
+        fn = getattr(mod, fn_name, None) if mod is not None else None
+        if fn is not None and hasattr(fn, "cache_clear"):
+            fn.cache_clear()
+
     if "real_think_delay" not in request.keywords:
         from gaming.src.stack.agentic import clock
 
