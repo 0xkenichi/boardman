@@ -1,6 +1,7 @@
 import hre from "hardhat";
 const { ethers } = hre;
 import { expect } from "chai";
+import { createMatch, deployEscrow, OPEN_TIMEOUT, LOCK_TIMEOUT } from "./helpers/boardman.js";
 
 describe("BoardmanEscrow", function () {
   let usdc, escrow, owner, resolver, feeRecipient, player1, player2, stranger;
@@ -13,19 +14,17 @@ describe("BoardmanEscrow", function () {
     usdc = await Mock.deploy();
     await usdc.waitForDeployment();
 
-    const Escrow = await ethers.getContractFactory("BoardmanEscrow");
-    escrow = await Escrow.deploy(
-      await usdc.getAddress(),
-      feeRecipient.address,
-      resolver.address
-    );
-    await escrow.waitForDeployment();
+    escrow = await deployEscrow(usdc, feeRecipient, resolver);
 
     for (const s of [player1, player2, stranger]) {
       await usdc.mint(s.address, 100_000_000n); // 100 USDC
       await usdc.connect(s).approve(await escrow.getAddress(), ethers.MaxUint256);
     }
   }
+
+  // v2: createMatch needs a resolver permit and binds player2.
+  const create = (matchId, stake = STAKE, p1 = player1, p2 = player2) =>
+    createMatch(escrow, resolver, matchId, stake, p1, p2);
 
   beforeEach(deploy);
 
@@ -41,6 +40,9 @@ describe("BoardmanEscrow", function () {
     expect(await escrow.FLAT_FEE_PER_PLAYER()).to.equal(500_000n);
     expect(await escrow.MIN_STAKE()).to.equal(2_000_000n);
     expect(await escrow.MAX_STAKE()).to.equal(10_000e6);
+    expect(await escrow.openTimeout()).to.equal(OPEN_TIMEOUT);
+    expect(await escrow.lockTimeout()).to.equal(LOCK_TIMEOUT);
+    expect(await escrow.ESCROW_VERSION()).to.equal(2);
   });
 
   // ─── Tiered fees ──────────────────────────────────────────────────────
@@ -48,10 +50,10 @@ describe("BoardmanEscrow", function () {
   it("reverts when stake is below the $2 minimum", async function () {
     const matchId = ethers.id("match_dust");
     await expect(
-      escrow.connect(player1).createMatch(matchId, 1_999_999n)
+      create(matchId, 1_999_999n)
     ).to.be.revertedWithCustomError(escrow, "StakeBelowMin");
     // boundary: exactly $2 is allowed
-    await escrow.connect(player1).createMatch(ethers.id("match_min_ok"), 2_000_000n);
+    await create(ethers.id("match_min_ok"), 2_000_000n);
   });
 
   it("quotes the tiered platform fee correctly", async function () {
@@ -69,7 +71,7 @@ describe("BoardmanEscrow", function () {
     const matchId = ethers.id("match_flat_fee");
     await usdc.mint(player1.address, 10_000_000n);
     await usdc.mint(player2.address, 10_000_000n);
-    await escrow.connect(player1).createMatch(matchId, 3_000_000n); // $3
+    await create(matchId, 3_000_000n); // $3
     await escrow.connect(player2).joinMatch(matchId);
 
     const totalPot = 6_000_000n;
@@ -79,6 +81,9 @@ describe("BoardmanEscrow", function () {
     await expect(escrow.connect(resolver).resolveMatch(matchId, player1.address))
       .to.emit(escrow, "MatchResolved")
       .withArgs(matchId, player1.address, expectedPayout, expectedFee);
+    // v2: fees accrue and are pulled to the treasury.
+    expect(await escrow.accruedFees()).to.equal(expectedFee);
+    await escrow.connect(stranger).withdrawFees();
     expect(await usdc.balanceOf(feeRecipient.address)).to.equal(expectedFee);
   });
 
@@ -86,7 +91,7 @@ describe("BoardmanEscrow", function () {
     const matchId = ethers.id("match_premium");
     await usdc.mint(player1.address, 1_000_000_000n);
     await usdc.mint(player2.address, 1_000_000_000n);
-    await escrow.connect(player1).createMatch(matchId, 600_000_000n); // $600
+    await create(matchId, 600_000_000n); // $600
     await escrow.connect(player2).joinMatch(matchId);
 
     const totalPot = 1_200_000_000n;
@@ -100,14 +105,15 @@ describe("BoardmanEscrow", function () {
   });
 
   it("owner can retune tiers via setFeeTiers; invalid sets revert", async function () {
+    // v2: flat fee is capped at MIN_STAKE / 4 = 500_000, so retune to 400_000.
     await expect(
-      escrow.connect(owner).setFeeTiers(1_000_000n, 500, 800, 4_000_000n, 600_000_000n)
+      escrow.connect(owner).setFeeTiers(400_000n, 500, 800, 4_000_000n, 600_000_000n)
     )
       .to.emit(escrow, "FeeTiersUpdated")
-      .withArgs(1_000_000n, 500, 800, 4_000_000n, 600_000_000n);
+      .withArgs(400_000n, 500, 800, 4_000_000n, 600_000_000n);
     expect(await escrow.FEE_BPS()).to.equal(500);
     expect(await escrow.PREMIUM_FEE_BPS()).to.equal(800);
-    expect(await escrow.FLAT_FEE_PER_PLAYER()).to.equal(1_000_000n);
+    expect(await escrow.FLAT_FEE_PER_PLAYER()).to.equal(400_000n);
 
     // premium below mid
     await expect(
@@ -126,7 +132,7 @@ describe("BoardmanEscrow", function () {
   it("reverts on zero addresses in constructor", async function () {
     const Escrow = await ethers.getContractFactory("BoardmanEscrow");
     await expect(
-      Escrow.deploy(ethers.ZeroAddress, feeRecipient.address, resolver.address)
+      Escrow.deploy(ethers.ZeroAddress, feeRecipient.address, resolver.address, OPEN_TIMEOUT, LOCK_TIMEOUT)
     ).to.be.revertedWithCustomError(escrow, "ZeroAddress");
   });
 
@@ -134,13 +140,13 @@ describe("BoardmanEscrow", function () {
 
   it("player1 creates a match and stakes USDC", async function () {
     const matchId = ethers.id("match_1");
-    await expect(escrow.connect(player1).createMatch(matchId, STAKE))
+    await expect(create(matchId, STAKE))
       .to.emit(escrow, "MatchCreated")
       .withArgs(matchId, player1.address, STAKE);
 
     const m = await escrow.getMatch(matchId);
     expect(m.player1).to.equal(player1.address);
-    expect(m.player2).to.equal(ethers.ZeroAddress);
+    expect(m.player2).to.equal(player2.address); // v2: opponent bound at create
     expect(m.stakePerPlayer).to.equal(STAKE);
     expect(m.status).to.equal(0); // OPEN
     expect(await usdc.balanceOf(await escrow.getAddress())).to.equal(STAKE);
@@ -149,22 +155,22 @@ describe("BoardmanEscrow", function () {
   it("reverts on zero stake", async function () {
     const matchId = ethers.id("match_zero");
     await expect(
-      escrow.connect(player1).createMatch(matchId, 0)
+      create(matchId, 0)
     ).to.be.revertedWithCustomError(escrow, "ZeroStake");
   });
 
   it("reverts when stake exceeds max", async function () {
     const matchId = ethers.id("match_max");
     await expect(
-      escrow.connect(player1).createMatch(matchId, 10_000_000_001n)
+      create(matchId, 10_000_000_001n)
     ).to.be.revertedWithCustomError(escrow, "StakeExceedsMax");
   });
 
   it("reverts on duplicate matchId", async function () {
     const matchId = ethers.id("match_dup");
-    await escrow.connect(player1).createMatch(matchId, STAKE);
+    await create(matchId, STAKE);
     await expect(
-      escrow.connect(player2).createMatch(matchId, STAKE)
+      create(matchId, STAKE, player2, player1)
     ).to.be.revertedWithCustomError(escrow, "MatchAlreadyExists");
   });
 
@@ -172,7 +178,7 @@ describe("BoardmanEscrow", function () {
     const matchId = ethers.id("match_paused");
     await escrow.connect(owner).pause();
     await expect(
-      escrow.connect(player1).createMatch(matchId, STAKE)
+      create(matchId, STAKE)
     ).to.be.revertedWithCustomError(escrow, "EnforcedPause");
   });
 
@@ -180,7 +186,7 @@ describe("BoardmanEscrow", function () {
 
   it("player2 joins and match locks", async function () {
     const matchId = ethers.id("match_join");
-    await escrow.connect(player1).createMatch(matchId, STAKE);
+    await create(matchId, STAKE);
 
     await expect(escrow.connect(player2).joinMatch(matchId))
       .to.emit(escrow, "MatchJoined")
@@ -197,7 +203,7 @@ describe("BoardmanEscrow", function () {
 
   it("player1 cannot join their own match", async function () {
     const matchId = ethers.id("match_self");
-    await escrow.connect(player1).createMatch(matchId, STAKE);
+    await create(matchId, STAKE);
     await expect(
       escrow.connect(player1).joinMatch(matchId)
     ).to.be.revertedWithCustomError(escrow, "NotPlayer");
@@ -212,7 +218,7 @@ describe("BoardmanEscrow", function () {
 
   it("reverts joining an already locked match", async function () {
     const matchId = ethers.id("match_locked");
-    await escrow.connect(player1).createMatch(matchId, STAKE);
+    await create(matchId, STAKE);
     await escrow.connect(player2).joinMatch(matchId);
     await expect(
       escrow.connect(stranger).joinMatch(matchId)
@@ -223,7 +229,7 @@ describe("BoardmanEscrow", function () {
 
   it("resolver pays winner with correct fee split", async function () {
     const matchId = ethers.id("match_resolve");
-    await escrow.connect(player1).createMatch(matchId, STAKE);
+    await create(matchId, STAKE);
     await escrow.connect(player2).joinMatch(matchId);
 
     const totalPot = STAKE * 2n;
@@ -238,6 +244,8 @@ describe("BoardmanEscrow", function () {
       .withArgs(matchId, player1.address, expectedPayout, expectedFee);
 
     expect(await usdc.balanceOf(player1.address)).to.equal(p1Before + expectedPayout);
+    expect(await escrow.accruedFees()).to.equal(expectedFee);
+    await escrow.withdrawFees();
     expect(await usdc.balanceOf(feeRecipient.address)).to.equal(feeBefore + expectedFee);
     expect((await escrow.getMatch(matchId)).status).to.equal(3); // RESOLVED
     expect(await escrow.totalFeesCollected()).to.equal(expectedFee);
@@ -245,7 +253,7 @@ describe("BoardmanEscrow", function () {
 
   it("resolver can pay either player", async function () {
     const matchId = ethers.id("match_resolve2");
-    await escrow.connect(player1).createMatch(matchId, STAKE);
+    await create(matchId, STAKE);
     await escrow.connect(player2).joinMatch(matchId);
 
     const p2Before = await usdc.balanceOf(player2.address);
@@ -256,17 +264,20 @@ describe("BoardmanEscrow", function () {
     expect(await usdc.balanceOf(player2.address)).to.equal(p2Before + totalPot - fee);
   });
 
-  it("owner can also resolve", async function () {
+  it("owner cannot resolve (v2: owner and resolver are distinct roles)", async function () {
     const matchId = ethers.id("match_owner_resolve");
-    await escrow.connect(player1).createMatch(matchId, STAKE);
+    await create(matchId, STAKE);
     await escrow.connect(player2).joinMatch(matchId);
-    await escrow.connect(owner).resolveMatch(matchId, player1.address);
+    await expect(
+      escrow.connect(owner).resolveMatch(matchId, player1.address)
+    ).to.be.revertedWithCustomError(escrow, "NotResolver");
+    await escrow.connect(resolver).resolveMatch(matchId, player1.address);
     expect((await escrow.getMatch(matchId)).status).to.equal(3);
   });
 
   it("reverts resolver paying an address that is not a player", async function () {
     const matchId = ethers.id("match_bad_winner");
-    await escrow.connect(player1).createMatch(matchId, STAKE);
+    await create(matchId, STAKE);
     await escrow.connect(player2).joinMatch(matchId);
     await expect(
       escrow.connect(resolver).resolveMatch(matchId, stranger.address)
@@ -275,7 +286,7 @@ describe("BoardmanEscrow", function () {
 
   it("reverts resolving an OPEN match", async function () {
     const matchId = ethers.id("match_open_resolve");
-    await escrow.connect(player1).createMatch(matchId, STAKE);
+    await create(matchId, STAKE);
     await expect(
       escrow.connect(resolver).resolveMatch(matchId, player1.address)
     ).to.be.revertedWithCustomError(escrow, "InvalidStatus");
@@ -283,7 +294,7 @@ describe("BoardmanEscrow", function () {
 
   it("reverts non-resolver resolving", async function () {
     const matchId = ethers.id("match_no_resolve");
-    await escrow.connect(player1).createMatch(matchId, STAKE);
+    await create(matchId, STAKE);
     await escrow.connect(player2).joinMatch(matchId);
     await expect(
       escrow.connect(stranger).resolveMatch(matchId, player1.address)
@@ -292,7 +303,7 @@ describe("BoardmanEscrow", function () {
 
   it("can resolve a DISPUTED match", async function () {
     const matchId = ethers.id("match_dispute_resolve");
-    await escrow.connect(player1).createMatch(matchId, STAKE);
+    await create(matchId, STAKE);
     await escrow.connect(player2).joinMatch(matchId);
     await escrow.connect(resolver).flagDispute(matchId);
     await escrow.connect(resolver).resolveMatch(matchId, player2.address);
@@ -303,7 +314,7 @@ describe("BoardmanEscrow", function () {
 
   it("resolver flags a match as disputed", async function () {
     const matchId = ethers.id("match_dispute");
-    await escrow.connect(player1).createMatch(matchId, STAKE);
+    await create(matchId, STAKE);
     await escrow.connect(player2).joinMatch(matchId);
     await expect(escrow.connect(resolver).flagDispute(matchId))
       .to.emit(escrow, "MatchDisputed")
@@ -313,7 +324,7 @@ describe("BoardmanEscrow", function () {
 
   it("cannot dispute an OPEN match", async function () {
     const matchId = ethers.id("match_dispute_open");
-    await escrow.connect(player1).createMatch(matchId, STAKE);
+    await create(matchId, STAKE);
     await expect(
       escrow.connect(resolver).flagDispute(matchId)
     ).to.be.revertedWithCustomError(escrow, "InvalidStatus");
@@ -323,7 +334,7 @@ describe("BoardmanEscrow", function () {
 
   it("cancel refunds both players", async function () {
     const matchId = ethers.id("match_cancel");
-    await escrow.connect(player1).createMatch(matchId, STAKE);
+    await create(matchId, STAKE);
     await escrow.connect(player2).joinMatch(matchId);
 
     const p1Before = await usdc.balanceOf(player1.address);
@@ -341,15 +352,19 @@ describe("BoardmanEscrow", function () {
 
   it("cancel OPEN match refunds only player1", async function () {
     const matchId = ethers.id("match_cancel_open");
-    await escrow.connect(player1).createMatch(matchId, STAKE);
+    await create(matchId, STAKE);
     const p1Before = await usdc.balanceOf(player1.address);
+    const p2Before = await usdc.balanceOf(player2.address);
     await escrow.connect(resolver).cancelMatch(matchId);
     expect(await usdc.balanceOf(player1.address)).to.equal(p1Before + STAKE);
+    // player2 is bound at create but never staked: must not be "refunded".
+    expect(await usdc.balanceOf(player2.address)).to.equal(p2Before);
+    expect(await usdc.balanceOf(await escrow.getAddress())).to.equal(0);
   });
 
   it("cannot cancel a RESOLVED match", async function () {
     const matchId = ethers.id("match_cancel_resolved");
-    await escrow.connect(player1).createMatch(matchId, STAKE);
+    await create(matchId, STAKE);
     await escrow.connect(player2).joinMatch(matchId);
     await escrow.connect(resolver).resolveMatch(matchId, player1.address);
     await expect(
@@ -381,11 +396,11 @@ describe("BoardmanEscrow", function () {
     await escrow.connect(owner).pause();
     const matchId = ethers.id("match_paused2");
     await expect(
-      escrow.connect(player1).createMatch(matchId, STAKE)
+      create(matchId, STAKE)
     ).to.be.revertedWithCustomError(escrow, "EnforcedPause");
 
     await escrow.connect(owner).unpause();
-    await escrow.connect(player1).createMatch(matchId, STAKE); // should succeed
+    await create(matchId, STAKE); // should succeed
   });
 
   // ─── Views ────────────────────────────────────────────────────────────
@@ -393,13 +408,13 @@ describe("BoardmanEscrow", function () {
   it("contractBalance returns escrow USDC balance", async function () {
     expect(await escrow.contractBalance()).to.equal(0);
     const matchId = ethers.id("match_bal");
-    await escrow.connect(player1).createMatch(matchId, STAKE);
+    await create(matchId, STAKE);
     expect(await escrow.contractBalance()).to.equal(STAKE);
   });
 
   it("getMatchStatus returns the status enum", async function () {
     const matchId = ethers.id("match_status");
-    await escrow.connect(player1).createMatch(matchId, STAKE);
+    await create(matchId, STAKE);
     expect(await escrow.getMatchStatus(matchId)).to.equal(0); // OPEN
     await escrow.connect(player2).joinMatch(matchId);
     expect(await escrow.getMatchStatus(matchId)).to.equal(1); // LOCKED
