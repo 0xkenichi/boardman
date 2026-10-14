@@ -1,24 +1,54 @@
 # syntax=docker/dockerfile:1
-# Rematch API + Telegram bot for Akash / Fly / any Docker host.
+# Boardman API + Telegram bot + house session + builder webhooks.
+# Used by Railway (railway.toml), Akash, Fly and docker-compose.
+# Entrypoint: deploy/start_akash.py (process supervisor).
+
+# ── Ethereal: Sheila's UCI engine ────────────────────────────────────────────
+# Built portable (no -march=native) so the binary runs on whatever CPU the
+# platform schedules us on. If the build fails the image still builds and
+# Sheila falls back to Stockfish (house.ensure_builder_webhooks checks is_file).
+FROM python:3.12-slim AS ethereal
+ARG ETHEREAL_REF=0e47e9b67f345c75eb965d9fb3e2493b6a11d09a
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /out \
+    && ( git init -q /build \
+         && git -C /build remote add origin https://github.com/AndyGrant/Ethereal.git \
+         && git -C /build fetch -q --depth 1 origin "${ETHEREAL_REF}" \
+         && git -C /build checkout -q FETCH_HEAD \
+         && make -C /build/src basic CC=gcc EXE=ethereal \
+              CFLAGS="-O2 -std=gnu11 -DNDEBUG -DUSE_NNUE=0" \
+         && install -m 0755 /build/src/ethereal /out/ethereal \
+         && printf 'uci\nquit\n' | /out/ethereal | grep -q uciok ) \
+    || (rm -f /out/ethereal; echo "WARN: Ethereal build failed; Sheila will use Stockfish")
+
+# ── runtime ─────────────────────────────────────────────────────────────────
 FROM python:3.12-slim
 
+# stockfish: Debian package, installs /usr/games/stockfish. Without a local
+# engine every chess move goes to the external stockfish.online API.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential gcc libffi-dev libssl-dev curl ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    build-essential gcc libffi-dev libssl-dev curl ca-certificates stockfish \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/games/stockfish /usr/local/bin/stockfish \
+    && printf 'uci\nquit\n' | /usr/games/stockfish | grep -q uciok
 
 WORKDIR /app
 
 COPY src/backend/requirements.txt /app/requirements.txt
 RUN python -m venv /app/.venv \
     && /app/.venv/bin/pip install --no-cache-dir --upgrade pip \
-    && /app/.venv/bin/pip install --no-cache-dir -r /app/requirements.txt \
-    && /app/.venv/bin/pip install --no-cache-dir pyyaml
+    && /app/.venv/bin/pip install --no-cache-dir -r /app/requirements.txt
 
 COPY src /app/src
 COPY config /app/config
-COPY scripts/run_house_session.py /app/scripts/run_house_session.py
-COPY deploy/start_akash.sh /app/deploy/start_akash.sh
-COPY deploy/start_akash.py /app/deploy/start_akash.py
+# Session loop + the operator scripts the runbook runs in-container.
+COPY scripts/run_house_session.py scripts/settle_stuck_matches.py \
+     scripts/verify_onchain_settlement.py /app/scripts/
+COPY deploy/start_akash.sh deploy/start_akash.py /app/deploy/
+# Lowercase path is what house.py / start_akash.py look for (case-sensitive on Linux).
+COPY --from=ethereal /out/ /app/engines/Ethereal/src/
 
 RUN mkdir -p /app/gaming \
     && ln -sfn /app/src /app/gaming/src \
@@ -28,8 +58,11 @@ RUN mkdir -p /app/gaming \
     && chmod +x /app/deploy/start_akash.sh /app/deploy/start_akash.py \
     && test -f /app/backend/supabase_client.py
 
+# /data is where the persistent volume mounts (Railway: mount path /data).
+# Creating it here lets a docker named volume inherit the right owner.
 RUN groupadd -r rematch && useradd -r -g rematch -d /app rematch \
-    && chown -R rematch:rematch /app
+    && mkdir -p /data/agentic \
+    && chown -R rematch:rematch /app /data
 
 USER rematch
 
@@ -40,10 +73,12 @@ ENV PYTHONPATH=/app
 ENV CLAWSTATION_BOT_MODE=polling
 ENV PORT=8000
 ENV BLOCKED_REGIONS_FILE=/app/config/blocked_regions.json
+ENV BOARDMAN_AGENTIC_DATA=/data/agentic
+ENV STOCKFISH_PATH=/usr/games/stockfish
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=5 \
     CMD curl -f http://localhost:8000/api/healthz || curl -f http://localhost:8000/ || exit 1
 
 CMD ["python", "/app/deploy/start_akash.py"]
