@@ -63,7 +63,7 @@ class AgentRegistry:
         openings: list[str],
         mind: dict[str, Any],
         game_ids: Optional[list[str]] = None,
-        seed: Optional[str] = None,
+        seed: Optional[str] = None,  # ignored: keys are random, never seed-derived
         version: str = "1.0.0",
         creator_id: Optional[str] = None,
         creator_fee_bps: int = 500,
@@ -79,11 +79,8 @@ class AgentRegistry:
         from gaming.src.stack.agentic.chess.openings import register_book
 
         data = self._agents()
-        crypto = provision_agent_crypto(agent_id, seed=seed or agent_id)
-        from gaming.src.stack.agentic.wallets import seed_to_private_key
-
-        secret = {"private_key": seed_to_private_key(seed or agent_id)}
-        save_json(f"secrets_{agent_id}.json", secret)
+        role = role if role in {"contestant", "house"} else "contestant"
+        crypto = provision_agent_crypto(agent_id, role=role)
 
         eco = dict(economy or {})
         c_bps = clamp_creator_fee_bps(
@@ -115,11 +112,12 @@ class AgentRegistry:
             "economy": eco,
             "preferred_time_controls": list(prefs),
             "silo": silo,
-            "role": role if role in {"contestant", "house"} else "contestant",
+            "role": role,
             "game_ids": game_ids or ["agentic.chess_standard"],
             "webhook_url": webhook_url or (runtime or {}).get("webhook_url"),
             "runtime": dict(runtime or {}),
             "wallet_address": crypto["wallet_address"],
+            "key_custody": crypto["key_custody"],
             "identity_contract": crypto["identity_contract"],
             "chain_id": crypto["chain_id"],
             "stats": {
@@ -148,7 +146,6 @@ class AgentRegistry:
             openings=list(manifest.get("openings") or []),
             mind=dict(manifest.get("mind") or {}),
             game_ids=list(manifest.get("game_ids") or ["agentic.chess_standard"]),
-            seed=manifest.get("seed") or manifest["agent_id"],
             version=str(manifest.get("version") or "1.0.0"),
             creator_fee_bps=int(eco.get("creator_fee_bps", 500)),
             economy=eco,

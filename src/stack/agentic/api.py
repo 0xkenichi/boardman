@@ -936,7 +936,6 @@ async def register_agent(body: RegisterAgentBody, principal: ApiKeyPrincipal = D
             "webhook_url": body.webhook_url,
             "goal": "win",
         },
-        "seed": f"boardman.agent.{body.agent_id}",
         "version": "1.0.0",
     }
     try:

@@ -28,19 +28,9 @@ function botToken(): string {
 /** Login Widget check */
 export function verifyTelegramLogin(data: Record<string, string>): TelegramLoginUser | null {
   const token = botToken()
-  if (!token) {
-    // Dev fallback: accept demo payloads only when explicitly allowed
-    if (process.env.REMATCH_ALLOW_DEMO_LOGIN === '1' && data.id && data.hash === 'demo') {
-      return {
-        id: Number(data.id),
-        first_name: data.first_name || 'Demo',
-        username: data.username || 'demo',
-        auth_date: Number(data.auth_date || Math.floor(Date.now() / 1000)),
-        hash: 'demo',
-      }
-    }
-    return null
-  }
+  // No bot token → no Telegram login. There is no unsigned "demo" hash: it let a
+  // client pick any Telegram id (including an admin's). Use { mode: 'demo' } in dev.
+  if (!token) return null
 
   const hash = data.hash
   if (!hash) return null

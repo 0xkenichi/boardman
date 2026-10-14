@@ -6,13 +6,12 @@ import {
   sessionCookieHeader,
   clearSessionCookieHeader,
   readSessionFromRequest,
+  readWalletNonceFromRequest,
+  clearWalletNonceCookieHeader,
+  isProductionRuntime,
 } from '@/lib/session'
 import { verifyTelegramLogin, verifyTelegramWebAppInitData } from '@/lib/telegramAuth'
-import {
-  parseWalletMessage,
-  walletMessageUsable,
-  buildWalletSignMessage,
-} from '@/lib/walletMessage'
+import { parseWalletMessage, walletMessageProblem } from '@/lib/walletMessage'
 import { recoverPersonalSignAddress } from '@/lib/walletVerify'
 import { telegramBotUrl } from '@/lib/telegramBot'
 import { rateLimitRequest } from '@/lib/bff'
@@ -48,9 +47,15 @@ export async function GET(req: Request) {
   return res
 }
 
+/** Demo login: dev only. Hard-off in production whatever REMATCH_ALLOW_DEMO_LOGIN says. */
+function demoLoginAllowed(): boolean {
+  return !isProductionRuntime()
+}
+
 /**
  * POST — login
  * body: { mode: 'demo' } | { mode: 'telegram', ...loginWidgetFields } | { mode: 'webapp', initData }
+ *     | { mode: 'wallet', intent, message, signature }  (nonce from GET /wallet-nonce)
  */
 export async function POST(req: Request) {
   const limited = rateLimitRequest(req, 'session-post', 15)
@@ -63,7 +68,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: 'invalid_json' }, { status: 400 })
   }
 
-  const mode = body.mode || 'demo'
+  const mode = String(body?.mode || '')
+  const res = await login(req, body, mode)
+  // The wallet nonce is single-use: burn it on every attempt, pass or fail.
+  if (mode === 'wallet') res.headers.append('Set-Cookie', clearWalletNonceCookieHeader())
+  return res
+}
+
+async function login(req: Request, body: any, mode: string): Promise<NextResponse> {
 
   if (mode === 'logout') {
     const res = NextResponse.json({ ok: true, authenticated: false })
@@ -79,18 +91,15 @@ export async function POST(req: Request) {
   let linkedWallet = ''
 
   if (mode === 'demo') {
-    const allowDemo =
-      process.env.REMATCH_ALLOW_DEMO_LOGIN === '1' || process.env.NODE_ENV !== 'production'
-    if (!allowDemo) {
+    if (!demoLoginAllowed()) {
       return NextResponse.json({ ok: false, error: 'demo_login_disabled' }, { status: 403 })
     }
-    telegramId = String(body.telegramId || '0')
-    name = String(body.name || 'Demo Player')
-    tag = String(body.tag || 'demo').replace(/^@/, '')
-    profileId =
-      body.profileId ||
-      process.env.REMATCH_DEMO_PROFILE_ID ||
-      '62440a47-f4fc-4249-a627-46aaa2d039ef'
+    // Server-chosen identity only: client profileId / telegramId / name are ignored,
+    // and the non-numeric telegramId + demo flag keep it out of every admin gate.
+    telegramId = 'demo'
+    name = 'Demo Player'
+    tag = 'demo'
+    profileId = process.env.REMATCH_DEMO_PROFILE_ID || '62440a47-f4fc-4249-a627-46aaa2d039ef'
   } else if (mode === 'telegram') {
     const fields: Record<string, string> = {}
     for (const [k, v] of Object.entries(body)) {
@@ -166,11 +175,18 @@ export async function POST(req: Request) {
     }
     const existing = readSessionFromRequest(req)
     const wantProfile = intent === 'link' ? existing?.profileId : undefined
-    if (!walletMessageUsable(parsed, { action: intent, profileId: wantProfile })) {
+    const problem = walletMessageProblem(parsed, {
+      action: intent,
+      profileId: wantProfile,
+      host: req.headers.get('host') || new URL(req.url).host,
+      nonce: readWalletNonceFromRequest(req),
+    })
+    if (problem) {
       return NextResponse.json(
         {
           ok: false,
-          error: 'wallet_message_expired',
+          error: 'wallet_message_rejected',
+          reason: problem,
           message: 'Sign-in message expired or mismatched — try again.',
         },
         { status: 401 }
@@ -183,7 +199,7 @@ export async function POST(req: Request) {
     const wallet = recovered
 
     if (intent === 'link') {
-      if (!existing) {
+      if (!existing || existing.demo) {
         return NextResponse.json(
           {
             ok: false,
@@ -288,6 +304,7 @@ export async function POST(req: Request) {
     tag,
     name,
     ...(linkedWallet ? { wallet: linkedWallet } : {}),
+    ...(mode === 'demo' ? { demo: true } : {}),
   })
   const res = NextResponse.json({
     ok: true,

@@ -9,7 +9,6 @@ MANIFEST = {
     "version": "1.0.0",
     "creator_id": "creator_sheila_lab",
     "owner_id": "creator_sheila_lab",
-    "seed": "boardman.agent.sheila.anaconda.v1",
     "game_ids": ["agentic.chess_standard"],
     "strategy_id": "sheila_anaconda_v1",
     "openings": [

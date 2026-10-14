@@ -1,10 +1,15 @@
 """
-Deterministic agent wallets + identity contract addresses.
+Agent wallets + identity contract addresses.
 
 Each agent gets:
-  - wallet_address  — EOA that would hold USDC / sign locks
-  - private_key     — demo only (never use mainnet keys from this file)
+  - wallet_address  — EOA that holds USDC / signs locks. Its key is RANDOM and
+                      sealed in the keystore (see keystore.py); it is never
+                      derived from a seed, label or agent_id.
   - identity_contract — CREATE2-style identity address (agent "contract")
+
+Without BOARDMAN_KEYSTORE_SECRET, off-chain demos still register agents, but
+at an *unprovisioned* address that nobody holds a key for. Live on-chain mode
+(BOARDMAN_AGENTIC_ONCHAIN=1) refuses to register without the keystore.
 
 When CIRCLE_* is configured, ensure_circle_wallet() can bind a Circle wallet
 to the agent owner profile; demo mode stays fully offline.
@@ -12,11 +17,13 @@ to the agent owner profile; demo mode stays fully offline.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 from typing import Any, Optional
 
 from eth_account import Account
 
+logger = logging.getLogger(__name__)
 
 FACTORY = bytes.fromhex("4b6f6172646d616e4167656e74466163746f7279")  # "BoardmanAgentFactory" padded-ish
 INIT_CODE_HASH = hashlib.sha256(b"BoardmanAgentIdentityV1").digest()
@@ -32,16 +39,16 @@ def _keccak(data: bytes) -> bytes:
         return hashlib.sha3_256(data).digest()
 
 
-def seed_to_private_key(seed: str) -> str:
-    """Derive a deterministic 32-byte private key hex from a seed string."""
-    digest = _keccak(f"boardman.agent.wallet.v1:{seed}".encode("utf-8"))
-    # eth private keys must be in valid secp256k1 range; rehash if needed
-    n = int.from_bytes(digest, "big")
-    # secp256k1 order
-    order = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
-    if n == 0 or n >= order:
-        digest = _keccak(digest + b"\x01")
-    return "0x" + digest.hex()
+def unprovisioned_address(agent_id: str) -> str:
+    """A hash-derived placeholder address. No private key exists for it."""
+    from eth_utils import to_checksum_address
+
+    raw = _keccak(f"boardman.agent.unprovisioned.v1:{agent_id}".encode("utf-8"))[-20:]
+    return to_checksum_address("0x" + raw.hex())
+
+
+def _onchain_required() -> bool:
+    return os.getenv("BOARDMAN_AGENTIC_ONCHAIN", "").strip().lower() in {"1", "true", "yes"}
 
 
 def private_key_to_address(private_key: str) -> str:
@@ -57,20 +64,36 @@ def identity_contract_address(agent_id: str) -> str:
     return "0x" + _keccak(raw)[-20:].hex()
 
 
-def provision_agent_crypto(agent_id: str, *, seed: Optional[str] = None) -> dict[str, Any]:
-    """Create wallet + identity contract for an agent (deterministic by seed)."""
-    s = seed or agent_id
-    pk = seed_to_private_key(s)
-    wallet = private_key_to_address(pk)
+def provision_agent_crypto(agent_id: str, *, role: str = "contestant") -> dict[str, Any]:
+    """Bind a wallet + identity contract for an agent.
+
+    Contestants get a random keystore key (reused if one already exists). The
+    House never gets a spend key. Private keys are never returned.
+    """
+    from gaming.src.stack.agentic.keystore import get_keystore, keystore_unlocked
+
     identity = identity_contract_address(agent_id)
+    if role == "house":
+        wallet, custody = unprovisioned_address(agent_id), "none"
+    else:
+        ks = get_keystore()
+        wallet = ks.address(agent_id)
+        custody = "keystore"
+        if not wallet:
+            if keystore_unlocked() or _onchain_required():
+                wallet = ks.create(agent_id)  # raises KeystoreLocked if no secret
+            else:
+                logger.warning(
+                    "[agentic.wallets] keystore locked; %s registered at an "
+                    "unprovisioned address (no spend key)", agent_id,
+                )
+                wallet, custody = unprovisioned_address(agent_id), "unprovisioned"
     return {
         "agent_id": agent_id,
         "wallet_address": wallet,
         "identity_contract": identity,
-        "private_key": pk if os.getenv("BOARDMAN_AGENTIC_EXPORT_KEYS", "").lower() in {"1", "true", "yes"} else None,
-        "private_key_present": True,
+        "key_custody": custody,
         "chain_id": os.getenv("CLAW_DEFAULT_CHAIN", "arc"),
-        "mode": "deterministic_demo",
     }
 
 

@@ -9,7 +9,6 @@ MANIFEST = {
     "version": "1.1.0",
     "creator_id": "creator_bluelock_demo",
     "owner_id": "creator_bluelock_demo",
-    "seed": "boardman.agent.afm.bluelock.v1",
     "game_ids": ["agentic.football_managers"],
     "strategy_id": "bluelock_striker_ego",
     "openings": [],

@@ -16,7 +16,6 @@ MANIFEST = {
     "creator_id": "boardman",
     "owner_id": "boardman",
     "role": "house",
-    "seed": "boardman.agent.house.v1",
     "game_ids": ["*"],
     "strategy_id": "house_cashier_v1",
     "openings": [],

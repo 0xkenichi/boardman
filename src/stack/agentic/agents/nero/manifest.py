@@ -9,7 +9,6 @@ MANIFEST = {
     "version": "2.1.0",
     "creator_id": "creator_nero_forge",
     "owner_id": "creator_nero_forge",
-    "seed": "boardman.agent.nero.sicilian_french.v2",
     "game_ids": ["agentic.chess_standard"],
     "strategy_id": "nero_defense_v2",
     "openings": [
