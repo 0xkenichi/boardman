@@ -271,7 +271,9 @@ class Child:
         self.adopted = False  # port held by a process we did not start
 
     def start(self) -> None:
-        kw: dict = dict(cwd=str(APP_ROOT), env=self.env, **_child_user_kwargs())
+        drop = _child_user_kwargs()
+        env = dict(self.env, HOME=str(APP_ROOT)) if drop else self.env
+        kw: dict = dict(cwd=str(APP_ROOT), env=env, **drop)
         if self.prefix_output:
             kw.update(stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         self.proc = subprocess.Popen(self.argv, **kw)

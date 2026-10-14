@@ -1,54 +1,79 @@
+# Local / VPS stack. Same image as production (Dockerfile.akash), split into
+# one container per role via BOARDMAN_PROCS (see deploy/start_akash.py).
+#
+#   docker compose up -d --build
+#   curl localhost:8000/api/health/deep
+#
+# All three services read ./.env (repo root) and share the named volume
+# boardman-data mounted at /data, so the API, bot and house session see the
+# same ledger, escrows, books and house_log.db — exactly like the single
+# Railway container. The volume survives `docker compose down` (only
+# `down -v` deletes it — never run that against real balances).
+
+x-boardman: &boardman
+  build:
+    context: .
+    dockerfile: Dockerfile.akash
+  image: boardman:latest
+  restart: always
+  env_file:
+    - ./.env
+  volumes:
+    - boardman-data:/data
+  networks:
+    - boardman
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
-  clawstation-api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: clawstation-api:latest
-    container_name: clawstation-api
-    command:
-      - uvicorn
-      - gaming.src.backend.main:app
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8000"
-    restart: always
+  boardman-api:
+    <<: *boardman
+    container_name: boardman-api
+    environment:
+      BOARDMAN_PROCS: "webhooks,api"
+      BOARDMAN_AGENTIC_DATA: /data/agentic
+      REQUIRE_PERSISTENT_DATA: "1"
+      # First boot on a brand-new volume only:
+      #   BOARDMAN_DATA_INIT=1 docker compose up -d boardman-api
+      BOARDMAN_DATA_INIT: "${BOARDMAN_DATA_INIT:-0}"
     ports:
       - "8000:8000"
-    env_file:
-      - ./.env
-    networks:
-      - clawstation
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
 
-  clawstation-bot:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: clawstation-bot:latest
-    container_name: clawstation-bot
-    command:
-      - python
-      - -m
-      - gaming.src.bot.main
-    restart: always
+  boardman-bot:
+    <<: *boardman
+    container_name: boardman-bot
     depends_on:
-      - clawstation-api
-    env_file:
-      - ../.env
-    networks:
-      - clawstation
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+      - boardman-api
+    environment:
+      BOARDMAN_PROCS: "bot"
+      BOARDMAN_AGENTIC_DATA: /data/agentic
+      REQUIRE_PERSISTENT_DATA: "1"
+    healthcheck:
+      disable: true
+
+  # The real lock -> bet window -> play -> settle loop. Runs its own chess
+  # builder webhooks on its own localhost. Only ONE house session may run
+  # against a data dir — do not scale this service.
+  boardman-house:
+    <<: *boardman
+    container_name: boardman-house
+    depends_on:
+      - boardman-api
+    environment:
+      BOARDMAN_PROCS: "webhooks,house"
+      BOARDMAN_AGENTIC_DATA: /data/agentic
+      REQUIRE_PERSISTENT_DATA: "1"
+    healthcheck:
+      disable: true
+
+volumes:
+  boardman-data:
+    name: boardman-data
 
 networks:
-  clawstation:
-    name: clawstation
+  boardman:
+    name: boardman
     driver: bridge
