@@ -101,30 +101,41 @@ def test_uci_retry_recovers_from_dead_session(monkeypatch):
 
 def test_last_source_resets_between_requests(monkeypatch):
     """LAST_SOURCE must describe the current move, not the last engine hit."""
+    # Since 853f9ae Raja's runtime delegates to the shared brain
+    # (agent_brain.pick_with_brain → HybridEngine); LAST_SOURCE is whatever
+    # engine step produced THIS move.
     from gaming.src.stack.agentic.agents.raja import runtime as raja
+    from gaming.src.stack.agentic.chess import agent_brain
 
     board = chess.Board()
     legal = [m.uci() for m in board.legal_moves]
+    script = [("e2e4", "opening_book"), ("d2d4", "local_sf+gm_d18")]
 
     class FakeEngine:
-        last_source = "hybrid_test"
-        last_eval = None
-
         def __init__(self, *a, **k):
-            pass
+            self.uci, self.last_source = script.pop(0)
+            self.last_eval = None
 
         def choose_move(self, b):
-            return chess.Move.from_uci("e2e4")
+            return chess.Move.from_uci(self.uci)
 
-    # Fallback path (no UCI hit) → reports THIS request's source
-    monkeypatch.setattr(raja, "HybridEngine", FakeEngine)
-    monkeypatch.setattr(raja.lichess_uci, "best_move", lambda *a, **k: None)
-    mv = raja.pick_move(fen=board.fen(), legal_moves=legal)
-    assert mv == "e2e4"
-    assert raja.LAST_SOURCE == "hybrid_test"
+    monkeypatch.setattr(agent_brain, "HybridEngine", FakeEngine)
+    assert raja.pick_move(fen=board.fen(), legal_moves=legal) == "e2e4"
+    assert raja.LAST_SOURCE == "opening_book"
 
-    # UCI hit overrides the reset value
-    monkeypatch.setattr(raja.lichess_uci, "best_move", lambda *a, **k: "d2d4")
-    mv = raja.pick_move(fen=board.fen(), legal_moves=legal)
-    assert mv == "d2d4"
-    assert raja.LAST_SOURCE == "lichess_uci"
+    # A different engine step on the next request replaces the old source
+    assert raja.pick_move(fen=board.fen(), legal_moves=legal) == "d2d4"
+    assert raja.LAST_SOURCE == "local_sf+gm_d18"
+
+    # A request that fails must not keep reporting the previous move's source
+    class BrokenEngine(FakeEngine):
+        def __init__(self, *a, **k):
+            self.last_source = "never_reported"
+
+        def choose_move(self, b):
+            raise RuntimeError("engine died")
+
+    monkeypatch.setattr(agent_brain, "HybridEngine", BrokenEngine)
+    with pytest.raises(RuntimeError):
+        raja.pick_move(fen=board.fen(), legal_moves=legal)
+    assert raja.LAST_SOURCE != "local_sf+gm_d18"
