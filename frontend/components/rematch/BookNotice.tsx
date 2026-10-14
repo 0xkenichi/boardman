@@ -57,7 +57,7 @@ export function BookNotice({
     <div
       role={role}
       style={{
-        minHeight: '70vh',
+        minHeight: '100vh',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

@@ -829,7 +829,8 @@
 
 .v2-footer-links {
   display: flex;
-  gap: 1.4rem;
+  flex-wrap: wrap; /* six links don't fit a 375px phone on one line */
+  gap: 0.8rem 1.4rem;
   margin-left: auto;
 }
 
