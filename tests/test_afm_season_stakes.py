@@ -4,7 +4,7 @@ When one club could not cover its 5 USDC stake, the old code opened the
 escrow, locked the side that could pay, then refunded it with a fresh
 credit — leaving the escrow "partial_lock" (or "open" when neither could
 pay) forever. Other code reads unsettled escrows as live stakes (the agent
-LP withdrawable in rematch_web, abort/recovery sweeps), so a short side now
+LP withdrawable in rematch_web), so a short side now
 owes the stake and no escrow is opened at all.
 """
 from __future__ import annotations

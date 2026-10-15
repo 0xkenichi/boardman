@@ -1265,7 +1265,7 @@ def _settle_match(s: dict[str, Any], matchday: int, home: str, away: str, outcom
         return
     # A side that can't cover the stake owes it instead, and no escrow opens:
     # an escrow left "open"/"partial_lock" never settles, and other code
-    # (agent LP withdrawable, abort/recovery sweeps) reads those as live stakes.
+    # (the agent LP withdrawable in rematch_web) reads those as live stakes.
     short = {side: stake - L.balance(w) for w, side in ((hw, home), (aw, away))}
     if any(v > 0 for v in short.values()):
         for side, v in short.items():
