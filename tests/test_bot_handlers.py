@@ -319,6 +319,13 @@ def _patch_notify_bot(monkeypatch):
     return bot
 
 
+@pytest.fixture(autouse=True)
+def _legacy_typed_password(monkeypatch):
+    """These tests pin the legacy typed-password steps (TELEGRAM_WITHDRAW_WEB_PIN=0).
+    The default web-PIN path is covered by the *_web_pin tests below."""
+    monkeypatch.setenv("TELEGRAM_WITHDRAW_WEB_PIN", "0")
+
+
 @pytest.fixture
 def mock_supabase(_patch_supabase):
     return _patch_supabase
@@ -1288,3 +1295,56 @@ async def test_submit_score_transitions_to_submitted_when_both_scores_present(mo
     assert update is not None
     assert update.data["opponent_score"] == 1
     assert update.data["status"] == "submitted"
+
+
+# ── Web PIN (default): no password is ever typed in the chat ────────────────
+def _url_button(msg):
+    markup = msg.answer.await_args.kwargs.get("reply_markup")
+    return [b.url for row in markup.inline_keyboard for b in row if b.url]
+
+
+@pytest.mark.asyncio
+async def test_withdraw_sends_web_link_web_pin(mock_supabase, mock_fsm, monkeypatch):
+    monkeypatch.setenv("TELEGRAM_WITHDRAW_WEB_PIN", "1")
+    monkeypatch.setenv("CHANNELS_SITE_URL", "https://boardman.test")
+    sender_id = str(uuid.uuid4())
+    mock_supabase.add_profile(
+        {"id": sender_id, "telegram_id": 6101, "display_name": "S", "gaming_tag": "sq_webpin"}
+    )
+    msg1 = _make_message(text="/send", user_id=6101)
+    await cmd_send(msg1, mock_fsm)
+    assert "/set_tx_password" not in msg1.answer.await_args.args[0]  # no password needed up front
+    msg2 = _make_message(text="0x" + "c" * 40 + " 10", user_id=6101)
+    await send_address_input(msg2, mock_fsm)
+    assert mock_fsm._state is None  # no "type your password" state
+    (url,) = _url_button(msg2)
+    assert url.startswith("https://boardman.test/app/withdraw/")
+    assert "Never type your PIN" in msg2.answer.await_args.args[0]
+    # nothing moved yet: the payout happens on the web page
+    assert not mock_supabase.find_calls(table="wallet_debit_audit", operation="insert")
+    from gaming.src.channels.core import withdraw_links
+
+    view = withdraw_links.view(url.rsplit("/", 1)[-1])
+    assert view["amount"] == "10"
+    assert view["needs_pin_setup"] is True  # first withdrawal: the page asks for a new PIN
+
+
+@pytest.mark.asyncio
+async def test_set_tx_password_points_to_web_web_pin(mock_supabase, mock_fsm, monkeypatch):
+    monkeypatch.setenv("TELEGRAM_WITHDRAW_WEB_PIN", "1")
+    mock_supabase.add_profile({"id": str(uuid.uuid4()), "telegram_id": 6102, "gaming_tag": "sq_p"})
+    msg = _make_message(text="/set_tx_password", user_id=6102)
+    await cmd_set_tx_password(msg, mock_fsm)
+    assert mock_fsm._state is None
+    assert "never typed in this chat" in msg.answer.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_reset_tx_password_sends_link_web_pin(mock_supabase, mock_fsm, monkeypatch):
+    monkeypatch.setenv("TELEGRAM_WITHDRAW_WEB_PIN", "1")
+    mock_supabase.add_profile({"id": str(uuid.uuid4()), "telegram_id": 6103, "gaming_tag": "sq_r"})
+    msg = _make_message(text="/reset_tx_password", user_id=6103)
+    await cmd_reset_tx_password(msg, mock_fsm)
+    assert mock_fsm._state is None
+    (url,) = _url_button(msg)
+    assert "/app/withdraw/" in url

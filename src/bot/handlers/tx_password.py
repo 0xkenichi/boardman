@@ -36,6 +36,13 @@ class TxPasswordResetState(StatesGroup):
 async def cmd_set_tx_password(message: types.Message, state: FSMContext) -> None:
     """Start the transaction password setup flow."""
     await state.clear()
+    from gaming.src.channels import config as channels_config
+
+    if channels_config.telegram_web_pin():
+        from gaming.src.channels.telegram.web_pin import PIN_ON_WEB_TEXT
+
+        await message.answer(PIN_ON_WEB_TEXT, reply_markup=back_menu())
+        return
     await state.set_state(TxPasswordState.enter_password)
     await message.answer(
         "🔐 *Set Transaction Password*\n\n"
@@ -96,6 +103,14 @@ async def cmd_reset_tx_password(message: types.Message, state: FSMContext) -> No
         return
 
     profile = await get_or_create_profile(user)
+
+    from gaming.src.channels import config as channels_config
+
+    if channels_config.telegram_web_pin():
+        from gaming.src.channels.telegram.web_pin import send_pin_reset_link
+
+        await send_pin_reset_link(message, user, profile)
+        return
 
     # Generate 6-digit numeric code
     code = f"{random.randint(100000, 999999)}"
