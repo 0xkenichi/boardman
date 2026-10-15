@@ -45,6 +45,11 @@ def _build_dispatcher() -> Dispatcher:
     from gaming.src.bot.middleware.ux_speed import UxCallbackMiddleware
 
     dp.callback_query.middleware(UxCallbackMiddleware())
+    # Shared channel core first: its filters match only flows switched on in
+    # CHANNELS_CORE_FLOWS, so with the flag empty everything falls through.
+    from gaming.src.channels.telegram.adapter import router as channels_core_router
+
+    dp.include_router(channels_core_router)
     # Button-first UX (FSM) — register early for menu callbacks
     dp.include_router(simple_ui.router)
     dp.include_router(fiat_topup.router)

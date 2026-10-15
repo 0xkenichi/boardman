@@ -142,6 +142,7 @@ def resolve(
 # ── Telegram dual-write and backfill ─────────────────────────────────────────
 
 _dual_written: set[tuple[str, str]] = set()
+_dual_write_warned = False
 
 
 def ensure_telegram_identity(
@@ -194,7 +195,13 @@ def ensure_telegram_identity(
         _dual_written.add(key)
         return out
     except Exception:
-        logger.warning("[channels] telegram identity dual-write failed", exc_info=True)
+        # Loud once (e.g. the migration is not applied yet), then quiet.
+        global _dual_write_warned
+        if not _dual_write_warned:
+            _dual_write_warned = True
+            logger.warning("[channels] telegram identity dual-write failed", exc_info=True)
+        else:
+            logger.debug("[channels] telegram identity dual-write failed", exc_info=True)
         return None
 
 
