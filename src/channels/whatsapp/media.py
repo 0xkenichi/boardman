@@ -106,8 +106,19 @@ def copy_to_storage(client, media_id: str, *, store: EvidenceStore | None = None
     expected = str(info.get("sha256") or "").lower()
     if expected and expected != digest:
         raise MediaRejected("checksum mismatch")
+    return store_bytes(data, mime, channel="whatsapp", store=store)
+
+
+def store_bytes(data: bytes, mime: str, *, channel: str, store: EvidenceStore | None = None) -> tuple[str, str, str]:
+    """Size/type-check, strip EXIF and store evidence bytes from any channel."""
+    mime = (mime or "").split(";")[0].strip()
+    if mime not in EXT:
+        raise MediaRejected(f"unsupported media type {mime}")
+    if len(data) > config.int_env("CHANNELS_MEDIA_MAX_BYTES", 8 * 1024 * 1024):
+        raise MediaRejected("too large")
+    digest = hashlib.sha256(data).hexdigest()
     clean = strip_exif(data, mime)
     day = datetime.now(timezone.utc).strftime("%Y/%m/%d")
-    key = f"whatsapp/{day}/{digest}.{EXT[mime]}"
+    key = f"{channel}/{day}/{digest}.{EXT[mime]}"
     ref = (store or evidence_store()).put(key, clean, mime)
     return ref, mime, digest

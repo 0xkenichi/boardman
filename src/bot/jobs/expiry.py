@@ -71,7 +71,7 @@ async def sweep_stale_creator_locks(*, grace_hours: float | None = None) -> int:
         result = (
             sb.schema("gaming")
             .table("challenges")
-            .select("id, issuer_id, target_id, expires_at")
+            .select("id, issuer_id, target_id, expires_at, stake_amount")
             .eq("status", "creator_locked")
             .lt("expires_at", cutoff)
             .limit(50)
@@ -127,7 +127,16 @@ async def sweep_stale_creator_locks(*, grace_hours: float | None = None) -> int:
             creator_id = row.get("creator_id") or row.get("issuer_id")
             opponent_id = row.get("opponent_id") or row.get("target_id")
             try:
-                await notify_user(creator_id, msg)
+                from gaming.src.channels.core.match_notices import match_refunded
+
+                stake = row.get("amount_usdc") or row.get("stake_amount") or 0
+                await notify_user(
+                    creator_id,
+                    msg,
+                    notice=match_refunded(
+                        {"id": cid, **row}, reason="cancelled: your opponent never locked in", amount=stake
+                    ),
+                )
                 if opponent_id:
                     await notify_user(
                         opponent_id,
@@ -236,9 +245,12 @@ async def nudge_and_timeout_reports() -> dict:
                     f"⌛ Match {code(cid)} abandoned (no valid reports).\n"
                     f"Stakes refunded.\n{analysis['reason']}"
                 )
-                await notify_user(ch["creator_id"], msg)
+                from gaming.src.channels.core.match_notices import match_refunded
+
+                notice = match_refunded(ch, reason="abandoned (no valid reports)", amount=ch.get("amount_usdc") or 0)
+                await notify_user(ch["creator_id"], msg, notice=notice)
                 if ch.get("opponent_id"):
-                    await notify_user(ch["opponent_id"], msg)
+                    await notify_user(ch["opponent_id"], msg, notice=notice)
                 abandoned += 1
             except Exception:
                 logger.exception("[ReportJob] abandon failed %s", cid)
@@ -261,6 +273,8 @@ async def nudge_and_timeout_reports() -> dict:
                     howto = "Tap <b>Submit result</b> and follow the on-screen instructions."
                     cap = "5-3 or W/L"
 
+                from gaming.src.channels.core.match_notices import report_reminder
+
                 if action == "wait_opponent" and ch.get("opponent_id"):
                     await notify_user(
                         ch["opponent_id"],
@@ -269,6 +283,7 @@ async def nudge_and_timeout_reports() -> dict:
                         f"{howto}\n\n"
                         f"Or: <code>/submit_score {cid} {cap}</code>\n\n"
                         f"⚠️ If you stay silent, they can win by <b>no-show</b>.",
+                        notice=report_reminder(ch),
                     )
                     await notify_user(
                         ch["creator_id"],
@@ -285,6 +300,7 @@ async def nudge_and_timeout_reports() -> dict:
                         f"{howto}\n\n"
                         f"Or: <code>/submit_score {cid} {cap}</code>\n\n"
                         f"⚠️ Silence can mean a no-show loss.",
+                        notice=report_reminder(ch),
                     )
                     if ch.get("opponent_id"):
                         await notify_user(
@@ -299,10 +315,11 @@ async def nudge_and_timeout_reports() -> dict:
                         f"{howto}\n\n"
                         f"Or: <code>/submit_score {cid} {cap}</code>"
                     )
+                    photo_notice = report_reminder(ch, photo_only=True)
                     if analysis.get("missing_creator_shot"):
-                        await notify_user(ch["creator_id"], photo_nudge)
+                        await notify_user(ch["creator_id"], photo_nudge, notice=photo_notice)
                     if analysis.get("missing_opponent_shot") and ch.get("opponent_id"):
-                        await notify_user(ch["opponent_id"], photo_nudge)
+                        await notify_user(ch["opponent_id"], photo_nudge, notice=photo_notice)
                     await mark_nudge_sent(cid)
                     nudged += 1
             except Exception:

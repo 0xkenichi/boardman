@@ -10,6 +10,10 @@ Taken over per flow:
   deposit   /deposit, ui:get_money
   withdraw  /withdraw, /send, ui:withdraw, menu:withdraw, m_send
   link      /link [code], /start link_<code>
+  challenge ui:challenge, menu:challenge     (only when named in the flags:
+  match     ui:match                          ``all`` excludes them on Telegram)
+  report    a photo while the core report interview waits for one (stored
+            in our evidence store, not as a Telegram file_id)
 plus core buttons (``v1|…``) and text while a core conversation is active
 (only when no legacy wizard holds the chat).
 """
@@ -159,9 +163,66 @@ async def core_link(message: types.Message, command: CommandObject, state: FSMCo
     await _cmd(message, state, f"link {command.args or ''}".strip())
 
 
+@router.callback_query(F.data.in_({"ui:challenge", "menu:challenge"}), CoreFlow("challenge"))
+async def core_challenge_cb(callback: types.CallbackQuery, state: FSMContext) -> None:
+    await _cb(callback, state, text="challenge")
+
+
+@router.callback_query(F.data == "ui:match", CoreFlow("match"))
+async def core_matches_cb(callback: types.CallbackQuery, state: FSMContext) -> None:
+    await _cb(callback, state, text="matches")
+
+
 @router.callback_query(F.data.startswith("v1|"))
 async def core_button(callback: types.CallbackQuery, state: FSMContext) -> None:
     await _cb(callback, state, button=callback.data or "")
+
+
+class ActiveCoreReport(Filter):
+    """A photo belongs to the core only while its report interview waits for one."""
+
+    async def __call__(self, message: types.Message, state: Optional[FSMContext] = None) -> bool:
+        if not config.flow_enabled("telegram", "report") or message.from_user is None:
+            return False
+        if state is not None and await state.get_state() is not None:
+            return False
+        st = await asyncio.to_thread(conv_state.load, "telegram", str(message.from_user.id))
+        return st.flow == "report" and st.step == "photo"
+
+
+async def telegram_photo_to_evidence(message: types.Message, bot: Any) -> tuple[str, str]:
+    """Download the photo now and keep it in our evidence store (not a file_id)."""
+    import io
+
+    from gaming.src.channels.whatsapp.media import store_bytes
+
+    if message.photo:
+        file_id, mime = message.photo[-1].file_id, "image/jpeg"
+    else:
+        file_id, mime = message.document.file_id, (message.document.mime_type or "")
+    tg_file = await bot.get_file(file_id)
+    buf = io.BytesIO()
+    await bot.download_file(tg_file.file_path, destination=buf)
+    ref, mime, _ = await asyncio.to_thread(store_bytes, buf.getvalue(), mime, channel="telegram")
+    return ref, mime
+
+
+@router.message(F.photo | F.document, ActiveCoreReport())
+async def core_photo(message: types.Message, state: FSMContext, bot: Any) -> None:
+    from gaming.src.channels.core.events import Media
+
+    if message.from_user is None:
+        return
+    try:
+        ref, mime = await telegram_photo_to_evidence(message, bot)
+    except Exception:
+        logger.warning("[channels] telegram photo copy failed", exc_info=True)
+        await message.answer("That photo could not be saved. Please send it again as a photo.")
+        return
+    ev = _ev(message.from_user, message.chat.id)
+    ev.kind = "media"
+    ev.media = Media("image", ref, mime, caption=message.caption or "")
+    await run(message, message.from_user, ev, state)
 
 
 @router.message(F.text, ~F.text.startswith("/"), ActiveCoreConversation())

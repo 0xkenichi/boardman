@@ -59,34 +59,18 @@ async def cmd_dispute(message: types.Message) -> None:
         return
 
     profile = await get_or_create_profile(user)
-    challenge = load_challenge_by_ref(challenge_ref)
-    if not challenge:
-        await message.answer("❌ Challenge not found.", reply_markup=back_menu(), parse_mode=None)
+    reason = parts[2] if len(parts) > 2 else "Player disputed result"
+    from gaming.src.channels.core.actions.matches import MatchRefused, open_dispute
+
+    try:
+        challenge, already = await open_dispute(challenge_ref, profile["id"], reason)
+    except MatchRefused as exc:
+        await message.answer(f"❌ {exc.message}", reply_markup=back_menu(), parse_mode=None)
         return
-    challenge_id = challenge["id"]
     match_code = display_code(challenge)
 
-    if not _participant_only(profile["id"], challenge):
-        await message.answer(
-            "❌ You are not part of this challenge.",
-            reply_markup=back_menu(),
-            parse_mode=None,
-        )
-        return
-
-    if challenge.get("status") not in ("submitted", "locked", "creator_locked", "playing", "disputed"):
-        await message.answer(
-            f"❌ Challenge status is {challenge.get('status')}. "
-            "Disputes can only be raised after the match is live / scores are in.",
-            reply_markup=back_menu(),
-            parse_mode=None,
-        )
-        return
-
-    reason = parts[2] if len(parts) > 2 else "Player disputed result"
-
     # Already disputed → just re-show support IDs (no double flag needed)
-    if challenge.get("status") == "disputed":
+    if already:
         await message.answer(
             f"ℹ️ Match <code>{match_code}</code> is already disputed.\n\n"
             f"{support_id_block(challenge)}",
@@ -94,25 +78,6 @@ async def cmd_dispute(message: types.Message) -> None:
             parse_mode=ParseMode.HTML,
         )
         return
-
-    try:
-        await flag_dispute(challenge_id)
-    except Exception as exc:
-        logger.exception("[Dispute] Failed to flag dispute for %s", challenge_id)
-        await message.answer(
-            f"❌ Could not raise dispute: {exc}",
-            reply_markup=back_menu(),
-            parse_mode=None,
-        )
-        return
-
-    sb = get_supabase()
-    sb.schema("gaming").table("challenges").update(
-        {
-            "dispute_reason": reason,
-            "status": "disputed",
-        }
-    ).eq("id", challenge_id).execute()
 
     await message.answer(
         format_dispute_copy(challenge, reason, for_opponent=False),
@@ -124,9 +89,12 @@ async def cmd_dispute(message: types.Message) -> None:
         "opponent_id"
     )
     if other_id:
+        from gaming.src.channels.core import match_notices
+
         await notify_user(
             other_id,
             format_dispute_copy(challenge, reason, for_opponent=True),
+            notice=match_notices.match_disputed(challenge, f"Your opponent disputed it: {reason}"),
         )
 
 

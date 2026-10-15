@@ -264,6 +264,18 @@ Outside the 24-hour window after a player's last message, we can only send pre-a
 - Variables and samples: `{{1}}` cup (sample: Lagos Weekend Cup); `{{2}}` place (sample: 2nd); `{{3}}` prize (sample: 25.00)
 - Quick-reply buttons: Wallet
 
+#### 15. `match_ready` (new with the skill-match flows)
+
+- Category: Utility. Language: English (`en`).
+- Body (copy exactly):
+
+  ```
+  Match {{1}}: both stakes are locked. Play your {{2}} match, then report the result here.
+  ```
+
+- Variables and samples: `{{1}}` match_code (sample: K7M2P9QX); `{{2}}` game (sample: EA FC Mobile)
+- Quick-reply buttons: Report result
+
 
 Not needed: authentication templates (web login will use a code the player sends *to* us), and marketing templates (optional, later, with a monthly budget).
 

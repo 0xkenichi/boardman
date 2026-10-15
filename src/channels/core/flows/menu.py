@@ -8,6 +8,9 @@ from gaming.src.channels.core import ids
 from gaming.src.channels.core.messages import Option
 
 ENTRIES = (
+    ("challenge", "New challenge", "Stake USDC on a 1v1 with a friend"),
+    ("match", "My matches", "Accept, lock, report a result"),
+    ("watch", "Watch & bet", "Live matches and bets on the website"),
     ("balance", "Wallet", "Balance and play address"),
     ("deposit", "Add money", "Naira (Paystack) or USDC"),
     ("withdraw", "Withdraw", "Confirm on the web with your PIN"),
@@ -29,7 +32,7 @@ async def start(ctx) -> None:
     site = config.site_url()
     body = (
         f"*Boardman* · skill matches settled in USDC.\n"
-        f"Matches, the board and spectator bets: {site}/app"
+        f"Leaderboard and spectator bets: {site}/app"
     )
     if not opts:
         ctx.say(body + "\n\nMore of Boardman is coming to this chat soon.")

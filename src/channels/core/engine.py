@@ -79,7 +79,19 @@ class Ctx:
 
 
 def _flows() -> dict[str, Any]:
-    from gaming.src.channels.core.flows import balance, deposit, link, menu, onboarding, withdraw
+    from gaming.src.channels.core.flows import (
+        approve,
+        balance,
+        challenge,
+        deposit,
+        link,
+        match,
+        menu,
+        onboarding,
+        report,
+        watch,
+        withdraw,
+    )
 
     return {
         "menu": menu,
@@ -88,10 +100,16 @@ def _flows() -> dict[str, Any]:
         "deposit": deposit,
         "link": link,
         "withdraw": withdraw,
+        "challenge": challenge,
+        "match": match,
+        "report": report,
+        "watch": watch,
+        "ap": approve,  # approval answers; the approved action checks its own flag
     }
 
 
-ALWAYS = {"menu", "onboarding"}
+ALWAYS = {"menu", "onboarding", "ap"}
+KEYWORD_FLOWS = ("balance", "deposit", "withdraw", "challenge", "match", "report", "watch")
 
 
 class Engine:
@@ -146,8 +164,14 @@ class Engine:
             return
         if ev.kind == "media":
             mod = flows.get(ctx.st.flow or "")
-            if mod is not None and hasattr(mod, "on_media"):
+            if mod is not None and hasattr(mod, "on_media") and self._allowed(ctx, ctx.st.flow or ""):
                 await mod.on_media(ctx, ev.media)
+                return
+            if not ctx.principal.known:
+                await flows["onboarding"].start(ctx)
+                return
+            if ev.media is not None and self._allowed(ctx, "report"):
+                await flows["report"].bare_photo(ctx, ev.media)
                 return
             ctx.say("Thanks. Photos are used for match reports, which are coming to this chat soon.")
             return
@@ -197,6 +221,16 @@ class Engine:
         if word == "link" and self._allowed(ctx, "link"):
             await flows["link"].keyword(ctx, " ".join(words[1:]))
             return
+        if word == "join" and len(words) > 1 and self._allowed(ctx, "match"):
+            # wa.me/<number>?text=JOIN <code>: the deep link to an invite
+            code = "".join(words[1:3])
+            if not ctx.principal.known:
+                ctx.st.data["_join"] = code  # picked up once onboarding finishes
+                await flows["onboarding"].start(ctx)
+                return
+            ctx.st.clear()
+            await flows["match"].join(ctx, code)
+            return
         if not ctx.principal.known:
             await flows["onboarding"].on_text(ctx, text)
             return
@@ -204,7 +238,7 @@ class Engine:
             ctx.st.clear()
             await self._menu(ctx, flows)
             return
-        for name in ("balance", "deposit", "withdraw"):
+        for name in KEYWORD_FLOWS:
             mod = flows[name]
             if word in mod.KEYWORDS and self._allowed(ctx, name):
                 ctx.st.clear()

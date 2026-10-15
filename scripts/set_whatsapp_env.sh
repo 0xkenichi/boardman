@@ -7,8 +7,10 @@
 #
 # Asks for the Meta values (secrets are typed blind), writes them into the VM's
 # ~/boardman/.env (replacing any earlier WhatsApp lines), generates a webhook
-# verify token, enables the first ported flows, and restarts only the API
-# container (house games and the Telegram bot keep running).
+# verify token, enables every ported flow (skill matches included), and
+# recreates the API and bot containers: the bot runs the jobs (refunds, report
+# nudges, settlement) whose notices must reach WhatsApp players too. House
+# games keep running; Telegram pauses for the few seconds of the restart.
 set -euo pipefail
 VM="${BOARDMAN_VM:-ubuntu@150.230.112.144}"
 
@@ -26,14 +28,14 @@ VERIFY="$(openssl rand -hex 16)"
   printf 'WHATSAPP_ACCESS_TOKEN=%s\n' "$TOKEN"
   printf 'WHATSAPP_APP_SECRET=%s\n' "$APP_SECRET"
   printf 'WHATSAPP_VERIFY_TOKEN=%s\n' "$VERIFY"
-  printf 'CHANNELS_CORE_FLOWS_WHATSAPP=balance,deposit,link,withdraw\n'
+  printf 'CHANNELS_CORE_FLOWS_WHATSAPP=all\n'
 } | ssh -o BatchMode=yes "$VM" 'set -e; cd ~/boardman; umask 077
   grep -vE "^(WHATSAPP_[A-Z_]+|CHANNELS_CORE_FLOWS_WHATSAPP)=" .env > .env.new || true
   printf "\n# WhatsApp (set by scripts/set_whatsapp_env.sh)\n" >> .env.new
   cat >> .env.new
   chmod 600 .env.new && mv .env.new .env
-  sg docker -c "docker compose up -d --force-recreate --no-deps boardman-api" >/dev/null 2>&1
-  echo "VM .env updated; API restarted."'
+  sg docker -c "docker compose up -d --force-recreate --no-deps boardman-api boardman-bot" >/dev/null 2>&1
+  echo "VM .env updated; API and bot restarted."'
 unset TOKEN APP_SECRET
 
 cat <<EOF

@@ -88,10 +88,17 @@ async def handle_event(ev: Inbound, sender: Sender, *, engine: Optional[Engine] 
     )
     outs = await engine.handle(ev, principal)
     sent = []
-    for msg in render.render_all(outs):
-        render.validate(msg)
-        await asyncio.to_thread(sender.send, ev.address or ev.external_id, msg)
-        sent.append(msg)
+    for out in outs:
+        wamid = None
+        for msg in render.render(out):
+            render.validate(msg)
+            wamid = await asyncio.to_thread(sender.send, ev.address or ev.external_id, msg)
+            sent.append(msg)
+        bind = getattr(out, "bind", "")
+        if bind and wamid:
+            from gaming.src.channels.core import approvals
+
+            await asyncio.to_thread(approvals.bind_message, bind, str(wamid))
     return sent
 
 

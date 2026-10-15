@@ -956,41 +956,33 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
         )
         return
 
-    from gaming.src.backend.services.match_codes import display_code
+    import asyncio
 
-    challenge_id = str(uuid.uuid4())
-    public_code = display_code(None, challenge_id=challenge_id)
-    expires = datetime.now(timezone.utc) + timedelta(hours=24)
-    # Never insert public_code — column not on live schema (PGRST204)
-    record = denormalize_challenge(
-        {
-            "id": challenge_id,
-            "creator_id": profile["id"],
-            "opponent_id": opponent_id,
-            "amount_usdc": float(amount),
-            "game": game,
-            "visibility": visibility,
-            "status": "open",
-            "expires_at": expires.isoformat(),
-            "message": "Boardman challenge",
-            "settlement_chain": chain,
-        }
-    )
+    from gaming.src.channels.core.actions.matches import insert_challenge
+
     try:
-        get_supabase().schema("gaming").table("challenges").insert(record).execute()
-    except Exception as exc:
+        created = await asyncio.to_thread(
+            insert_challenge,
+            creator_id=profile["id"],
+            opponent_id=opponent_id,
+            amount=amount,
+            game=game,
+            visibility=visibility,
+            settlement_chain=chain,
+        )
+    except Exception as exc2:
         logger.exception("[UI] challenge insert failed")
-        record.pop("settlement_chain", None)
-        try:
-            get_supabase().schema("gaming").table("challenges").insert(record).execute()
-        except Exception as exc2:
-            await callback.message.answer(f"❌ Could not create: {h(exc2)}", parse_mode=ParseMode.HTML)
-            return
+        await callback.message.answer(f"❌ Could not create: {h(exc2)}", parse_mode=ParseMode.HTML)
+        return
+    challenge_id = created["id"]
+    public_code = created["public_code"]
 
     await state.clear()
     from gaming.src.bot.keyboards import challenge_confirm_menu, REMATCH_BOARD
 
     if opponent_id:
+        from gaming.src.channels.core import match_notices
+
         try:
             try:
                 from gaming.src.backend.services.game_catalog import how_to_report_short
@@ -1007,6 +999,7 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
                 f"{report_hint}\n\n"
                 f"Tap Accept or Decline:",
                 buttons=challenge_confirm_menu(challenge_id),
+                notice=match_notices.challenge_received(created, profile),
             )
         except Exception:
             logger.exception("[UI] notify opponent failed")
@@ -1084,125 +1077,66 @@ async def ui_lock(callback: types.CallbackQuery) -> None:
     user = callback.from_user
     if not user:
         return
+    from gaming.src.channels.core.actions.matches import MatchRefused, lock_stake
+
     profile = await get_or_create_profile(user)
-    ch = await _load_challenge(cid)
-    if not ch:
-        await callback.message.answer("Match not found.", reply_markup=main_menu())
-        return
 
-    is_creator = profile["id"] == ch["creator_id"]
-    is_opp = profile["id"] == ch.get("opponent_id")
-    if not is_creator and not is_opp:
-        await callback.message.answer("Not your match.", reply_markup=main_menu())
-        return
-
-    amount = Decimal(str(ch["amount_usdc"]))
-    # All stakes settle on Arc (USDC gas + BoardmanEscrow). Funding rails
-    # (Stellar / Avalanche / Naira) only credit play balance first.
-    from gaming.src.backend.services.funding_rails import (
-        ensure_stake_ready,
-        settlement_rail_id,
-    )
-
-    chain = settlement_rail_id()
-    if (ch.get("settlement_chain") or "").lower() not in ("", "arc", chain):
-        # Old challenges may still say base — force Arc for product safety
-        chain = settlement_rail_id()
-
-    gate = assert_money_ops_allowed(
-        profile["id"], action="lock", amount=amount, kind="lock"
-    )
-    if gate:
-        await callback.message.answer(gate, parse_mode=ParseMode.HTML, reply_markup=main_menu())
-        return
-
-    idem_key = f"lock:{cid}:{profile['id']}"
-    dup = check_idempotent(idem_key)
-    if dup:
-        await callback.message.answer(dup, reply_markup=match_actions_menu(ch, profile["id"]))
-        return
-
-    # Abstract balance: one play wallet (settlement rail). No chain homework.
-    try:
-        ready = await ensure_stake_ready(profile["id"], amount)
-        if not ready.ok:
-            from gaming.src.bot.keyboards import get_money_menu
-
-            await callback.message.answer(
-                f"❌ {ready.message_html}",
-                parse_mode=ParseMode.HTML,
-                reply_markup=get_money_menu(),
-            )
-            clear_idempotent(idem_key)
-            return
-        wallet = await ensure_user_wallet(profile["id"], chain_id=chain)
-        bal = await get_usdc_balance(profile["id"], chain_id=chain)
-        if bal < amount:
-            from gaming.src.bot.keyboards import get_money_menu
-
-            await callback.message.answer(
-                f"❌ Not enough play money for this match.\n"
-                f"Need <b>${amount:,.2f}</b>, have <b>${bal:,.2f}</b>.\n\n"
-                f"Play address:\n<code>{h(wallet.get('address') or '')}</code>\n\n"
-                f"Tap <b>Get money</b> (Naira, Stellar, Avalanche, or crypto) — "
-                f"all credit the same balance — then lock again.",
-                parse_mode=ParseMode.HTML,
-                reply_markup=get_money_menu(),
-            )
-            clear_idempotent(idem_key)
-            return
-    except Exception as exc:
-        logger.exception("[UI] lock preflight failed")
+    async def _progress(amount: Decimal) -> None:
         await callback.message.answer(
-            f"❌ Wallet not ready: {h(exc)}\n"
-            f"Open <b>Get money</b> / Wallet and try again.",
+            f"⏳ Locking <b>${amount:,.2f}</b> USDC…",
             parse_mode=ParseMode.HTML,
-            reply_markup=main_menu(),
         )
-        clear_idempotent(idem_key)
-        return
-
-    await callback.message.answer(
-        f"⏳ Locking <b>${amount:,.2f}</b> USDC…",
-        parse_mode=ParseMode.HTML,
-    )
 
     try:
-        await ensure_user_wallet(profile["id"], chain_id=chain)
-        if is_creator:
-            if ch.get("status") == "open" and ch.get("opponent_id"):
-                get_supabase().schema("gaming").table("challenges").update(
-                    {"status": "accepted"}
-                ).eq("id", cid).execute()
-            await approve_and_create_match(profile["id"], cid, amount)
-            msg = f"✅ Stake locked (you).\nWaiting for opponent."
-        else:
-            if ch.get("status") != "creator_locked":
-                clear_idempotent(idem_key)
-                await callback.message.answer(
-                    "⏳ Wait for the other player to lock first.",
-                    reply_markup=match_actions_menu(ch, profile["id"]),
+        res = await lock_stake(cid, profile, progress=_progress)
+    except MatchRefused as exc:
+        ch = exc.detail.get("challenge")
+        actions = match_actions_menu(ch, profile["id"]) if ch else main_menu()
+        if exc.kind in ("not_found", "not_yours"):
+            await callback.message.answer(exc.message, reply_markup=main_menu())
+        elif exc.kind == "gate":
+            await callback.message.answer(exc.detail["html"], parse_mode=ParseMode.HTML, reply_markup=main_menu())
+        elif exc.kind in ("busy", "wait"):
+            text = "⏳ Wait for the other player to lock first." if exc.kind == "wait" else exc.message
+            await callback.message.answer(text, reply_markup=actions)
+        elif exc.kind == "funds":
+            from gaming.src.bot.keyboards import get_money_menu
+
+            if exc.detail.get("html"):
+                text = f"❌ {exc.detail['html']}"
+            else:
+                amount, bal = exc.detail["amount"], exc.detail["balance"]
+                text = (
+                    f"❌ Not enough play money for this match.\n"
+                    f"Need <b>${amount:,.2f}</b>, have <b>${bal:,.2f}</b>.\n\n"
+                    f"Play address:\n<code>{h(exc.detail.get('address') or '')}</code>\n\n"
+                    f"Tap <b>Get money</b> (Naira, Stellar, Avalanche, or crypto) — "
+                    f"all credit the same balance — then lock again."
                 )
-                return
-            await approve_and_join_match(profile["id"], cid, amount)
-            msg = f"✅ Both stakes locked!"
-    except (EscrowError, CircleWalletError) as exc:
-        clear_idempotent(idem_key)
-        await callback.message.answer(
-            f"❌ Lock failed: {h(exc)}",
-            parse_mode=ParseMode.HTML,
-            reply_markup=match_actions_menu(ch, profile["id"]),
-        )
-        return
-    except Exception as exc:
-        clear_idempotent(idem_key)
-        logger.exception("[UI] lock failed")
-        await callback.message.answer(f"❌ {h(exc)}", parse_mode=ParseMode.HTML)
+            await callback.message.answer(text, parse_mode=ParseMode.HTML, reply_markup=get_money_menu())
+        elif exc.kind == "wallet":
+            await callback.message.answer(
+                f"❌ Wallet not ready: {h(exc.detail.get('error'))}\n"
+                f"Open <b>Get money</b> / Wallet and try again.",
+                parse_mode=ParseMode.HTML,
+                reply_markup=main_menu(),
+            )
+        elif exc.kind == "escrow":
+            await callback.message.answer(
+                f"❌ Lock failed: {h(exc.detail.get('error'))}",
+                parse_mode=ParseMode.HTML,
+                reply_markup=actions,
+            )
+        else:
+            await callback.message.answer(f"❌ {h(exc.detail.get('error') or exc.message)}",
+                                          parse_mode=ParseMode.HTML)
         return
 
-    ch2 = await _load_challenge(cid) or ch
-    game_key = ch2.get("game") or ch.get("game") or ""
+    ch2 = res.challenge
+    msg = "✅ Both stakes locked!" if res.both_locked else "✅ Stake locked (you).\nWaiting for opponent."
+    game_key = ch2.get("game") or ""
     from gaming.src.bot.utils.flow import next_steps_after_lock
+    from gaming.src.channels.core import bridge, match_notices
 
     next_steps = next_steps_after_lock(cid, game_id=str(game_key))
     await callback.message.answer(
@@ -1211,15 +1145,19 @@ async def ui_lock(callback: types.CallbackQuery) -> None:
         reply_markup=match_actions_menu(ch2, profile["id"]),
     )
 
-    if is_opp:
+    if res.both_locked:
         try:
             await notify_user(
-                ch["creator_id"],
+                ch2["creator_id"],
                 f"🎮 Both stakes locked!\n\n{next_steps}",
-                buttons=match_actions_menu(ch2, ch["creator_id"]),
+                buttons=match_actions_menu(ch2, ch2["creator_id"]),
+                notice=match_notices.match_ready(ch2),
             )
         except Exception:
             pass
+    elif ch2.get("opponent_id"):
+        # WhatsApp opponents need a nudge to lock; Telegram ones never got one here.
+        await bridge.notify_channel_only(ch2["opponent_id"], match_notices.opponent_locked(ch2))
 
 
 # ── Side selection ───────────────────────────────────────────────────────────
@@ -1250,38 +1188,16 @@ async def ui_side(callback: types.CallbackQuery) -> None:
     if not ch:
         await callback.message.answer("Match not found.", reply_markup=main_menu())
         return
-    is_creator = profile["id"] == ch["creator_id"]
-    is_opp = profile["id"] == ch.get("opponent_id")
-    if not is_creator and not is_opp:
-        await callback.message.answer("Not your match.")
+    from gaming.src.channels.core.actions.matches import MatchRefused, choose_side
+
+    try:
+        choose_side(ch, profile["id"], side)
+    except MatchRefused as exc:
+        if exc.kind == "side_taken":
+            await callback.message.answer(f"❌ {exc.message}", reply_markup=side_menu(cid))
+        else:
+            await callback.message.answer("Not your match.")
         return
-
-    other = "away" if side == "home" else "home"
-    update: dict = {}
-    if is_creator:
-        if ch.get("opponent_side") == side:
-            await callback.message.answer(
-                f"❌ Opponent already took {side}. Pick {other}.",
-                reply_markup=side_menu(cid),
-            )
-            return
-        update["creator_side"] = side
-        if not ch.get("opponent_side"):
-            update["opponent_side"] = other
-    else:
-        if ch.get("creator_side") == side:
-            await callback.message.answer(
-                f"❌ Creator already took {side}. Pick {other}.",
-                reply_markup=side_menu(cid),
-            )
-            return
-        update["opponent_side"] = side
-        if not ch.get("creator_side"):
-            update["creator_side"] = other
-
-    get_supabase().schema("gaming").table("challenges").update(
-        denormalize_challenge(update)
-    ).eq("id", cid).execute()
     ch2 = await _load_challenge(cid) or ch
     game_key = str((ch2 or {}).get("game") or (ch2 or {}).get("game_type") or "")
     try:
@@ -1573,20 +1489,14 @@ async def ui_report_ingame_name(message: types.Message, state: FSMContext, bot) 
         )
         return
 
+    from gaming.src.channels.core.actions.matches import save_ingame_name
+
     try:
-        get_supabase().schema("gaming").table("challenges").update(
-            denormalize_challenge({key: name[:64], "console_platform": "ingame"})
-        ).eq("id", cid).execute()
-    except Exception:
-        # platform column optional
-        try:
-            get_supabase().schema("gaming").table("challenges").update(
-                denormalize_challenge({key: name[:64]})
-            ).eq("id", cid).execute()
-        except Exception as exc:
-            logger.exception("[UI] save ingame name failed")
-            await message.answer(f"❌ Could not save name: {h(exc)}", parse_mode=ParseMode.HTML)
-            return
+        save_ingame_name(ch, profile["id"], name)
+    except Exception as exc:
+        logger.exception("[UI] save ingame name failed")
+        await message.answer(f"❌ Could not save name: {h(exc)}", parse_mode=ParseMode.HTML)
+        return
 
     await state.update_data(screen_name=name, challenge_id=cid)
     await message.answer(
@@ -1619,31 +1529,13 @@ async def ui_report_ask_side(callback: types.CallbackQuery, state: FSMContext) -
         return
 
     # Persist side (same rules as ui_side)
-    is_cr = profile["id"] == ch.get("creator_id")
-    other = "away" if side == "home" else "home"
-    update: dict = {}
-    if is_cr:
-        if ch.get("opponent_side") == side:
-            await callback.message.answer(
-                f"❌ Opponent already took {side}. Pick {other}.",
-                reply_markup=None,
-            )
-            return
-        update["creator_side"] = side
-        if not ch.get("opponent_side"):
-            update["opponent_side"] = other
-    else:
-        if ch.get("creator_side") == side:
-            await callback.message.answer(
-                f"❌ Creator already took {side}. Pick {other}.",
-            )
-            return
-        update["opponent_side"] = side
-        if not ch.get("creator_side"):
-            update["creator_side"] = other
-    get_supabase().schema("gaming").table("challenges").update(
-        denormalize_challenge(update)
-    ).eq("id", cid).execute()
+    from gaming.src.channels.core.actions.matches import MatchRefused, choose_side
+
+    try:
+        choose_side(ch, profile["id"], side)
+    except MatchRefused as exc:
+        await callback.message.answer(f"❌ {exc.message}" if exc.kind == "side_taken" else "Not your match.")
+        return
 
     data = await state.get_data()
     if not data.get("file_id"):
@@ -1783,90 +1675,37 @@ async def ui_report_finalize(callback: types.CallbackQuery, state: FSMContext) -
         await state.clear()
         return
 
-    from gaming.src.bot.handlers.submit_score import _store_report, _maybe_settle
-
-    ch = await _load_challenge(cid)
-    if not ch:
-        await callback.message.answer("Match not found.", reply_markup=main_menu())
-        await state.clear()
-        return
-
-    # Save screenshot ref under this profile
-    is_creator = profile["id"] == ch.get("creator_id")
-    column = "screenshot_creator_url" if is_creator else "screenshot_opponent_url"
-    status = ch.get("status")
-    update: dict = {column: file_id}
-    if status == "locked":
-        update["status"] = "playing"
-    try:
-        get_supabase().schema("gaming").table("challenges").update(
-            denormalize_challenge(update)
-        ).eq("id", ch["id"]).execute()
-    except Exception:
-        logger.exception("[UI] save screenshot failed")
+    from gaming.src.bot.handlers.submit_score import _maybe_settle
+    from gaming.src.channels.core.actions.matches import MatchRefused, submit_report
 
     sn = str(data.get("screen_name") or "").strip()
-    if sn:
-        try:
-            key = "creator_console_id" if is_creator else "opponent_console_id"
-            get_supabase().schema("gaming").table("challenges").update(
-                denormalize_challenge({key: sn[:64]})
-            ).eq("id", ch["id"]).execute()
-        except Exception:
-            pass
-
-    # Reload after name write
-    ch = await _load_challenge(cid) or ch
     try:
-        from gaming.src.backend.services.match_report import (
-            binary_both_claim_win,
-            ingame_names_conflict,
+        outcome = await submit_report(
+            cid, profile["id"], home=int(home), away=int(away), evidence_ref=file_id, screen_name=sn
         )
-
-        # Pre-check against opponent if they already reported
-        if ingame_names_conflict(ch):
+    except MatchRefused as exc:
+        if exc.kind == "not_found":
+            await callback.message.answer("Match not found.", reply_markup=main_menu())
+        elif exc.kind == "identity_conflict":
+            await callback.message.answer(exc.message, reply_markup=main_menu())
+        else:
             await callback.message.answer(
-                "❌ Identity conflict: both players used the same in-game name. "
-                "Start again with your own name from the screenshot.",
+                f"❌ {h(exc.message)}",
+                parse_mode=ParseMode.HTML,
                 reply_markup=main_menu(),
             )
-            await state.clear()
-            return
-    except Exception:
-        pass
-
-    try:
-        challenge = await _store_report(
-            ch["id"], profile["id"], home=int(home), away=int(away)
-        )
-    except ValueError as exc:
-        await callback.message.answer(
-            f"❌ {h(exc)}",
-            parse_mode=ParseMode.HTML,
-            reply_markup=main_menu(),
-        )
         await state.clear()
         return
+    challenge = outcome.challenge
 
     await state.clear()
     # Flag identity / double-win conflicts for the user
-    try:
-        from gaming.src.backend.services.match_report import (
-            analyze_reports,
-            binary_both_claim_win,
-            ingame_names_conflict,
+    if outcome.fairness_hold:
+        await callback.message.answer(
+            f"⚠️ <b>Fairness hold</b>\n{h(outcome.fairness_hold)}\n"
+            f"Support can review both photos. No auto-payout until this is clear.",
+            parse_mode=ParseMode.HTML,
         )
-
-        if challenge and (ingame_names_conflict(challenge) or binary_both_claim_win(challenge)):
-            analysis = analyze_reports(challenge)
-            if analysis.get("action") in ("conflict", "identity_conflict"):
-                await callback.message.answer(
-                    f"⚠️ <b>Fairness hold</b>\n{h(analysis.get('reason') or 'Reports disagree.')}\n"
-                    f"Support can review both photos. No auto-payout until this is clear.",
-                    parse_mode=ParseMode.HTML,
-                )
-    except Exception:
-        pass
 
     bal = await get_balance_snapshot(profile["id"])
     claim = data.get("binary_won")
@@ -1903,11 +1742,14 @@ async def ui_report_finalize(callback: types.CallbackQuery, state: FSMContext) -
             howto = how_to_report_short(
                 str(challenge.get("game") or challenge.get("game_type") or "")
             )
+            from gaming.src.channels.core import match_notices
+
             await notify_user(
                 other,
                 f"📊 Opponent reported on <code>{code_s}</code>.\n"
                 f"Your turn for a fair ruling:\n\n{howto}\n\n"
                 f"My match → report button.",
+                notice=match_notices.report_reminder(challenge),
             )
         except Exception:
             logger.exception("[UI] opponent nudge after report failed")

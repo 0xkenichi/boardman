@@ -32,8 +32,10 @@ class _Recorder:
         from gaming.src.channels.whatsapp import render as wa
 
         wa.validate(message)
+        wamid = f"wamid.FAKE{next(_seq)}"
         self.fake.inbox.setdefault(to, []).append(message)
-        return f"wamid.FAKE{next(_seq)}"
+        self.fake.wamids.setdefault(to, []).append(wamid)
+        return wamid
 
 
 class FakeMedia:
@@ -65,6 +67,7 @@ class FakeChannel:
         self.channel = "whatsapp" if profile == "wa" else "telegram"
         self.engine = engine or Engine(notifier=_NullNotifier())
         self.inbox: dict[str, list[dict[str, Any]]] = {}
+        self.wamids: dict[str, list[str]] = {}  # parallel to inbox (WhatsApp)
         self.media = FakeMedia()
 
     # -- user actions --
@@ -73,20 +76,34 @@ class FakeChannel:
         return await self._send(Inbound(self.channel, user, "text", text=body, profile_name=name))
 
     async def tap(self, user: str, label_or_id: str) -> list[dict[str, Any]]:
-        offered = self.offered(user)
+        """Tap a button of the latest message offering any, replying to it
+        (WhatsApp sets ``context.id`` to that message's wamid)."""
+        idx, offered = self._offering(user)
         match = [i for i, label in offered if label_or_id in (i, label)]
         if not match:
             raise NotOffered(f"{label_or_id!r} not offered; offered: {[l for _, l in offered]}")
-        return await self._send(Inbound(self.channel, user, "button", button_id=match[0]))
+        ctx = self.wamid_at(user, idx)
+        return await self._send(Inbound(self.channel, user, "button", button_id=match[0], context_id=ctx))
 
-    async def tap_id(self, user: str, button_id: str) -> list[dict[str, Any]]:
+    async def tap_id(self, user: str, button_id: str, *, context_id: str = "") -> list[dict[str, Any]]:
         """Tap a raw id (a stale or forged button); no offer check."""
-        return await self._send(Inbound(self.channel, user, "button", button_id=button_id))
+        return await self._send(Inbound(self.channel, user, "button", button_id=button_id,
+                                        context_id=context_id))
 
-    async def image(self, user: str, data: bytes, mime: str = "image/png") -> list[dict[str, Any]]:
+    def wamid_at(self, user: str, idx: int) -> str:
+        ids_ = self.wamids.get(user) or []
+        return ids_[idx] if 0 <= idx < len(ids_) else ""
+
+    def last_wamid(self, user: str) -> str:
+        ids_ = self.wamids.get(user) or []
+        return ids_[-1] if ids_ else ""
+
+    async def image(self, user: str, data: bytes, mime: str = "image/png",
+                    caption: str = "") -> list[dict[str, Any]]:
         mid = f"media{next(_seq)}"
         self.media.add(mid, data, mime)
-        return await self._send(Inbound(self.channel, user, "media", media=Media("image", mid, mime)))
+        return await self._send(Inbound(self.channel, user, "media",
+                                        media=Media("image", mid, mime, caption=caption)))
 
     # -- inspection --
 
@@ -98,11 +115,15 @@ class FakeChannel:
 
     def offered(self, user: str) -> list[tuple[str, str]]:
         """(id, label) of the options in the latest message that had any."""
-        for msg in reversed(self.messages(user)):
-            opts = options_of(msg)
+        return self._offering(user)[1]
+
+    def _offering(self, user: str) -> tuple[int, list[tuple[str, str]]]:
+        msgs = self.messages(user)
+        for i in range(len(msgs) - 1, -1, -1):
+            opts = options_of(msgs[i])
             if opts:
-                return opts
-        return []
+                return i, opts
+        return -1, []
 
     def links(self, user: str) -> list[str]:
         return [u for m in self.messages(user) for u in urls_of(m)]
@@ -172,7 +193,7 @@ class RecordingDeliverer:
         tpl = templates.for_kind(notice.kind)
         if tpl is None:
             return None, None
-        msg = templates.message(tpl, notice.params, [o.id for o in notice.options][: len(tpl.buttons)])
+        msg = templates.message(tpl, notice.params, notice.payloads(len(tpl.buttons)))
         self.templates.append((ident.external_id, msg))
         return tpl.name, f"wamid.T{next(_seq)}"
 

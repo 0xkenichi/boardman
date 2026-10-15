@@ -47,6 +47,12 @@ STAKE_LOCKED = Template(
     ("match_code", "what"),
     ("Lock my stake", "Report result"),
 )
+MATCH_READY = Template(
+    "match_ready",
+    "Match {{1}}: both stakes are locked. Play your {{2}} match, then report the result here.",
+    ("match_code", "game"),
+    ("Report result",),
+)
 REPORT_REMINDER = Template(
     "report_reminder",
     "Match {{1}} is waiting for your result. Please report it by {{2}}.",
@@ -109,7 +115,7 @@ CUP_RESULT = Template(
 )
 
 ALL: tuple[Template, ...] = (
-    ACCOUNT_LINKED, CHALLENGE_RECEIVED, CHALLENGE_ANSWERED, STAKE_LOCKED, REPORT_REMINDER,
+    ACCOUNT_LINKED, CHALLENGE_RECEIVED, CHALLENGE_ANSWERED, STAKE_LOCKED, MATCH_READY, REPORT_REMINDER,
     MATCH_RESULT, MATCH_DISPUTED, MATCH_REFUNDED, DEPOSIT_RECEIVED, WITHDRAWAL_UPDATE,
     SECURITY_OUTFLOW, SPEND_APPROVAL, CUP_MATCH_READY, CUP_RESULT,
 )

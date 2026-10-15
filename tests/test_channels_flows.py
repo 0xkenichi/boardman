@@ -57,7 +57,8 @@ def test_new_whatsapp_user_onboards_and_sees_menu(world):
     run(wa.text(U, "Ada_9ja"))
     assert "@ada_9ja" in wa.all_text(U)
     labels = [label for _, label in wa.offered(U)]
-    assert labels == ["Wallet", "Add money", "Withdraw", "Link account"]  # 4 > 3 → a list
+    assert labels == ["New challenge", "My matches", "Watch & bet", "Wallet", "Add money", "Withdraw",
+                      "Link account"]  # 7 > 3 → a list
     ident = world.repo.get("whatsapp", U)
     assert ident.country_hint == "NG" and ident.opted_in
     assert out  # replies were validated against WhatsApp limits on the way out
@@ -67,7 +68,7 @@ def test_numbered_reply_picks_an_option(world):
     wa_user(world.repo)
     wa = FakeChannel("wa")
     run(wa.text(U, "menu"))
-    run(wa.text(U, "1"))
+    run(wa.text(U, "4"))  # New challenge, My matches, Watch & bet, Wallet, …
     assert "*Wallet*" in wa.last_text(U)
 
 
