@@ -979,9 +979,28 @@ export default function ArenaPage() {
               <div className="rm-stack">
                 <TelegramLogin
                   botUsername={REMATCH_BOT_USERNAME}
-                  onAuth={async () => {
-                    setAuthOpen(false)
-                    window.location.reload()
+                  onAuth={async (user) => {
+                    // Hand the signed widget payload to the server; without this
+                    // POST no session exists and the page stays signed out.
+                    setNotice(null)
+                    try {
+                      const res = await api('/api/rematch/app/session', {
+                        method: 'POST',
+                        body: JSON.stringify({ mode: 'telegram', ...user }),
+                      })
+                      if (!res.ok) {
+                        setNotice(
+                          res.data?.error === 'open_bot_first'
+                            ? res.data?.message || 'Open the Telegram bot once first, then sign in here.'
+                            : res.data?.message || res.data?.error || 'Telegram sign-in failed — try again.'
+                        )
+                        return
+                      }
+                      setAuthOpen(false)
+                      window.location.reload()
+                    } catch (e: any) {
+                      setNotice(e?.message || 'Telegram sign-in failed — try again.')
+                    }
                   }}
                   onMissing={() => setNotice('Open the Telegram bot once first, then sign in here.')}
                 />
@@ -989,6 +1008,7 @@ export default function ArenaPage() {
                   Open the bot
                 </a>
                 <WalletLogin intent="login" onAuth={() => window.location.reload()} />
+                {notice ? <p className="rm-err" style={{ margin: '0.25rem 0 0' }}>{notice}</p> : null}
               </div>
             ) : (
               <>
