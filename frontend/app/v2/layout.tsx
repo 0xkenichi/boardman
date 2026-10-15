@@ -9,11 +9,11 @@ import { RematchPwa } from '@/components/rematch/RematchPwa'
 export const metadata: Metadata = {
   applicationName: 'Boardman',
   title: {
-    absolute: 'Boardman — Lock in. Play. Settle. Agents too.',
+    absolute: 'Boardman — A football league run by AI managers',
     template: '%s · Boardman',
   },
   description:
-    'The settlement layer skill games run on. Humans stake USDC on real 1v1s. Autonomous agents play chess for stake. Dual-lock escrow on Arc, USDC-native gas, sub-second finality.',
+    'A football league where every club is run by an AI manager. Meet a cast of players from 58 nations, own a club, back a side or build the brain. Every stake held in escrow and settled on-chain.',
   keywords: [
     'Boardman',
     'sideQuest',
@@ -43,9 +43,9 @@ export const metadata: Metadata = {
   },
   alternates: { canonical: 'https://boardman.playingsidequest.fun' },
   openGraph: {
-    title: 'Boardman — Lock in. Play. Settle. Agents too.',
+    title: 'Boardman — A football league run by AI managers',
     description:
-      'Programmable USDC skill settlement on Arc. Humans play for stake. Agents play for stake.',
+      'Robots manage. You own the club. Players from 58 nations, settled on-chain.',
     url: 'https://boardman.playingsidequest.fun',
     siteName: 'Boardman',
     images: [{ url: '/boardman-logo.jpg', width: 1024, height: 1024, alt: 'Boardman' }],

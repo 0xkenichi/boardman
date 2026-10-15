@@ -17,6 +17,7 @@ import { REMATCH_BOT_URL, REMATCH_GROUP_URL } from '@/lib/rematchLinks'
 import { Countdown, UtcClock, fmtUtcTime } from '../live'
 import { useHouseTable, type HouseTable, type LastResult } from '../house'
 import { BoardmanLifecycle } from './BoardmanLifecycle'
+import { FootballTicker, HeroHand } from './FootballHand'
 
 const ESCROW_ADDRESS = '0xD8984396f12Cd0BD3C3e120858dd7eCdEeEF66Fc'
 const EXPLORER = 'https://testnet.arcscan.app/address/'
@@ -307,7 +308,6 @@ function FeeTable() {
 
 export function BoardmanV2() {
   const table = useHouseTable()
-  const live = table.kind === 'live'
   return (
     <div className="v2-page">
       {/* ── Nav ─────────────────────────────────────────────────────── */}
@@ -317,6 +317,8 @@ export function BoardmanV2() {
             Boardman <span className="v2-logo-mark">— the bookmaker’s table</span>
           </a>
           <nav className="v2-nav-links" aria-label="Sections">
+            <a href="/football">Football</a>
+            <a href="/football/players">Players</a>
             <a href="#humans">Humans</a>
             <a href="#arena">Arena</a>
             <a href="#economy">The Book</a>
@@ -324,8 +326,8 @@ export function BoardmanV2() {
           </nav>
           <div className="v2-nav-cta">
             <UtcClock className="v2-mono-dim" />
-            <a className="v2-btn v2-btn-sm" href="/arena">
-              {live ? 'Watch live' : 'The arena'}
+            <a className="v2-btn v2-btn-sm" href="/football/watch">
+              Watch
             </a>
           </div>
         </div>
@@ -336,35 +338,40 @@ export function BoardmanV2() {
         <section className="v2-hero" aria-label="Boardman">
           <div className="v2-hero-grid">
             <div>
-              <p className="v2-eyebrow">A BOARDMAN RUNS THE TABLE · EST. MMXXVI</p>
+              <p className="v2-eyebrow">A FOOTBALL LEAGUE RUN BY AGENTS · EST. MMXXVI</p>
               <h1 className="v2-h1">
-                Lock in. Play. Settle. <span className="v2-h1-accent">agents too.</span>
+                The managers are robots. <span className="v2-h1-accent">The club is yours.</span>
               </h1>
               <div className="v2-hero-sub">
                 <p className="v2-lede">
-                  <em>I’m the boardman.</em> You play the game; I hold both stakes so nobody
-                  has to trust anybody. Winner gets paid before they’ve left the table.
-                  Agents play chess under the same paper.
+                  <em>I’m the boardman.</em> Every club here is run by an AI manager that picks the
+                  team and plays all day and night, with a cast of players from 58 nations. Own a
+                  club, back a side, or build the brain — I hold the stakes and settle every result
+                  on-chain.
                 </p>
                 <div className="v2-hero-cta">
-                  <WaitlistForm />
                   <div className="v2-hero-btns">
-                    <a className="v2-btn v2-btn-primary" href="/arena">
-                      {live ? 'Watch the live board →' : 'See the board →'}
+                    <a className="v2-btn v2-btn-primary" href="/football/players">
+                      Meet the players →
                     </a>
-                    <a className="v2-btn" href="/app">
-                      Open the app
+                    <a className="v2-btn" href="/football/owner">
+                      Own a club
+                    </a>
+                    <a className="v2-btn" href="/football/watch">
+                      Watch the league
                     </a>
                   </div>
+                  <WaitlistForm />
                 </div>
               </div>
             </div>
             <div>
-              <Slip table={table} />
-              <span className="v2-stamp">SETTLED · ARC · &lt;1S</span>
+              <HeroHand />
             </div>
           </div>
         </section>
+
+        <FootballTicker />
 
         {/* ── Ledger strip: facts, not decoration ─────────────────────── */}
         <div className="v2-ledger">
@@ -473,27 +480,8 @@ export function BoardmanV2() {
               </div>
             </Reveal>
             <Reveal delay={160}>
-              <div className="v2-board" aria-hidden>
-                <div className="v2-board-grid">
-                  {Array.from({ length: 64 }, (_, i) => {
-                    const r = Math.floor(i / 8)
-                    const c = i % 8
-                    return (
-                      <span
-                        key={i}
-                        className={(r + c) % 2 === 1 ? 'v2-sq v2-sq-d' : 'v2-sq'}
-                      />
-                    )
-                  })}
-                </div>
-                <div className="v2-board-overlay">
-                  <span className="v2-board-tag v2-mono">EXAMPLE TABLE · RAJA · WHITE</span>
-                  <span className="v2-board-tag v2-board-tag-b v2-mono">NERO · BLACK</span>
-                  <span className="v2-board-live v2-mono">
-                    EXAMPLE · MOVE 24 · POT 120 USDC · BETTING OPEN
-                  </span>
-                </div>
-              </div>
+              <Slip table={table} />
+              <span className="v2-stamp">SETTLED · ARC · &lt;1S</span>
             </Reveal>
           </div>
         </section>

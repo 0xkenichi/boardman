@@ -1,0 +1,78 @@
+/* Homepage football hero: a hand of Icon cards + the league ticker. */
+
+/* the fanned hand may lean past the column; never let it widen the page */
+.v2-hero { overflow-x: clip; }
+
+.fh-hand {
+  position: relative;
+  height: clamp(360px, 42vw, 470px);
+  max-width: 520px;
+  margin: 0 auto;
+  perspective: 1200px;
+}
+.fh-card {
+  position: absolute;
+  top: 6%;
+  left: 50%;
+  width: clamp(190px, 21vw, 240px);
+  transform-origin: 50% 120%;
+  transition: transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: fh-float 7s ease-in-out infinite;
+}
+/* fanned like a hand of cards; the middle card sits on top */
+.fh-card-0 { transform: translateX(-92%) rotate(-10deg); z-index: 1; animation-delay: -1.2s; }
+.fh-card-1 { transform: translateX(-50%) translateY(-14px); z-index: 3; animation-delay: -3.4s; }
+.fh-card-2 { transform: translateX(-8%) rotate(10deg); z-index: 2; animation-delay: -5.1s; }
+.fh-hand:hover .fh-card-0 { transform: translateX(-100%) rotate(-13deg); }
+.fh-hand:hover .fh-card-2 { transform: translateX(0%) rotate(13deg); }
+.fh-card .pc { box-shadow: 0 1px 0 rgba(32, 31, 26, 0.06), 0 26px 40px -24px rgba(32, 31, 26, 0.6); }
+.fh-ghost { height: 330px; border-radius: 10px; background: #eae5d4; border: 1px solid rgba(32, 31, 26, 0.12); }
+
+/* the hand breathes: each card rises and settles on its own beat */
+@keyframes fh-float {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -6px; }
+}
+
+@media (max-width: 860px) {
+  .fh-hand { height: 330px; margin-top: 28px; }
+  .fh-card { width: 160px; }
+  /* tighter fan so the hand stays inside a phone screen */
+  .fh-card-0 { transform: translateX(-96%) rotate(-8deg); }
+  .fh-card-2 { transform: translateX(-4%) rotate(8deg); }
+  .fh-hand:hover .fh-card-0 { transform: translateX(-100%) rotate(-10deg); }
+  .fh-hand:hover .fh-card-2 { transform: translateX(0%) rotate(10deg); }
+}
+
+/* ticker: the league running past like a tape */
+.fh-ticker {
+  overflow: hidden;
+  border-top: 1px solid rgba(32, 31, 26, 0.16);
+  border-bottom: 1px solid rgba(32, 31, 26, 0.16);
+  background: #201f1a;
+  color: #f2eee2;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+}
+.fh-ticker-track {
+  display: flex;
+  width: max-content;
+  animation: fh-tape 60s linear infinite;
+}
+.fh-ticker:hover .fh-ticker-track { animation-play-state: paused; }
+.fh-ticker-track span {
+  padding: 11px 26px;
+  font-family: 'Space Mono', ui-monospace, Menlo, monospace;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.fh-ticker-track span::before { content: '●'; margin-right: 12px; color: #6fbf8e; font-size: 0.6rem; vertical-align: 2px; }
+@keyframes fh-tape { to { transform: translateX(-50%); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .fh-card { animation: none; transition: none; }
+  .fh-ticker-track { animation: none; flex-wrap: wrap; width: auto; }
+  .fh-ticker-track span[aria-hidden='true'] { display: none; }
+}
