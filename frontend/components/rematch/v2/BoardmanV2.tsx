@@ -615,6 +615,9 @@ export function BoardmanV2() {
             <a href={REMATCH_GROUP_URL} target="_blank" rel="noreferrer">
               community
             </a>
+            <a href="/terms">terms</a>
+            <a href="/privacy">privacy</a>
+            <a href="/data-deletion">delete your data</a>
           </div>
         </div>
       </footer>
