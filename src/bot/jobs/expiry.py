@@ -22,6 +22,23 @@ def _get_supabase():
     return get_supabase()
 
 
+# Abandoned matches whose refund failed and whose players were already told it
+# is pending. The match keeps its status, so every report-job run retries the
+# refund; this set only stops the "pending" message (and the admin alert) from
+# repeating each run. Per process: a restart may send one more "pending" note.
+_REFUND_PENDING_TOLD: set[str] = set()
+
+
+async def _alert_admins(text: str) -> None:
+    """Best-effort ops alert on Telegram (CLAW_ADMIN_TELEGRAM_IDS)."""
+    try:
+        from gaming.src.channels.core.actions.deposit import alert_admins
+
+        await alert_admins(text)
+    except Exception:
+        logger.warning("[Expiry] admin alert failed", exc_info=True)
+
+
 async def expire_challenges() -> int:
     """Flip open challenges past expires_at → expired."""
     sb = _get_supabase()
@@ -107,13 +124,42 @@ async def sweep_stale_creator_locks(*, grace_hours: float | None = None) -> int:
             if current != "creator_locked":
                 continue
 
+            creator_id = row.get("creator_id") or row.get("issuer_id")
+            opponent_id = row.get("opponent_id") or row.get("target_id")
+            stake = row.get("amount_usdc") or row.get("stake_amount") or 0
             try:
                 result = await cancel_match(cid)
             except EscrowError as exc:
                 # Funds may still be locked — leave status alone, retry next sweep.
                 logger.warning("[Expiry] creator_locked refund failed %s: %s", cid, exc)
+                if cid not in _REFUND_PENDING_TOLD:
+                    _REFUND_PENDING_TOLD.add(cid)
+                    try:
+                        from gaming.src.channels.core.match_notices import match_refund_pending
+
+                        await notify_user(
+                            creator_id,
+                            f"⌛ Match {code(cid)} expired — your opponent never locked in.\n"
+                            f"Your refund is <b>pending</b> — the escrow refund didn't go "
+                            f"through yet. We retry automatically and will message you "
+                            f"when your stake is back.",
+                            notice=match_refund_pending(
+                                {"id": cid, **row},
+                                reason="cancelled: your opponent never locked in",
+                                amount=stake,
+                            ),
+                        )
+                    except Exception:
+                        logger.exception("[Expiry] creator_locked pending notify failed %s", cid)
+                    await _alert_admins(
+                        f"⚠️ Refund failed for expired creator_locked match {cid} "
+                        f"(${stake}): {exc}\n"
+                        f"The stake may still be in escrow. The sweep retries every run; "
+                        f"the creator was told the refund is pending."
+                    )
                 continue
 
+            _REFUND_PENDING_TOLD.discard(cid)
             sb.schema("gaming").table("challenges").update({"status": "cancelled"}).eq(
                 "id", cid
             ).execute()
@@ -124,12 +170,9 @@ async def sweep_stale_creator_locks(*, grace_hours: float | None = None) -> int:
                 f"Your stake was refunded automatically."
                 + (f"\nTx: {result.get('tx_hash')}" if result.get("tx_hash") else "")
             )
-            creator_id = row.get("creator_id") or row.get("issuer_id")
-            opponent_id = row.get("opponent_id") or row.get("target_id")
             try:
                 from gaming.src.channels.core.match_notices import match_refunded
 
-                stake = row.get("amount_usdc") or row.get("stake_amount") or 0
                 await notify_user(
                     creator_id,
                     msg,
@@ -178,6 +221,9 @@ async def nudge_and_timeout_reports() -> dict:
     • No-show: reporter has proof + silent past NO_SHOW_HOURS → settle for
       winner from proof (AI), so losers can't dodge by not reporting.
     • Abandon: nobody reported (or no proof) past REPORT_TIMEOUT_HOURS → refund.
+      Players hear "refunded" only after cancel_match succeeds. If it fails,
+      they are told the refund is pending, admins are alerted, and the match
+      keeps its status so the next run retries.
     """
     from gaming.src.backend.services.match_report import (
         abandon_due,
@@ -227,30 +273,61 @@ async def nudge_and_timeout_reports() -> dict:
                     EscrowError,
                     cancel_match,
                 )
+                from gaming.src.channels.core.match_notices import (
+                    match_refund_pending,
+                    match_refunded,
+                )
+
+                reason = "abandoned (no valid reports)"
+                stake = ch.get("amount_usdc") or 0
+                players = [ch["creator_id"]] + ([ch["opponent_id"]] if ch.get("opponent_id") else [])
 
                 if ch.get("creator_lock_tx_id") or ch.get("opponent_lock_tx_id"):
                     try:
-                        await cancel_match(cid)
+                        await cancel_match(cid)  # flips the row to cancelled on success
                     except EscrowError as exc:
-                        logger.warning("[ReportJob] cancel failed %s: %s", cid, exc)
-                        _get_supabase().schema("gaming").table("challenges").update(
-                            {"status": "cancelled"}
-                        ).eq("id", cid).execute()
+                        # The stakes may still be in escrow. Leave the status
+                        # alone: the match stays abandon_due, so the next run
+                        # retries the refund. (Marking it cancelled here would
+                        # strand the money: cancel_match refuses a cancelled row.)
+                        logger.warning("[ReportJob] refund failed %s, will retry: %s", cid, exc)
+                        if cid not in _REFUND_PENDING_TOLD:
+                            _REFUND_PENDING_TOLD.add(cid)
+                            msg = (
+                                f"⌛ Match {code(cid)} abandoned (no valid reports).\n"
+                                f"Your refund is <b>pending</b> — the escrow refund didn't go "
+                                f"through yet. We retry automatically and will message you "
+                                f"when your stake is back.\n{analysis['reason']}"
+                            )
+                            notice = match_refund_pending(ch, reason=reason, amount=stake)
+                            for uid in players:
+                                await notify_user(uid, msg, notice=notice)
+                            await _alert_admins(
+                                f"⚠️ Refund failed for abandoned match {cid} "
+                                f"(${stake} a side): {exc}\n"
+                                f"Stakes may still be in escrow. The report job retries "
+                                f"every run; players were told the refund is pending."
+                            )
+                        continue
+                    _REFUND_PENDING_TOLD.discard(cid)
+                    msg = (
+                        f"⌛ Match {code(cid)} abandoned (no valid reports).\n"
+                        f"Stakes refunded.\n{analysis['reason']}"
+                    )
+                    notice = match_refunded(ch, reason=reason, amount=stake)
                 else:
+                    # Nothing was locked in escrow, so there is nothing to refund.
                     _get_supabase().schema("gaming").table("challenges").update(
                         {"status": "cancelled"}
                     ).eq("id", cid).execute()
+                    msg = (
+                        f"⌛ Match {code(cid)} abandoned (no valid reports).\n"
+                        f"No stake was locked in escrow, so no money moved.\n{analysis['reason']}"
+                    )
+                    notice = None
 
-                msg = (
-                    f"⌛ Match {code(cid)} abandoned (no valid reports).\n"
-                    f"Stakes refunded.\n{analysis['reason']}"
-                )
-                from gaming.src.channels.core.match_notices import match_refunded
-
-                notice = match_refunded(ch, reason="abandoned (no valid reports)", amount=ch.get("amount_usdc") or 0)
-                await notify_user(ch["creator_id"], msg, notice=notice)
-                if ch.get("opponent_id"):
-                    await notify_user(ch["opponent_id"], msg, notice=notice)
+                for uid in players:
+                    await notify_user(uid, msg, notice=notice)
                 abandoned += 1
             except Exception:
                 logger.exception("[ReportJob] abandon failed %s", cid)

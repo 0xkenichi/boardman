@@ -12,7 +12,7 @@ import {
 import '../portal.css'
 
 export const metadata: Metadata = {
-  title: 'Roadmap · Robot football',
+  title: 'Roadmap · AI football league',
   description:
     'The live status board of the AFM master plan: what is done, what needs work, what is a must, and what is an add-on — engine, agent tools, broadcast, voice and rails.',
   robots: { index: false, follow: false },

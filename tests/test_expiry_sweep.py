@@ -169,11 +169,32 @@ async def test_sweep_leaves_status_when_refund_fails(env):
     env["sb"] = _MockSB([_expired_row("c3")])
     env["cancel_error"] = EscrowError("resolver wallet not configured")
 
-    swept = await sweep_stale_creator_locks()
+    alerts: list[str] = []
+
+    async def _alert(text):
+        alerts.append(text)
+
+    import gaming.src.bot.jobs.expiry as expiry
+
+    expiry._REFUND_PENDING_TOLD.discard("c3")
+    original_alert = expiry._alert_admins
+    expiry._alert_admins = _alert
+    try:
+        swept = await sweep_stale_creator_locks()
+        # A second failed sweep retries the refund but repeats no message
+        await sweep_stale_creator_locks()
+    finally:
+        expiry._alert_admins = original_alert
+        expiry._REFUND_PENDING_TOLD.discard("c3")
 
     assert swept == 0
     assert env["sb"].updates == []  # status stays creator_locked → retried
-    assert env["notify"] == []
+    assert env["cancel_calls"] == ["c3", "c3"]
+    # The creator hears "pending", never "refunded", and only once
+    assert [uid for uid, _ in env["notify"]] == ["creator_1"]
+    text = env["notify"][0][1]
+    assert "pending" in text and "refunded" not in text
+    assert len(alerts) == 1 and "c3" in alerts[0]
 
 
 @pytest.mark.asyncio

@@ -162,6 +162,22 @@ def _load_challenge(challenge_id: str) -> dict:
     return normalize_challenge(result.data)
 
 
+def settlement_split(stake_per_player: Decimal) -> tuple[Decimal, Decimal, Decimal]:
+    """(pot, platform_fee, winner_payout) for a two-player match.
+
+    The fee is the tier BoardmanEscrow._platformFee applies at resolve, keyed
+    on the per-player stake: $0.50 flat per player under $5, 7% of the pot
+    from $5 to $500, 10% above. Mirrors the contract through
+    ``platform_fee_for_pot`` so audit rows and player messages match what the
+    chain actually paid.
+    """
+    from gaming.src.stack.agentic.economy.fees import platform_fee_for_pot
+
+    pot = Decimal(str(stake_per_player)) * Decimal("2")
+    fee = platform_fee_for_pot(pot)
+    return pot, fee, pot - fee
+
+
 def _record_audit(
     challenge_id: str,
     profile_id: Optional[str],
@@ -572,7 +588,7 @@ async def approve_and_join_match(
 
 
 async def resolve_match(challenge_id: str, winner_address: str) -> dict:
-    """Resolver wallet pays the winner (minus 7% fee) on the challenge chain."""
+    """Resolver wallet pays the winner (minus the tiered fee) on the challenge chain."""
     challenge = _load_challenge(challenge_id)
     chain_id = _challenge_chain(challenge)
     _require_escrow(chain_id)
@@ -617,8 +633,7 @@ async def resolve_match(challenge_id: str, winner_address: str) -> dict:
             )
             winner_id = challenge.get("winner_id")
             amount = Decimal(str(challenge["amount_usdc"]))
-            payout = amount * Decimal("2") * Decimal("0.93")
-            fee = amount * Decimal("2") * Decimal("0.07")
+            pot, fee, payout = settlement_split(amount)
             tx_hash = str(st.get("resolved_tx_hash") or "")
             if not _find_existing_audit(challenge_id, "payout"):
                 _record_audit(
@@ -629,7 +644,12 @@ async def resolve_match(challenge_id: str, winner_address: str) -> dict:
                     idempotency_key=f"resolve-{challenge_id}",
                     tx_hash=tx_hash,
                     status="confirmed",
-                    metadata={"fee_usdc": float(fee), "recovered": True, "chain": chain_id},
+                    metadata={
+                        "fee_usdc": float(fee),
+                        "total_pot_usdc": float(pot),
+                        "recovered": True,
+                        "chain": chain_id,
+                    },
                 )
             if not _find_existing_audit(challenge_id, "fee"):
                 _record_audit(
@@ -659,8 +679,7 @@ async def resolve_match(challenge_id: str, winner_address: str) -> dict:
 
         winner_id = challenge.get("winner_id")
         amount = Decimal(str(challenge["amount_usdc"]))
-        payout = amount * Decimal("2") * Decimal("0.93")
-        fee = amount * Decimal("2") * Decimal("0.07")
+        pot, fee, payout = settlement_split(amount)
 
         gas_used = result.get("gas_used")
         _record_audit(
@@ -674,7 +693,7 @@ async def resolve_match(challenge_id: str, winner_address: str) -> dict:
             status="confirmed",
             metadata={
                 "fee_usdc": float(fee),
-                "total_pot_usdc": float(amount * 2),
+                "total_pot_usdc": float(pot),
                 "chain": chain_id,
                 "gas_used": gas_used,
                 "block": result.get("block"),

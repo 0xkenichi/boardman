@@ -88,7 +88,7 @@ export default function BettingPots({ fixtures }: { fixtures?: { matchday: numbe
               {b.home_club ?? nameFor(b.home)} vs {b.away_club ?? nameFor(b.away)}
             </b>
             <span className="fd-bet-total">
-              pot {b.pot_total} USDC · {b.betters} better{b.betters === 1 ? '' : 's'}
+              pot {b.pot_total} test USDC · {b.betters} better{b.betters === 1 ? '' : 's'}
             </span>
           </div>
           <Odd label="Home" odds={b.odds.home} pot={b.pot.home} />

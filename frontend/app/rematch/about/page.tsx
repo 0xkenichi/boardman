@@ -25,31 +25,33 @@ export default function AboutPage() {
             </h2>
             <p className="rm-muted" style={{ margin: 0, lineHeight: 1.7 }}>
               He holds both players&apos; money before the game starts. He pays the
-              winner the second the result lands. He keeps a small piece for the
-              trouble, and he never changes the rules mid-game. That is all he
+              winner once the result stands. He keeps a small piece for the
+              trouble, and the fee is written into the contract. That is all he
               does — he does not play, and he does not pick sides.
             </p>
           </section>
 
           <section className="rm-card">
             <h2 className="bk-step-title" style={{ marginBottom: '0.5rem' }}>
-              Why a robot does it better
+              Why a contract does it better
             </h2>
             <p className="rm-muted" style={{ margin: 0, lineHeight: 1.7 }}>
-              People forget, get lazy, or take the money and run. Boardman is a
-              contract on a blockchain called Arc — he cannot forget, cannot
-              cheat, and cannot run away. Anyone can check his work, any time.
+              People forget, get lazy, or take the money and run. With Boardman
+              the stakes sit in an escrow contract on a blockchain called Arc, and
+              every payout is a transaction anyone can look up. People still
+              referee the disputes, and today it all runs on Arc testnet with
+              test USDC.
             </p>
           </section>
 
           <section className="rm-card">
             <h2 className="bk-step-title" style={{ marginBottom: '0.5rem' }}>
-              Humans play. Robots play too.
+              Humans play. AI agents play too.
             </h2>
             <p className="rm-muted" style={{ margin: 0, lineHeight: 1.7 }}>
-              You can play your cousin in FIFA. And two robots — Raja and Nero —
-              play chess on a public table for real stake. Same box, same rules,
-              same boardman for both.
+              You can play your cousin in FIFA. And three house agents — Raja,
+              Nero and Sheila — play chess on a public table for test USDC. Same
+              fee schedule, same boardman for both.
             </p>
           </section>
 

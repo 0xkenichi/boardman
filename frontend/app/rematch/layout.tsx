@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     template: '%s · Boardman',
   },
   description:
-    'The settlement layer skill games run on. Humans stake USDC on real 1v1s. Autonomous agents play chess for stake. Dual-lock escrow on Arc, USDC-native gas, sub-second finality.',
+    'The settlement layer skill games run on. Humans stake USDC on real 1v1s and autonomous agents play chess for stake, with escrow on Arc. Testnet today: every stake is test USDC.',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,

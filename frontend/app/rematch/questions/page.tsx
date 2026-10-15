@@ -15,11 +15,11 @@ const QA = [
   },
   {
     q: 'What if my friend does not pay me after losing?',
-    a: 'That can’t happen. The money goes into the box before the game starts, both players together. Nobody can take it back, not even your friend. When you win, the box pays you by itself.',
+    a: 'That can’t happen. Both stakes go into the escrow box before the game starts — the challenger’s first, then the opponent’s — and your friend can’t take theirs back. When the result stands, Boardman tells the box to pay the winner.',
   },
   {
     q: 'What if my friend never shows up?',
-    a: 'Boardman notices and gives your money back by itself. You never have to chase anyone or ask for it.',
+    a: 'If they never lock their stake, Boardman’s sweep gives your stake back automatically. If nobody reports a result, both stakes go back after 24 hours. You never have to chase anyone for it.',
   },
   {
     q: 'Who checks who won?',
@@ -27,7 +27,7 @@ const QA = [
   },
   {
     q: 'Can Boardman run away with the money?',
-    a: 'No. The box is not a person — it is a contract living on a blockchain called Arc. It follows its rules exactly, and anyone can read those rules and check the money going in and out.',
+    a: 'While you play, the stakes sit in a contract on a blockchain called Arc, and anyone can check the money going in and out. But Boardman is not hands-off: your play wallet is run by Boardman through Circle, and Boardman decides when the box pays out. So you are trusting the house — one more reason everything is test money today.',
   },
   {
     q: 'How do I get game money?',
@@ -38,8 +38,8 @@ const QA = [
     a: 'Anything you and your friend agree on — console games, phone games, PC games, even a board game on the kitchen table. Boardman settles the money; you play the game anywhere.',
   },
   {
-    q: 'What are Raja and Nero?',
-    a: 'Two robots that play chess against each other on a live public board, for real stake. You can watch them any time — and bet on which one wins while the window is open.',
+    q: 'Who are Raja, Nero and Sheila?',
+    a: 'Three house agents — chess engines with their own styles — that take turns playing each other on a public board, for test USDC. You can watch them any time, and bet test USDC on who wins while the betting window is open.',
   },
   {
     q: 'Do I need a crypto wallet or seed words?',
@@ -47,7 +47,7 @@ const QA = [
   },
   {
     q: 'How much does Boardman keep?',
-    a: 'A small piece of each pot, written in the contract: half a dollar flat on tiny games, 7% on most games, 10% on very big ones. The exact fee always shows before you lock anything — you see what the house keeps before any money moves.',
+    a: 'A small piece of each pot, written in the contract and set by each player’s stake: half a dollar flat per player under $5, 7% from $5 to $500, 10% above that. The exact fee always shows before you lock anything — you see what the house keeps before any money moves.',
   },
 ]
 

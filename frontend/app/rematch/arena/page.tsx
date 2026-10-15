@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * /arena — the live robot chess table, rebuilt as a React page in the book.
+ * /arena — the live AI-agent chess table, rebuilt as a React page in the book.
  * Replaced the retired public/agentic/arena.html. Polls /api/agentic/house-play (which
  * proxies the Stack house floor) every ~10s while the tab is visible, backing
  * off when the house does not answer; renders moves via chess.js, and posts
@@ -229,7 +229,7 @@ function outcomeText(match: Match): { head: string; why: string } {
 
 function StatusLine({ match, loading }: { match: Match | null; loading: boolean }) {
   if (!match && loading) return <p className="ar-note">Asking the house what’s on the board…</p>
-  if (!match) return <p className="ar-note">The table is quiet. Check back soon — the robots play often.</p>
+  if (!match) return <p className="ar-note">The table is quiet. Check back soon — the house agents play often.</p>
   const status = String(match.status || '')
   const settled = status === 'settled' || Boolean(match.result)
   if (settled) {
@@ -724,8 +724,10 @@ export default function ArenaPage() {
     <BookShell title="The chess table">
       <div style={{ maxWidth: '46rem', margin: '0 auto', padding: '0 1rem 3.5rem' }}>
         <p className="bk-lede" style={{ margin: '0 0 1.5rem' }}>
-          Two house robots, three minds, two different engines. Real clocks,
-          real stake, and the winner gets paid by the box — no person needed.{' '}
+          Three house agents — Raja, Nero and Sheila — each a chess engine with
+          its own style: Raja and Nero run Stockfish, Sheila runs Ethereal. They
+          take turns at the table on real clocks, playing for test USDC on Arc
+          testnet, and the house pays the winner when the game ends.{' '}
           <em>Leaving this page does not pause the game.</em>
         </p>
         <NextTableLine schedule={schedule} match={match} settled={settled} />
@@ -735,7 +737,7 @@ export default function ArenaPage() {
           <div className="rm-card rm-card-hero ar-offline" role="status">
             <span className="bk-stamp">HOUSE OFFLINE</span>
             <p className="ar-note">
-              <strong>The house is offline — back soon.</strong> The robots’ table runs on
+              <strong>The house is offline — back soon.</strong> The agents’ table runs on
               the house server and it isn’t answering right now. This page keeps checking
               on its own; no bets are taken while the house is down.
             </p>
@@ -914,8 +916,8 @@ export default function ArenaPage() {
                       {ticket.outcome === 'win'
                         ? `Your ticket hit — $${(ticket.payout ?? 0).toFixed(2)} is on the play wallet.`
                         : ticket.outcome === 'refund'
-                          ? 'The table drew — your stake is back on the play wallet.'
-                          : 'Your side didn\'t hit this time. The next table seats in about an hour.'}
+                          ? 'Nobody backed the result, or the table was called off — your stake is back on the play wallet.'
+                          : 'Your side didn\'t hit this time. The line at the top says when the next table seats.'}
                     </p>
                   </div>
                 ) : ticket?.state === 'pending' ? (
@@ -967,8 +969,9 @@ export default function ArenaPage() {
                   </p>
                 ) : null}
                 <p className="rm-muted" style={{ fontSize: '0.75rem', margin: '0.75rem 0 0' }}>
-                  Bets close while the game is young. If it ends in a draw,
-                  draw tickets win the pool — side bets on either robot lose.
+                  Bets are test USDC and close after the opening (12 moves each).
+                  If it ends in a draw, draw tickets win the pool — side bets on
+                  either agent lose.
                 </p>
                 {notice ? <p className="rm-ok" style={{ margin: '0.75rem 0 0' }}>{notice}</p> : null}
               </>
@@ -991,7 +994,7 @@ export default function ArenaPage() {
               <>
                 <p className="rm-muted" style={{ margin: '0 0 0.9rem' }}>
                   Sign in with Telegram to place a bet. Same account as the bot —
-                  same money.
+                  same play wallet.
                 </p>
                 <button type="button" className="rm-btn rm-btn-primary" onClick={() => setAuthOpen(true)}>
                   Sign in to bet
@@ -1048,7 +1051,7 @@ export default function ArenaPage() {
                         <span className="ar-pk-label">Pot</span>
                         <strong className="ar-pk">
                           ${Number(match.spectator_book.totals.a ?? 0) + Number(match.spectator_book.totals.b ?? 0) + Number(match.spectator_book.totals.draw ?? 0)}
-                          <span className="ar-pk-sub">dec / 5% off</span>
+                          <span className="ar-pk-sub">test USDC · before fees</span>
                         </strong>
                       </div>
                       <div>

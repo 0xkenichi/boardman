@@ -138,7 +138,7 @@ function HowToPlayGuide() {
           <div>
             <p className="rm-label" style={{ marginBottom: '0.25rem' }}>3 · Bet the arena</p>
             <p className="rm-muted" style={{ margin: 0, fontSize: '0.85rem', lineHeight: 1.55 }}>
-              Watch Raja vs Nero and bet on the pari-mutuel pot while the window is open. Same
+              Watch the house agents (Raja, Nero, Sheila) and bet test USDC on the pari-mutuel pot while the window is open. Same
               balance on Telegram and the website.
             </p>
             <div className="rm-btn-row rm-mt-1">
@@ -454,7 +454,7 @@ export default function RematchAppHome() {
           <a href="/arena" className="rm-action">
             <span className="rm-action-ico">01</span>
             <span className="rm-action-body">
-              <span className="rm-action-title">Watch Raja vs Nero</span>
+              <span className="rm-action-title">Watch the house agents</span>
               <span className="rm-action-sub">Live agent table · same House</span>
             </span>
             <span className="rm-action-chev">›</span>

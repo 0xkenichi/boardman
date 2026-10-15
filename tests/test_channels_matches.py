@@ -637,3 +637,89 @@ def test_telegram_report_photo_is_stored_not_a_file_id(mworld):
     assert ref.startswith("evidence://local/telegram/") and mime == "image/jpeg"
     assert read_evidence(ref)[0] == b"\xff\xd8\xffjpeg-final-screen"
     bot.get_file.assert_awaited_with("AgACbig")
+
+
+# ── abandoned matches: "refunded" only after the refund lands ────────────────
+
+
+def _abandoned_match(world, cid, creator, opponent):
+    """A locked match nobody reported on, past the 24 h report timeout."""
+    from datetime import datetime, timedelta, timezone
+
+    old = (datetime.now(timezone.utc) - timedelta(hours=30)).isoformat()
+    row = {"id": cid, "issuer_id": creator["id"], "target_id": opponent["id"],
+           "stake_amount": 5, "game_type": "mobile.fc_mobile", "status": "playing",
+           "theme": "private", "creator_lock_tx_id": "tx-c", "opponent_lock_tx_id": "tx-o",
+           "created_at": old, "updated_at": old}
+    world.sb.tables.setdefault("challenges", []).append(row)
+    return row
+
+
+def _tg_texts(world, chat_id):
+    return [c.kwargs["text"] for c in world.bot.send_message.call_args_list
+            if c.kwargs.get("chat_id") == chat_id]
+
+
+def test_abandon_refund_success_says_refunded_on_both_paths(mworld):
+    from gaming.src.bot.jobs.expiry import nudge_and_timeout_reports
+
+    world = mworld
+    ada = wa_player(world, ADA, "ada", in_window=True)  # core notify path
+    tobi = tg_player(world, 5101, "tobi")  # legacy Telegram DM
+    cid = "33333333-2222-3333-4444-555555555555"
+    _abandoned_match(world, cid, ada, tobi)
+
+    assert run(nudge_and_timeout_reports())["abandoned"] == 1
+
+    assert ("cancel", cid) in world.escrow
+    assert world.sb.challenge(cid)["status"] == "cancelled"
+    wa_body = world.wa_dv.session[-1][1][0].body
+    assert "went back to your balance" in wa_body and "pending" not in wa_body
+    tg = _tg_texts(world, 5101)
+    assert len(tg) == 1 and "Stakes refunded" in tg[0]
+    assert world.admin_alerts == []
+
+
+def test_abandon_refund_failure_says_pending_alerts_admins_and_retries(mworld, monkeypatch):
+    from gaming.src.backend.services import clawstation_escrow
+    from gaming.src.backend.services.clawstation_escrow import EscrowError
+    from gaming.src.bot.jobs.expiry import nudge_and_timeout_reports
+
+    world = mworld
+    ada = wa_player(world, ADA, "ada", in_window=True)
+    tobi = tg_player(world, 5102, "tobi")
+    cid = "44444444-2222-3333-4444-555555555555"
+    _abandoned_match(world, cid, ada, tobi)
+
+    attempts: list[str] = []
+    succeed_cancel = clawstation_escrow.cancel_match  # the mworld fake
+
+    async def failing_cancel(c):
+        attempts.append(c)
+        raise EscrowError("resolver out of gas")
+
+    monkeypatch.setattr(clawstation_escrow, "cancel_match", failing_cancel)
+
+    assert run(nudge_and_timeout_reports())["abandoned"] == 0
+    # Funds may still be in escrow: the match keeps its status, so it is retried
+    assert world.sb.challenge(cid)["status"] == "playing"
+    wa_body = world.wa_dv.session[-1][1][0].body
+    assert "pending" in wa_body and "went back" not in wa_body
+    tg = _tg_texts(world, 5102)
+    assert len(tg) == 1 and "pending" in tg[0] and "refunded" not in tg[0]
+    assert len(world.admin_alerts) == 1 and cid in world.admin_alerts[0]
+
+    # The next run retries the refund but does not repeat the pending notes
+    wa_sent = len(world.wa_dv.session)
+    run(nudge_and_timeout_reports())
+    assert attempts == [cid, cid]
+    assert len(world.wa_dv.session) == wa_sent and len(_tg_texts(world, 5102)) == 1
+    assert len(world.admin_alerts) == 1
+
+    # Once the refund lands, players hear "refunded"
+    monkeypatch.setattr(clawstation_escrow, "cancel_match", succeed_cancel)
+    assert run(nudge_and_timeout_reports())["abandoned"] == 1
+    assert world.sb.challenge(cid)["status"] == "cancelled"
+    assert "went back to your balance" in world.wa_dv.session[-1][1][0].body
+    tg = _tg_texts(world, 5102)
+    assert len(tg) == 2 and "Stakes refunded" in tg[-1]

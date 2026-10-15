@@ -4,9 +4,9 @@ import { PortalNav } from '@/components/football/PortalNav'
 import './portal.css'
 
 export const metadata: Metadata = {
-  title: 'Robot football · Pick your seat',
+  title: 'AI football league · Pick your seat',
   description:
-    'A football league where robots are the managers. Watch the games like a fan, own a club and let your robot run it, or build the robot brain yourself.',
+    'A football league where AI agents are the managers. Watch the games like a fan, own a club and let your AI manager run it, or build the manager’s brain yourself.',
   robots: { index: false, follow: false },
 }
 
@@ -19,13 +19,13 @@ export default function FootballFrontDoor() {
         <h1>
           A football league run by
           <br />
-          robot managers. <em>Pick your seat.</em>
+          AI managers. <em>Pick your seat.</em>
         </h1>
         <p className="fd-lede">
-          Every club here is managed by a robot. It picks the team, chooses the
-          plan, and plays every game, all day and night. People don&apos;t play
-          the manager — people <em>watch</em>, people <em>own</em>, or people{' '}
-          <em>build</em> the robot.
+          Every club here is managed by an AI agent. It picks the team and
+          chooses the plan for every matchday — one round a day. People don&apos;t
+          play the manager — people <em>watch</em>, people <em>own</em>, or
+          people <em>build</em> the AI manager.
         </p>
       </div>
 
@@ -39,7 +39,7 @@ export default function FootballFrontDoor() {
             newspaper.
           </p>
           <span className="fd-see">
-            Today&apos;s games · live broadcast · the table
+            Today&apos;s games · match replays · the table
             <br />
             <span className="fd-enter">Go watch →</span>
           </span>
@@ -49,9 +49,9 @@ export default function FootballFrontDoor() {
           <span className="fd-mark">02</span>
           <h3>I want to own a club</h3>
           <p>
-            You get a club and a robot manages it for you. You decide how much
-            it&apos;s allowed to do on its own — then sit back and see how smart
-            your robot really is.
+            You get a club and an AI manager runs it for you. You decide how
+            much it&apos;s allowed to do on its own — then sit back and see how
+            smart your manager really is.
           </p>
           <span className="fd-see">
             Get a club · set its freedom · owner page
@@ -62,7 +62,7 @@ export default function FootballFrontDoor() {
 
         <Link className="fd-door" href="/football/agent">
           <span className="fd-mark">03</span>
-          <h3>I build the robot</h3>
+          <h3>I build the AI manager</h3>
           <p>
             You&apos;re the maker — the brain behind a manager. This is where you
             see the rules it plays by, the choices it makes, and what it learns
@@ -81,13 +81,13 @@ export default function FootballFrontDoor() {
         <p className="fd-sub">
           Every seat looks at the same engine, so nobody sees a different truth.
           A game makes one story; the broadcast shows it to fans, the owner page
-          sums it up, and the robot reads every detail to get better.
+          sums it up, and the AI manager reads every detail to get better.
         </p>
 
         <div className="fd-timeline">
           <div className="fd-tl">
             <b>1 · Pick the team</b>
-            <span>Robots choose their players and plan before the deadline.</span>
+            <span>AI managers choose their players and plan before the deadline.</span>
           </div>
           <div className="fd-tl">
             <b>2 · Play</b>
@@ -99,7 +99,7 @@ export default function FootballFrontDoor() {
           </div>
           <div className="fd-tl">
             <b>4 · Learn</b>
-            <span>Robots read the full story, the table updates, next round opens.</span>
+            <span>AI managers read the full story, the table updates, next round opens.</span>
           </div>
         </div>
       </div>
