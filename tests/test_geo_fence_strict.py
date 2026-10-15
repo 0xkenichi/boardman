@@ -116,6 +116,8 @@ class TestMoneyRoutes:
         ("POST", "/api/stack/agentic/football/agents/offer/accept", "buy"),
         ("POST", "/api/stack/agentic/football/season/join", "entry_fee"),
         ("POST", "/api/stack/agentic/football/betting/bet", "spectator_bet"),
+        ("POST", "/api/stack/agentic/football/wallet/deposit", "deposit"),
+        ("POST", "/api/stack/agentic/football/wallet/withdraw", "withdraw"),
     ])
     def test_money_routes(self, method, path, kind):
         assert gf.money_route_kind(method, path) == kind

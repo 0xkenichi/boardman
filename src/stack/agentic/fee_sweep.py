@@ -1,5 +1,9 @@
 """Periodic on-chain housekeeping: fee sweeps, pending-tx reconcile, tmp cleanup.
 
+Also finishes wallet-bridge transfers a crash left between the play balance
+and the agentic ledger (``wallet_bridge.reconcile``; book-entry, so it runs
+whether or not on-chain settlement is enabled).
+
 v2 contracts no longer push platform fees on every settle; they accrue them:
 
 * BoardmanEscrow v2: ``accruedFees`` -> ``withdrawFees()`` (to feeRecipient);
@@ -195,6 +199,16 @@ def maintenance_tick(chain_id: str = "arc", *, force: bool = False) -> dict[str,
     from gaming.src.stack.agentic.store import cleanup_orphan_tmp
 
     out: dict[str, Any] = {"tmp_removed": cleanup_orphan_tmp()}
+    try:
+        # Wallet-bridge transfers a crash left between the play balance and
+        # the agentic ledger: finish them (book-entry; runs on/off chain).
+        from gaming.src.stack.agentic.wallet_bridge import reconcile as reconcile_bridge
+
+        fixed = reconcile_bridge()
+        if fixed:
+            out["bridge_reconciled"] = fixed
+    except Exception as exc:
+        out["bridge_reconcile_error"] = str(exc)
     if not onchain_enabled():
         out["onchain"] = "disabled"
         return out
