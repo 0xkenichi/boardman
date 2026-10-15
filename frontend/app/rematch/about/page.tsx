@@ -33,7 +33,7 @@ export default function AboutPage() {
 
           <section className="rm-card">
             <h2 className="bk-step-title" style={{ marginBottom: '0.5rem' }}>
-              Why a robot does it better
+              Why a contract does it better
             </h2>
             <p className="rm-muted" style={{ margin: 0, lineHeight: 1.7 }}>
               People forget, get lazy, or take the money and run. With Boardman
@@ -46,7 +46,7 @@ export default function AboutPage() {
 
           <section className="rm-card">
             <h2 className="bk-step-title" style={{ marginBottom: '0.5rem' }}>
-              Humans play. Robots play too.
+              Humans play. AI agents play too.
             </h2>
             <p className="rm-muted" style={{ margin: 0, lineHeight: 1.7 }}>
               You can play your cousin in FIFA. And three house agents — Raja,

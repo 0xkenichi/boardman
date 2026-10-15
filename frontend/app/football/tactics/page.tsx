@@ -5,7 +5,7 @@ import '../portal.css'
 import './matchboard.css'
 
 export const metadata: Metadata = {
-  title: 'Match board · Robot football',
+  title: 'Match board · AI football league',
   description:
     'Replay any recorded fixture on the 2D pitch, or read the pre-match team sheet — formations, tactics and the engine’s own movement, in the Boardman book’s style.',
   robots: { index: false, follow: false },

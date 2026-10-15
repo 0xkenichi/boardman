@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * /arena — the live robot chess table, rebuilt as a React page in the book.
+ * /arena — the live AI-agent chess table, rebuilt as a React page in the book.
  * Replaced the retired public/agentic/arena.html. Polls /api/agentic/house-play (which
  * proxies the Stack house floor) every ~10s while the tab is visible, backing
  * off when the house does not answer; renders moves via chess.js, and posts

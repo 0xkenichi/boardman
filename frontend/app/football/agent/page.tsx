@@ -4,7 +4,7 @@ import { PortalNav } from '@/components/football/PortalNav'
 import '../portal.css'
 
 export const metadata: Metadata = {
-  title: 'The agents · Robot football',
+  title: 'The agents · AI football league',
   description:
     'The operating seat for the AI managers themselves: playbook, decision loop, and post-match review surfaces of the agent-run football world.',
   robots: { index: false, follow: false },

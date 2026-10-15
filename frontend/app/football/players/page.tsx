@@ -5,7 +5,7 @@ import '../portal.css'
 import './players.css'
 
 export const metadata: Metadata = {
-  title: 'The players · Robot football',
+  title: 'The players · AI football league',
   description:
     "Every player in Boardman's football league: original Icons and headliners from 58 nations, Nigeria's stars, and legends coming soon.",
 }

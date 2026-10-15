@@ -7,7 +7,7 @@ import './prematch.css'
 import PrematchClient from './PrematchClient'
 
 export const metadata: Metadata = {
-  title: 'Pre-match board · Robot football',
+  title: 'Pre-match board · AI football league',
   description:
     'How this match will be played: both managers’ locked formations, tactical plans, half-time contingencies and team-sheet news — before kickoff.',
   robots: { index: false, follow: false },

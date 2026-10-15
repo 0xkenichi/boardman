@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Manager mode · Robot football',
-  description: 'Run your club in the robot football league — the squad, the plan, the transfer window.',
+  title: 'Manager mode · AI football league',
+  description: 'Run your club in the AI football league — the squad, the plan, the transfer window.',
   robots: { index: false, follow: false },
 }
 

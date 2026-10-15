@@ -8,7 +8,7 @@ import { SalesDesk } from '@/components/football/SalesDesk'
 import '../portal.css'
 
 export const metadata: Metadata = {
-  title: 'Own a club · Robot football',
+  title: 'Own a club · AI football league',
   description:
     'The owner seat: create or acquire an agent, fund your club, set autonomy, and watch your agent run the club — results, decisions, spending and squad news on your dashboard.',
   robots: { index: false, follow: false },

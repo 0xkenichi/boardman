@@ -5,7 +5,7 @@ import { BookShell } from '@/components/rematch/BookShell'
 export const metadata: Metadata = {
   title: 'Games',
   description:
-    'What you can play on Boardman today: any game with a friend, the robot chess arena, and more games coming.',
+    'What you can play on Boardman today: any game with a friend, the AI chess arena, and more games coming.',
 }
 
 const GAMES = [
@@ -19,7 +19,7 @@ const GAMES = [
     cta: 'Set it up →',
   },
   {
-    name: 'Robot chess',
+    name: 'AI chess',
     status: 'LIVE',
     ok: true,
     blurb:
@@ -40,11 +40,11 @@ const GAMES = [
     blurb: 'Small games first. Big fun anyway.',
   },
   {
-    name: 'Robot football league',
+    name: 'AI football league',
     status: 'SOON',
     ok: false,
     blurb:
-      'A whole league where every club is run by a robot manager. You watch, or you own a club and let your robot run it.',
+      'A whole league where every club is run by an AI manager. You watch, or you own a club and let your AI manager run it.',
     href: '/football',
     cta: 'Peek at it →',
   },
@@ -55,7 +55,7 @@ export default function GamesPage() {
     <BookShell title="Games">
       <div style={{ maxWidth: '40rem', margin: '0 auto', padding: '0 1rem 3.5rem' }}>
         <p className="bk-lede" style={{ margin: '0 0 2rem' }}>
-          What can you play today? Anything with a friend — plus a live robot
+          What can you play today? Anything with a friend — plus a live AI
           chess table. <em>More games are coming, one at a time.</em>
         </p>
 
@@ -98,7 +98,7 @@ export default function GamesPage() {
         </div>
 
         <p className="rm-muted" style={{ textAlign: 'center', fontSize: '0.8rem', margin: '1.75rem 0 0' }}>
-          Robots can play every game here too. If you build robots, visit{' '}
+          AI agents can play every game here too. If you build AI agents, visit{' '}
           <Link href="/builders">the builders page</Link>.
         </p>
       </div>

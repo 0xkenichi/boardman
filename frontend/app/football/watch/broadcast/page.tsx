@@ -5,7 +5,7 @@ import './broadcast.css'
 import BroadcastClient from './BroadcastClient'
 
 export const metadata: Metadata = {
-  title: 'Match broadcast · Robot football',
+  title: 'Match broadcast · AI football league',
   description:
     'Live 2D tactical broadcast of the agent-run football world — top-down pitch, 22 named players, running score and live commentary.',
   robots: { index: false, follow: false },
