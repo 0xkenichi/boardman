@@ -6,8 +6,16 @@ Lock and Ao Ashi built casts of original footballers people care about. Every
 one carries a persona: an archetype, a signature "weapon", a temperament, a
 backstory and, for the Icons, a named rival.
 
-  ICONS   — 16 hand-written leads, rated 82-88, each with a rival.
-  depth   — 80 deterministic originals (68-81) so every position has cover.
+  ICONS       — 16 hand-written leads, rated 82-88, each with a rival.
+  world cast  — every football nation in universe_nations.py gets its own
+                originals: one headliner (79-85) with a title ("the Kumasi
+                Engine") and a rival from another nation, then prospects
+                (66-79). Nigeria has the biggest cast.
+
+Every player has a call name (persona.known_as) — what fans chant, the way
+Blue Lock's cast are known by one word. Brazilians get a one-word nickname;
+Korean, Chinese and Vietnamese names are written family name first. Ids are
+stable per nation (afm_og_gh_01), so adding a nation never renumbers anyone.
 
 The data ships as data/catalog_v3_originals_extension.json (picked up by
 catalog.seed_catalog like any other extension). Regenerate it with:
@@ -69,127 +77,141 @@ ICONS: tuple[tuple[str, str, str, int, str, str, str, str, int], ...] = (
      "Unflappable; smiles at strikers", "Saved seven penalties in a single youth tournament and has been smiling since.", 7),
 )
 
-# Depth: slot counts so a 20-club division always finds cover.
-_DEPTH_SLOTS = (("GK", 8), ("CB", 14), ("RB", 6), ("LB", 6), ("CDM", 8), ("CM", 12),
-                ("CAM", 6), ("RW", 6), ("LW", 6), ("ST", 8))
-
-_GIVEN = {
-    "NG": ("Tunde", "Chinedu", "Obinna", "Segun", "Kelechi", "Musa", "Babatunde", "Ifeanyi", "Damilare", "Nnamdi",
-           "Abdullahi", "Olamide", "Ebuka", "Kayode", "Somto", "Usman", "Gbenga", "Chukwudi", "Bayo", "Tochukwu"),
-    "GH": ("Kwabena", "Yaw", "Kojo", "Kweku", "Nana"),
-    "SN": ("Mamadou", "Ousmane", "Cheikh", "Babacar"),
-    "BR": ("Thiago", "Caio", "Renan", "Davi"),
-    "AR": ("Facundo", "Tomás", "Lautaro", "Bautista"),
-    "ES": ("Iker", "Álvaro", "Unai", "Marc"),
-    "FR": ("Yanis", "Lucas", "Mathis", "Noé"),
-    "JP": ("Sora", "Kaito", "Ren", "Yuto"),
-    "KR": ("Ji-ho", "Min-jun", "Seo-jun"),
-    "EN": ("Callum", "Reece", "Harvey", "Mason"),
-    "DE": ("Jonas", "Finn", "Lennart"),
-    "MA": ("Ayoub", "Ilyas", "Zakaria"),
-}
-_FAMILY = {
-    "NG": ("Okonkwo", "Adewale", "Eze", "Balogun", "Nwachukwu", "Ogunleye", "Abubakar", "Uzor", "Afolabi", "Ibekwe",
-           "Olaniyan", "Chukwuma", "Bello", "Onyekachi", "Adeleke", "Ekwueme", "Lawal", "Oyelaran", "Anozie", "Babangida"),
-    "GH": ("Owusu-Ansah", "Boakye-Dankwa", "Agyemang-Fosu", "Sarpong-Kyei"),
-    "SN": ("Ndour-Faye", "Sy-Diatta", "Gueye-Badji", "Mbodj"),
-    "BR": ("Albuquerque-Ramos", "Teixeira Lobo", "Vasconcelos", "Barreto Neto"),
-    "AR": ("Etcheverría", "Quiroga Paz", "Villafañe", "Ledesma Sur"),
-    "ES": ("Garmendia", "Urquiza", "Olabarrieta", "Ferrán Vidal"),
-    "FR": ("Delacroix-Ba", "Marchetti-Roux", "Ambroise", "Lefevre-Diop"),
-    "JP": ("Hayashida", "Komatsuzaki", "Torigoe", "Nishikata"),
-    "KR": ("Baek-Yoon", "Seo-Hwan", "Gil-Ra"),
-    "EN": ("Ashworth", "Pendlebury", "Thackeray", "Whitlock"),
-    "DE": ("Kranzbühler", "Oberhaus", "Steinmetz-Ahn"),
-    "MA": ("El Amrani-Saidi", "Benhaddou", "Zerrouki"),
-}
-# Nigeria first — the visibility we want — then a spread of football nations.
-_NATION_WEIGHTS = (("NG", 40), ("GH", 6), ("SN", 6), ("BR", 7), ("AR", 6), ("ES", 6), ("FR", 7),
-                   ("JP", 6), ("KR", 4), ("EN", 6), ("DE", 3), ("MA", 3))
+# ── the world cast ────────────────────────────────────────────────────────
+# One 16-man squad's worth of positions. Each nation enters the cycle at a
+# different point (stride 5, coprime with 16), so across the world the
+# positions come out in squad proportions and headliners play everywhere,
+# not just up front.
+_SLOT_CYCLE = ("GK", "CB", "CM", "ST", "RB", "LB", "CDM", "CB", "CAM", "RW", "LW", "CM", "ST", "CB", "GK", "CB")
+_NATION_STRIDE = 5
 
 _ARCHETYPES = {
-    "GK": ("Shot Stopper", "Sweeper Keeper"),
-    "CB": ("Stopper", "Ball-Playing Centre-Back", "Aerial Dominator"),
-    "RB": ("Overlap Engine", "Inverted Full-Back"),
-    "LB": ("Wing-Back Runner", "Inverted Full-Back"),
-    "CDM": ("Destroyer", "Deep-Lying Playmaker"),
-    "CM": ("Box-to-Box", "Metronome", "Pressing Machine"),
-    "CAM": ("Shadow Striker", "Field Commander", "Trequartista"),
-    "RW": ("Speed Demon", "Inverted Winger"),
-    "LW": ("Dribble Artist", "Inverted Winger"),
-    "ST": ("Egoist Finisher", "Target Man", "Predator", "False Nine"),
+    "GK": ("Shot Stopper", "Sweeper Keeper", "Penalty Specialist"),
+    "CB": ("Stopper", "Ball-Playing Centre-Back", "Aerial Dominator", "Libero"),
+    "RB": ("Overlap Engine", "Inverted Full-Back", "Defensive Full-Back"),
+    "LB": ("Wing-Back Runner", "Inverted Full-Back", "Defensive Full-Back"),
+    "CDM": ("Destroyer", "Deep-Lying Playmaker", "Anchor"),
+    "CM": ("Box-to-Box", "Metronome", "Pressing Machine", "Mezzala"),
+    "CAM": ("Shadow Striker", "Field Commander", "Trequartista", "Enganche"),
+    "RW": ("Speed Demon", "Inverted Winger", "Touchline Winger"),
+    "LW": ("Dribble Artist", "Inverted Winger", "Touchline Winger"),
+    "ST": ("Egoist Finisher", "Target Man", "Predator", "False Nine", "Poacher"),
 }
 _WEAPONS = {
-    "GK": ("One-on-one smother", "Quick distribution", "Penalty instinct"),
-    "DEF": ("Interception read", "Recovery sprint", "Header in both boxes", "Switch of play"),
-    "MID": ("Line-breaking pass", "Press resistance", "Late run into the box", "Long-range strike"),
-    "FWD": ("First-time finish", "Step-over burst", "Curled finish to the far post", "Run in behind"),
+    "GK": ("One-on-one smother", "Quick distribution", "Penalty instinct", "Reflex double save",
+           "Punt that starts the counter", "Commands the six-yard box"),
+    "DEF": ("Interception read", "Recovery sprint", "Header in both boxes", "Switch of play",
+            "Sliding block", "Line-breaking carry", "Shadow-marks the striker", "Long diagonal"),
+    "MID": ("Line-breaking pass", "Press resistance", "Late run into the box", "Long-range strike",
+            "Half-turn on the half-space", "Third-man combination", "Set-piece delivery", "Ball-winning lunge"),
+    "FWD": ("First-time finish", "Step-over burst", "Curled finish to the far post", "Run in behind",
+            "Near-post flick", "Chip over the keeper", "Rabona cross", "Hold-up spin and shoot"),
 }
 _TEMPERS = ("Calm under pressure", "Fiery competitor", "Quiet leader", "Joker in the dressing room",
-            "Perfectionist", "Big-game player", "Streaky but brilliant", "Workhorse")
-_ORIGINS = ("Came through an academy nobody had heard of.", "Spotted at a street tournament.",
-            "Late bloomer released twice before breaking through.", "Child prodigy still learning to be patient.",
-            "Converted from another position as a teenager.", "Played futsal until 17.",
-            "Grew up idolising the Icons and now wants their place.")
+            "Perfectionist", "Big-game player", "Streaky but brilliant", "Workhorse", "Lone wolf",
+            "Born captain", "Trash-talker", "Shy off the pitch, ruthless on it", "Superstitious", "Showman")
+_ORIGINS = ("Came through an academy nobody had heard of", "Spotted at a street tournament",
+            "Late bloomer released twice before breaking through", "Child prodigy still learning patience",
+            "Converted from another position as a teenager", "Played futsal until 17",
+            "Grew up idolising the Icons and wants their place", "Paid for boots by selling match tickets",
+            "Learned the game on a dirt pitch behind the market", "Was a sprinter before football found him")
+# Headliner titles: "the {city} {noun}" — one per nation, the face of its cast.
+_TITLE_NOUNS = {"GK": ("Wall", "Keeper of the Gates", "Last Line"), "DEF": ("Fortress", "Anchor", "Iron Gate"),
+                "MID": ("Engine", "Maestro", "Conductor"), "FWD": ("Lightning", "Ghost", "Hammer", "Arrow")}
 
 
 def _h(key: str) -> int:
-    return int(hashlib.sha256(f"boardman-universe-v1:{key}".encode()).hexdigest(), 16)
+    return int(hashlib.sha256(f"boardman-universe-v2:{key}".encode()).hexdigest(), 16)
 
 
 def _pick(seq: tuple, key: str):
     return seq[_h(key) % len(seq)]
 
 
-def _weighted_nation(key: str) -> str:
-    total = sum(w for _, w in _NATION_WEIGHTS)
-    roll = _h(key) % total
-    for nation, w in _NATION_WEIGHTS:
-        if roll < w:
-            return nation
-        roll -= w
-    return "NG"
-
-
 def _group(slot: str) -> str:
     return {"GK": "GK", "CB": "DEF", "RB": "DEF", "LB": "DEF", "CDM": "MID", "CM": "MID", "CAM": "MID"}.get(slot, "FWD")
 
 
-def build(real_names: set[str] | None = None) -> list[dict[str, Any]]:
-    """The whole original roster, Icons first. `real_names` (lower-case) are
-    names already in the catalog; generated players never reuse one."""
-    taken = {n.lower() for n in (real_names or set())}
-    rows: list[dict[str, Any]] = []
+def _icon_rows(taken: set[str]) -> list[dict[str, Any]]:
+    rows = []
     for i, (slot, name, nation, rating, arche, weapon, temper, story, rival) in enumerate(ICONS, start=1):
         taken.add(name.lower())
         rows.append({
             "player_id": f"{ID_PREFIX}{i:03d}", "origin": "original", "name": name, "nation": nation, "slot": slot,
             "base_rating": rating, "real_value_usd": value_for_rating(rating),
-            "persona": {"tier": "icon", "archetype": arche, "weapon": weapon, "temperament": temper,
-                        "backstory": story, "rival_id": f"{ID_PREFIX}{rival:03d}"},
+            "persona": {"tier": "icon", "known_as": name.split()[-1].split("-")[0], "archetype": arche,
+                        "weapon": weapon, "temperament": temper, "backstory": story,
+                        "rival_id": f"{ID_PREFIX}{rival:03d}"},
         })
-    n = len(ICONS)
-    for slot, count in _DEPTH_SLOTS:
-        for k in range(count):
-            n += 1
-            pid = f"{ID_PREFIX}{n:03d}"
-            for attempt in range(50):
-                key = f"{slot}:{k}:{attempt}"
-                nation = _weighted_nation(f"nation:{key}")
-                name = f"{_pick(_GIVEN[nation], 'given:' + key)} {_pick(_FAMILY[nation], 'family:' + key)}"
-                if name.lower() not in taken:
-                    break
-            taken.add(name.lower())
-            rating = 68 + _h(f"rating:{pid}") % 14  # 68..81
-            rows.append({
-                "player_id": pid, "origin": "original", "name": name, "nation": nation, "slot": slot,
-                "base_rating": rating, "real_value_usd": value_for_rating(rating),
-                "persona": {"tier": "prospect", "archetype": _pick(_ARCHETYPES[slot], f"arch:{pid}"),
-                            "weapon": _pick(_WEAPONS[_group(slot)], f"weapon:{pid}"),
-                            "temperament": _pick(_TEMPERS, f"temper:{pid}"),
-                            "backstory": _pick(_ORIGINS, f"story:{pid}")},
-            })
     return rows
+
+
+def _name_for(code: str, spec: dict[str, Any], key: str, taken: set[str]) -> tuple[str, str, str]:
+    """(display name, call name, legal name) — unique across the universe and
+    the real catalog. Brazilians play under a one-word nickname, like real
+    Brazilian footballers, so their display name is the nickname."""
+    for attempt in range(80):
+        k = f"{key}:{attempt}"
+        given = _pick(spec["given"], f"given:{k}")
+        family = _pick(spec["family"], f"family:{k}")
+        full = f"{family} {given}" if spec.get("order") == "family_given" else f"{given} {family}"
+        if spec.get("call") == "nickname":
+            call = _pick(spec["nicks"], f"nick:{k}")
+            if call.lower() not in taken and full.lower() not in taken:
+                taken.update({call.lower(), full.lower()})  # one Tatá per universe
+                return call, call, full
+            continue
+        if full.lower() not in taken:
+            taken.add(full.lower())
+            return full, family, full
+    raise RuntimeError(f"name pool for {code} exhausted")
+
+
+def _nation_rows(taken: set[str]) -> list[dict[str, Any]]:
+    from gaming.src.stack.agentic.games.football_managers.universe_nations import NATIONS
+
+    rows: list[dict[str, Any]] = []
+    headliners: list[str] = []
+    for n, (code, spec) in enumerate(NATIONS.items()):
+        for k in range(int(spec["count"])):
+            pid = f"{ID_PREFIX}{code.lower()}_{k + 1:02d}"
+            slot = _SLOT_CYCLE[(n * _NATION_STRIDE + k) % len(_SLOT_CYCLE)]
+            group = _group(slot)
+            display, call, legal = _name_for(code, spec, f"{code}:{k}", taken)
+            city = _pick(spec["cities"], f"city:{pid}")
+            headliner = k == 0
+            rating = 79 + _h(f"rating:{pid}") % 7 if headliner else 66 + _h(f"rating:{pid}") % 14
+            persona: dict[str, Any] = {
+                "tier": "headliner" if headliner else "prospect",
+                "known_as": call,
+                "archetype": _pick(_ARCHETYPES[slot], f"arch:{pid}"),
+                "weapon": _pick(_WEAPONS[group], f"weapon:{pid}"),
+                "temperament": _pick(_TEMPERS, f"temper:{pid}"),
+                "backstory": f"{_pick(_ORIGINS, f'story:{pid}')}, in {city}.",
+                "hometown": city,
+            }
+            if legal != display:
+                persona["full_name"] = legal
+            if headliner:
+                persona["title"] = f"the {city} {_pick(_TITLE_NOUNS[group], f'title:{pid}')}"
+                headliners.append(pid)
+            rows.append({"player_id": pid, "origin": "original", "name": display, "nation": code, "slot": slot,
+                         "base_rating": rating, "real_value_usd": value_for_rating(rating), "persona": persona})
+    # Headliner rivalries pair neighbouring nations (an odd one out joins the last pair's ring).
+    by_id = {r["player_id"]: r for r in rows}
+    for i in range(0, len(headliners) - 1, 2):
+        a, b = headliners[i], headliners[i + 1]
+        by_id[a]["persona"]["rival_id"], by_id[b]["persona"]["rival_id"] = b, a
+    if len(headliners) % 2:
+        by_id[headliners[-1]]["persona"]["rival_id"] = headliners[-2]
+    return rows
+
+
+def build(real_names: set[str] | None = None) -> list[dict[str, Any]]:
+    """The whole original roster: Icons first, then every nation's cast.
+    `real_names` (lower-case) are names in the real catalog; never reused."""
+    taken = {n.lower() for n in (real_names or set())}
+    return _icon_rows(taken) + _nation_rows(taken)
 
 
 def _real_catalog_names() -> set[str]:
