@@ -1,7 +1,8 @@
-/* Homepage football hero: a hand of Icon cards + the league ticker. */
+/* Homepage flagship (AFM) section: a hand of Icon cards + the league ticker. */
 
 /* the fanned hand may lean past the column; never let it widen the page */
-.v2-hero { overflow-x: clip; }
+.v2-hero,
+.v2-flag { overflow-x: clip; }
 
 .fh-hand {
   position: relative;

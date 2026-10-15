@@ -228,6 +228,31 @@
   gap: 1rem;
 }
 
+/* the site-wide testnet chit: always visible, even when the links fold away */
+.v2-testnet {
+  font-family: var(--v2-mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.16em;
+  color: var(--v2-red);
+  border: 1px solid var(--v2-red);
+  border-radius: 2px;
+  padding: 0.2rem 0.45rem;
+  white-space: nowrap;
+  cursor: help;
+}
+
+/* the flagship item sits apart from the book's own sections */
+.v2-nav-links a.v2-nav-flag {
+  color: var(--v2-ink);
+  padding-left: 1.5rem;
+  border-left: var(--v2-hairline);
+}
+
+/* anchors land below the sticky nav */
+.v2-page [id] {
+  scroll-margin-top: 4rem;
+}
+
 /* ── Buttons: stamped chits ───────────────────────────────── */
 
 .v2-btn {
@@ -503,6 +528,47 @@
 
 .v2-hero-cta {
   margin-top: 2rem;
+}
+
+.v2-testnet-note {
+  margin: 1rem 0 0;
+  font-family: var(--v2-mono);
+  font-size: 0.72rem;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  color: var(--v2-muted);
+}
+
+.v2-testnet-note strong {
+  color: var(--v2-red);
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* ── Flagship game (AFM) — a raised page under the hero ───── */
+
+.v2-flag {
+  background: var(--v2-bg-raised);
+  border-bottom: var(--v2-hairline);
+}
+
+.v2-flag-in {
+  max-width: var(--v2-max);
+  margin: 0 auto;
+  padding: clamp(3.5rem, 8vh, 5.5rem) 1.4rem clamp(2.5rem, 6vh, 4rem);
+}
+
+.v2-flag-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(2rem, 5vw, 4.5rem);
+  align-items: center;
+}
+
+.v2-flag-body {
+  margin-top: 1.4rem;
+  max-width: 34rem;
 }
 
 /* ── Ledger ticker: real rows, not a marquee ──────────────── */
@@ -906,11 +972,31 @@
     display: none;
   }
 
+  .v2-flag-grid {
+    grid-template-columns: 1fr;
+  }
+
   .v2-nav-cta {
     margin-left: auto;
   }
 
   .v2-footer-links {
     margin-left: 0;
+  }
+}
+
+/* phones: the brand, the testnet chit and one button — nothing wider */
+@media (max-width: 560px) {
+  .v2-nav-in {
+    gap: 0.8rem;
+  }
+
+  .v2-logo-mark,
+  .v2-nav-clock {
+    display: none;
+  }
+
+  .v2-nav-cta {
+    gap: 0.6rem;
   }
 }

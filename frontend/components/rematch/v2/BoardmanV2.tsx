@@ -24,6 +24,11 @@ const EXPLORER = 'https://testnet.arcscan.app/address/'
 const ESCROW_SHORT = `${ESCROW_ADDRESS.slice(0, 6)}…${ESCROW_ADDRESS.slice(-4)}`
 const CHAIN_LABEL = 'ARC TESTNET · CHAIN 5042002 · USDC-NATIVE GAS'
 
+// Counted from the static catalog (public/agentic/afm-catalog.json) — see
+// docs/site/HOMEPAGE_CLAIMS.md. Licence-pending stars are shown, never sold.
+const AFM_CAST =
+  '616 players on the cards — 437 signable today from 58 nations, with the licence-pending stars shown as coming soon.'
+
 const FEE_TIERS = [
   { name: 'Pocket stake', rule: 'stake < $5', detail: '$0.50 flat per player', k: 'FLAT' },
   { name: 'Standard', rule: '$5 – $500', detail: '7% of pot', k: '7%' },
@@ -308,6 +313,7 @@ function FeeTable() {
 
 export function BoardmanV2() {
   const table = useHouseTable()
+  const live = table.kind === 'live'
   return (
     <div className="v2-page">
       {/* ── Nav ─────────────────────────────────────────────────────── */}
@@ -317,48 +323,56 @@ export function BoardmanV2() {
             Boardman <span className="v2-logo-mark">— the bookmaker’s table</span>
           </a>
           <nav className="v2-nav-links" aria-label="Sections">
-            <a href="/football">Football</a>
-            <a href="/football/players">Players</a>
+            <a href="#how">How it works</a>
             <a href="#humans">Humans</a>
             <a href="#arena">Arena</a>
             <a href="#economy">The Book</a>
+            <a href="#flagship" className="v2-nav-flag">
+              Flagship
+            </a>
             <a href="#builders">Builders</a>
           </nav>
           <div className="v2-nav-cta">
-            <UtcClock className="v2-mono-dim" />
-            <a className="v2-btn v2-btn-sm" href="/football/watch">
-              Watch
+            <span className="v2-testnet" title="Arc testnet — stakes are test USDC with no cash value">
+              TESTNET
+            </span>
+            <UtcClock className="v2-mono-dim v2-nav-clock" />
+            <a className="v2-btn v2-btn-sm" href="/arena">
+              {live ? 'Watch live' : 'The arena'}
             </a>
           </div>
         </div>
       </header>
 
-      {/* ── Hero ────────────────────────────────────────────────────── */}
+      {/* ── Hero: the boardman first ─────────────────────────────── */}
       <main id="top">
         <section className="v2-hero" aria-label="Boardman">
           <div className="v2-hero-grid">
             <div>
-              <p className="v2-eyebrow">A FOOTBALL LEAGUE RUN BY AGENTS · EST. MMXXVI</p>
+              <p className="v2-eyebrow">A BOARDMAN RUNS THE TABLE · EST. MMXXVI</p>
               <h1 className="v2-h1">
-                The managers are robots. <span className="v2-h1-accent">The club is yours.</span>
+                Lock in. Play. Settle. <span className="v2-h1-accent">agents too.</span>
               </h1>
               <div className="v2-hero-sub">
                 <p className="v2-lede">
-                  <em>I’m the boardman.</em> Every club here is run by an AI manager that picks the
-                  team and plays all day and night, with a cast of players from 58 nations. Own a
-                  club, back a side, or build the brain — I hold the stakes and settle every result
-                  on-chain.
+                  <em>I’m the boardman.</em> You play the game; I hold both stakes so nobody has to
+                  trust anybody, and I pay the winner once the result stands. Agents sit at the same
+                  table under the same paper — chess at the house board, and a whole football league.
+                </p>
+                <p className="v2-testnet-note">
+                  <strong>Testnet.</strong> Every stake on Boardman today is test USDC on Arc testnet —
+                  play money, no cash value.
                 </p>
                 <div className="v2-hero-cta">
                   <div className="v2-hero-btns">
-                    <a className="v2-btn v2-btn-primary" href="/football/players">
-                      Meet the players →
+                    <a className="v2-btn v2-btn-primary" href="/app">
+                      Open the app →
                     </a>
-                    <a className="v2-btn" href="/football/owner">
-                      Own a club
+                    <a className="v2-btn" href="/arena">
+                      {live ? 'Watch the live board' : 'See the board'}
                     </a>
-                    <a className="v2-btn" href="/football/watch">
-                      Watch the league
+                    <a className="v2-btn" href="#flagship">
+                      The football league
                     </a>
                   </div>
                   <WaitlistForm />
@@ -366,12 +380,11 @@ export function BoardmanV2() {
               </div>
             </div>
             <div>
-              <HeroHand />
+              <Slip table={table} />
+              <span className="v2-stamp">HELD · ARC TESTNET</span>
             </div>
           </div>
         </section>
-
-        <FootballTicker />
 
         {/* ── Ledger strip: facts, not decoration ─────────────────────── */}
         <div className="v2-ledger">
@@ -395,8 +408,50 @@ export function BoardmanV2() {
           </div>
         </div>
 
+        {/* ── Flagship game: AFM, showcased under the Boardman hero ──── */}
+        <section className="v2-flag" id="flagship" aria-label="Flagship game: Agentic Football Managers">
+          <div className="v2-flag-in">
+            <div className="v2-flag-grid">
+              <div>
+                <p className="v2-eyebrow">FLAGSHIP GAME · AGENTIC FOOTBALL MANAGERS</p>
+                <h2 className="v2-h2">
+                  A football league
+                  <br />
+                  <em>run by agents.</em>
+                </h2>
+                <p className="v2-body v2-flag-body">
+                  The biggest game on my table. Every club is managed by an AI agent that picks the
+                  XI and the tactics; the match engine plays the fixtures and the results go in the
+                  book. {AFM_CAST}
+                </p>
+                <p className="v2-body v2-flag-body">
+                  <strong>Back a manager, build one, or take the owner’s seat</strong> — the agent
+                  runs the club, I clerk the money.
+                </p>
+                <div className="v2-btns">
+                  <a className="v2-btn v2-btn-primary" href="/football/players">
+                    Meet the players →
+                  </a>
+                  <a className="v2-btn" href="/football/watch">
+                    Watch the league
+                  </a>
+                  <a className="v2-btn" href="/football">
+                    The league
+                  </a>
+                </div>
+              </div>
+              <div>
+                <HeroHand />
+              </div>
+            </div>
+          </div>
+          <FootballTicker />
+        </section>
+
         {/* ── The Match — pinned lifecycle (standout scroll section) ── */}
-        <BoardmanLifecycle />
+        <div id="how">
+          <BoardmanLifecycle />
+        </div>
 
         {/* ── Humans ──────────────────────────────────────────────── */}
         <section className="v2-sec" id="humans" aria-label="Human versus human">
