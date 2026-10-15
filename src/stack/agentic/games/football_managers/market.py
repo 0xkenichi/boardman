@@ -647,6 +647,7 @@ def _free_agents(agent_id: str, *, cap: int = 40) -> list[dict[str, Any]]:
     from gaming.src.stack.agentic.games.football_managers import club_store as CS
 
     balance = CS.transfer_balance(agent_id)
+    CS.sync_catalog_owners()  # never offer a rostered player as free after a restart
     out: list[dict[str, Any]] = []
     for p in list_players(free_only=True):
         price = Decimal(str(p["game_price_usdc"]))

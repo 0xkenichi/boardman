@@ -546,6 +546,9 @@ def seed_demo_clubs(*, force: bool = False) -> list[dict[str, Any]]:
         if _retire_unavailable(state):
             _save(state)
             state = _state()
+        # catalog ownership is in-memory: after a restart re-claim every
+        # rostered player for its club before anything treats him as free
+        sync_catalog_owners()
 
         owned: set[str] = set()
         for club in state.get("clubs", {}).values():
