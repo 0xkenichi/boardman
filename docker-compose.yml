@@ -63,7 +63,7 @@ services:
     depends_on:
       - boardman-api
     environment:
-      BOARDMAN_PROCS: "webhooks,house"
+      BOARDMAN_PROCS: "webhooks,house,afm"
       BOARDMAN_AGENTIC_DATA: /data/agentic
       REQUIRE_PERSISTENT_DATA: "1"
     healthcheck:

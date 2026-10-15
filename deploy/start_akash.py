@@ -13,7 +13,7 @@ Supervises the Boardman processes inside one container:
   house     scripts/run_house_session.py — the real lock/play/settle loop.
             Restarted with backoff.
 
-Pick roles with BOARDMAN_PROCS (comma list, default "webhooks,api,bot,house").
+Pick roles with BOARDMAN_PROCS (comma list, default "webhooks,api,bot,house,afm").
 BOARDMAN_HOUSE_SESSION=0 still removes the house role.
 
 Persistent state: BOARDMAN_AGENTIC_DATA defaults to /data/agentic (mount a
@@ -386,14 +386,14 @@ def _write_status(children: list[Child], roles: set[str]) -> None:
 
 
 def _roles() -> set[str]:
-    raw = os.environ.get("BOARDMAN_PROCS") or "webhooks,api,bot,house"
+    raw = os.environ.get("BOARDMAN_PROCS") or "webhooks,api,bot,house,afm"
     roles = {r.strip().lower() for r in raw.split(",") if r.strip()}
     if (os.environ.get("BOARDMAN_HOUSE_SESSION") or "1").strip().lower() in FALSY:
         roles.discard("house")
-    unknown = roles - {"webhooks", "api", "bot", "house"}
+    unknown = roles - {"webhooks", "api", "bot", "house", "afm"}
     if unknown:
         log(f"WARN ignoring unknown roles in BOARDMAN_PROCS: {sorted(unknown)}")
-    return roles & {"webhooks", "api", "bot", "house"}
+    return roles & {"webhooks", "api", "bot", "house", "afm"}
 
 
 def _webhook_children(env: dict[str, str]) -> list[Child]:
@@ -506,6 +506,14 @@ def main() -> int:
         log("starting Telegram bot (polling)")
         bot.start()
         children.append(bot)
+
+    if "afm" in roles:
+        # The football league's clock (season matchdays, cup rounds, season
+        # roll-over). One per data dir, like the house session.
+        afm = Child("afm", [sys.executable, "scripts/afm_ticker.py"], env)
+        log("starting AFM ticker")
+        afm.start()
+        children.append(afm)
 
     if "house" in roles:
         house = Child(
