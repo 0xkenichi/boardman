@@ -37,7 +37,14 @@ export interface AfmPlayer {
 }
 
 export interface AfmPersona {
-  tier: 'icon' | 'prospect'
+  tier: 'icon' | 'headliner' | 'prospect'
+  /** What fans call them — one word, Blue Lock style ("Okonkwo", "Tatá") */
+  known_as?: string
+  /** Headliners only: "the Kumasi Engine" */
+  title?: string
+  /** Legal name when the display name is a nickname (Brazilians) */
+  full_name?: string
+  hometown?: string
   archetype: string
   weapon: string
   temperament: string
