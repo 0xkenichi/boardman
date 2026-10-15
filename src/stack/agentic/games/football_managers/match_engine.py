@@ -1345,11 +1345,13 @@ def simulate_match(
                  side=tag, player_id=pid)
             if s.yellows[pid] >= YELLOWS_TO_RED:
                 s.on_pitch = [x for x in s.on_pitch if x != pid]
+                s.off.append(pid)  # sent off for good: never back on as a sub
                 _recompute_strengths(s, jitter=False)
                 emit(minute, "red", f"{minute}' · RED CARD ({tag}) — second yellow · {pname(pid)}",
                      side=tag, player_id=pid)
         else:
             s.on_pitch = [x for x in s.on_pitch if x != pid]
+            s.off.append(pid)  # sent off for good: never back on as a sub
             _recompute_strengths(s, jitter=False)
             emit(minute, "red", f"{minute}' · RED CARD ({tag}) · {pname(pid)} ({why})",
                  side=tag, player_id=pid)

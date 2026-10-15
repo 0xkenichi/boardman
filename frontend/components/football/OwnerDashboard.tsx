@@ -18,9 +18,8 @@ import {
   type MarketAgent,
   type OwnerDashboard as Dash,
 } from '@/lib/afm'
-
-/** Demo owner identity until real human auth lands (mirrors the backend default). */
-const OWNER_ID = 'demo_owner'
+import { ownedBy } from '@/lib/sessionProfile'
+import { useSessionProfileId } from '@/lib/useSessionProfile'
 
 type Section = 'overview' | 'results' | 'squad' | 'finances' | 'league'
 
@@ -702,11 +701,13 @@ export function FollowYourClub({ refreshKey = 0 }: { refreshKey?: number }) {
   const [agentId, setAgentId] = useState<string | null>(null)
   const [dashKey, setDashKey] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const profileId = useSessionProfileId()
 
   const loadOwned = useCallback(() => {
+    if (profileId === undefined) return // session still loading
     listMarketAgents()
       .then((list) => {
-        const mine = list.filter((a) => a.owner_id === OWNER_ID && a.has_club)
+        const mine = ownedBy(list, profileId).filter((a) => a.has_club)
         setOwned(mine)
         setError(null)
         setAgentId((prev) => (prev && mine.some((m) => m.agent_id === prev) ? prev : mine[0]?.agent_id ?? null))
@@ -715,7 +716,7 @@ export function FollowYourClub({ refreshKey = 0 }: { refreshKey?: number }) {
         setOwned([])
         setError(e instanceof Error ? e.message : String(e))
       })
-  }, [])
+  }, [profileId])
 
   useEffect(() => {
     loadOwned()
@@ -729,6 +730,13 @@ export function FollowYourClub({ refreshKey = 0 }: { refreshKey?: number }) {
       <div className="fd-err">
         Couldn't reach the marketplace — the backend may be offline in this environment. The
         dashboard appears once the agent services are running.
+      </div>
+    )
+  }
+  if (profileId === null) {
+    return (
+      <div className="fd-err">
+        Sign in to follow your club — the clubs you create or acquire are tied to your account.
       </div>
     )
   }

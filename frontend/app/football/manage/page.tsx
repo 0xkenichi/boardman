@@ -13,6 +13,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { PortalNav } from '@/components/football/PortalNav'
+import { listMarketAgents } from '@/lib/afm'
+import { ownedBy } from '@/lib/sessionProfile'
+import { useSessionProfileId } from '@/lib/useSessionProfile'
 import '../portal.css'
 
 type SquadPlayer = {
@@ -105,6 +108,19 @@ export default function ManagePage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // only the owner may save a lineup: open on the signed-in user's own club
+  const profileId = useSessionProfileId()
+  const [ownedIds, setOwnedIds] = useState<string[]>([])
+
+  useEffect(() => {
+    if (!profileId) {
+      setOwnedIds([])
+      return
+    }
+    listMarketAgents()
+      .then((agents) => setOwnedIds(ownedBy(agents, profileId).map((a) => a.agent_id)))
+      .catch(() => setOwnedIds([]))
+  }, [profileId])
 
   const loadClubs = useCallback(async () => {
     const r = await fetch('/api/agentic/football/clubs', { cache: 'no-store' })
@@ -113,6 +129,13 @@ export default function ManagePage() {
     setClubs(list)
     if (list.length && !clubId) setClubId(list[0].agent_id)
   }, [clubId])
+
+  useEffect(() => {
+    // switch to the user's own club once we know which one it is
+    if (ownedIds.length && !ownedIds.includes(clubId) && clubs.some((c) => c.agent_id === ownedIds[0])) {
+      setClubId(ownedIds[0])
+    }
+  }, [ownedIds, clubs, clubId])
 
   const loadClub = useCallback(async (id: string) => {
     if (!id) return
@@ -307,6 +330,7 @@ export default function ManagePage() {
           {clubs.map((c) => (
             <option key={c.agent_id} value={c.agent_id}>
               {c.club_name}
+              {ownedIds.includes(c.agent_id) ? ' (yours)' : ' (view only)'}
             </option>
           ))}
         </select>
