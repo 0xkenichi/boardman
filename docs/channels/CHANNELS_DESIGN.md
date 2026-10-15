@@ -1,6 +1,6 @@
 # Boardman on every chat app: channels design
 
-Status: design approved 2026-10-15, based on `main` at 54f1a9e. Phase 0 plus the balance, deposit, link and withdraw flows are implemented (`src/channels`, docs/RUNBOOK.md §8); everything after that is still a proposal.
+Status: design approved 2026-10-15, based on `main` at 54f1a9e. Phase 0 plus the balance, deposit, link and withdraw flows are implemented (`src/channels`, docs/RUNBOOK.md §8). Phase 1's skill-match flows are implemented too: challenge (tag, WhatsApp number or `JOIN` invite link), my matches, accept/decline, nonce-bound lock approvals, report with stored screenshots, disputes, Watch & bet (a link to the web), and WhatsApp delivery of the bot's match notices (`notify_user` → `core/bridge.py`). The match orchestration lives in `core/actions/matches.py` and Telegram's handlers call it. Still proposals: cups, rematch, public board, approvals for web spends, reverse-OTP login.
 
 Scope: ship the full Telegram bot experience on WhatsApp (Nigeria/Africa first), keep Telegram working the whole time, and prepare for iMessage later.
 

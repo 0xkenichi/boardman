@@ -583,10 +583,22 @@ machine): a withdraw link issued by the bot is confirmed by the API.
 Flags (bot **and** API):
 
 - `CHANNELS_CORE_FLOWS` — comma list of flows the shared core runs on every
-  channel: `balance`, `deposit`, `link`, `withdraw`, or `all`. Default empty:
-  Telegram keeps its legacy handlers. Rollback = clear it and restart.
+  channel: `balance`, `deposit`, `link`, `withdraw`, the skill-match flows
+  `challenge`, `match` (my matches, accept/decline, lock, cancel), `report`
+  (result + screenshot + dispute) and `watch` (link to the web arena), or
+  `all`. Default empty: Telegram keeps its legacy handlers. Rollback = clear
+  it and restart.
 - `CHANNELS_CORE_FLOWS_TELEGRAM`, `CHANNELS_CORE_FLOWS_WHATSAPP` — per-channel
-  override (e.g. `CHANNELS_CORE_FLOWS_WHATSAPP=all` with Telegram left empty).
+  override. **Production: `CHANNELS_CORE_FLOWS_WHATSAPP=all`** with Telegram
+  left empty. On Telegram `all` means the four Phase 0 flows only; the match
+  flows switch there only when named (e.g. `all,challenge,match,report`).
+- `WHATSAPP_ENABLED=1` also routes notices for WhatsApp-first players
+  (WhatsApp identity, opted in, no Telegram chat or a lower
+  `notify_priority`) from the bot jobs, settlement and Telegram handlers to
+  WhatsApp: free-form inside the 24 h window, the approved template outside
+  it. Telegram players get exactly the same DMs as before.
+- `CHANNELS_APPROVAL_TTL_SEC` (300) — how long a "Lock $X USDC?" Yes/No
+  prompt stays valid.
 - `TELEGRAM_WITHDRAW_WEB_PIN` — default `1`: Telegram withdrawals confirm on
   `/app/withdraw/<token>` with a PIN; `/set_tx_password` and
   `/reset_tx_password` point to the web. `0` restores the typed password.
@@ -630,6 +642,17 @@ country codes are enforced; Telegram only logs (`enforce: false`).
 - **A player says "I didn't link that number":** look up
   `channel_identities` by profile, set `revoked_at` on the row, and pause
   withdrawals for the profile while you investigate.
+- **Skill matches on WhatsApp:** challenges, accepts, locks, reports and
+  settlement use the same services and escrow as Telegram
+  (`src/channels/core/actions/matches.py`); a player can challenge by tag, by a
+  WhatsApp number, or with an invite (`JOIN <code>` via `wa.me`, plus the web
+  and Telegram links). Locking asks a Yes/No first; the Yes button carries a
+  one-time nonce bound to that player, that chat and that message
+  (`channel_tokens`, purpose `approve:lock`). Screenshots are copied at once to
+  the evidence store (`evidence://…`); AI vision reads them from there.
+  Spectator betting is never in the chat: "Watch & bet" links to `/arena`.
+- **A WhatsApp dispute** flags the match like `/dispute` and DMs the Telegram
+  admins (`admin_telegram_ids`); resolve it with the usual admin tools.
 - **Merge requests for two funded profiles** are refused by design and come
   to support: move funds manually, then link.
 - **Stuck withdraw link** (`channel_tokens.status = 'claimed'` with no result):
