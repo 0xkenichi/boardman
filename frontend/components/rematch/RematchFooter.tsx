@@ -19,6 +19,9 @@ const FOOTER_LINKS = [
   { href: '/about', label: 'About' },
   { href: '/contact', label: 'Contact' },
   { href: '/minipay', label: 'MiniPay' },
+  { href: '/terms', label: 'Terms' },
+  { href: '/privacy', label: 'Privacy' },
+  { href: '/data-deletion', label: 'Delete your data' },
 ] as const
 
 /**

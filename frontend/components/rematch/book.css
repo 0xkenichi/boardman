@@ -1188,6 +1188,154 @@
   pointer-events: none;
 }
 
+/* ── Legal pages: /terms, /privacy, /data-deletion ────────── */
+
+.bk-legal {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 0 1.2rem 3.5rem;
+  color: var(--v2-muted);
+  font-size: 1.02rem;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.bk-legal-meta {
+  margin: 0 0 1.8rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px dashed var(--v2-line-strong);
+  font-family: var(--v2-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: var(--v2-dim);
+}
+
+.bk-legal .bk-lede {
+  font-size: 1.15rem;
+  line-height: 1.5;
+  font-style: italic;
+  color: var(--v2-text);
+}
+
+.bk-legal h2 {
+  margin: 2.2rem 0 0.6rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--v2-line-strong);
+  font-family: var(--v2-display);
+  font-variation-settings: 'wght' 640;
+  font-size: 1.45rem;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--v2-text);
+}
+
+.bk-legal h3 {
+  margin: 1.4rem 0 0.4rem;
+  font-family: var(--v2-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--v2-ink);
+}
+
+.bk-legal p {
+  margin: 0 0 0.9rem;
+}
+
+.bk-legal ul {
+  margin: 0 0 1rem;
+  padding-left: 1.2rem;
+  list-style: disc;
+}
+
+.bk-legal li {
+  margin: 0 0 0.45rem;
+}
+
+.bk-legal li::marker {
+  color: var(--v2-red);
+}
+
+.bk-legal strong {
+  color: var(--v2-text);
+  font-weight: 600;
+}
+
+.bk-legal a {
+  color: var(--v2-ink);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--v2-ink);
+}
+
+.bk-legal a:hover {
+  color: var(--v2-text);
+}
+
+.bk-legal code {
+  font-family: var(--v2-mono);
+  font-size: 0.82em;
+  border: 1px dashed var(--v2-line-strong);
+  border-radius: 3px;
+  padding: 0.05em 0.35em;
+  color: var(--v2-text);
+}
+
+.bk-legal blockquote {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.9rem;
+  border-left: 3px solid var(--v2-ink);
+  background: var(--v2-bg-card);
+}
+
+.bk-legal hr {
+  margin: 2rem 0 1.2rem;
+  border: 0;
+  border-top: 2px solid var(--v2-text);
+}
+
+.bk-legal-table {
+  margin: 0 0 1.1rem;
+  overflow-x: auto;
+}
+
+.bk-legal table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.bk-legal th,
+.bk-legal td {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--v2-line-strong);
+  text-align: left;
+  vertical-align: top;
+}
+
+.bk-legal th {
+  font-family: var(--v2-mono);
+  font-size: 0.72rem;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--v2-text);
+  background: var(--v2-bg-card);
+}
+
+.bk-legal .bk-legal-box {
+  margin: 0 0 1.2rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--v2-line-strong);
+  border-radius: 3px;
+  background: var(--v2-bg-card);
+}
+
+.bk-legal .bk-legal-box p:last-child,
+.bk-legal .bk-legal-box ul:last-child {
+  margin-bottom: 0;
+}
+
 /* ── Reduced motion (nothing moves, but be explicit) ─────── */
 
 @media (prefers-reduced-motion: reduce) {

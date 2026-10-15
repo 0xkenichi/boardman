@@ -124,6 +124,10 @@ const nextConfig = {
         toRematch('/games'),
         toRematch('/builders'),
         toRematch('/arena'),
+        // Legal pages (Meta app review needs these exact public URLs)
+        toRematch('/terms'),
+        toRematch('/privacy'),
+        toRematch('/data-deletion'),
         { source: '/leaderboard/:path*', destination: '/rematch/leaderboard/:path*' },
         { source: '/get-usdc/:path*', destination: '/rematch/get-usdc/:path*' },
         { source: '/minipay/:path*', destination: '/rematch/minipay/:path*' },
