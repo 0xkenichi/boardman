@@ -89,6 +89,17 @@ def create_app() -> FastAPI:
     app.include_router(rematch_router)
     app.include_router(rematch_web_router)
 
+    # Chat channels: the web withdraw page's backend (Telegram withdrawals use
+    # it by default), and the WhatsApp webhook only when switched on.
+    from gaming.src.backend.api.channels_web import router as channels_web_router
+    from gaming.src.channels import config as channels_config
+
+    app.include_router(channels_web_router)
+    if channels_config.whatsapp_enabled():
+        from gaming.src.channels.whatsapp.webhook import router as whatsapp_router
+
+        app.include_router(whatsapp_router)
+
     # Rematch Stack — builder platform surface
     from gaming.src.stack.api import router as stack_router
     from gaming.src.stack.api_v1 import router as stack_v1_router
