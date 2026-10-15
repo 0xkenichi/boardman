@@ -705,13 +705,14 @@ def _abort_under_lease(match_id: str, reason: str) -> dict[str, Any]:
                     FUNDING_LEDGER,
                     FUNDING_PROFILE,
                     bet_funding,
+                    ledger_wallet_of,
                 )
 
                 for r in (voided.get("payouts") or {}).get("refunds") or []:
                     rail = bet_funding(r)
                     amt = Decimal(str(r.get("amount") or "0"))
                     if rail == FUNDING_LEDGER and r.get("bettor_id") and amt > 0:
-                        ledger.credit(str(r["bettor_id"]), amt, reason="spectator_refund_void", ref=match_id)
+                        ledger.credit(ledger_wallet_of(r["bettor_id"]), amt, reason="spectator_refund_void", ref=match_id)
                     elif rail == FUNDING_PROFILE:
                         fan.append(r)
         # Return exactly what the lock debited for the book seeds (wallet and

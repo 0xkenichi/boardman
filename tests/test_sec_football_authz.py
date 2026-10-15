@@ -314,7 +314,7 @@ def test_bet_debits_the_caller_not_the_body(client, open_season):
     res = client.post(BASE + "/football/betting/bet", headers=_as("profile_bob"), json=bet)
     assert res.status_code == 200, res.text
     assert L.balance("profile_victim") == Decimal("100")
-    assert L.balance("profile_bob") == Decimal("95")
+    assert L.balance("owner:profile_bob") == Decimal("95")  # one football wallet per person (B9)
 
 
 def test_bet_never_debits_a_system_wallet(open_season):

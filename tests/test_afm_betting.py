@@ -106,11 +106,11 @@ def test_settle_splits_pot_and_conserves_money(_open_season):
     place_bet("spec_b", sn, 1, home, away, "home", "3")
     place_bet("spec_c", sn, 1, home, away, "away", "2")
 
-    pre = {b: L.balance(b) for b in ("spec_a", "spec_b", "spec_c")}
+    pre = {b: L.balance(f"owner:{b}") for b in ("spec_a", "spec_b", "spec_c")}
     results = [{"home_agent_id": home, "away_agent_id": away, "home_goals": 2, "away_goals": 1}]
     out = settle_matchday(sn, 1, results)
     assert out and out[0]["winning_side"] == "home"
-    post = {b: L.balance(b) for b in ("spec_a", "spec_b", "spec_c")}
+    post = {b: L.balance(f"owner:{b}") for b in ("spec_a", "spec_b", "spec_c")}
 
     # `pre` is post-bets, so the settle effect is: winners paid pro-rata from
     # the 10 pot minus the 0.70 fee; the loser's stake was already debited
@@ -135,10 +135,10 @@ def test_settle_is_idempotent(_open_season):
     results = [{"home_agent_id": home, "away_agent_id": away, "home_goals": 0, "away_goals": 0}]
     first = settle_matchday(sn, 1, results)
     assert first  # draw book: away+home stakes → draw won; nobody backed it
-    bal = L.balance("spec_a")
+    bal = L.balance("owner:spec_a")
     again = settle_matchday(sn, 1, results)
     assert again == []  # book already settled
-    assert L.balance("spec_a") == bal
+    assert L.balance("owner:spec_a") == bal
 
 
 def test_season_resolve_settles_the_books(_open_season):
@@ -174,8 +174,8 @@ def test_short_pot_never_pays_winners_from_nothing(_open_season):
 
     results = [{"home_agent_id": home, "away_agent_id": away, "home_goals": 1, "away_goals": 0}]
     B.settle_matchday(sn, 1, results)
-    assert L.balance("spec_a") == Decimal("95")  # no payout minted
-    assert L.balance("spec_b") == Decimal("95")
+    assert L.balance("owner:spec_a") == Decimal("95")  # no payout minted
+    assert L.balance("owner:spec_b") == Decimal("95")
     assert L.balance(pot) == Decimal("4")  # untouched: the whole settle rolled back
     book = next(iter(B._load()["fixtures"].values()))
     assert book["status"] == "settle_failed"

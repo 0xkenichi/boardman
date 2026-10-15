@@ -80,6 +80,14 @@ def bet_funding(bet: dict[str, Any]) -> str:
     return FUNDING_ONCHAIN if bet.get("tx_hash") else FUNDING_PROFILE
 
 
+def ledger_wallet_of(bettor_id: Any) -> str:
+    """The ledger wallet a ledger-funded ticket was debited from."""
+    from gaming.src.stack.agentic.party_wallet import football_wallet, is_person
+
+    b = str(bettor_id or "")
+    return football_wallet(b) if is_person(b) else b
+
+
 def _assert_ledger_bettor(bettor_id: str) -> None:
     """A ledger-funded ticket debits ``bettor_id`` itself: never a system
     wallet (agents, pots, owner/creator/LP wallets, the House)."""
@@ -320,10 +328,13 @@ class SpectatorBook:
                     raise ValueError("book not found")
                 if funding == FUNDING_LEDGER:
                     from gaming.src.stack.agentic import ledger
+                    from gaming.src.stack.agentic.party_wallet import football_wallet, merge_legacy_wallet
 
-                    # Same transaction as the ticket: InsufficientFunds rolls
-                    # the ticket back too.
-                    ledger.debit(bettor_id, amount_usdc, reason="spectator_bet", ref=match_id)
+                    # The person's one ledger wallet (owner:<id>). Same
+                    # transaction as the ticket: InsufficientFunds rolls the
+                    # ticket back too.
+                    merge_legacy_wallet(bettor_id)
+                    ledger.debit(football_wallet(bettor_id), amount_usdc, reason="spectator_bet", ref=match_id)
         except _PotFull as exc:
             # Mark the book full (its own small transaction), then refuse.
             if exc.mark_full:
@@ -750,7 +761,7 @@ class SpectatorBook:
 
         for bt in payouts.get("bettors") or []:
             if bet_funding(bt) == FUNDING_LEDGER:
-                _add(bt.get("bettor_id"), bt.get("amount"), f"spectator_{bt.get('reason') or 'win'}")
+                _add(ledger_wallet_of(bt.get("bettor_id")), bt.get("amount"), f"spectator_{bt.get('reason') or 'win'}")
         for c in payouts.get("creators") or []:
             _add(f"creator:{c['creator_id']}", c.get("amount"), "creator_fee_spectator")
         for sr in payouts.get("seed_refunds") or []:

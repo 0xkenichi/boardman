@@ -98,16 +98,19 @@ def _now() -> str:
 
 
 def party_ledger_wallet(party_id: str) -> str:
-    """The marketplace's ledger wallet for a human party (``owner:<id>``)."""
+    """A person's one football wallet (``owner:<id>``: marketplace, AFM bets,
+    stack-API chess tickets), with any legacy bare-id balance folded in."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import _owner_party_wallet
+    from gaming.src.stack.agentic.party_wallet import football_wallet, is_person, merge_legacy_wallet
 
     pid = (party_id or "").strip()
-    if not pid or ":" in pid or "|" in pid or pid.lower().startswith(_SYSTEM_PARTY_PREFIXES):
+    if not is_person(pid) or pid.lower().startswith(_SYSTEM_PARTY_PREFIXES):
         raise BridgeError("only a signed-in player's own wallet can be bridged")
-    wallet = _owner_party_wallet(pid)
-    if not wallet.startswith("owner:"):
+    wallet = football_wallet(pid)
+    if _owner_party_wallet(pid).lower() != wallet:  # a registered agent id
         raise BridgeError("only a signed-in player's own wallet can be bridged")
-    return wallet.lower()
+    merge_legacy_wallet(pid)
+    return wallet
 
 
 def parse_amount(raw: Any) -> int:

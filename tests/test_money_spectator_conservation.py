@@ -134,8 +134,9 @@ def _assert_conserved(mid: str, before: dict[str, int]) -> dict[str, Any]:
     assert treasury_delta == esc_fee + to_micro(pay.get("house_take") or "0")
     # Web tickets are never paid on the agentic ledger...
     for fan in PROFILE_FANS:
-        assert ledger.balance(fan) == 0, fan
+        assert ledger.balance(fan) == 0 and ledger.balance(f"owner:{fan}") == 0, fan
         assert not [t for t in ledger.txs(wallet=fan)], fan
+        assert not [t for t in ledger.txs(wallet=f"owner:{fan}")], fan
     # ...and the book never pays out more than it took in.
     paid = sum(to_micro(b["amount"]) for b in pay.get("bettors") or [])
     paid += sum(to_micro(c["amount"]) for c in pay.get("creators") or [])
@@ -167,14 +168,14 @@ def test_win_conserves_money_and_pays_each_rail_back(monkeypatch):
     pay = _assert_conserved(mid, before)
     assert pay["mode"] == "winner_take_side" and pay["winner_side"] == "a"
     # Winners on side a: one ledger ticket, one web ticket — each on its rail.
-    assert to_micro(ledger.balance("fan_l1")) == to_micro("10") - to_micro("1.5") + _rail_of(pay, "fan_l1")
+    assert to_micro(ledger.balance("owner:fan_l1")) == to_micro("10") - to_micro("1.5") + _rail_of(pay, "fan_l1")
     assert _rail_of(pay, "fan_l1") > to_micro("1.5")
     assert _adjust_of("fan_p1") == -to_micro("0.75") + _rail_of(pay, "fan_p1")
     # Losers paid nothing back.
-    assert ledger.balance("fan_l2") == Decimal("8")
+    assert ledger.balance("owner:fan_l2") == Decimal("8")
     assert _adjust_of("fan_p3") == -to_micro("0.333333")
     # Draw tickets lost to the agents that underwrote them.
-    assert ledger.balance("fan_l3") == Decimal("9.5")
+    assert ledger.balance("owner:fan_l3") == Decimal("9.5")
     assert _adjust_of("fan_p2") == -to_micro("1.25")
     split = (pay["draw_book"] or {}).get("agent_split") or []
     assert sum(to_micro(s["amount"]) for s in split) == to_micro("1.75")
@@ -191,9 +192,9 @@ def test_draw_conserves_money(monkeypatch):
     assert pay["mode"] == "draw_hits"
     # Draw tickets win the pool, on their own rails; side tickets lose.
     assert {b["bettor_id"] for b in pay["bettors"]} == {"fan_l3", "fan_p2"}
-    assert to_micro(ledger.balance("fan_l3")) == to_micro("9.5") + _rail_of(pay, "fan_l3")
+    assert to_micro(ledger.balance("owner:fan_l3")) == to_micro("9.5") + _rail_of(pay, "fan_l3")
     assert _adjust_of("fan_p2") == -to_micro("1.25") + _rail_of(pay, "fan_p2")
-    assert ledger.balance("fan_l1") == Decimal("8.5")
+    assert ledger.balance("owner:fan_l1") == Decimal("8.5")
 
 
 def test_nobody_backed_the_winner_refunds_every_ticket_and_seed(monkeypatch):
@@ -216,7 +217,7 @@ def test_nobody_backed_the_winner_refunds_every_ticket_and_seed(monkeypatch):
     )
     pay = _assert_conserved(mid, before)
     assert pay["mode"] == "refund_no_winner" and pay["house_take"] == "0"
-    assert ledger.balance("fan_l2") == Decimal("10")
+    assert ledger.balance("owner:fan_l2") == Decimal("10")
     assert _adjust_of("fan_p3") == 0
 
 
@@ -230,7 +231,7 @@ def test_void_refunds_each_rail_and_conserves_money(monkeypatch):
     assert total_after == before["total"]
     assert to_micro(ledger.balance(ledger.TREASURY_WALLET)) == before["treasury"]  # no fee on a void
     for fan in LEDGER_FANS:
-        assert ledger.balance(fan) == Decimal("10"), fan
+        assert ledger.balance(f"owner:{fan}") == Decimal("10"), fan
     for fan in PROFILE_FANS:
         assert _adjust_of(fan) == 0, fan
         assert ledger.balance(fan) == 0
@@ -342,10 +343,10 @@ def test_stack_api_tickets_debit_the_caller_only(monkeypatch):
         r = c.post(path, headers=builder, json={"bettor_id": "alice_lab", "side": "a", "amount_usdc": 1})
         assert r.status_code == 200, r.text
     assert ledger.balance("victim") == Decimal("5")
-    assert ledger.balance("alice_lab") == Decimal("3")
+    assert ledger.balance("owner:alice_lab") == Decimal("3")
     r = c.post(
         f"/api/stack/agentic/matches/{mid}/spectator/bet",
         headers=builder, json={"bettor_id": "alice_lab", "side": "draw", "amount_usdc": 4},
     )
     assert r.status_code == 402, r.text
-    assert ledger.balance("alice_lab") == Decimal("3")
+    assert ledger.balance("owner:alice_lab") == Decimal("3")
