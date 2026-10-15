@@ -208,11 +208,12 @@
 
 .v2-nav-links {
   display: flex;
-  gap: 1.5rem;
+  gap: 1.25rem;
   margin-left: auto;
 }
 
 .v2-nav-links a {
+  white-space: nowrap;
   font-family: var(--v2-mono);
   font-size: 0.74rem;
   letter-spacing: 0.1em;
@@ -230,6 +231,19 @@
   display: flex;
   align-items: center;
   gap: 1rem;
+  white-space: nowrap;
+}
+
+.v2-logo {
+  white-space: nowrap;
+}
+
+/* the strapline and the clock give way before the section links do */
+@media (max-width: 1240px) {
+  .v2-logo-mark,
+  .v2-nav-clock {
+    display: none;
+  }
 }
 
 /* the site-wide testnet chit: always visible, even when the links fold away */
@@ -248,7 +262,7 @@
 /* the flagship item sits apart from the book's own sections */
 .v2-nav-links a.v2-nav-flag {
   color: var(--v2-ink);
-  padding-left: 1.5rem;
+  padding-left: 1.25rem;
   border-left: var(--v2-hairline);
 }
 
@@ -995,11 +1009,6 @@
 @media (max-width: 560px) {
   .v2-nav-in {
     gap: 0.8rem;
-  }
-
-  .v2-logo-mark,
-  .v2-nav-clock {
-    display: none;
   }
 
   .v2-nav-cta {

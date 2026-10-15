@@ -45,6 +45,12 @@
   .fh-hand:hover .fh-card-2 { transform: translateX(0%) rotate(10deg); }
 }
 
+/* small phones: a slightly smaller hand so the fan stays on screen */
+@media (max-width: 420px) {
+  .fh-hand { height: 300px; }
+  .fh-card { width: 144px; }
+}
+
 /* ticker: the league running past like a tape */
 .fh-ticker {
   overflow: hidden;
