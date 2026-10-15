@@ -95,10 +95,23 @@ _catalog: dict[str, dict[str, Any]] = {}
 #   real_ng     — real Nigerian players (product decision, 2026-10-15).
 #   original    — Boardman's own universe (universe.py), owned outright.
 #   generated   — AI filler squads (fillers.py).
-ORIGINS = ("global_star", "real_ng", "original", "generated")
+#   legend      — real footballers who have passed away. Their names belong to
+#                 their estates and families, so like global stars they are
+#                 listed ("Coming soon · licence pending") and never ownable
+#                 until a licence or a family's blessing is signed.
+ORIGINS = ("global_star", "real_ng", "original", "generated", "legend")
+LICENSED_ORIGINS_PENDING = frozenset({"global_star", "legend"})
 AVAILABLE = "available"
 UPCOMING = "upcoming"
 LICENCE_PENDING_LABEL = "Upcoming · licence pending"
+LEGEND_PENDING_LABEL = "Coming soon · licence pending"
+COMING_SOON_LABEL = "Coming soon"
+
+
+def _upcoming_label(raw: dict[str, Any], origin: str) -> str:
+    if raw.get("availability_label"):
+        return str(raw["availability_label"])
+    return {"global_star": LICENCE_PENDING_LABEL, "legend": LEGEND_PENDING_LABEL}.get(origin, COMING_SOON_LABEL)
 
 
 class PlayerUnavailable(ValueError):
@@ -115,7 +128,7 @@ def _origin_of(raw: dict[str, Any]) -> str:
 
 
 def _availability_of(raw: dict[str, Any], origin: str) -> str:
-    if origin == "global_star":
+    if origin in LICENSED_ORIGINS_PENDING:
         return UPCOMING  # never ownable without a licence, whatever the file says
     return UPCOMING if raw.get("availability") == UPCOMING else AVAILABLE
 
@@ -162,7 +175,7 @@ def _normalize_row(i: int, raw: dict[str, Any]) -> dict[str, Any]:
         **extra,
         "origin": origin,
         "availability": availability,
-        "availability_label": LICENCE_PENDING_LABEL if availability == UPCOMING else None,
+        "availability_label": _upcoming_label(raw, origin) if availability == UPCOMING else None,
         "player_id": pid,
         "name": raw["name"],
         "nation": raw.get("nation") or "XX",

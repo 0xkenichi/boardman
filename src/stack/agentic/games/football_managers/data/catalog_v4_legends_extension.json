@@ -1,0 +1,598 @@
+[
+ {
+  "player_id": "afm_lg_001",
+  "origin": "legend",
+  "name": "Pelé",
+  "nation": "BR",
+  "slot": "ST",
+  "base_rating": 95,
+  "real_value_usd": 432600000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Pelé",
+   "passed": 2022
+  }
+ },
+ {
+  "player_id": "afm_lg_002",
+  "origin": "legend",
+  "name": "Diego Maradona",
+  "nation": "AR",
+  "slot": "CAM",
+  "base_rating": 95,
+  "real_value_usd": 432600000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Maradona",
+   "passed": 2020
+  }
+ },
+ {
+  "player_id": "afm_lg_003",
+  "origin": "legend",
+  "name": "Johan Cruyff",
+  "nation": "NL",
+  "slot": "ST",
+  "base_rating": 94,
+  "real_value_usd": 354600000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Cruyff",
+   "passed": 2016
+  }
+ },
+ {
+  "player_id": "afm_lg_004",
+  "origin": "legend",
+  "name": "Franz Beckenbauer",
+  "nation": "DE",
+  "slot": "CB",
+  "base_rating": 94,
+  "real_value_usd": 354600000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Beckenbauer",
+   "passed": 2024
+  }
+ },
+ {
+  "player_id": "afm_lg_005",
+  "origin": "legend",
+  "name": "Eusébio",
+  "nation": "PT",
+  "slot": "ST",
+  "base_rating": 93,
+  "real_value_usd": 290700000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Eusébio",
+   "passed": 2014
+  }
+ },
+ {
+  "player_id": "afm_lg_006",
+  "origin": "legend",
+  "name": "Alfredo Di Stéfano",
+  "nation": "AR",
+  "slot": "ST",
+  "base_rating": 93,
+  "real_value_usd": 290700000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Di Stéfano",
+   "passed": 2014
+  }
+ },
+ {
+  "player_id": "afm_lg_007",
+  "origin": "legend",
+  "name": "Ferenc Puskás",
+  "nation": "HU",
+  "slot": "ST",
+  "base_rating": 93,
+  "real_value_usd": 290700000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Puskás",
+   "passed": 2006
+  }
+ },
+ {
+  "player_id": "afm_lg_008",
+  "origin": "legend",
+  "name": "Lev Yashin",
+  "nation": "RU",
+  "slot": "GK",
+  "base_rating": 92,
+  "real_value_usd": 238300000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Yashin",
+   "passed": 1990
+  }
+ },
+ {
+  "player_id": "afm_lg_009",
+  "origin": "legend",
+  "name": "Garrincha",
+  "nation": "BR",
+  "slot": "RW",
+  "base_rating": 92,
+  "real_value_usd": 238300000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Garrincha",
+   "passed": 1983
+  }
+ },
+ {
+  "player_id": "afm_lg_010",
+  "origin": "legend",
+  "name": "Gerd Müller",
+  "nation": "DE",
+  "slot": "ST",
+  "base_rating": 92,
+  "real_value_usd": 238300000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Müller",
+   "passed": 2021
+  }
+ },
+ {
+  "player_id": "afm_lg_011",
+  "origin": "legend",
+  "name": "George Best",
+  "nation": "NIR",
+  "slot": "RW",
+  "base_rating": 91,
+  "real_value_usd": 195300000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Best",
+   "passed": 2005
+  }
+ },
+ {
+  "player_id": "afm_lg_012",
+  "origin": "legend",
+  "name": "Bobby Charlton",
+  "nation": "EN",
+  "slot": "CAM",
+  "base_rating": 91,
+  "real_value_usd": 195300000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Charlton",
+   "passed": 2023
+  }
+ },
+ {
+  "player_id": "afm_lg_013",
+  "origin": "legend",
+  "name": "Bobby Moore",
+  "nation": "EN",
+  "slot": "CB",
+  "base_rating": 91,
+  "real_value_usd": 195300000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Moore",
+   "passed": 1993
+  }
+ },
+ {
+  "player_id": "afm_lg_014",
+  "origin": "legend",
+  "name": "Stanley Matthews",
+  "nation": "EN",
+  "slot": "RW",
+  "base_rating": 90,
+  "real_value_usd": 160100000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Matthews",
+   "passed": 2000
+  }
+ },
+ {
+  "player_id": "afm_lg_015",
+  "origin": "legend",
+  "name": "Denis Law",
+  "nation": "SCO",
+  "slot": "ST",
+  "base_rating": 90,
+  "real_value_usd": 160100000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Law",
+   "passed": 2025
+  }
+ },
+ {
+  "player_id": "afm_lg_016",
+  "origin": "legend",
+  "name": "Sócrates",
+  "nation": "BR",
+  "slot": "CM",
+  "base_rating": 90,
+  "real_value_usd": 160100000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Sócrates",
+   "passed": 2011
+  }
+ },
+ {
+  "player_id": "afm_lg_017",
+  "origin": "legend",
+  "name": "Didi",
+  "nation": "BR",
+  "slot": "CM",
+  "base_rating": 90,
+  "real_value_usd": 160100000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Didi",
+   "passed": 2001
+  }
+ },
+ {
+  "player_id": "afm_lg_018",
+  "origin": "legend",
+  "name": "Gordon Banks",
+  "nation": "EN",
+  "slot": "GK",
+  "base_rating": 90,
+  "real_value_usd": 160100000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Banks",
+   "passed": 2019
+  }
+ },
+ {
+  "player_id": "afm_lg_019",
+  "origin": "legend",
+  "name": "Carlos Alberto Torres",
+  "nation": "BR",
+  "slot": "RB",
+  "base_rating": 90,
+  "real_value_usd": 160100000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Carlos Alberto",
+   "passed": 2016
+  }
+ },
+ {
+  "player_id": "afm_lg_020",
+  "origin": "legend",
+  "name": "Raymond Kopa",
+  "nation": "FR",
+  "slot": "CAM",
+  "base_rating": 90,
+  "real_value_usd": 160100000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Kopa",
+   "passed": 2017
+  }
+ },
+ {
+  "player_id": "afm_lg_021",
+  "origin": "legend",
+  "name": "Ladislao Kubala",
+  "nation": "HU",
+  "slot": "CAM",
+  "base_rating": 90,
+  "real_value_usd": 160100000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Kubala",
+   "passed": 2002
+  }
+ },
+ {
+  "player_id": "afm_lg_022",
+  "origin": "legend",
+  "name": "Nílton Santos",
+  "nation": "BR",
+  "slot": "LB",
+  "base_rating": 89,
+  "real_value_usd": 131200000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Nílton Santos",
+   "passed": 2013
+  }
+ },
+ {
+  "player_id": "afm_lg_023",
+  "origin": "legend",
+  "name": "Djalma Santos",
+  "nation": "BR",
+  "slot": "RB",
+  "base_rating": 89,
+  "real_value_usd": 131200000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Djalma Santos",
+   "passed": 2013
+  }
+ },
+ {
+  "player_id": "afm_lg_024",
+  "origin": "legend",
+  "name": "Paolo Rossi",
+  "nation": "IT",
+  "slot": "ST",
+  "base_rating": 89,
+  "real_value_usd": 131200000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Rossi",
+   "passed": 2020
+  }
+ },
+ {
+  "player_id": "afm_lg_025",
+  "origin": "legend",
+  "name": "Johan Neeskens",
+  "nation": "NL",
+  "slot": "CM",
+  "base_rating": 89,
+  "real_value_usd": 131200000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Neeskens",
+   "passed": 2024
+  }
+ },
+ {
+  "player_id": "afm_lg_026",
+  "origin": "legend",
+  "name": "Just Fontaine",
+  "nation": "FR",
+  "slot": "ST",
+  "base_rating": 89,
+  "real_value_usd": 131200000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Fontaine",
+   "passed": 2023
+  }
+ },
+ {
+  "player_id": "afm_lg_027",
+  "origin": "legend",
+  "name": "Josef Masopust",
+  "nation": "CZ",
+  "slot": "CM",
+  "base_rating": 89,
+  "real_value_usd": 131200000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Masopust",
+   "passed": 2015
+  }
+ },
+ {
+  "player_id": "afm_lg_028",
+  "origin": "legend",
+  "name": "Larbi Benbarek",
+  "nation": "MA",
+  "slot": "CAM",
+  "base_rating": 89,
+  "real_value_usd": 131200000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Benbarek",
+   "passed": 1992
+  }
+ },
+ {
+  "player_id": "afm_lg_029",
+  "origin": "legend",
+  "name": "Gianluca Vialli",
+  "nation": "IT",
+  "slot": "ST",
+  "base_rating": 88,
+  "real_value_usd": 107500000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Vialli",
+   "passed": 2023
+  }
+ },
+ {
+  "player_id": "afm_lg_030",
+  "origin": "legend",
+  "name": "Mário Zagallo",
+  "nation": "BR",
+  "slot": "LW",
+  "base_rating": 88,
+  "real_value_usd": 107500000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Zagallo",
+   "passed": 2024
+  }
+ },
+ {
+  "player_id": "afm_lg_031",
+  "origin": "legend",
+  "name": "Andreas Brehme",
+  "nation": "DE",
+  "slot": "LB",
+  "base_rating": 88,
+  "real_value_usd": 107500000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Brehme",
+   "passed": 2024
+  }
+ },
+ {
+  "player_id": "afm_lg_032",
+  "origin": "legend",
+  "name": "Mário Coluna",
+  "nation": "PT",
+  "slot": "CM",
+  "base_rating": 88,
+  "real_value_usd": 107500000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Coluna",
+   "passed": 2014
+  }
+ },
+ {
+  "player_id": "afm_lg_033",
+  "origin": "legend",
+  "name": "Laurent Pokou",
+  "nation": "CI",
+  "slot": "ST",
+  "base_rating": 88,
+  "real_value_usd": 107500000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Pokou",
+   "passed": 2016
+  }
+ },
+ {
+  "player_id": "afm_lg_034",
+  "origin": "legend",
+  "name": "Marc-Vivien Foé",
+  "nation": "CM",
+  "slot": "CDM",
+  "base_rating": 86,
+  "real_value_usd": 72300000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Foé",
+   "passed": 2003
+  }
+ },
+ {
+  "player_id": "afm_lg_ng_01",
+  "origin": "legend",
+  "name": "Rashidi Yekini",
+  "nation": "NG",
+  "slot": "ST",
+  "base_rating": 90,
+  "real_value_usd": 160100000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Yekini",
+   "passed": 2012,
+   "tribute": "Planned tribute with the family's blessing and a royalty on every trade."
+  }
+ },
+ {
+  "player_id": "afm_lg_ng_02",
+  "origin": "legend",
+  "name": "Stephen Keshi",
+  "nation": "NG",
+  "slot": "CB",
+  "base_rating": 88,
+  "real_value_usd": 107500000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Keshi",
+   "passed": 2016,
+   "tribute": "Planned tribute with the family's blessing and a royalty on every trade."
+  }
+ },
+ {
+  "player_id": "afm_lg_ng_03",
+  "origin": "legend",
+  "name": "Mudashiru Lawal",
+  "nation": "NG",
+  "slot": "CM",
+  "base_rating": 87,
+  "real_value_usd": 88200000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Muda Lawal",
+   "passed": 1991,
+   "tribute": "Planned tribute with the family's blessing and a royalty on every trade."
+  }
+ },
+ {
+  "player_id": "afm_lg_ng_04",
+  "origin": "legend",
+  "name": "Peter Rufai",
+  "nation": "NG",
+  "slot": "GK",
+  "base_rating": 86,
+  "real_value_usd": 72300000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Dodomayana",
+   "passed": 2025,
+   "tribute": "Planned tribute with the family's blessing and a royalty on every trade."
+  }
+ },
+ {
+  "player_id": "afm_lg_ng_05",
+  "origin": "legend",
+  "name": "Thompson Oliha",
+  "nation": "NG",
+  "slot": "CM",
+  "base_rating": 85,
+  "real_value_usd": 59200000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Oliha",
+   "passed": 2013,
+   "tribute": "Planned tribute with the family's blessing and a royalty on every trade."
+  }
+ },
+ {
+  "player_id": "afm_lg_ng_06",
+  "origin": "legend",
+  "name": "Haruna Ilerika",
+  "nation": "NG",
+  "slot": "CAM",
+  "base_rating": 85,
+  "real_value_usd": 59200000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Ilerika",
+   "passed": 2008,
+   "tribute": "Planned tribute with the family's blessing and a royalty on every trade."
+  }
+ },
+ {
+  "player_id": "afm_lg_ng_07",
+  "origin": "legend",
+  "name": "Sam Okwaraji",
+  "nation": "NG",
+  "slot": "CM",
+  "base_rating": 85,
+  "real_value_usd": 59200000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Okwaraji",
+   "passed": 1989,
+   "tribute": "Planned tribute with the family's blessing and a royalty on every trade."
+  }
+ },
+ {
+  "player_id": "afm_lg_ng_08",
+  "origin": "legend",
+  "name": "Uche Okafor",
+  "nation": "NG",
+  "slot": "LB",
+  "base_rating": 84,
+  "real_value_usd": 48500000,
+  "persona": {
+   "tier": "legend",
+   "known_as": "Okafor",
+   "passed": 2011,
+   "tribute": "Planned tribute with the family's blessing and a royalty on every trade."
+  }
+ }
+]

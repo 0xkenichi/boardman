@@ -288,6 +288,222 @@
   }
  },
  {
+  "player_id": "afm_og_leg_01",
+  "origin": "original",
+  "name": "Adekunle Ashiru",
+  "nation": "NG",
+  "slot": "ST",
+  "base_rating": 92,
+  "real_value_usd": 238300000,
+  "availability": "upcoming",
+  "availability_label": "Coming soon · Legends era",
+  "persona": {
+   "tier": "legend",
+   "known_as": "Ashiru",
+   "era": "1990s",
+   "title": "the Thunder of Ibadan",
+   "backstory": "Scored in four straight continental finals for a club that no longer exists."
+  }
+ },
+ {
+  "player_id": "afm_og_leg_02",
+  "origin": "original",
+  "name": "Tinho Marangoni",
+  "nation": "BR",
+  "slot": "CAM",
+  "base_rating": 92,
+  "real_value_usd": 238300000,
+  "availability": "upcoming",
+  "availability_label": "Coming soon · Legends era",
+  "persona": {
+   "tier": "legend",
+   "known_as": "Tinho",
+   "era": "1980s",
+   "title": "the Recife Poet",
+   "backstory": "Played every match barefoot until a contract forced boots on him at 19."
+  }
+ },
+ {
+  "player_id": "afm_og_leg_03",
+  "origin": "original",
+  "name": "Kwaku Boateng-Sarfo",
+  "nation": "GH",
+  "slot": "CM",
+  "base_rating": 90,
+  "real_value_usd": 160100000,
+  "availability": "upcoming",
+  "availability_label": "Coming soon · Legends era",
+  "persona": {
+   "tier": "legend",
+   "known_as": "Boateng-Sarfo",
+   "era": "1970s",
+   "title": "the Accra Clock",
+   "backstory": "Never misplaced a pass in a cup final; Kumasi still sets its watches by him."
+  }
+ },
+ {
+  "player_id": "afm_og_leg_04",
+  "origin": "original",
+  "name": "Ettore Valsecchi",
+  "nation": "IT",
+  "slot": "CB",
+  "base_rating": 91,
+  "real_value_usd": 195300000,
+  "availability": "upcoming",
+  "availability_label": "Coming soon · Legends era",
+  "persona": {
+   "tier": "legend",
+   "known_as": "Valsecchi",
+   "era": "1980s",
+   "title": "the Last Gate of Milan",
+   "backstory": "Twelve seasons, one red card, and he still says the referee was right."
+  }
+ },
+ {
+  "player_id": "afm_og_leg_05",
+  "origin": "original",
+  "name": "Horacio 'El Zurdo' Basualdo",
+  "nation": "AR",
+  "slot": "ST",
+  "base_rating": 91,
+  "real_value_usd": 195300000,
+  "availability": "upcoming",
+  "availability_label": "Coming soon · Legends era",
+  "persona": {
+   "tier": "legend",
+   "known_as": "El Zurdo",
+   "era": "1970s",
+   "title": "the Left Foot of Rosario",
+   "backstory": "Could not kick with his right; nobody ever needed him to."
+  }
+ },
+ {
+  "player_id": "afm_og_leg_06",
+  "origin": "original",
+  "name": "Takeshi Onodera",
+  "nation": "JP",
+  "slot": "GK",
+  "base_rating": 89,
+  "real_value_usd": 131200000,
+  "availability": "upcoming",
+  "availability_label": "Coming soon · Legends era",
+  "persona": {
+   "tier": "legend",
+   "known_as": "Onodera",
+   "era": "1990s",
+   "title": "the Silent Wall of Osaka",
+   "backstory": "Saved a penalty in his first match and did not concede one for three years."
+  }
+ },
+ {
+  "player_id": "afm_og_leg_07",
+  "origin": "original",
+  "name": "Albie Coldwell",
+  "nation": "EN",
+  "slot": "RW",
+  "base_rating": 89,
+  "real_value_usd": 131200000,
+  "availability": "upcoming",
+  "availability_label": "Coming soon · Legends era",
+  "persona": {
+   "tier": "legend",
+   "known_as": "Coldwell",
+   "era": "1960s",
+   "title": "the Burnley Express",
+   "backstory": "A railway porter who trained by racing the morning train to work."
+  }
+ },
+ {
+  "player_id": "afm_og_leg_08",
+  "origin": "original",
+  "name": "Ousmane Ndiaye-Sall",
+  "nation": "SN",
+  "slot": "CDM",
+  "base_rating": 90,
+  "real_value_usd": 160100000,
+  "availability": "upcoming",
+  "availability_label": "Coming soon · Legends era",
+  "persona": {
+   "tier": "legend",
+   "known_as": "Ndiaye-Sall",
+   "era": "2000s",
+   "title": "the Lion's Shield",
+   "backstory": "Captained his country through a qualifying campaign without losing a duel in the air."
+  }
+ },
+ {
+  "player_id": "afm_og_leg_09",
+  "origin": "original",
+  "name": "Bram Verhoeven",
+  "nation": "NL",
+  "slot": "LB",
+  "base_rating": 88,
+  "real_value_usd": 107500000,
+  "availability": "upcoming",
+  "availability_label": "Coming soon · Legends era",
+  "persona": {
+   "tier": "legend",
+   "known_as": "Verhoeven",
+   "era": "1970s",
+   "title": "the Total Full-Back",
+   "backstory": "Played all ten outfield positions in a single season and won the league anyway."
+  }
+ },
+ {
+  "player_id": "afm_og_leg_10",
+  "origin": "original",
+  "name": "Rigoberto Chávez Luna",
+  "nation": "MX",
+  "slot": "ST",
+  "base_rating": 89,
+  "real_value_usd": 131200000,
+  "availability": "upcoming",
+  "availability_label": "Coming soon · Legends era",
+  "persona": {
+   "tier": "legend",
+   "known_as": "Chávez Luna",
+   "era": "1980s",
+   "title": "the Guadalajara Comet",
+   "backstory": "Scored from his own half in a derby, then from his own half again the next week."
+  }
+ },
+ {
+  "player_id": "afm_og_leg_11",
+  "origin": "original",
+  "name": "Kang Seok-jin",
+  "nation": "KR",
+  "slot": "CM",
+  "base_rating": 88,
+  "real_value_usd": 107500000,
+  "availability": "upcoming",
+  "availability_label": "Coming soon · Legends era",
+  "persona": {
+   "tier": "legend",
+   "known_as": "Kang",
+   "era": "2000s",
+   "title": "the Engine of Busan",
+   "backstory": "Ran farther than anyone in the league for nine seasons straight."
+  }
+ },
+ {
+  "player_id": "afm_og_leg_12",
+  "origin": "original",
+  "name": "Mahmoud El-Gamal",
+  "nation": "EG",
+  "slot": "CAM",
+  "base_rating": 90,
+  "real_value_usd": 160100000,
+  "availability": "upcoming",
+  "availability_label": "Coming soon · Legends era",
+  "persona": {
+   "tier": "legend",
+   "known_as": "El-Gamal",
+   "era": "1980s",
+   "title": "the Pharaoh of Port Said",
+   "backstory": "Turned down three European clubs to keep playing for his father's old team."
+  }
+ },
+ {
   "player_id": "afm_og_ng_01",
   "origin": "original",
   "name": "Dayo Okonkwo",

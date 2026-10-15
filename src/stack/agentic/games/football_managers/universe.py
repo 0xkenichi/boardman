@@ -7,6 +7,8 @@ one carries a persona: an archetype, a signature "weapon", a temperament, a
 backstory and, for the Icons, a named rival.
 
   ICONS       — 16 hand-written leads, rated 82-88, each with a rival.
+  LEGENDS     — 12 invented retired greats ("the Thunder of Ibadan"), listed
+                as "Coming soon · Legends era" until a Legends event unlocks them.
   world cast  — every football nation in universe_nations.py gets its own
                 originals: one headliner (79-85) with a title ("the Kumasi
                 Engine") and a rival from another nation, then prospects
@@ -76,6 +78,51 @@ ICONS: tuple[tuple[str, str, str, int, str, str, str, str, int], ...] = (
     ("GK", "Uche Nnamdi-Faro", "NG", 83, "Shot Stopper", "Reads the penalty taker's hips",
      "Unflappable; smiles at strikers", "Saved seven penalties in a single youth tournament and has been smiling since.", 7),
 )
+
+# Boardman's own Legends era: retired greats from the game's invented history.
+# Nobody real — invented names, invented careers. Listed as "Coming soon" and
+# unlocked later as an event. (slot, name, known_as, nation, rating, era, title, story)
+LEGENDS: tuple[tuple[str, str, str, str, int, str, str, str], ...] = (
+    ("ST", "Adekunle Ashiru", "Ashiru", "NG", 92, "1990s", "the Thunder of Ibadan",
+     "Scored in four straight continental finals for a club that no longer exists."),
+    ("CAM", "Tinho Marangoni", "Tinho", "BR", 92, "1980s", "the Recife Poet",
+     "Played every match barefoot until a contract forced boots on him at 19."),
+    ("CM", "Kwaku Boateng-Sarfo", "Boateng-Sarfo", "GH", 90, "1970s", "the Accra Clock",
+     "Never misplaced a pass in a cup final; Kumasi still sets its watches by him."),
+    ("CB", "Ettore Valsecchi", "Valsecchi", "IT", 91, "1980s", "the Last Gate of Milan",
+     "Twelve seasons, one red card, and he still says the referee was right."),
+    ("ST", "Horacio 'El Zurdo' Basualdo", "El Zurdo", "AR", 91, "1970s", "the Left Foot of Rosario",
+     "Could not kick with his right; nobody ever needed him to."),
+    ("GK", "Takeshi Onodera", "Onodera", "JP", 89, "1990s", "the Silent Wall of Osaka",
+     "Saved a penalty in his first match and did not concede one for three years."),
+    ("RW", "Albie Coldwell", "Coldwell", "EN", 89, "1960s", "the Burnley Express",
+     "A railway porter who trained by racing the morning train to work."),
+    ("CDM", "Ousmane Ndiaye-Sall", "Ndiaye-Sall", "SN", 90, "2000s", "the Lion's Shield",
+     "Captained his country through a qualifying campaign without losing a duel in the air."),
+    ("LB", "Bram Verhoeven", "Verhoeven", "NL", 88, "1970s", "the Total Full-Back",
+     "Played all ten outfield positions in a single season and won the league anyway."),
+    ("ST", "Rigoberto Chávez Luna", "Chávez Luna", "MX", 89, "1980s", "the Guadalajara Comet",
+     "Scored from his own half in a derby, then from his own half again the next week."),
+    ("CM", "Kang Seok-jin", "Kang", "KR", 88, "2000s", "the Engine of Busan",
+     "Ran farther than anyone in the league for nine seasons straight."),
+    ("CAM", "Mahmoud El-Gamal", "El-Gamal", "EG", 90, "1980s", "the Pharaoh of Port Said",
+     "Turned down three European clubs to keep playing for his father's old team."),
+)
+LEGENDS_LABEL = "Coming soon · Legends era"
+
+
+def _legend_rows(taken: set[str]) -> list[dict[str, Any]]:
+    rows = []
+    for i, (slot, name, call, nation, rating, era, title, story) in enumerate(LEGENDS, start=1):
+        taken.add(name.lower())
+        rows.append({
+            "player_id": f"{ID_PREFIX}leg_{i:02d}", "origin": "original", "name": name, "nation": nation,
+            "slot": slot, "base_rating": rating, "real_value_usd": value_for_rating(rating),
+            "availability": "upcoming", "availability_label": LEGENDS_LABEL,
+            "persona": {"tier": "legend", "known_as": call, "era": era, "title": title, "backstory": story},
+        })
+    return rows
+
 
 # ── the world cast ────────────────────────────────────────────────────────
 # One 16-man squad's worth of positions. Each nation enters the cycle at a
@@ -211,7 +258,7 @@ def build(real_names: set[str] | None = None) -> list[dict[str, Any]]:
     """The whole original roster: Icons first, then every nation's cast.
     `real_names` (lower-case) are names in the real catalog; never reused."""
     taken = {n.lower() for n in (real_names or set())}
-    return _icon_rows(taken) + _nation_rows(taken)
+    return _icon_rows(taken) + _legend_rows(taken) + _nation_rows(taken)
 
 
 def _real_catalog_names() -> set[str]:

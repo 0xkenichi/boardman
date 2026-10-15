@@ -39,11 +39,12 @@
     td { padding: 8px; border-bottom: 1px solid var(--line); color: #d4d4d8; }
     .stars { color: var(--amber); letter-spacing: 1px; }
     .inj { color: #f87171; font-size: 0.72rem; }
-    .tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 0.66rem;
+    .tag { display: inline-block; margin: 2px 0 2px 6px; padding: 1px 7px; border-radius: 6px; font-size: 0.66rem;
            font-weight: 700; letter-spacing: 0.03em; vertical-align: middle; }
     .tag.icon { background: #2e1065; color: #ddd6fe; }
     .tag.ng { background: #052e16; color: #86efac; }
     .tag.pending { background: #27272a; color: #a1a1aa; }
+    .tag.legend { background: #3f2d07; color: #fcd34d; }
     .weapon { color: #c4b5fd; font-size: 0.72rem; }
     tr.upcoming td { color: #71717a; }
     .mono { font-family: ui-monospace, Menlo, monospace; font-size: 0.75rem; color: var(--muted); }
@@ -93,14 +94,18 @@
     function tags(p) {
       const persona = p.persona || {};
       let t = "";
+      if (persona.tier === "legend") t += "<span class='tag legend'>Legend</span>";
       if (isUpcoming(p)) t += "<span class='tag pending'>" + (p.availability_label || "Upcoming · licence pending") + "</span>";
       else if (persona.tier === "icon") t += "<span class='tag icon'>Icon</span>";
       else if (persona.tier === "headliner") t += "<span class='tag icon'>Headliner</span>";
       if (p.origin === "real_ng") t += "<span class='tag ng'>Nigeria</span>";
       const title = persona.title ? "<div class='weapon'>“" + persona.title + "”</div>" : "";
       const legal = persona.full_name ? "<div class='mono'>" + persona.full_name + "</div>" : "";
+      const remembered = persona.passed ? "<div class='mono'>Remembered · " + persona.passed + "</div>" : "";
+      const era = persona.era ? "<div class='mono'>" + persona.era + " · " + (persona.backstory || "") + "</div>" : "";
+      const tribute = persona.tribute ? "<div class='mono'>" + persona.tribute + "</div>" : "";
       const weapon = persona.weapon ? "<div class='weapon'>" + (persona.archetype || "") + " · " + persona.weapon + "</div>" : "";
-      return t + title + legal + weapon;
+      return t + title + legal + remembered + era + tribute + weapon;
     }
     function row(p) {
       const inj = p.injury ? '<div class="inj">' + p.injury + "</div>" : "";
@@ -138,12 +143,19 @@
       if (slotFilter) rows = rows.filter((p) => (p.slot || "") === slotFilter);
       const el = document.getElementById("result");
       const signable = rows.filter((p) => !isUpcoming(p));
-      const upcoming = rows.filter(isUpcoming);
-      const pending = upcoming.length
+      const isLegend = (p) => (p.persona || {}).tier === "legend";
+      const legends = rows.filter((p) => isUpcoming(p) && isLegend(p));
+      const upcoming = rows.filter((p) => isUpcoming(p) && !isLegend(p));
+      const legendBlock = legends.length
+        ? '<div class="slot"><h2>Legends · coming soon · ' + legends.length + '</h2>' +
+          '<p class="mono">Greats who have passed away, waiting on a licence or their family\'s blessing, and ' +
+          "Boardman's own Legends era. Not signable yet.</p>" + table(legends) + "</div>"
+        : "";
+      const pending = legendBlock + (upcoming.length
         ? '<div class="slot"><h2>Upcoming · licence pending · ' + upcoming.length + '</h2>' +
           '<p class="mono">Real global stars. Not signable until their image-rights licence is in place.</p>' +
           table(upcoming.slice(0, 30)) + "</div>"
-        : "";
+        : "");
       if (slotFilter) {
         el.innerHTML = '<div class="slot"><h2>' + (LABELS[slotFilter] || slotFilter) + " · top " + Math.min(10, signable.length) + '</h2>' +
           table(signable.slice(0, 10)) + "</div>" + pending;

@@ -29,7 +29,7 @@ export interface AfmPlayer {
   weekly_apps?: number | null
   weekly_rating?: number | null
   /** global_star = real star awaiting a licence; real_ng; original (ours); generated (AI fillers) */
-  origin?: 'global_star' | 'real_ng' | 'original' | 'generated'
+  origin?: 'global_star' | 'real_ng' | 'original' | 'generated' | 'legend'
   /** 'upcoming' players are listed but can't be signed or fielded */
   availability?: 'available' | 'upcoming'
   availability_label?: string | null
@@ -37,7 +37,7 @@ export interface AfmPlayer {
 }
 
 export interface AfmPersona {
-  tier: 'icon' | 'headliner' | 'prospect'
+  tier: 'icon' | 'headliner' | 'prospect' | 'legend'
   /** What fans call them — one word, Blue Lock style ("Okonkwo", "Tatá") */
   known_as?: string
   /** Headliners only: "the Kumasi Engine" */
@@ -45,10 +45,16 @@ export interface AfmPersona {
   /** Legal name when the display name is a nickname (Brazilians) */
   full_name?: string
   hometown?: string
-  archetype: string
-  weapon: string
-  temperament: string
-  backstory: string
+  /** Real legends: the year they passed away */
+  passed?: number
+  /** Boardman's own Legends era: the decade they played */
+  era?: string
+  /** Real Nigerian legends: how the tribute will be done */
+  tribute?: string
+  archetype?: string
+  weapon?: string
+  temperament?: string
+  backstory?: string
   rival_id?: string
 }
 
