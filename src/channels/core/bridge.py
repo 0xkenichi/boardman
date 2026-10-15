@@ -131,3 +131,13 @@ async def deliver(profile_id: str, html_text: str, markup: Any = None, notice: A
         logger.warning("[channels] %s notice failed kind=%s", channel, getattr(n, "kind", "?"), exc_info=True)
         return False
     return any(d.ok for d in results)
+
+
+async def notify_channel_only(profile_id: str, notice: Any) -> bool:
+    """Send ``notice`` only to a WhatsApp-first player; a no-op for everyone
+    else (used where Telegram never sent a message, so it stays that way)."""
+    try:
+        return bool(await deliver(profile_id, notice.text, None, notice))
+    except Exception:
+        logger.warning("[channels] notice failed kind=%s", getattr(notice, "kind", "?"), exc_info=True)
+        return False

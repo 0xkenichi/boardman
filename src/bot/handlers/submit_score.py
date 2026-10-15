@@ -162,60 +162,9 @@ async def _store_report(
     home: Optional[int] = None,
     away: Optional[int] = None,
 ) -> dict:
-    sb = get_supabase()
-    challenge = await _load_challenge(challenge_id)
-    if not challenge:
-        raise ValueError("Challenge not found")
+    from gaming.src.channels.core.actions.matches import store_report
 
-    # Always use internal UUID for DB ops (user may pass short public_code)
-    uuid_id = challenge["id"]
-
-    is_creator = profile_id == challenge["creator_id"]
-    is_opponent = profile_id == challenge.get("opponent_id")
-    if not is_creator and not is_opponent:
-        raise ValueError("Not a participant")
-
-    status = challenge.get("status")
-    if status not in ("locked", "creator_locked", "submitted", "playing", "accepted"):
-        raise ValueError(f"Challenge status is {status}, cannot submit score")
-
-    update: dict[str, Any] = {}
-    side = _side_for(profile_id, challenge)
-
-    if home is not None and away is not None:
-        if is_creator:
-            update["creator_reported_home"] = home
-            update["creator_reported_away"] = away
-            update["creator_score"] = _my_goals_from_scoreline(side or "home", home, away)
-        else:
-            update["opponent_reported_home"] = home
-            update["opponent_reported_away"] = away
-            update["opponent_score"] = _my_goals_from_scoreline(side or "away", home, away)
-    elif single_score is not None:
-        if is_creator:
-            update["creator_score"] = single_score
-        else:
-            update["opponent_score"] = single_score
-    else:
-        raise ValueError("Missing score")
-
-    # Merge with existing to decide if both have reported
-    merged = {**challenge, **update}
-    both = (
-        merged.get("creator_score") is not None and merged.get("opponent_score") is not None
-    ) or (
-        merged.get("creator_reported_home") is not None
-        and merged.get("opponent_reported_home") is not None
-    )
-    if both:
-        update["status"] = "submitted"
-    elif status == "locked":
-        update["status"] = "playing"
-
-    sb.schema("gaming").table("challenges").update(denormalize_challenge(update)).eq(
-        "id", uuid_id
-    ).execute()
-    return (await _load_challenge(uuid_id)) or challenge
+    return store_report(challenge_id, profile_id, single_score=single_score, home=home, away=away)
 
 
 async def _download_photo_b64(bot: Bot, file_id: str) -> str:

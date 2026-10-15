@@ -307,11 +307,12 @@ class LockResult:
     tx: dict = field(default_factory=dict)
 
 
-async def lock_stake(ref: str, profile: dict) -> LockResult:
+async def lock_stake(ref: str, profile: dict, *, progress=None) -> LockResult:
     """The Telegram ``Lock my stake`` logic: gates, double-tap guard, stake
     readiness, then ``approve_and_create_match`` (creator) or
     ``approve_and_join_match`` (opponent). Raises ``MatchRefused`` with kind
     ``not_found | not_yours | gate | busy | funds | wallet | wait | escrow | error``.
+    ``progress(amount)`` is awaited once the checks pass, before the escrow call.
     """
     from gaming.src.backend.services.clawstation_circle import (
         CircleWalletError,
@@ -371,6 +372,8 @@ async def lock_stake(ref: str, profile: dict) -> LockResult:
         logger.exception("[matches] lock preflight failed")
         raise MatchRefused("wallet", "Wallet not ready. Open Wallet and try again.", error=exc) from exc
 
+    if progress is not None:
+        await progress(amount)
     try:
         await ensure_user_wallet(pid, chain_id=chain)
         if who == "creator":
