@@ -305,8 +305,11 @@ afterwards; it must exit 0 for that match.
 ### 3.3 Cancel a table that never produced a result
 
 For `open` / `locked` / `partial_lock` / `queued` / `lock_failed` tables with
-no result (refunds the ledger, and the escrow via `cancelMatch` if it was
-locked on-chain):
+no result (refunds the ledger, and the escrow via `cancelMatch` whenever the
+escrow holds a stake on-chain — status OPEN, LOCKED or DISPUTED; an escrow
+that is already RESOLVED/CANCELLED is left alone, and one that was never
+created is skipped unless a lock tx for it may still mine, in which case the
+abort waits and retries):
 
 ```bash
 python -c "from gaming.src.stack.agentic.house import get_house; \
@@ -326,6 +329,77 @@ the session does not race you.
    `curl -X POST "$API/api/stack/agentic/house/matches/agm_xxx/play" -H "X-Rematch-Key: $KEY" -H 'Content-Type: application/json' -d '{"wait": false}'`.
 4. Only if the game can never finish: record the decision in the incident
    log, then settle it as a draw on-chain via §3.2 after marking the result.
+
+### 3.5 Spectator tickets: which balance pays
+
+Every ticket in a chess spectator book records the rail its stake came from
+(`bets[].funding`), and settlement / void pays it back on that rail only:
+
+| funding | taken by | paid / refunded by |
+|---|---|---|
+| `profile` | web + Telegram (`/api/rematch/web/spectator/bet`): Circle pull or `play_adjust` | `play_adjust:<i>` / `abort:play_adjust:<i>` journal steps |
+| `ledger` | stack API (`/matches/{id}/spectator/bet`, `/house/matches/{id}/bets`): ledger debit `spectator_bet`, same transaction as the ticket | agentic-ledger credit in the `spectator_settle` / `abort:spectator` step |
+| `onchain` | SpectatorPool deposit (projected) | the pool (`claim`); never the ledger |
+
+Tickets booked before the field existed count as `profile`. The platform
+fee, rounding dust and any share with nobody to receive it are credited to
+`0xboardman_agentic_treasury` (reason `spectator_fee`); `payouts.house_take`
+on the book is that amount. A market nobody backed (no ticket on the winning
+side, or no draw ticket on a draw) refunds every ticket and seed, as the pool
+does. To audit one book: the sum of `payouts.bettors` + `creators` +
+`seed_refunds` + `draw_book.agent_split` + `house_take` equals the sum of
+`bets` + `payouts.funded_seeds`, to the micro.
+
+### 3.6 Wallet bridge: transfers stuck between play balance and football wallet
+
+`POST /api/stack/agentic/football/wallet/deposit|withdraw` moves USDC between
+a player's **play balance** (on-chain play address + `play_adjust.json`
+overlay — the number the bot shows) and their **football wallet**
+(`owner:<profile_id>` in the agentic ledger). Each transfer is a row in
+`wallet_bridge_transfers` (key `<profile_id>|<idempotency_key>`):
+
+| status | meaning | money |
+|---|---|---|
+| `pending` | deposit row written, play balance not (yet) debited | nothing moved, or the debit just landed |
+| `debited` | first side moved (deposit: play balance; withdraw: ledger) | in flight — held by the row |
+| `reversing` | ops asked to undo it | being given back |
+| `completed` / `failed` / `reversed` | done | conserved |
+
+A crash between the two sides leaves `pending`/`debited`. The **reconciler**
+finishes them: the house maintenance tick runs it every ~5 min on rows older
+than `BOARDMAN_BRIDGE_STALE_SEC` (default 300). Each step is idempotent
+(play-balance moves are keyed `bridge:<transfer>:debit|credit|reverse` in
+`play_adjust.json` → `applied`; ledger moves commit with their status
+change), so running it again, or alongside the tick, is always safe.
+
+Inspect:
+
+```bash
+# open transfers (any age), as JSON — read-only
+curl -s "$API/api/stack/agentic/admin/wallet-bridge/pending" -H "X-Rematch-Key: $MASTER_KEY"
+# inside the container: dry run lists what would happen
+python scripts/reconcile_wallet_bridge.py --all
+# one player's history
+python scripts/reconcile_wallet_bridge.py --party <profile_id>
+```
+
+Act:
+
+```bash
+python scripts/reconcile_wallet_bridge.py --apply                 # finish stale rows
+python scripts/reconcile_wallet_bridge.py --all --apply           # include fresh rows (only when no request is live)
+python scripts/reconcile_wallet_bridge.py --reverse '<profile_id>|<key>' --apply   # undo instead
+```
+
+What "finish" does: deposit `pending` → if the play debit landed, credit the
+ledger, else mark `failed`; deposit `debited` → credit the ledger; withdraw
+`debited` → credit the play balance. `--reverse` gives back whichever side
+moved. Check afterwards: `ledger_txs` rows with `ref = '<transfer_key>'`
+(`bridge_deposit`, `bridge_withdraw`, `bridge_withdraw_reversed`) and
+`play_adjust.json` → `applied["bridge:<transfer_key>:…"]`.
+
+Deposits are refused on mainnet (the football wallet is book-entry, testnet
+only); withdrawals always work so money can come back out.
 
 ---
 
@@ -353,6 +427,9 @@ Record the numbers in the ops log.
    investigate before more games run.
 5. **Stale tables**: no match should sit in `locking`/`locked`/`playing` for
    more than an hour, and none in `settle_failed`/`lock_failed` at all.
+5b. **Wallet bridge**: `python scripts/reconcile_wallet_bridge.py` prints
+   "no open transfers". Anything listed is older than 5 minutes and the tick
+   has not finished it — follow §3.6.
 6. **Backups**: the latest Railway volume backup is from the last 24h. Once a
    week, download one (`railway volume files download` or the dashboard) and
    check it untars and contains `ledger.json`.
