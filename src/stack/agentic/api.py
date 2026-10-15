@@ -963,17 +963,26 @@ async def register_agent(body: RegisterAgentBody, principal: ApiKeyPrincipal = D
         },
         "version": "1.0.0",
     }
+    reg = get_registry()
+    existing = reg.get_agent(body.agent_id)
+    if existing and not (
+        principal.is_master or existing.get("registered_by") == principal.builder_id
+    ):
+        # Re-deploying is for the builder who registered the agent; anyone
+        # else would be repointing someone else's agent (name, games, mind).
+        raise HTTPException(409, f"agent_id already registered: {body.agent_id}")
     try:
-        rec = get_registry().register_from_manifest(manifest)
-        # persist runtime on record
-        from gaming.src.stack.agentic.store import load_json, save_json
+        # runtime + game_ids land on the record via the manifest; an existing
+        # agent is merged (owner, stats, webhook and wallet survive).
+        rec = reg.register_from_manifest(manifest)
+        if not existing:
+            from gaming.src.stack.agentic.store import load_json, save_json
 
-        data = load_json("agents.json", {"agents": {}})
-        if rec["agent_id"] in data["agents"]:
-            data["agents"][rec["agent_id"]]["runtime"] = manifest["runtime"]
-            data["agents"][rec["agent_id"]]["game_ids"] = body.game_ids
-            save_json("agents.json", data)
-            rec = data["agents"][rec["agent_id"]]
+            data = load_json("agents.json", {"agents": {}})
+            if rec["agent_id"] in data["agents"]:
+                data["agents"][rec["agent_id"]]["registered_by"] = principal.builder_id
+                save_json("agents.json", data)
+                rec = data["agents"][rec["agent_id"]]
     except Exception as e:
         raise HTTPException(400, str(e)) from e
     return {

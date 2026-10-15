@@ -15,9 +15,75 @@ AGENTS_FILE = "agents.json"
 _LEGACY_DISPLAY_NAMES = frozenset({"Blue Lock", "Ao Ashi"})
 GAMES_FILE = "games.json"
 
+# Wallet binding of a registered agent — kept as-is on re-registration.
+_WALLET_FIELDS = ("wallet_address", "key_custody", "identity_contract", "chain_id")
+
+# What a manifest (re-)deploy owns. Everything else on a stored record —
+# owner, ownership history, stats, wallet, webhook, marketplace listing and
+# offers, identity bindings, created_at — belongs to the agent's life on the
+# platform and survives a version bump.
+_MANIFEST_FIELDS = (
+    "name",
+    "creator_fee_bps",
+    "version",
+    "strategy_id",
+    "openings",
+    "mind",
+    "economy",
+    "preferred_time_controls",
+    "silo",
+    "role",
+    "game_ids",
+    "runtime",
+    "updated_at",
+)
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _merge_reregistration(existing: dict[str, Any], fresh: dict[str, Any]) -> dict[str, Any]:
+    """Fold a re-deployed manifest into the stored record without resetting it.
+
+    Only manifest-owned fields are refreshed. Ownership follows the manifest
+    only while the developer still holds the agent (owner == creator); a
+    manager someone adopted or bought stays theirs. The stored webhook wins
+    once its holder made it their own (``set_webhook``, or the agent changed
+    hands); otherwise the manifest's default webhook tracks the deploy.
+    """
+    rec = dict(existing)
+    for key in _MANIFEST_FIELDS:
+        rec[key] = fresh[key]
+
+    creator = str(existing.get("creator_id") or "")
+    owner = str(existing.get("owner_id") or creator)
+    held_by_creator = not owner or owner == creator
+    if held_by_creator:
+        rec["owner_id"] = fresh["owner_id"]
+        rec["creator_id"] = fresh["creator_id"]
+    else:
+        rec["owner_id"] = owner
+        rec["creator_id"] = creator or fresh["creator_id"]
+
+    keep_hook = "webhook_url" in existing and (
+        bool(existing.get("webhook_custom")) or not held_by_creator
+    )
+    hook = existing.get("webhook_url") if keep_hook else fresh.get("webhook_url")
+    rec["webhook_url"] = hook
+    rt = dict(fresh.get("runtime") or {})
+    if hook:
+        rt["webhook_url"] = hook
+    else:
+        rt.pop("webhook_url", None)
+    rec["runtime"] = rt
+
+    for key in _WALLET_FIELDS:
+        if existing.get(key) is not None:
+            rec[key] = existing[key]
+    rec["stats"] = {**fresh["stats"], **dict(existing.get("stats") or {})}
+    rec["created_at"] = existing.get("created_at") or fresh["created_at"]
+    return rec
 
 
 class AgentRegistry:
@@ -84,7 +150,13 @@ class AgentRegistry:
 
         data = self._agents()
         role = role if role in {"contestant", "house"} else "contestant"
-        crypto = provision_agent_crypto(agent_id, role=role)
+        existing = data["agents"].get(agent_id)
+        if existing and existing.get("wallet_address"):
+            # Never rebind a registered agent's wallet: its ledger balance
+            # and keystore key are keyed to the address it already has.
+            crypto = {k: existing.get(k) for k in _WALLET_FIELDS}
+        else:
+            crypto = provision_agent_crypto(agent_id, role=role)
 
         eco = dict(economy or {})
         c_bps = clamp_creator_fee_bps(
@@ -134,6 +206,10 @@ class AgentRegistry:
             "created_at": _now(),
             "updated_at": _now(),
         }
+        if existing:
+            # A re-deploy (manifest version bump) merges — it never resets
+            # the owner, stats, webhook, wallet or listing of a live agent.
+            rec = _merge_reregistration(existing, rec)
         data["agents"][agent_id] = rec
         save_json(AGENTS_FILE, data)
         return rec
@@ -193,8 +269,8 @@ class AgentRegistry:
         for manifest in load_demo_manifests():
             existing = self.get_agent(manifest["agent_id"])
             if existing and existing.get("name") in _LEGACY_DISPLAY_NAMES and existing["name"] != manifest["name"]:
-                # Rename only — a version bump would re-register and reset
-                # owner_id, stats and webhook on a manager someone bought.
+                # Rename only; a version bump below re-registers by merging
+                # (owner, stats, webhook and listing survive).
                 data = self._agents()
                 data["agents"][manifest["agent_id"]]["name"] = manifest["name"]
                 data["agents"][manifest["agent_id"]]["updated_at"] = _now()
@@ -221,6 +297,7 @@ class AgentRegistry:
             raise KeyError(agent_id)
         url = (webhook_url or "").strip()
         a["webhook_url"] = url or None
+        a["webhook_custom"] = True  # survives manifest re-deploys
         rt = dict(a.get("runtime") or {})
         if url:
             rt["webhook_url"] = url

@@ -199,6 +199,9 @@ def test_list_fee_bid_and_sale_move_money_and_player(_world, _season):
     sw0, bw0 = L.balance(sw), L.balance(bw)
     house0 = L.balance(M.HOUSE_MARKET_WALLET)
     tb0 = CS.transfer_balance(buyer)
+    stb0 = CS.transfer_balance(seller)
+    basis = CS.cost_basis(seller, pid)
+    assert basis == price  # a seeded player is carried at its catalog price
 
     # listing charges 1% of the ask up front, to the House
     out = M.list_player(seller, pid, price)
@@ -224,10 +227,11 @@ def test_list_fee_bid_and_sale_move_money_and_player(_world, _season):
     assert L.balance(bw) == bw0 - price
     assert L.balance(sw) == (sw0 - fee) + net
     assert L.balance(M.HOUSE_MARKET_WALLET) == house0 + fee + tax
-    # club transfer balances moved the other way
-    # at least price + wage runway; today it is 2x price + runway because
-    # transfer_balance counts the fee in both budget and squad spend (reported)
-    assert CS.transfer_balance(buyer) <= tb0 - price - _runway(pid)
+    # club transfer balances: the buyer spends the price once plus the new
+    # wage's runway; the seller gains its net plus the runway it no longer owes
+    assert CS.transfer_balance(buyer) == tb0 - price - _runway(pid)
+    assert CS.transfer_balance(seller) == stb0 + net + _runway(pid)
+    assert CS.cost_basis(buyer, pid) == price
     # the rival's queued offer was rejected as outbid
     assert M._mload()["offers"][bid2["offer_id"]]["status"] == "rejected"
     # and the listing is consumed
@@ -298,12 +302,168 @@ def test_free_agent_instant_buy(_world, _season):
     assert cat.get_player(pid)["owner_agent_id"] == buyer
     assert len(CS.roster_ids(buyer)) == roster0 + 1
     assert L.balance(M.HOUSE_MARKET_WALLET) == house0 + price
-    # at least price + wage runway; today it is 2x price + runway because
-    # transfer_balance counts the fee in both budget and squad spend (reported)
-    assert CS.transfer_balance(buyer) <= tb0 - price - _runway(pid)
+    # the price is consumed once, plus the new wage's runway
+    assert CS.transfer_balance(buyer) == tb0 - price - _runway(pid)
     # and it is gone from the market
     with pytest.raises(M.MarketError):
         M.buy_free_agent(_demo_ids(2)[1], pid)
+
+
+# ----------------------------------------------- transfer authority round trips
+
+
+def _cheapest_free(skip_gk=True):
+    from gaming.src.stack.agentic.games.football_managers import catalog as cat
+
+    cands = [p for p in cat.list_players(free_only=True) if not (skip_gk and p["slot"] == "GK")]
+    p = min(cands, key=lambda p: Decimal(str(p["game_price_usdc"])))
+    return p["player_id"], Decimal(str(p["game_price_usdc"]))
+
+
+def test_buy_then_release_costs_exactly_the_fee(_world, _season):
+    from gaming.src.stack.agentic.games.football_managers import club_store as CS
+    from gaming.src.stack.agentic.games.football_managers import market as M
+
+    club = _demo_ids(1)[0]
+    M.open_window(1, "mid", closes_at="soon")
+    CS.adjust_budget(club, Decimal("60.00"))
+    tb0 = CS.transfer_balance(club)
+    budget0 = Decimal(CS.get_club(club)["budget_usdc"])
+
+    pid, price = _cheapest_free()
+    M.buy_free_agent(club, pid)
+    assert CS.transfer_balance(club) == tb0 - price - _runway(pid)
+    # a buy never touches the budget line itself — the basis carries it
+    assert Decimal(CS.get_club(club)["budget_usdc"]) == budget0
+
+    out = M.release_player(club, pid)
+    assert out["ok"] and Decimal(out["written_off_usdc"]) == price
+    assert pid not in CS.roster_ids(club)
+    from gaming.src.stack.agentic.games.football_managers.catalog import get_player
+
+    assert get_player(pid)["owner_agent_id"] is None
+    # the runway comes back, the fee does not: the round trip cost the price
+    assert CS.transfer_balance(club) == tb0 - price
+    # and he is a free agent again
+    M.buy_free_agent(_demo_ids(2)[1], pid)
+
+
+def test_buy_then_sell_moves_authority_symmetrically(_world, _season):
+    from gaming.src.stack.agentic.games.football_managers import club_store as CS
+    from gaming.src.stack.agentic.games.football_managers import market as M
+
+    a, b = _demo_ids(2)
+    M.open_window(1, "mid", closes_at="soon")
+    CS.adjust_budget(a, Decimal("60.00"))
+    CS.adjust_budget(b, Decimal("60.00"))
+    ta0, tb0 = CS.transfer_balance(a), CS.transfer_balance(b)
+
+    pid, paid = _cheapest_free()
+    M.buy_free_agent(a, pid)
+    ask = paid + Decimal("1.50")  # sold on at a profit
+    M.list_player(a, pid, ask)
+    bid = M.place_bid(b, pid, ask)
+    res = M.respond_offer(bid["offer_id"], a, True)
+    net = Decimal(res["seller_net_usdc"])
+
+    # A paid `paid`, banked `net`, and owes no runway for him any more
+    assert CS.transfer_balance(a) == ta0 - paid + net
+    # B spent the agreed price once, plus the wage runway it now carries
+    assert CS.transfer_balance(b) == tb0 - ask - _runway(pid)
+    assert CS.cost_basis(b, pid) == ask
+    # and B selling him straight back at the same price leaves B down only the tax
+    M.list_player(b, pid, ask)
+    bid = M.place_bid(a, pid, ask)
+    res = M.respond_offer(bid["offer_id"], b, True)
+    assert CS.transfer_balance(b) == tb0 - Decimal(res["tax_usdc"])
+
+
+def test_release_is_window_gated_and_keeps_the_squad_floor(_world, _season):
+    from gaming.src.stack.agentic.games.football_managers import club_store as CS
+    from gaming.src.stack.agentic.games.football_managers import market as M
+
+    club = _demo_ids(1)[0]
+    pid = _any_seller_outfield(club)
+    with pytest.raises(M.MarketError) as err:
+        M.release_player(club, pid)
+    assert "transfer_window_closed" in str(err.value)
+
+    M.open_window(1, "mid", closes_at="soon")
+    _trim_squad(club, 16)
+    tb0 = CS.transfer_balance(club)
+    with pytest.raises(M.MarketError) as err:
+        M.release_player(club, pid)  # 16 → 15 would break XI + bench
+    assert "below_min_squad" in str(err.value)
+    assert CS.transfer_balance(club) == tb0
+    with pytest.raises(M.MarketError):
+        M.release_player(club, "afm_pl_not_mine")
+
+
+def _repair_script():
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "repair_afm_transfer_authority",
+        Path(__file__).resolve().parents[1] / "scripts" / "repair_afm_transfer_authority.py",
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_repair_script_undoes_the_old_double_count(_world, _season, capsys):
+    """Rewind two settled deals into the old math, then let the script fix them."""
+    from gaming.src.stack.agentic.games.football_managers import club_store as CS
+    from gaming.src.stack.agentic.games.football_managers import market as M
+
+    a, b = _demo_ids(2)
+    M.open_window(1, "mid", closes_at="soon")
+    CS.adjust_budget(a, Decimal("60.00"))
+    CS.adjust_budget(b, Decimal("60.00"))
+    _pad_squad(a, 17)  # deep enough to sell twice (settled under the new math)
+    first = len(M._mload()["log"])
+    pid, paid = _cheapest_free()
+    M.buy_free_agent(a, pid)
+    resale = paid + Decimal("1.00")
+    M.list_player(a, pid, resale)
+    M.respond_offer(M.place_bid(b, pid, resale)["offer_id"], a, True)
+    sold = _any_seller_outfield(a)
+    M.list_player(a, sold, "2.00")
+    M.respond_offer(M.place_bid(b, sold, "2.00")["offer_id"], a, True)
+    seller_basis = Decimal(str(CS.get_player(sold)["game_price_usdc"]))
+    want = {aid: CS.transfer_balance(aid) for aid in (a, b)}
+
+    # what the pre-fix engine would have left behind
+    state = CS._state()
+    ca, cb = state["clubs"][a], state["clubs"][b]
+    # A: its own buy-then-resale nets out (−paid, then +paid); the seeded
+    # player's sale was over-credited by his basis
+    ca["budget_usdc"] = str(Decimal(ca["budget_usdc"]) + seller_basis)
+    # B: both prices debited again on top of its squad commitment
+    cb["budget_usdc"] = str(Decimal(cb["budget_usdc"]) - resale - Decimal("2.00"))
+    cb["cost_basis_usdc"].pop(pid)
+    cb["cost_basis_usdc"].pop(sold)
+    CS._save(state)
+    d = M._mload()
+    for e in d["log"][first:]:
+        e.pop("authority", None)
+    M._msave(d)
+    assert CS.transfer_balance(b) != want[b]
+
+    mod = _repair_script()
+    assert mod.main([]) == 0  # dry run touches nothing
+    assert "dry run" in capsys.readouterr().out
+    assert CS.transfer_balance(b) != want[b]
+
+    assert mod.main(["--apply"]) == 0
+    assert {aid: CS.transfer_balance(aid) for aid in (a, b)} == want
+    assert CS.cost_basis(b, pid) == resale and CS.cost_basis(b, sold) == Decimal("2.00")
+    # idempotent: a second run finds nothing to do
+    capsys.readouterr()
+    assert mod.main(["--apply"]) == 0
+    assert "does not need this repair" in capsys.readouterr().out
+    assert {aid: CS.transfer_balance(aid) for aid in (a, b)} == want
 
 
 # ------------------------------------------------------------ the agent seam
