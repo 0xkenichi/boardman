@@ -58,14 +58,14 @@ _SECRET_RE = re.compile(
 )
 _APP_PREFIXES = (
     "AFRICASTALKING_", "API_FOOTBALL", "ARC_", "ASI_", "AVALANCHE_", "AXIOM_",
-    "BASE_", "BIRD_", "BLOCKED_REGIONS", "BOARDMAN_", "CIRCLE_", "CLAW",
+    "BASE_", "BIRD_", "BLOCKED_REGIONS", "BOARDMAN_", "CHANNELS_", "CIRCLE_", "CLAW",
     "ESCROW_", "FCM_", "FIAT_", "GEMINI_", "GEO_FENCE", "GOOGLE_", "KOBOX_",
     "LICHESS_", "LIGHTNING_", "LOGTAIL_", "MATCH_", "MAXMIND", "MONITOR_",
     "NERO_", "NEXT_PUBLIC_", "NIM_", "NVIDIA_", "OLLAMA_", "OPENAI_",
     "OPENROUTER_", "ORACLE_", "PARTNER_", "PAYSTACK_", "PLAY_", "RAJA_",
     "RAPIDAPI_", "REMATCH_", "RESEND_", "SETTLEMENT_", "SHEILA_", "SPECTATOR_",
     "STELLAR_", "STOCKFISH", "SUPABASE_", "TELEGRAM_", "TOURNAMENT",
-    "WALLET_WATCH_", "XBL_",
+    "WALLET_WATCH_", "WHATSAPP_", "XBL_",
 )
 # Escape hatch for the mtime check only (the audit hook stays strict): set when
 # a live Boardman hub is writing to this checkout's data/ during the run.
