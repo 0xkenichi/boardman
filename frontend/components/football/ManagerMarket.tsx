@@ -24,9 +24,8 @@ import {
   setManagerWebhook,
   unbindPartyWallet,
 } from '@/lib/afm'
-
-/** Demo owner identity until real human auth lands (mirrors the backend default). */
-const OWNER_ID = 'demo_owner'
+import { ownedBy } from '@/lib/sessionProfile'
+import { useSessionProfileId } from '@/lib/useSessionProfile'
 const FORMATIONS = ['4-3-3', '4-2-3-1', '4-4-2', '3-5-2', '5-3-2', '4-1-4-1', '3-4-3']
 
 function cutPct(bps: number | null | undefined): string {
@@ -40,6 +39,10 @@ function usd(usdc: string | number | null | undefined): string {
 }
 
 export function ManagerMarket({ onChanged }: { onChanged?: () => void }) {
+  // The signed-in profile: the BFF stamps it as owner/buyer/party on every
+  // write, so "mine" and the wallet status must read with the same id.
+  const profileId = useSessionProfileId()
+  const OWNER_ID = profileId ?? ''
   const [agents, setAgents] = useState<MarketAgent[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [flash, setFlash] = useState<string | null>(null)
@@ -86,16 +89,21 @@ export function ManagerMarket({ onChanged }: { onChanged?: () => void }) {
 
   useEffect(() => {
     refresh()
-    fetchPartyWalletStatus(OWNER_ID)
-      .then(setWallet)
-      .catch(() => setWallet(null))
   }, [refresh])
 
   const reloadWallet = useCallback(() => {
+    if (!OWNER_ID) {
+      setWallet(null)
+      return
+    }
     fetchPartyWalletStatus(OWNER_ID)
       .then(setWallet)
       .catch(() => setWallet(null))
-  }, [])
+  }, [OWNER_ID])
+
+  useEffect(() => {
+    reloadWallet()
+  }, [reloadWallet])
 
   const onBindWallet = async () => {
     if (!bindAddress.trim().toLowerCase().startsWith('0x')) {
@@ -135,7 +143,7 @@ export function ManagerMarket({ onChanged }: { onChanged?: () => void }) {
     }
   }
 
-  const mine = (agents ?? []).filter((a) => a.owner_id === OWNER_ID)
+  const mine = ownedBy(agents ?? [], profileId)
 
   const onCreate = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -543,7 +551,7 @@ export function ManagerMarket({ onChanged }: { onChanged?: () => void }) {
           {!error && agents && agents.length > 0 && (
             <div className="fd-cards">
               {agents.map((a) => {
-                const mineHere = a.owner_id === OWNER_ID
+                const mineHere = !!OWNER_ID && a.owner_id === OWNER_ID
                 const s = a.stats ?? {}
                 const forSale = a.listed && !mineHere
                 return (

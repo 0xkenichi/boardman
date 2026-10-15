@@ -2,9 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { fetchOwnerSales, type PartySalesView, type SalesTimelineEntry } from '@/lib/afm'
-
-/** Demo owner identity until real human auth lands (mirrors the backend default). */
-const OWNER_ID = 'demo_owner'
+import { useSessionProfileId } from '@/lib/useSessionProfile'
 
 function money(usdc: string | number | null | undefined): string {
   const n = Number(usdc ?? 0)
@@ -60,11 +58,13 @@ export function SalesDesk({ refreshKey = 0 }: { refreshKey?: number }) {
   const [view, setView] = useState<PartySalesView | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [stamp, setStamp] = useState(0)
+  const profileId = useSessionProfileId()
 
   useEffect(() => {
+    if (!profileId) return
     let alive = true
     setError(null)
-    fetchOwnerSales(OWNER_ID)
+    fetchOwnerSales(profileId)
       .then((v) => {
         if (alive) setView(v)
       })
@@ -80,8 +80,15 @@ export function SalesDesk({ refreshKey = 0 }: { refreshKey?: number }) {
       alive = false
       window.clearInterval(t)
     }
-  }, [refreshKey, stamp])
+  }, [profileId, refreshKey, stamp])
 
+  if (profileId === null) {
+    return (
+      <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>
+        Sign in to see the managers you have sold and the money they earned you.
+      </p>
+    )
+  }
   if (error && !view) {
     return <div className="fd-err">Couldn’t load your sales desk — {error}</div>
   }
