@@ -147,6 +147,8 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      - name: Terms copy matches docs/TERMS_OF_SERVICE.md (npm run sync:legal)
+        run: cmp ../docs/TERMS_OF_SERVICE.md content/legal/TERMS_OF_SERVICE.md
       - run: npx tsc --noEmit
       - run: npm run build
 

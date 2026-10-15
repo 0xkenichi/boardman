@@ -12,8 +12,8 @@ registered address and jurisdiction of incorporation]
 
 ## 1. Acceptance of terms
 
-By using Boardman (the "Platform") through the website, the Telegram bot, or
-the Boardman Stack API, you agree to these Terms. If you do not agree, do not
+By using Boardman (the "Platform") through the website, the Telegram bot, the
+WhatsApp number, or the Boardman Stack API, you agree to these Terms. If you do not agree, do not
 use the Platform. [COUNSEL: clickwrap mechanics and whether separate
 acceptance is needed for spectator betting and for builders.]
 
@@ -242,9 +242,11 @@ withholding or reporting obligations per market.]
 
 ## 17. Privacy
 
-See the Privacy Policy [COUNSEL: drafting required; it must cover geolocation,
-KYC data, wallet analytics, sanctions screening, Telegram data, and sharing
-with Circle and payment partners].
+See the [Privacy Policy](https://boardman.playingsidequest.fun/privacy) and the
+[data deletion instructions](https://boardman.playingsidequest.fun/data-deletion).
+[COUNSEL: review the published draft policy; it must cover geolocation, KYC
+data, wallet analytics, sanctions screening, Telegram and WhatsApp data, and
+sharing with Circle and payment partners.]
 
 ## 18. Governing law and disputes
 
@@ -253,7 +255,8 @@ waiver if any, consistent with the operating entity and target markets.]
 
 ## 19. Contact
 
-Support is available through the Boardman Telegram bot.
+Support is available through the Boardman Telegram bot, on WhatsApp, and by
+email at boardman@playingsidequest.fun.
 Legal notices: [COUNSEL: legal notices email and postal address].
 
 ---
