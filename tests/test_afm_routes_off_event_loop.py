@@ -9,12 +9,12 @@ so FastAPI runs them in its threadpool.
 from __future__ import annotations
 
 import asyncio
-import time
+import threading
 
 import pytest
 
 MASTER = "sk_master_test"
-SLOW = 0.6
+SAFETY = 10.0  # only bounds a broken run; the assertions use events, not timings
 
 
 @pytest.fixture(autouse=True)
@@ -40,27 +40,43 @@ def _app():
     return app, api_mod
 
 
-def _fast_request_waits_for(method: str, path: str) -> float:
-    """Seconds until a /ping sent 0.1s after `path` came back."""
+class _Gate:
+    """A slow handler that holds until released, so the test needs no timings."""
+
+    def __init__(self) -> None:
+        self.started = threading.Event()
+        self.release = threading.Event()
+
+    def hold(self) -> None:
+        self.started.set()
+        self.release.wait(SAFETY)
+
+
+def _ping_answers_while_held(method: str, path: str, gate: _Gate) -> bool:
+    """True when /ping answers while `path` is still held in its handler.
+
+    If the slow route ran on the event loop, the loop could not serve /ping
+    until the gate's safety timeout let the handler finish, so the slow
+    request would already be done by the time /ping returns.
+    """
     import httpx
 
     app, _ = _app()
     prefix = "/api/stack/agentic"
 
-    async def run() -> float:
+    async def run() -> bool:
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
-            t0 = time.perf_counter()
             slow = asyncio.create_task(
                 c.request(method, prefix + path, headers={"X-Boardman-Key": MASTER})
             )
-            await asyncio.sleep(0.1)  # let the slow handler start
+            await asyncio.to_thread(gate.started.wait, SAFETY)
             r = await c.get("/ping")
-            took = time.perf_counter() - t0  # ~0.1s, or ~SLOW when the loop was blocked
-            assert r.status_code == 200
+            answered_while_held = r.status_code == 200 and not slow.done()
+            gate.release.set()
             res = await slow
             assert res.status_code == 200, res.text
-            return took
+            return answered_while_held
 
     return asyncio.run(run())
 
@@ -68,23 +84,27 @@ def _fast_request_waits_for(method: str, path: str) -> float:
 def test_season_read_runs_off_the_event_loop(monkeypatch):
     from gaming.src.stack.agentic.games.football_managers import season as S
 
+    gate = _Gate()
+
     def slow_get_season():
-        time.sleep(SLOW)
+        gate.hold()
         return None
 
     monkeypatch.setattr(S, "get_season", slow_get_season)
-    assert _fast_request_waits_for("GET", "/football/season") < SLOW * 0.75
+    assert _ping_answers_while_held("GET", "/football/season", gate)
 
 
 def test_season_tick_runs_off_the_event_loop(monkeypatch):
     from gaming.src.stack.agentic.games.football_managers import season as S
 
+    gate = _Gate()
+
     def slow_tick(now=None):
-        time.sleep(SLOW)
+        gate.hold()
         return {"action": "idle"}
 
     monkeypatch.setattr(S, "tick", slow_tick)
-    assert _fast_request_waits_for("POST", "/football/season/tick") < SLOW * 0.75
+    assert _ping_answers_while_held("POST", "/football/season/tick", gate)
 
 
 def test_heavy_football_routes_are_threadpool_routes():
