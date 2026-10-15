@@ -168,6 +168,28 @@ TEMPLATE = [
       PRIMARY KEY (tournament_key, place)
     )
     """,
+    # ── wallet bridge: play balance <-> agentic-ledger party wallet ──
+    # One row per transfer, keyed by the caller's idempotency key. The row is
+    # the outbox between the two money systems: it is written before the
+    # first side moves, and the reconciler finishes or reverses any row a
+    # crash left between them.
+    """
+    CREATE TABLE IF NOT EXISTS wallet_bridge_transfers (
+      transfer_key TEXT PRIMARY KEY,
+      party_id TEXT NOT NULL,
+      direction TEXT NOT NULL,
+      amount_micro BIGINT NOT NULL CHECK (amount_micro > 0),
+      ledger_wallet TEXT NOT NULL,
+      status TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      updated_at_ms BIGINT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS wallet_bridge_status_idx ON wallet_bridge_transfers (status, updated_at_ms)",
+    "CREATE INDEX IF NOT EXISTS wallet_bridge_party_idx ON wallet_bridge_transfers (party_id, created_at)",
     # ── house log (was data/agentic/house_log.db) ──
     """
     CREATE TABLE IF NOT EXISTS house_log_games (
@@ -213,6 +235,7 @@ TABLES = (
     "signer_locks",
     "onchain_txs",
     "tournament_payouts",
+    "wallet_bridge_transfers",
     "house_log_games",
     "house_log_txs",
 )
@@ -324,7 +347,7 @@ def postgres_migration_sql() -> str:
     head = (
         "-- Boardman agentic ledger v2: ledger, matches, spectator books, LP pools,\n"
         "-- settlement journal, match leases, on-chain tx/nonce records,\n"
-        "-- tournament payouts and the house log.\n"
+        "-- tournament payouts, wallet-bridge transfers and the house log.\n"
         "-- Generated from src/stack/agentic/db/schema.py — edit there, then\n"
         "-- regenerate: python -m gaming.src.stack.agentic.db.schema > <this file>\n"
         "-- Money columns are integer micro-USDC (6 decimals).\n\n"

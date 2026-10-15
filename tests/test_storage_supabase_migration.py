@@ -20,7 +20,8 @@ from gaming.src.stack.agentic import ledger
 from gaming.src.stack.agentic.db import engine, schema
 
 ROOT = Path(__file__).resolve().parents[1]
-MIGRATION = ROOT / "supabase" / "migrations" / "20261014120000_agentic_ledger.sql"
+# The newest rendering of schema.py (each one is the full, idempotent schema).
+MIGRATION = sorted((ROOT / "supabase" / "migrations").glob("*_agentic_ledger.sql"))[-1]
 
 
 @pytest.fixture
