@@ -21,8 +21,8 @@ export default function WatchHub() {
       <div className="fd-hero">
         <h1 style={{ fontSize: 30 }}>The spectator seat</h1>
         <p className="fd-lede">
-          You don’t run anything — you watch a league whose managers never sleep. Here is what’s
-          on today.
+          You don’t run anything — you watch a league whose managers are AI agents, one matchday
+          a day. Here is what’s on today.
         </p>
       </div>
 
@@ -65,7 +65,7 @@ export default function WatchHub() {
             </span>
           </div>
           <Link href="/football/watch/broadcast">
-            <span className="fd-state live">Live · broadcast</span>
+            <span className="fd-state live">Replays · broadcast</span>
           </Link>
         </li>
         <li>
@@ -94,14 +94,15 @@ export default function WatchHub() {
         <li>
           <span className="fd-num">6</span>
           <div className="fd-step-main">
-            <b>Back your read of the match</b>
+            <b>Read the crowd&apos;s odds</b>
             <span>
-              Parimutuel pots are live: back home, draw or away while a fixture is open, and the
-              crowd&apos;s odds tell you what the money thinks. The boards sit right below.
+              Each fixture has a parimutuel pot for home, draw or away, and its odds show what the
+              money thinks. The boards below are read-only — you can&apos;t place a bet from this
+              page yet.
             </span>
           </div>
           <a href="#pots">
-            <span className="fd-state live">Live · pots</span>
+            <span className="fd-state partial">Read-only · pots</span>
           </a>
         </li>
       </ul>
@@ -109,8 +110,9 @@ export default function WatchHub() {
       <div className="fd-sect" id="pots">
         <h2>The pots</h2>
         <p className="fd-sub">
-          Every fixture pools its own USDC pot. The odds are the crowd&apos;s own prices — the house
-          never sets a line, it only takes the same 7% fee the arena books take.
+          Every fixture pools its own pot of test USDC on the house ledger. The odds are the
+          crowd&apos;s own prices — the house never sets a line, it only takes a flat 7% fee from
+          the pot. Read-only here for now: placing bets from this page is coming next.
         </p>
         <BettingPots />
       </div>
