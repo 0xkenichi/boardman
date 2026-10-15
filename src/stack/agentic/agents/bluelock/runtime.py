@@ -1,4 +1,4 @@
-"""Blue Lock's brain — creator_bluelock_demo. Football managers only.
+"""Forge's brain — creator_bluelock_demo. Football managers only.
 
 Answers the House's matchday ask (boardman.agent.football_managers.matchday.v1)
 with the striker-ego playbook: best-rated XI, attack-first shapes, never

@@ -1,0 +1,1554 @@
+[
+ {
+  "player_id": "afm_og_001",
+  "origin": "original",
+  "name": "Tobi Akanbi",
+  "nation": "NG",
+  "slot": "ST",
+  "base_rating": 88,
+  "real_value_usd": 107500000,
+  "persona": {
+   "tier": "icon",
+   "archetype": "Egoist Finisher",
+   "weapon": "Blind-side volley",
+   "temperament": "Ice-cold and selfish in the box",
+   "backstory": "Street-football king of Surulere who has never passed in the final third and never apologised for it.",
+   "rival_id": "afm_og_002"
+  }
+ },
+ {
+  "player_id": "afm_og_002",
+  "origin": "original",
+  "name": "Rei Kurosawa",
+  "nation": "JP",
+  "slot": "ST",
+  "base_rating": 87,
+  "real_value_usd": 88200000,
+  "persona": {
+   "tier": "icon",
+   "archetype": "Predator",
+   "weapon": "Near-post ghost run",
+   "temperament": "Quiet, obsessive, studies every keeper",
+   "backstory": "Watched a decade of goals frame by frame and now arrives where the ball will be before anyone else knows.",
+   "rival_id": "afm_og_001"
+  }
+ },
+ {
+  "player_id": "afm_og_003",
+  "origin": "original",
+  "name": "Chidi Nwosu-Hale",
+  "nation": "NG",
+  "slot": "CAM",
+  "base_rating": 86,
+  "real_value_usd": 72300000,
+  "persona": {
+   "tier": "icon",
+   "archetype": "Field Commander",
+   "weapon": "No-look switch of play",
+   "temperament": "Calm; sees the pitch from above",
+   "backstory": "Started as a full-back; a coach moved him inside after noticing he talked more than he ran, and was right.",
+   "rival_id": "afm_og_014"
+  }
+ },
+ {
+  "player_id": "afm_og_004",
+  "origin": "original",
+  "name": "Matteo Vianelli",
+  "nation": "IT",
+  "slot": "CM",
+  "base_rating": 84,
+  "real_value_usd": 48500000,
+  "persona": {
+   "tier": "icon",
+   "archetype": "Metronome",
+   "weapon": "Two-touch tempo control",
+   "temperament": "Patient, never rushed",
+   "backstory": "Grew up in his father's café counting the beats of a restaurant rush. Plays the same way.",
+   "rival_id": "afm_og_015"
+  }
+ },
+ {
+  "player_id": "afm_og_005",
+  "origin": "original",
+  "name": "Emeka Okafor-Lind",
+  "nation": "NG",
+  "slot": "CB",
+  "base_rating": 85,
+  "real_value_usd": 59200000,
+  "persona": {
+   "tier": "icon",
+   "archetype": "The Wall",
+   "weapon": "Last-ditch recovery sprint",
+   "temperament": "Proud, loud, impossible to bully",
+   "backstory": "Split his youth between Enugu and Malmö and learned to defend in both snow and dust.",
+   "rival_id": "afm_og_011"
+  }
+ },
+ {
+  "player_id": "afm_og_006",
+  "origin": "original",
+  "name": "Yusuf Danjuma",
+  "nation": "NG",
+  "slot": "LW",
+  "base_rating": 86,
+  "real_value_usd": 72300000,
+  "persona": {
+   "tier": "icon",
+   "archetype": "Dribble Artist",
+   "weapon": "Elastico into the cut-in",
+   "temperament": "Showman who lives for the crowd",
+   "backstory": "Kano's most-filmed teenager; his skill videos had more views than his club's matches.",
+   "rival_id": "afm_og_009"
+  }
+ },
+ {
+  "player_id": "afm_og_007",
+  "origin": "original",
+  "name": "Lukas Brenner",
+  "nation": "DE",
+  "slot": "GK",
+  "base_rating": 84,
+  "real_value_usd": 48500000,
+  "persona": {
+   "tier": "icon",
+   "archetype": "Sweeper Keeper",
+   "weapon": "Long throw to start the counter",
+   "temperament": "Composed, borderline arrogant",
+   "backstory": "A failed striker who went in goal for one match and never came back out.",
+   "rival_id": "afm_og_016"
+  }
+ },
+ {
+  "player_id": "afm_og_008",
+  "origin": "original",
+  "name": "Ikenna Obi",
+  "nation": "NG",
+  "slot": "RB",
+  "base_rating": 83,
+  "real_value_usd": 39800000,
+  "persona": {
+   "tier": "icon",
+   "archetype": "Overlap Engine",
+   "weapon": "Underlapping cut-back",
+   "temperament": "Relentless, never stops running",
+   "backstory": "Ran 10km to training every day for three years because the bus fare went on boots.",
+   "rival_id": "afm_og_013"
+  }
+ },
+ {
+  "player_id": "afm_og_009",
+  "origin": "original",
+  "name": "Dario Montelongo",
+  "nation": "AR",
+  "slot": "RW",
+  "base_rating": 85,
+  "real_value_usd": 59200000,
+  "persona": {
+   "tier": "icon",
+   "archetype": "Speed Demon",
+   "weapon": "First-touch burst past the full-back",
+   "temperament": "Hot-headed, chases every lost ball",
+   "backstory": "Rosario sprint champion at 14 who picked football because track had no crowds.",
+   "rival_id": "afm_og_006"
+  }
+ },
+ {
+  "player_id": "afm_og_010",
+  "origin": "original",
+  "name": "Haruto Senda",
+  "nation": "JP",
+  "slot": "CDM",
+  "base_rating": 83,
+  "real_value_usd": 39800000,
+  "persona": {
+   "tier": "icon",
+   "archetype": "Destroyer",
+   "weapon": "Tackle, turn and release",
+   "temperament": "Says nothing, misses nothing",
+   "backstory": "Raised on judo before football; still wins the ball like he is throwing someone.",
+   "rival_id": "afm_og_012"
+  }
+ },
+ {
+  "player_id": "afm_og_011",
+  "origin": "original",
+  "name": "Femi Adeyinka",
+  "nation": "NG",
+  "slot": "ST",
+  "base_rating": 83,
+  "real_value_usd": 39800000,
+  "persona": {
+   "tier": "icon",
+   "archetype": "Target Man",
+   "weapon": "Hold-up and lay-off",
+   "temperament": "Gentle giant until the ball is in the air",
+   "backstory": "Lagos beach-football legend who learned to control any ball on sand, so grass is easy.",
+   "rival_id": "afm_og_005"
+  }
+ },
+ {
+  "player_id": "afm_og_012",
+  "origin": "original",
+  "name": "Mateus Arrebola",
+  "nation": "BR",
+  "slot": "CB",
+  "base_rating": 84,
+  "real_value_usd": 48500000,
+  "persona": {
+   "tier": "icon",
+   "archetype": "Ball-Playing Centre-Back",
+   "weapon": "Line-breaking pass through midfield",
+   "temperament": "Elegant, occasionally reckless",
+   "backstory": "Futsal-trained in São Paulo; would rather risk a pass than clear it.",
+   "rival_id": "afm_og_010"
+  }
+ },
+ {
+  "player_id": "afm_og_013",
+  "origin": "original",
+  "name": "Kojo Ampofo-Lyle",
+  "nation": "GH",
+  "slot": "LB",
+  "base_rating": 82,
+  "real_value_usd": 32600000,
+  "persona": {
+   "tier": "icon",
+   "archetype": "Wing-Back Runner",
+   "weapon": "Early cross on the run",
+   "temperament": "Cheerful, endless energy",
+   "backstory": "Kumasi-born, Leeds-raised, still argues about which city taught him more.",
+   "rival_id": "afm_og_008"
+  }
+ },
+ {
+  "player_id": "afm_og_014",
+  "origin": "original",
+  "name": "Ibrahim Sule",
+  "nation": "NG",
+  "slot": "CAM",
+  "base_rating": 84,
+  "real_value_usd": 48500000,
+  "persona": {
+   "tier": "icon",
+   "archetype": "Shadow Striker",
+   "weapon": "Late arrival into the box",
+   "temperament": "Unseen until it's too late",
+   "backstory": "Abuja's quiet kid who scores from positions nobody marks because nobody notices him.",
+   "rival_id": "afm_og_003"
+  }
+ },
+ {
+  "player_id": "afm_og_015",
+  "origin": "original",
+  "name": "Aiden Calloway",
+  "nation": "IE",
+  "slot": "CM",
+  "base_rating": 82,
+  "real_value_usd": 32600000,
+  "persona": {
+   "tier": "icon",
+   "archetype": "Box-to-Box",
+   "weapon": "Pressing trigger that wins it high",
+   "temperament": "Never knows when to stop",
+   "backstory": "Gaelic football convert from Cork who tackles like the ball owes him money.",
+   "rival_id": "afm_og_004"
+  }
+ },
+ {
+  "player_id": "afm_og_016",
+  "origin": "original",
+  "name": "Uche Nnamdi-Faro",
+  "nation": "NG",
+  "slot": "GK",
+  "base_rating": 83,
+  "real_value_usd": 39800000,
+  "persona": {
+   "tier": "icon",
+   "archetype": "Shot Stopper",
+   "weapon": "Reads the penalty taker's hips",
+   "temperament": "Unflappable; smiles at strikers",
+   "backstory": "Saved seven penalties in a single youth tournament and has been smiling since.",
+   "rival_id": "afm_og_007"
+  }
+ },
+ {
+  "player_id": "afm_og_017",
+  "origin": "original",
+  "name": "Lucas Lefevre-Diop",
+  "nation": "FR",
+  "slot": "GK",
+  "base_rating": 71,
+  "real_value_usd": 3700000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Sweeper Keeper",
+   "weapon": "One-on-one smother",
+   "temperament": "Workhorse",
+   "backstory": "Late bloomer released twice before breaking through."
+  }
+ },
+ {
+  "player_id": "afm_og_018",
+  "origin": "original",
+  "name": "Kayode Abubakar",
+  "nation": "NG",
+  "slot": "GK",
+  "base_rating": 81,
+  "real_value_usd": 26700000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Shot Stopper",
+   "weapon": "Penalty instinct",
+   "temperament": "Quiet leader",
+   "backstory": "Played futsal until 17."
+  }
+ },
+ {
+  "player_id": "afm_og_019",
+  "origin": "original",
+  "name": "Musa Uzor",
+  "nation": "NG",
+  "slot": "GK",
+  "base_rating": 80,
+  "real_value_usd": 21900000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Sweeper Keeper",
+   "weapon": "Penalty instinct",
+   "temperament": "Fiery competitor",
+   "backstory": "Came through an academy nobody had heard of."
+  }
+ },
+ {
+  "player_id": "afm_og_020",
+  "origin": "original",
+  "name": "Kojo Owusu-Ansah",
+  "nation": "GH",
+  "slot": "GK",
+  "base_rating": 69,
+  "real_value_usd": 2500000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Shot Stopper",
+   "weapon": "Quick distribution",
+   "temperament": "Fiery competitor",
+   "backstory": "Spotted at a street tournament."
+  }
+ },
+ {
+  "player_id": "afm_og_021",
+  "origin": "original",
+  "name": "Thiago Teixeira Lobo",
+  "nation": "BR",
+  "slot": "GK",
+  "base_rating": 75,
+  "real_value_usd": 8100000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Shot Stopper",
+   "weapon": "Penalty instinct",
+   "temperament": "Calm under pressure",
+   "backstory": "Came through an academy nobody had heard of."
+  }
+ },
+ {
+  "player_id": "afm_og_022",
+  "origin": "original",
+  "name": "Harvey Thackeray",
+  "nation": "EN",
+  "slot": "GK",
+  "base_rating": 76,
+  "real_value_usd": 9900000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Sweeper Keeper",
+   "weapon": "Quick distribution",
+   "temperament": "Workhorse",
+   "backstory": "Played futsal until 17."
+  }
+ },
+ {
+  "player_id": "afm_og_023",
+  "origin": "original",
+  "name": "Usman Adeleke",
+  "nation": "NG",
+  "slot": "GK",
+  "base_rating": 78,
+  "real_value_usd": 14700000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Shot Stopper",
+   "weapon": "Penalty instinct",
+   "temperament": "Workhorse",
+   "backstory": "Spotted at a street tournament."
+  }
+ },
+ {
+  "player_id": "afm_og_024",
+  "origin": "original",
+  "name": "Kwabena Boakye-Dankwa",
+  "nation": "GH",
+  "slot": "GK",
+  "base_rating": 76,
+  "real_value_usd": 9900000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Sweeper Keeper",
+   "weapon": "Penalty instinct",
+   "temperament": "Big-game player",
+   "backstory": "Played futsal until 17."
+  }
+ },
+ {
+  "player_id": "afm_og_025",
+  "origin": "original",
+  "name": "Yanis Delacroix-Ba",
+  "nation": "FR",
+  "slot": "CB",
+  "base_rating": 70,
+  "real_value_usd": 3000000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Ball-Playing Centre-Back",
+   "weapon": "Switch of play",
+   "temperament": "Perfectionist",
+   "backstory": "Child prodigy still learning to be patient."
+  }
+ },
+ {
+  "player_id": "afm_og_026",
+  "origin": "original",
+  "name": "Iker Olabarrieta",
+  "nation": "ES",
+  "slot": "CB",
+  "base_rating": 80,
+  "real_value_usd": 21900000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Ball-Playing Centre-Back",
+   "weapon": "Recovery sprint",
+   "temperament": "Fiery competitor",
+   "backstory": "Came through an academy nobody had heard of."
+  }
+ },
+ {
+  "player_id": "afm_og_027",
+  "origin": "original",
+  "name": "Abdullahi Uzor",
+  "nation": "NG",
+  "slot": "CB",
+  "base_rating": 80,
+  "real_value_usd": 21900000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Aerial Dominator",
+   "weapon": "Header in both boxes",
+   "temperament": "Workhorse",
+   "backstory": "Spotted at a street tournament."
+  }
+ },
+ {
+  "player_id": "afm_og_028",
+  "origin": "original",
+  "name": "Nnamdi Babangida",
+  "nation": "NG",
+  "slot": "CB",
+  "base_rating": 77,
+  "real_value_usd": 12100000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Aerial Dominator",
+   "weapon": "Switch of play",
+   "temperament": "Streaky but brilliant",
+   "backstory": "Played futsal until 17."
+  }
+ },
+ {
+  "player_id": "afm_og_029",
+  "origin": "original",
+  "name": "Tunde Onyekachi",
+  "nation": "NG",
+  "slot": "CB",
+  "base_rating": 76,
+  "real_value_usd": 9900000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Ball-Playing Centre-Back",
+   "weapon": "Switch of play",
+   "temperament": "Calm under pressure",
+   "backstory": "Grew up idolising the Icons and now wants their place."
+  }
+ },
+ {
+  "player_id": "afm_og_030",
+  "origin": "original",
+  "name": "Cheikh Ndour-Faye",
+  "nation": "SN",
+  "slot": "CB",
+  "base_rating": 68,
+  "real_value_usd": 2000000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Ball-Playing Centre-Back",
+   "weapon": "Header in both boxes",
+   "temperament": "Quiet leader",
+   "backstory": "Came through an academy nobody had heard of."
+  }
+ },
+ {
+  "player_id": "afm_og_031",
+  "origin": "original",
+  "name": "Noé Lefevre-Diop",
+  "nation": "FR",
+  "slot": "CB",
+  "base_rating": 68,
+  "real_value_usd": 2000000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Stopper",
+   "weapon": "Switch of play",
+   "temperament": "Streaky but brilliant",
+   "backstory": "Spotted at a street tournament."
+  }
+ },
+ {
+  "player_id": "afm_og_032",
+  "origin": "original",
+  "name": "Harvey Whitlock",
+  "nation": "EN",
+  "slot": "CB",
+  "base_rating": 71,
+  "real_value_usd": 3700000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Aerial Dominator",
+   "weapon": "Switch of play",
+   "temperament": "Big-game player",
+   "backstory": "Child prodigy still learning to be patient."
+  }
+ },
+ {
+  "player_id": "afm_og_033",
+  "origin": "original",
+  "name": "Ousmane Gueye-Badji",
+  "nation": "SN",
+  "slot": "CB",
+  "base_rating": 68,
+  "real_value_usd": 2000000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Ball-Playing Centre-Back",
+   "weapon": "Interception read",
+   "temperament": "Workhorse",
+   "backstory": "Child prodigy still learning to be patient."
+  }
+ },
+ {
+  "player_id": "afm_og_034",
+  "origin": "original",
+  "name": "Ayoub Zerrouki",
+  "nation": "MA",
+  "slot": "CB",
+  "base_rating": 74,
+  "real_value_usd": 6600000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Ball-Playing Centre-Back",
+   "weapon": "Switch of play",
+   "temperament": "Workhorse",
+   "backstory": "Spotted at a street tournament."
+  }
+ },
+ {
+  "player_id": "afm_og_035",
+  "origin": "original",
+  "name": "Cheikh Gueye-Badji",
+  "nation": "SN",
+  "slot": "CB",
+  "base_rating": 80,
+  "real_value_usd": 21900000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Aerial Dominator",
+   "weapon": "Interception read",
+   "temperament": "Calm under pressure",
+   "backstory": "Spotted at a street tournament."
+  }
+ },
+ {
+  "player_id": "afm_og_036",
+  "origin": "original",
+  "name": "Chukwudi Babangida",
+  "nation": "NG",
+  "slot": "CB",
+  "base_rating": 75,
+  "real_value_usd": 8100000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Ball-Playing Centre-Back",
+   "weapon": "Header in both boxes",
+   "temperament": "Quiet leader",
+   "backstory": "Grew up idolising the Icons and now wants their place."
+  }
+ },
+ {
+  "player_id": "afm_og_037",
+  "origin": "original",
+  "name": "Kwabena Sarpong-Kyei",
+  "nation": "GH",
+  "slot": "CB",
+  "base_rating": 80,
+  "real_value_usd": 21900000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Stopper",
+   "weapon": "Recovery sprint",
+   "temperament": "Calm under pressure",
+   "backstory": "Spotted at a street tournament."
+  }
+ },
+ {
+  "player_id": "afm_og_038",
+  "origin": "original",
+  "name": "Babatunde Uzor",
+  "nation": "NG",
+  "slot": "CB",
+  "base_rating": 76,
+  "real_value_usd": 9900000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Ball-Playing Centre-Back",
+   "weapon": "Recovery sprint",
+   "temperament": "Streaky but brilliant",
+   "backstory": "Child prodigy still learning to be patient."
+  }
+ },
+ {
+  "player_id": "afm_og_039",
+  "origin": "original",
+  "name": "Mason Pendlebury",
+  "nation": "EN",
+  "slot": "RB",
+  "base_rating": 73,
+  "real_value_usd": 5400000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Inverted Full-Back",
+   "weapon": "Switch of play",
+   "temperament": "Streaky but brilliant",
+   "backstory": "Grew up idolising the Icons and now wants their place."
+  }
+ },
+ {
+  "player_id": "afm_og_040",
+  "origin": "original",
+  "name": "Kelechi Ibekwe",
+  "nation": "NG",
+  "slot": "RB",
+  "base_rating": 76,
+  "real_value_usd": 9900000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Overlap Engine",
+   "weapon": "Switch of play",
+   "temperament": "Perfectionist",
+   "backstory": "Child prodigy still learning to be patient."
+  }
+ },
+ {
+  "player_id": "afm_og_041",
+  "origin": "original",
+  "name": "Lucas Ambroise",
+  "nation": "FR",
+  "slot": "RB",
+  "base_rating": 78,
+  "real_value_usd": 14700000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Overlap Engine",
+   "weapon": "Interception read",
+   "temperament": "Big-game player",
+   "backstory": "Converted from another position as a teenager."
+  }
+ },
+ {
+  "player_id": "afm_og_042",
+  "origin": "original",
+  "name": "Mason Ashworth",
+  "nation": "EN",
+  "slot": "RB",
+  "base_rating": 77,
+  "real_value_usd": 12100000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Overlap Engine",
+   "weapon": "Interception read",
+   "temperament": "Streaky but brilliant",
+   "backstory": "Played futsal until 17."
+  }
+ },
+ {
+  "player_id": "afm_og_043",
+  "origin": "original",
+  "name": "Kojo Sarpong-Kyei",
+  "nation": "GH",
+  "slot": "RB",
+  "base_rating": 73,
+  "real_value_usd": 5400000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Inverted Full-Back",
+   "weapon": "Switch of play",
+   "temperament": "Perfectionist",
+   "backstory": "Child prodigy still learning to be patient."
+  }
+ },
+ {
+  "player_id": "afm_og_044",
+  "origin": "original",
+  "name": "Usman Chukwuma",
+  "nation": "NG",
+  "slot": "RB",
+  "base_rating": 81,
+  "real_value_usd": 26700000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Inverted Full-Back",
+   "weapon": "Interception read",
+   "temperament": "Big-game player",
+   "backstory": "Played futsal until 17."
+  }
+ },
+ {
+  "player_id": "afm_og_045",
+  "origin": "original",
+  "name": "Lennart Steinmetz-Ahn",
+  "nation": "DE",
+  "slot": "LB",
+  "base_rating": 75,
+  "real_value_usd": 8100000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Wing-Back Runner",
+   "weapon": "Interception read",
+   "temperament": "Streaky but brilliant",
+   "backstory": "Spotted at a street tournament."
+  }
+ },
+ {
+  "player_id": "afm_og_046",
+  "origin": "original",
+  "name": "Damilare Olaniyan",
+  "nation": "NG",
+  "slot": "LB",
+  "base_rating": 73,
+  "real_value_usd": 5400000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Wing-Back Runner",
+   "weapon": "Switch of play",
+   "temperament": "Quiet leader",
+   "backstory": "Played futsal until 17."
+  }
+ },
+ {
+  "player_id": "afm_og_047",
+  "origin": "original",
+  "name": "Nnamdi Nwachukwu",
+  "nation": "NG",
+  "slot": "LB",
+  "base_rating": 71,
+  "real_value_usd": 3700000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Wing-Back Runner",
+   "weapon": "Recovery sprint",
+   "temperament": "Big-game player",
+   "backstory": "Child prodigy still learning to be patient."
+  }
+ },
+ {
+  "player_id": "afm_og_048",
+  "origin": "original",
+  "name": "Ji-ho Seo-Hwan",
+  "nation": "KR",
+  "slot": "LB",
+  "base_rating": 80,
+  "real_value_usd": 21900000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Wing-Back Runner",
+   "weapon": "Recovery sprint",
+   "temperament": "Fiery competitor",
+   "backstory": "Converted from another position as a teenager."
+  }
+ },
+ {
+  "player_id": "afm_og_049",
+  "origin": "original",
+  "name": "Thiago Albuquerque-Ramos",
+  "nation": "BR",
+  "slot": "LB",
+  "base_rating": 74,
+  "real_value_usd": 6600000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Wing-Back Runner",
+   "weapon": "Header in both boxes",
+   "temperament": "Big-game player",
+   "backstory": "Child prodigy still learning to be patient."
+  }
+ },
+ {
+  "player_id": "afm_og_050",
+  "origin": "original",
+  "name": "Mathis Marchetti-Roux",
+  "nation": "FR",
+  "slot": "LB",
+  "base_rating": 75,
+  "real_value_usd": 8100000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Inverted Full-Back",
+   "weapon": "Recovery sprint",
+   "temperament": "Joker in the dressing room",
+   "backstory": "Child prodigy still learning to be patient."
+  }
+ },
+ {
+  "player_id": "afm_og_051",
+  "origin": "original",
+  "name": "Álvaro Garmendia",
+  "nation": "ES",
+  "slot": "CDM",
+  "base_rating": 76,
+  "real_value_usd": 9900000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Deep-Lying Playmaker",
+   "weapon": "Press resistance",
+   "temperament": "Quiet leader",
+   "backstory": "Grew up idolising the Icons and now wants their place."
+  }
+ },
+ {
+  "player_id": "afm_og_052",
+  "origin": "original",
+  "name": "Musa Anozie",
+  "nation": "NG",
+  "slot": "CDM",
+  "base_rating": 77,
+  "real_value_usd": 12100000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Destroyer",
+   "weapon": "Late run into the box",
+   "temperament": "Streaky but brilliant",
+   "backstory": "Came through an academy nobody had heard of."
+  }
+ },
+ {
+  "player_id": "afm_og_053",
+  "origin": "original",
+  "name": "Davi Albuquerque-Ramos",
+  "nation": "BR",
+  "slot": "CDM",
+  "base_rating": 80,
+  "real_value_usd": 21900000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Deep-Lying Playmaker",
+   "weapon": "Press resistance",
+   "temperament": "Calm under pressure",
+   "backstory": "Came through an academy nobody had heard of."
+  }
+ },
+ {
+  "player_id": "afm_og_054",
+  "origin": "original",
+  "name": "Caio Barreto Neto",
+  "nation": "BR",
+  "slot": "CDM",
+  "base_rating": 69,
+  "real_value_usd": 2500000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Destroyer",
+   "weapon": "Press resistance",
+   "temperament": "Workhorse",
+   "backstory": "Played futsal until 17."
+  }
+ },
+ {
+  "player_id": "afm_og_055",
+  "origin": "original",
+  "name": "Gbenga Balogun",
+  "nation": "NG",
+  "slot": "CDM",
+  "base_rating": 73,
+  "real_value_usd": 5400000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Destroyer",
+   "weapon": "Press resistance",
+   "temperament": "Fiery competitor",
+   "backstory": "Grew up idolising the Icons and now wants their place."
+  }
+ },
+ {
+  "player_id": "afm_og_056",
+  "origin": "original",
+  "name": "Ji-ho Gil-Ra",
+  "nation": "KR",
+  "slot": "CDM",
+  "base_rating": 71,
+  "real_value_usd": 3700000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Destroyer",
+   "weapon": "Press resistance",
+   "temperament": "Fiery competitor",
+   "backstory": "Late bloomer released twice before breaking through."
+  }
+ },
+ {
+  "player_id": "afm_og_057",
+  "origin": "original",
+  "name": "Facundo Ledesma Sur",
+  "nation": "AR",
+  "slot": "CDM",
+  "base_rating": 70,
+  "real_value_usd": 3000000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Deep-Lying Playmaker",
+   "weapon": "Long-range strike",
+   "temperament": "Streaky but brilliant",
+   "backstory": "Converted from another position as a teenager."
+  }
+ },
+ {
+  "player_id": "afm_og_058",
+  "origin": "original",
+  "name": "Olamide Anozie",
+  "nation": "NG",
+  "slot": "CDM",
+  "base_rating": 74,
+  "real_value_usd": 6600000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Deep-Lying Playmaker",
+   "weapon": "Long-range strike",
+   "temperament": "Quiet leader",
+   "backstory": "Converted from another position as a teenager."
+  }
+ },
+ {
+  "player_id": "afm_og_059",
+  "origin": "original",
+  "name": "Ilyas El Amrani-Saidi",
+  "nation": "MA",
+  "slot": "CM",
+  "base_rating": 68,
+  "real_value_usd": 2000000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Metronome",
+   "weapon": "Late run into the box",
+   "temperament": "Big-game player",
+   "backstory": "Grew up idolising the Icons and now wants their place."
+  }
+ },
+ {
+  "player_id": "afm_og_060",
+  "origin": "original",
+  "name": "Min-jun Seo-Hwan",
+  "nation": "KR",
+  "slot": "CM",
+  "base_rating": 73,
+  "real_value_usd": 5400000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Metronome",
+   "weapon": "Press resistance",
+   "temperament": "Joker in the dressing room",
+   "backstory": "Came through an academy nobody had heard of."
+  }
+ },
+ {
+  "player_id": "afm_og_061",
+  "origin": "original",
+  "name": "Noé Ambroise",
+  "nation": "FR",
+  "slot": "CM",
+  "base_rating": 79,
+  "real_value_usd": 18000000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Metronome",
+   "weapon": "Line-breaking pass",
+   "temperament": "Joker in the dressing room",
+   "backstory": "Came through an academy nobody had heard of."
+  }
+ },
+ {
+  "player_id": "afm_og_062",
+  "origin": "original",
+  "name": "Tochukwu Chukwuma",
+  "nation": "NG",
+  "slot": "CM",
+  "base_rating": 74,
+  "real_value_usd": 6600000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Pressing Machine",
+   "weapon": "Late run into the box",
+   "temperament": "Perfectionist",
+   "backstory": "Came through an academy nobody had heard of."
+  }
+ },
+ {
+  "player_id": "afm_og_063",
+  "origin": "original",
+  "name": "Kayode Lawal",
+  "nation": "NG",
+  "slot": "CM",
+  "base_rating": 79,
+  "real_value_usd": 18000000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Pressing Machine",
+   "weapon": "Late run into the box",
+   "temperament": "Perfectionist",
+   "backstory": "Played futsal until 17."
+  }
+ },
+ {
+  "player_id": "afm_og_064",
+  "origin": "original",
+  "name": "Olamide Abubakar",
+  "nation": "NG",
+  "slot": "CM",
+  "base_rating": 81,
+  "real_value_usd": 26700000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Metronome",
+   "weapon": "Press resistance",
+   "temperament": "Quiet leader",
+   "backstory": "Came through an academy nobody had heard of."
+  }
+ },
+ {
+  "player_id": "afm_og_065",
+  "origin": "original",
+  "name": "Ebuka Babangida",
+  "nation": "NG",
+  "slot": "CM",
+  "base_rating": 77,
+  "real_value_usd": 12100000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Pressing Machine",
+   "weapon": "Long-range strike",
+   "temperament": "Streaky but brilliant",
+   "backstory": "Child prodigy still learning to be patient."
+  }
+ },
+ {
+  "player_id": "afm_og_066",
+  "origin": "original",
+  "name": "Yaw Owusu-Ansah",
+  "nation": "GH",
+  "slot": "CM",
+  "base_rating": 78,
+  "real_value_usd": 14700000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Box-to-Box",
+   "weapon": "Long-range strike",
+   "temperament": "Streaky but brilliant",
+   "backstory": "Converted from another position as a teenager."
+  }
+ },
+ {
+  "player_id": "afm_og_067",
+  "origin": "original",
+  "name": "Lautaro Villafañe",
+  "nation": "AR",
+  "slot": "CM",
+  "base_rating": 75,
+  "real_value_usd": 8100000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Pressing Machine",
+   "weapon": "Late run into the box",
+   "temperament": "Fiery competitor",
+   "backstory": "Child prodigy still learning to be patient."
+  }
+ },
+ {
+  "player_id": "afm_og_068",
+  "origin": "original",
+  "name": "Ifeanyi Ogunleye",
+  "nation": "NG",
+  "slot": "CM",
+  "base_rating": 70,
+  "real_value_usd": 3000000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Metronome",
+   "weapon": "Line-breaking pass",
+   "temperament": "Joker in the dressing room",
+   "backstory": "Converted from another position as a teenager."
+  }
+ },
+ {
+  "player_id": "afm_og_069",
+  "origin": "original",
+  "name": "Davi Vasconcelos",
+  "nation": "BR",
+  "slot": "CM",
+  "base_rating": 80,
+  "real_value_usd": 21900000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Pressing Machine",
+   "weapon": "Long-range strike",
+   "temperament": "Calm under pressure",
+   "backstory": "Spotted at a street tournament."
+  }
+ },
+ {
+  "player_id": "afm_og_070",
+  "origin": "original",
+  "name": "Noé Marchetti-Roux",
+  "nation": "FR",
+  "slot": "CM",
+  "base_rating": 71,
+  "real_value_usd": 3700000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Metronome",
+   "weapon": "Late run into the box",
+   "temperament": "Calm under pressure",
+   "backstory": "Late bloomer released twice before breaking through."
+  }
+ },
+ {
+  "player_id": "afm_og_071",
+  "origin": "original",
+  "name": "Kwabena Agyemang-Fosu",
+  "nation": "GH",
+  "slot": "CAM",
+  "base_rating": 70,
+  "real_value_usd": 3000000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Field Commander",
+   "weapon": "Long-range strike",
+   "temperament": "Streaky but brilliant",
+   "backstory": "Converted from another position as a teenager."
+  }
+ },
+ {
+  "player_id": "afm_og_072",
+  "origin": "original",
+  "name": "Caio Vasconcelos",
+  "nation": "BR",
+  "slot": "CAM",
+  "base_rating": 81,
+  "real_value_usd": 26700000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Shadow Striker",
+   "weapon": "Long-range strike",
+   "temperament": "Perfectionist",
+   "backstory": "Late bloomer released twice before breaking through."
+  }
+ },
+ {
+  "player_id": "afm_og_073",
+  "origin": "original",
+  "name": "Segun Onyekachi",
+  "nation": "NG",
+  "slot": "CAM",
+  "base_rating": 77,
+  "real_value_usd": 12100000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Shadow Striker",
+   "weapon": "Long-range strike",
+   "temperament": "Fiery competitor",
+   "backstory": "Converted from another position as a teenager."
+  }
+ },
+ {
+  "player_id": "afm_og_074",
+  "origin": "original",
+  "name": "Callum Pendlebury",
+  "nation": "EN",
+  "slot": "CAM",
+  "base_rating": 76,
+  "real_value_usd": 9900000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Field Commander",
+   "weapon": "Late run into the box",
+   "temperament": "Big-game player",
+   "backstory": "Came through an academy nobody had heard of."
+  }
+ },
+ {
+  "player_id": "afm_og_075",
+  "origin": "original",
+  "name": "Thiago Barreto Neto",
+  "nation": "BR",
+  "slot": "CAM",
+  "base_rating": 76,
+  "real_value_usd": 9900000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Shadow Striker",
+   "weapon": "Late run into the box",
+   "temperament": "Streaky but brilliant",
+   "backstory": "Grew up idolising the Icons and now wants their place."
+  }
+ },
+ {
+  "player_id": "afm_og_076",
+  "origin": "original",
+  "name": "Ji-ho Baek-Yoon",
+  "nation": "KR",
+  "slot": "CAM",
+  "base_rating": 73,
+  "real_value_usd": 5400000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Field Commander",
+   "weapon": "Press resistance",
+   "temperament": "Big-game player",
+   "backstory": "Spotted at a street tournament."
+  }
+ },
+ {
+  "player_id": "afm_og_077",
+  "origin": "original",
+  "name": "Reece Whitlock",
+  "nation": "EN",
+  "slot": "RW",
+  "base_rating": 68,
+  "real_value_usd": 2000000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Inverted Winger",
+   "weapon": "Curled finish to the far post",
+   "temperament": "Big-game player",
+   "backstory": "Played futsal until 17."
+  }
+ },
+ {
+  "player_id": "afm_og_078",
+  "origin": "original",
+  "name": "Ren Hayashida",
+  "nation": "JP",
+  "slot": "RW",
+  "base_rating": 78,
+  "real_value_usd": 14700000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Speed Demon",
+   "weapon": "Step-over burst",
+   "temperament": "Fiery competitor",
+   "backstory": "Converted from another position as a teenager."
+  }
+ },
+ {
+  "player_id": "afm_og_079",
+  "origin": "original",
+  "name": "Yuto Nishikata",
+  "nation": "JP",
+  "slot": "RW",
+  "base_rating": 68,
+  "real_value_usd": 2000000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Speed Demon",
+   "weapon": "Run in behind",
+   "temperament": "Perfectionist",
+   "backstory": "Late bloomer released twice before breaking through."
+  }
+ },
+ {
+  "player_id": "afm_og_080",
+  "origin": "original",
+  "name": "Kelechi Anozie",
+  "nation": "NG",
+  "slot": "RW",
+  "base_rating": 81,
+  "real_value_usd": 26700000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Inverted Winger",
+   "weapon": "Step-over burst",
+   "temperament": "Fiery competitor",
+   "backstory": "Converted from another position as a teenager."
+  }
+ },
+ {
+  "player_id": "afm_og_081",
+  "origin": "original",
+  "name": "Finn Steinmetz-Ahn",
+  "nation": "DE",
+  "slot": "RW",
+  "base_rating": 68,
+  "real_value_usd": 2000000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Speed Demon",
+   "weapon": "Curled finish to the far post",
+   "temperament": "Streaky but brilliant",
+   "backstory": "Spotted at a street tournament."
+  }
+ },
+ {
+  "player_id": "afm_og_082",
+  "origin": "original",
+  "name": "Yanis Marchetti-Roux",
+  "nation": "FR",
+  "slot": "RW",
+  "base_rating": 80,
+  "real_value_usd": 21900000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Inverted Winger",
+   "weapon": "Curled finish to the far post",
+   "temperament": "Calm under pressure",
+   "backstory": "Late bloomer released twice before breaking through."
+  }
+ },
+ {
+  "player_id": "afm_og_083",
+  "origin": "original",
+  "name": "Tunde Ekwueme",
+  "nation": "NG",
+  "slot": "LW",
+  "base_rating": 81,
+  "real_value_usd": 26700000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Inverted Winger",
+   "weapon": "Step-over burst",
+   "temperament": "Quiet leader",
+   "backstory": "Spotted at a street tournament."
+  }
+ },
+ {
+  "player_id": "afm_og_084",
+  "origin": "original",
+  "name": "Kelechi Olaniyan",
+  "nation": "NG",
+  "slot": "LW",
+  "base_rating": 73,
+  "real_value_usd": 5400000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Dribble Artist",
+   "weapon": "Step-over burst",
+   "temperament": "Quiet leader",
+   "backstory": "Grew up idolising the Icons and now wants their place."
+  }
+ },
+ {
+  "player_id": "afm_og_085",
+  "origin": "original",
+  "name": "Renan Barreto Neto",
+  "nation": "BR",
+  "slot": "LW",
+  "base_rating": 69,
+  "real_value_usd": 2500000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Inverted Winger",
+   "weapon": "Step-over burst",
+   "temperament": "Big-game player",
+   "backstory": "Grew up idolising the Icons and now wants their place."
+  }
+ },
+ {
+  "player_id": "afm_og_086",
+  "origin": "original",
+  "name": "Ebuka Eze",
+  "nation": "NG",
+  "slot": "LW",
+  "base_rating": 69,
+  "real_value_usd": 2500000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Dribble Artist",
+   "weapon": "First-time finish",
+   "temperament": "Big-game player",
+   "backstory": "Converted from another position as a teenager."
+  }
+ },
+ {
+  "player_id": "afm_og_087",
+  "origin": "original",
+  "name": "Kaito Nishikata",
+  "nation": "JP",
+  "slot": "LW",
+  "base_rating": 77,
+  "real_value_usd": 12100000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Dribble Artist",
+   "weapon": "Run in behind",
+   "temperament": "Fiery competitor",
+   "backstory": "Played futsal until 17."
+  }
+ },
+ {
+  "player_id": "afm_og_088",
+  "origin": "original",
+  "name": "Bautista Ledesma Sur",
+  "nation": "AR",
+  "slot": "LW",
+  "base_rating": 74,
+  "real_value_usd": 6600000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Inverted Winger",
+   "weapon": "Curled finish to the far post",
+   "temperament": "Streaky but brilliant",
+   "backstory": "Played futsal until 17."
+  }
+ },
+ {
+  "player_id": "afm_og_089",
+  "origin": "original",
+  "name": "Somto Adewale",
+  "nation": "NG",
+  "slot": "ST",
+  "base_rating": 78,
+  "real_value_usd": 14700000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Target Man",
+   "weapon": "Step-over burst",
+   "temperament": "Calm under pressure",
+   "backstory": "Grew up idolising the Icons and now wants their place."
+  }
+ },
+ {
+  "player_id": "afm_og_090",
+  "origin": "original",
+  "name": "Álvaro Urquiza",
+  "nation": "ES",
+  "slot": "ST",
+  "base_rating": 76,
+  "real_value_usd": 9900000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "False Nine",
+   "weapon": "Step-over burst",
+   "temperament": "Big-game player",
+   "backstory": "Converted from another position as a teenager."
+  }
+ },
+ {
+  "player_id": "afm_og_091",
+  "origin": "original",
+  "name": "Lennart Kranzbühler",
+  "nation": "DE",
+  "slot": "ST",
+  "base_rating": 68,
+  "real_value_usd": 2000000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Target Man",
+   "weapon": "Curled finish to the far post",
+   "temperament": "Perfectionist",
+   "backstory": "Child prodigy still learning to be patient."
+  }
+ },
+ {
+  "player_id": "afm_og_092",
+  "origin": "original",
+  "name": "Lucas Delacroix-Ba",
+  "nation": "FR",
+  "slot": "ST",
+  "base_rating": 69,
+  "real_value_usd": 2500000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Predator",
+   "weapon": "Step-over burst",
+   "temperament": "Workhorse",
+   "backstory": "Child prodigy still learning to be patient."
+  }
+ },
+ {
+  "player_id": "afm_og_093",
+  "origin": "original",
+  "name": "Babatunde Ogunleye",
+  "nation": "NG",
+  "slot": "ST",
+  "base_rating": 75,
+  "real_value_usd": 8100000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "False Nine",
+   "weapon": "First-time finish",
+   "temperament": "Big-game player",
+   "backstory": "Came through an academy nobody had heard of."
+  }
+ },
+ {
+  "player_id": "afm_og_094",
+  "origin": "original",
+  "name": "Yanis Ambroise",
+  "nation": "FR",
+  "slot": "ST",
+  "base_rating": 75,
+  "real_value_usd": 8100000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "False Nine",
+   "weapon": "Curled finish to the far post",
+   "temperament": "Calm under pressure",
+   "backstory": "Converted from another position as a teenager."
+  }
+ },
+ {
+  "player_id": "afm_og_095",
+  "origin": "original",
+  "name": "Nnamdi Adeleke",
+  "nation": "NG",
+  "slot": "ST",
+  "base_rating": 78,
+  "real_value_usd": 14700000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Predator",
+   "weapon": "Curled finish to the far post",
+   "temperament": "Perfectionist",
+   "backstory": "Grew up idolising the Icons and now wants their place."
+  }
+ },
+ {
+  "player_id": "afm_og_096",
+  "origin": "original",
+  "name": "Olamide Ekwueme",
+  "nation": "NG",
+  "slot": "ST",
+  "base_rating": 76,
+  "real_value_usd": 9900000,
+  "persona": {
+   "tier": "prospect",
+   "archetype": "Predator",
+   "weapon": "First-time finish",
+   "temperament": "Perfectionist",
+   "backstory": "Came through an academy nobody had heard of."
+  }
+ }
+]

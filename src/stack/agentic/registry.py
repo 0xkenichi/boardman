@@ -9,6 +9,10 @@ from gaming.src.stack.agentic.store import load_json, save_json
 from gaming.src.stack.agentic.wallets import provision_agent_crypto
 
 AGENTS_FILE = "agents.json"
+
+# Demo manager names that used anime titles (Blue Lock, Ao Ashi). Persisted
+# records still carrying one are renamed to the manifest's current name.
+_LEGACY_DISPLAY_NAMES = frozenset({"Blue Lock", "Ao Ashi"})
 GAMES_FILE = "games.json"
 
 
@@ -188,6 +192,14 @@ class AgentRegistry:
         out = []
         for manifest in load_demo_manifests():
             existing = self.get_agent(manifest["agent_id"])
+            if existing and existing.get("name") in _LEGACY_DISPLAY_NAMES and existing["name"] != manifest["name"]:
+                # Rename only — a version bump would re-register and reset
+                # owner_id, stats and webhook on a manager someone bought.
+                data = self._agents()
+                data["agents"][manifest["agent_id"]]["name"] = manifest["name"]
+                data["agents"][manifest["agent_id"]]["updated_at"] = _now()
+                save_json(AGENTS_FILE, data)
+                existing = self.get_agent(manifest["agent_id"])
             if existing and existing.get("version") == manifest.get("version"):
                 # Refresh mind from silo for play (not persisted strategy leak)
                 p = get_persona(manifest["agent_id"])

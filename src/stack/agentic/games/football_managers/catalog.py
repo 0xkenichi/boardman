@@ -88,6 +88,42 @@ _CATALOG_PATH = _DATA_DIR / "catalog_v0.json"
 _catalog: dict[str, dict[str, Any]] = {}
 
 
+# Player origins and who can own them.
+#   global_star — real players we have no image-rights licence for. Shown in the
+#                 catalog as "Upcoming · licence pending" and never ownable, so
+#                 nobody buys, trades or fields a real star until a licence lands.
+#   real_ng     — real Nigerian players (product decision, 2026-10-15).
+#   original    — Boardman's own universe (universe.py), owned outright.
+#   generated   — AI filler squads (fillers.py).
+ORIGINS = ("global_star", "real_ng", "original", "generated")
+AVAILABLE = "available"
+UPCOMING = "upcoming"
+LICENCE_PENDING_LABEL = "Upcoming · licence pending"
+
+
+class PlayerUnavailable(ValueError):
+    """Raised when something tries to own a player who is not available yet."""
+
+
+def _origin_of(raw: dict[str, Any]) -> str:
+    origin = str(raw.get("origin") or "")
+    if origin in ORIGINS:
+        return origin
+    # Legacy seed rows carry no origin: real people. Nigerians are in, the rest
+    # wait for a licence.
+    return "real_ng" if str(raw.get("nation") or "").upper() == "NG" else "global_star"
+
+
+def _availability_of(raw: dict[str, Any], origin: str) -> str:
+    if origin == "global_star":
+        return UPCOMING  # never ownable without a licence, whatever the file says
+    return UPCOMING if raw.get("availability") == UPCOMING else AVAILABLE
+
+
+def is_available(player: Optional[dict[str, Any]]) -> bool:
+    return bool(player) and player.get("availability", AVAILABLE) == AVAILABLE
+
+
 def stars_from_rating(rating: int) -> int:
     if rating >= 90:
         return 5
@@ -117,7 +153,16 @@ def _normalize_row(i: int, raw: dict[str, Any]) -> dict[str, Any]:
     group = SLOT_GROUP.get(slot, str(raw.get("primary_pos") or "MID"))
     rating = int(raw.get("base_rating") or 75)
     weekly = dict(raw.get("weekly") or {})
+    origin = _origin_of(raw)
+    availability = _availability_of(raw, origin)
+    extra: dict[str, Any] = {}
+    if raw.get("persona"):
+        extra["persona"] = copy.deepcopy(raw["persona"])
     return {
+        **extra,
+        "origin": origin,
+        "availability": availability,
+        "availability_label": LICENCE_PENDING_LABEL if availability == UPCOMING else None,
         "player_id": pid,
         "name": raw["name"],
         "nation": raw.get("nation") or "XX",
@@ -139,7 +184,8 @@ def _normalize_row(i: int, raw: dict[str, Any]) -> dict[str, Any]:
         "weekly_apps": int(weekly.get("appearances") or raw.get("weekly_apps") or 0),
         "oracle_updated_at": raw.get("oracle_updated_at"),
         "oracle_source": raw.get("oracle_source"),
-        "owner_agent_id": raw.get("owner_agent_id"),
+        # an upcoming player can't carry an owner, even from an old file
+        "owner_agent_id": raw.get("owner_agent_id") if availability == AVAILABLE else None,
     }
 
 
@@ -187,7 +233,8 @@ def list_players(
     want_slot = (slot or "").upper()
     out = []
     for p in _catalog.values():
-        if free_only and p.get("owner_agent_id"):
+        # a free agent is someone a club can actually sign today
+        if free_only and (p.get("owner_agent_id") or not is_available(p)):
             continue
         if want_slot and p.get("slot") != want_slot:
             continue
@@ -208,18 +255,25 @@ def set_owner(player_id: str, agent_id: Optional[str]) -> dict[str, Any]:
     seed_catalog()
     if player_id not in _catalog:
         raise KeyError(player_id)
+    # Every way into a squad (auto-build, free-agent buy, transfer, window)
+    # ends here, so this is the one gate for licence-pending players.
+    if agent_id is not None and not is_available(_catalog[player_id]):
+        raise PlayerUnavailable(f"{player_id} is {LICENCE_PENDING_LABEL.lower()}")
     _catalog[player_id]["owner_agent_id"] = agent_id
     return copy.deepcopy(_catalog[player_id])
 
 
 def catalog_meta() -> dict[str, Any]:
     seed_catalog()
-    free = sum(1 for p in _catalog.values() if not p.get("owner_agent_id"))
+    free = sum(1 for p in _catalog.values() if not p.get("owner_agent_id") and is_available(p))
+    by_origin = {o: sum(1 for p in _catalog.values() if p.get("origin") == o) for o in ORIGINS}
     return {
         "game_id": GAME_ID,
         "count": len(_catalog),
         "target": 500,
         "free_agents": free,
+        "upcoming": sum(1 for p in _catalog.values() if not is_available(p)),
+        "by_origin": by_origin,
         "unique_ownership": True,
         "status": "v0_seed",
         "slots": list(SLOTS),

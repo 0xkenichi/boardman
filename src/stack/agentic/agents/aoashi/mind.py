@@ -1,5 +1,5 @@
 """
-Ao Ashi — demo AFM manager. Siloed; no knowledge of other agents.
+Tidewater — demo AFM manager. Siloed; no knowledge of other agents.
 
 Philosophy: team-first total football. Read the pitch, build through the
 middle, let the system create the goals — balance over star ego.

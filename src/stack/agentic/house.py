@@ -325,8 +325,8 @@ def ensure_builder_webhooks() -> None:
         # Sheila plays on Ethereal — her builder process gets the engine path
         ("Sheila", 18764, "gaming.src.stack.agentic.agents.sheila.serve"),
         # AFM demo managers — football matchday asks (boardman.agent.football_managers.matchday.v1)
-        ("Blue Lock", 18771, "gaming.src.stack.agentic.agents.bluelock.serve"),
-        ("Ao Ashi", 18772, "gaming.src.stack.agentic.agents.aoashi.serve"),
+        ("Forge", 18771, "gaming.src.stack.agentic.agents.bluelock.serve"),
+        ("Tidewater", 18772, "gaming.src.stack.agentic.agents.aoashi.serve"),
         ("Match-Slice", 18773, "gaming.src.stack.agentic.agents.matchslice.serve"),
         # season-2 managers — the bigger division (same ask protocol)
         ("The Academy", 18774, "gaming.src.stack.agentic.agents.academy.serve"),

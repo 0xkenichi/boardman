@@ -1,5 +1,5 @@
 """
-Blue Lock — demo AFM manager. Siloed; no knowledge of other agents.
+Forge — demo AFM manager. Siloed; no knowledge of other agents.
 
 Philosophy: striker's ego. Win matches by outscoring — ruthless squad
 selection, attack-first tactics, stars over system.

@@ -18,7 +18,9 @@ from decimal import Decimal
 from typing import Any, Optional
 
 from gaming.src.stack.agentic.games.football_managers.catalog import (
+    PlayerUnavailable,
     get_player,
+    is_available,
     list_players,
     set_owner,
 )
@@ -41,9 +43,15 @@ GAME_ID = "agentic.football_managers"
 # Demo AFM manager agents get clubs; key = agent_id prefix -> club name.
 # Football only — Raja/Nero are the chess duo and never own AFM clubs.
 _DEMO_CLUBS: dict[str, str] = {
-    "bluelock": "Blue Lock FC",
-    "aoashi": "Ao Ashi FC",
+    "bluelock": "Forge FC",
+    "aoashi": "Tidewater FC",
     "matchslice": "Match-Slice FC",
+}
+# Old display names that used anime titles (Blue Lock — Kodansha, Ao Ashi —
+# Shogakukan). Agent ids stay the same; only what people see changes.
+_LEGACY_CLUB_NAMES: dict[str, str] = {
+    "Blue Lock FC": "Forge FC",
+    "Ao Ashi FC": "Tidewater FC",
 }
 
 _lock = threading.RLock()
@@ -296,7 +304,7 @@ def _auto_roster(
 
     slots = _formation_slots(formation)
     exclude = exclude or set()
-    pool = [p for p in list_players() if p["player_id"] not in exclude]
+    pool = [p for p in list_players() if p["player_id"] not in exclude and is_available(p)]
     pool.sort(key=lambda p: (-int(p.get("base_rating") or 0), -(int(p.get("real_value_usd") or 0))))
     budget_left = budget
     roster: list[str] = []
@@ -393,6 +401,10 @@ def ensure_club_for_agent(
                 except Exception:
                     pass
 
+        if squad_ids:
+            blocked = [pid for pid in squad_ids if not is_available(get_player(pid))]
+            if blocked:
+                raise PlayerUnavailable(f"not signable yet (licence pending): {', '.join(blocked)}")
         roster = list(squad_ids) if squad_ids else _auto_roster(formation, budget, exclude=exclude)
         rec = create_club(
             agent_id,
@@ -416,6 +428,50 @@ def ensure_club_for_agent(
         state.setdefault("clubs", {})[agent_id] = rec
         _save(state)
         return _club_out(agent_id, rec)
+
+
+def _retire_unavailable(state: dict[str, Any]) -> list[dict[str, str]]:
+    """Swap licence-pending players out of every squad, in place.
+
+    Clubs built before global stars went "upcoming" still roster them. Each one
+    is replaced by the best-rated free, available player for the same slot
+    (same position group as a fallback), keeping its starter/bench spot so the
+    lineup stays legal. The swap costs the club nothing: it didn't choose the
+    licence change. Also renames the anime-titled demo clubs. Idempotent.
+    """
+    from gaming.src.stack.agentic.games.football_managers.catalog import SLOT_GROUP
+
+    clubs = state.get("clubs", {})
+    taken = {pid for c in clubs.values() for pid in (c.get("roster") or [])}
+    pool = [p for p in list_players(free_only=True) if p["player_id"] not in taken]
+    swaps: list[dict[str, str]] = []
+    for aid, club in clubs.items():
+        legacy = _LEGACY_CLUB_NAMES.get(str(club.get("club_name") or ""))
+        if legacy:
+            club["club_name"] = legacy
+            swaps.append({"agent_id": aid, "renamed_to": legacy})
+        for old in list(club.get("roster") or []):
+            if is_available(get_player(old)):
+                continue
+            gone = get_player(old) or {}
+            slot = str(gone.get("slot") or "")
+            group = SLOT_GROUP.get(slot, "")
+            pick = next((p for p in pool if p.get("slot") == slot), None) or next(
+                (p for p in pool if p.get("primary_pos") == group), None
+            )
+            for key in ("roster", "starters", "bench"):
+                ids = list(club.get(key) or [])
+                if old in ids:
+                    if pick:
+                        ids[ids.index(old)] = pick["player_id"]
+                    else:
+                        ids.remove(old)
+                    club[key] = ids
+            if pick:
+                pool.remove(pick)
+                set_owner(pick["player_id"], aid)
+            swaps.append({"agent_id": aid, "out": old, "in": pick["player_id"] if pick else ""})
+    return swaps
 
 
 def seed_demo_clubs(*, force: bool = False) -> list[dict[str, Any]]:
@@ -450,6 +506,10 @@ def seed_demo_clubs(*, force: bool = False) -> list[dict[str, Any]]:
                     except Exception:
                         pass
                 state["clubs"].pop(aid, None)
+            _save(state)
+            state = _state()
+
+        if _retire_unavailable(state):
             _save(state)
             state = _state()
 
