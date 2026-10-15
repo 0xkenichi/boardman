@@ -201,6 +201,23 @@ def match_refunded(ch: dict, *, reason: str, amount: Any) -> Notice:
     )
 
 
+def match_refund_pending(ch: dict, *, reason: str, amount: Any) -> Notice:
+    """The refund was due but the escrow cancel failed: the stake has NOT come
+    back yet. Sent instead of ``match_refunded`` until a retry succeeds. No
+    approved WhatsApp template exists for this kind, so outside the 24 h
+    window it is skipped (the ``match_refunded`` notice follows on success)."""
+    code = _code(ch)
+    return Notice(
+        kind="match_refund_pending",
+        params={"match_code": code, "reason": reason, "amount": _money(amount)},
+        text=(f"Match `{code}` was {reason}. Your ${_money(amount)} USDC refund is *pending*: "
+              "the escrow refund didn't go through yet. We retry automatically and will "
+              "message you when it is back in your balance."),
+        options=[Option(view_id(ch["id"]), "Match status")],
+        template_payloads=[view_id(ch["id"])],
+    )
+
+
 async def result_notice(profile_id: str, ch: dict, *, won: Optional[bool], pot: Any) -> Optional[Notice]:
     """``match_result`` with the live balance, built only for WhatsApp-first
     players (Telegram keeps the legacy banner; no extra balance lookup)."""
