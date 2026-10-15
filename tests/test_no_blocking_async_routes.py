@@ -18,6 +18,8 @@ API_FILES = [
     "src/stack/api_v1.py",
     "src/stack/api.py",
     "src/backend/api/rematch_web.py",
+    "src/backend/api/channels_web.py",
+    "src/channels/whatsapp/webhook.py",
 ]
 _ROUTE_VERBS = {"get", "post", "put", "delete", "patch"}
 

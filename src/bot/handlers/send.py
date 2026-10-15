@@ -81,34 +81,13 @@ def _execute_transfer_sync(
     recipient_id: str | None,
     chain_id: str,
 ) -> dict:
-    circle = _circle_for_chain(chain_id)
-    result = circle.transfer_usdc(sender_wallet_id, recipient_address, float(amount))
+    # The transfer + audit now live in the withdrawals service, shared with
+    # withdrawals confirmed on the web (channels one-time link + PIN).
+    from gaming.src.backend.services.withdrawals import execute_transfer_sync
 
-    sb = get_supabase()
-    audit = {
-        "sender_id": sender_id,
-        "recipient_id": recipient_id,
-        "recipient_address": recipient_address.lower(),
-        "amount_usdc": float(amount),
-        "circle_transaction_id": result.get("transaction_id") if result.get("success") else None,
-        "tx_hash": result.get("tx_hash"),
-        "status": "pending" if result.get("success") else "failed",
-    }
-    try:
-        audit["settlement_chain"] = chain_id
-    except Exception:
-        pass
-    try:
-        sb.schema("gaming").table("wallet_debit_audit").insert(audit).execute()
-    except Exception as exc:
-        # Retry without optional chain column if schema is older
-        logger.warning("[Withdraw] audit insert failed, retry bare: %s", exc)
-        bare = {k: v for k, v in audit.items() if k != "settlement_chain"}
-        try:
-            sb.schema("gaming").table("wallet_debit_audit").insert(bare).execute()
-        except Exception:
-            logger.exception("[Withdraw] audit insert failed")
-    return result
+    return execute_transfer_sync(
+        sender_id, sender_wallet_id, recipient_address, amount, recipient_id, chain_id
+    )
 
 
 async def start_withdraw(message: types.Message, state: FSMContext) -> None:
@@ -124,7 +103,10 @@ async def start_withdraw(message: types.Message, state: FSMContext) -> None:
         return
     profile = await get_or_create_profile(user)
 
-    if not has_tx_password(profile):
+    from gaming.src.channels import config as channels_config
+
+    # With the web PIN (default) the PIN is set on the confirm page itself.
+    if not channels_config.telegram_web_pin() and not has_tx_password(profile):
         await message.answer(
             "🔐 You need a <b>transaction password</b> before withdrawing.\n\n"
             "Set one with /set_tx_password (min 8 characters).\n"
@@ -327,6 +309,24 @@ async def _ask_password(message: types.Message, state: FSMContext) -> None:
     data = await state.get_data()
     amount = Decimal(data["amount"])
     profile = await get_or_create_profile(message.from_user)
+
+    from gaming.src.channels import config as channels_config
+
+    if channels_config.telegram_web_pin():
+        # Never ask for the password in the chat: confirm on the web instead.
+        from gaming.src.channels.telegram.web_pin import send_withdraw_link
+
+        await state.clear()
+        await send_withdraw_link(
+            message,
+            message.from_user,
+            profile,
+            address=data["recipient_address"],
+            amount=amount,
+            recipient_id=data.get("recipient_id"),
+            tag=data.get("tag"),
+        )
+        return
     pref = await get_preferred_chain(profile["id"])
     label = get_chain(pref).get("label", pref)
     dest = (

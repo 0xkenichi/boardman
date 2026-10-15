@@ -211,7 +211,13 @@ def load_policy() -> dict[str, Any]:
             data = json.load(fh)
         if not isinstance(data, dict) or not isinstance(data.get("money_routes"), list):
             raise ValueError("missing money_routes list")
-        for k in ("exempt_prefixes", "edge_country_headers", "trusted_country_header", "money_routes"):
+        for k in (
+            "exempt_prefixes",
+            "edge_country_headers",
+            "trusted_country_header",
+            "money_routes",
+            "channel_signals",  # read by src/channels/core/geo.py
+        ):
             if k in data:
                 policy[k] = data[k]
     except (OSError, ValueError) as exc:  # JSONDecodeError is a ValueError
