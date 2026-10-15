@@ -55,7 +55,8 @@ deleted or renamed, so every Vercel server route that proxies to it
 
 ### 1.2 Create (or repair) the service
 
-1. New → GitHub Repo → `0xkenichi/boardman`, branch `main`. Railway picks up
+1. New → GitHub Repo → `0xkenichi/boardman`, branch `main` **after the
+   `integration/wave1` PR is merged** (until then, deploy `integration/wave1`). Railway picks up
    `railway.toml` (builder DOCKERFILE, `Dockerfile.akash`, start command
    `python /app/deploy/start_akash.py`, health check `/api/healthz`,
    restart ALWAYS, `drainingSeconds = 30`).
@@ -100,7 +101,9 @@ Required for boot / core:
 
 - `TELEGRAM_BOT_TOKEN_BOARDMAN` (boot fails without it while the bot role runs)
 - `TELEGRAM_BOT_USERNAME_MYBOARDMAN`, `TELEGRAM_BOT_USERNAME_BOARDMAN`
-- `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (`/api/healthz` pings Supabase)
+- `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (`/api/healthz` pings Supabase and
+  returns **503 without them** — it is Railway's health check, so set both
+  **before the first deploy** or the service never goes healthy)
 - `BOARDMAN_API_KEY` (and/or `REMATCH_API_KEY`) — must equal the value Vercel
   sends; `BOARDMAN_STACK_API_KEYS` / `BOARDMAN_STACK_API_KEYS_FILE` for
   builder keys

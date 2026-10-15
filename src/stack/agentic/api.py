@@ -1559,7 +1559,7 @@ async def football_simulate(body: FootballSimBody, _: ApiKeyPrincipal = Depends(
 
 
 @router.get("/football/clubs")
-async def football_clubs(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def football_clubs(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Agent-owned AFM clubs: formation, tactics, roster + locked lineup."""
     from gaming.src.stack.agentic.games.football_managers.club_store import (
         list_clubs,
@@ -1571,7 +1571,7 @@ async def football_clubs(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
 
 
 @router.get("/football/clubs/{agent_id}")
-async def football_club(agent_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def football_club(agent_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.games.football_managers.club_store import (
         get_club,
         seed_demo_clubs,
@@ -1617,7 +1617,7 @@ async def football_club_lineup(agent_id: str, body: FootballLineupBody, caller: 
 
 
 @router.get("/football/owner/{agent_id}")
-async def football_owner_dashboard(agent_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def football_owner_dashboard(agent_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Owner seat, step 5 — follow one club: results, the agent's decisions,
     table position, the spending log and suspension/injury news."""
     from gaming.src.stack.agentic.games.football_managers.club_store import (
@@ -1636,7 +1636,7 @@ async def football_owner_dashboard(agent_id: str, _: ApiKeyPrincipal = Depends(r
 
 
 @router.get("/football/report/{agent_id}")
-async def football_agent_report(agent_id: str, matchday: Optional[int] = None, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def football_agent_report(agent_id: str, matchday: Optional[int] = None, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Agent FM post-match report — ratings, xG, errors for the club's latest
     (or a given) played fixture. The "why we lost" file the agent reads."""
     from gaming.src.stack.agentic.games.football_managers.club_store import seed_demo_clubs
@@ -1665,7 +1665,7 @@ async def football_agent_report(agent_id: str, matchday: Optional[int] = None, _
 
 
 @router.get("/football/season/report")
-async def football_match_report(season_no: int, matchday: int, home: str, away: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def football_match_report(season_no: int, matchday: int, home: str, away: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Full FM post-match report for one recorded fixture (both sides):
     per-player ratings, xG, error attribution and the "why" headline lines."""
     from gaming.src.stack.agentic.games.football_managers import report as R
@@ -1677,8 +1677,11 @@ async def football_match_report(season_no: int, matchday: int, home: str, away: 
     return {"success": True, "report": rep}
 
 
+# The season/cup/club reads and ticks are plain `def` on purpose: FastAPI runs
+# them in its threadpool. As `async def` they parsed the ~20MB season file and
+# resolved whole matchdays on the event loop, stalling every other route.
 @router.get("/football/season")
-async def football_season(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def football_season(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Season state for humans + agents (afm_view_season): standings, fixtures,
     recent results, pot, next matchday deadline."""
     from gaming.src.stack.agentic.games.football_managers.season import get_season
@@ -1699,7 +1702,7 @@ async def football_season_join(body: FootballSeasonJoinBody, caller: StackCaller
 
 
 @router.post("/football/season/open")
-async def football_season_open(body: FootballSeasonOpenBody, _: StackCaller = Depends(require_platform_admin)):
+def football_season_open(body: FootballSeasonOpenBody, _: StackCaller = Depends(require_platform_admin)):
     """Open a season: collect USDC entries, build schedule, zero standings."""
     from datetime import datetime
 
@@ -1714,7 +1717,7 @@ async def football_season_open(body: FootballSeasonOpenBody, _: StackCaller = De
 
 
 @router.post("/football/season/tick")
-async def football_season_tick(_: StackCaller = Depends(require_platform_admin)):
+def football_season_tick(_: StackCaller = Depends(require_platform_admin)):
     """Advance the season clock: open due matchdays, resolve past deadlines.
     Called by the daily scheduler (and by the standings page's watch button)."""
     from gaming.src.stack.agentic.games.football_managers.season import tick
@@ -1759,7 +1762,7 @@ def _afm_season_no() -> Optional[int]:
 
 
 @router.get("/football/betting/odds")
-async def football_betting_odds(
+def football_betting_odds(
     season_no: Optional[int] = None, matchday: Optional[int] = None, _: ApiKeyPrincipal = Depends(require_stack_api_key)
 ):
     """Parimutuel odds boards: pot per side + implied odds per USDC staked."""
@@ -1832,7 +1835,7 @@ async def football_betting_settle(body: FootballBetSettleBody, _: StackCaller = 
 
 
 @router.get("/football/season/replay")
-async def football_season_replay(matchday: int, home: str, away: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def football_season_replay(matchday: int, home: str, away: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """A recorded season fixture, replayable on the tactics board (feed + lineups)."""
     from gaming.src.stack.agentic.games.football_managers.season import get_replay
 
@@ -1844,7 +1847,7 @@ async def football_season_replay(matchday: int, home: str, away: str, _: ApiKeyP
 
 
 @router.get("/football/season/prematch")
-async def football_season_prematch(matchday: int, home: str, away: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def football_season_prematch(matchday: int, home: str, away: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """The pre-match board for one fixture: locked lineups + tactics, HT plans,
     press quotes and ban/injury news — everything a human reads before kickoff."""
     from gaming.src.stack.agentic.games.football_managers.season import prematch_view
@@ -1857,7 +1860,7 @@ async def football_season_prematch(matchday: int, home: str, away: str, _: ApiKe
 
 
 @router.get("/football/market")
-async def football_market(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def football_market(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """afm_market (v1): free agents — catalog players with no club owner."""
     from gaming.src.stack.agentic.games.football_managers.catalog import list_players
     from gaming.src.stack.agentic.games.football_managers.club_store import (
@@ -1992,7 +1995,7 @@ class FootballWalletUnbindBody(BaseModel):
 
 
 @router.get("/football/agents")
-async def football_agents(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def football_agents(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """The manager marketplace — every AFM agent an owner can adopt."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
         list_market_agents,
@@ -2384,7 +2387,7 @@ class FootballCupOpenBody(BaseModel):
 
 
 @router.get("/football/cup")
-async def football_cup(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def football_cup(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Knockout cup state: bracket rounds, played ties, champion."""
     from gaming.src.stack.agentic.games.football_managers.cup import get_cup
 
@@ -2392,7 +2395,7 @@ async def football_cup(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
 
 
 @router.post("/football/cup/open")
-async def football_cup_open(body: FootballCupOpenBody, _: StackCaller = Depends(require_platform_admin)):
+def football_cup_open(body: FootballCupOpenBody, _: StackCaller = Depends(require_platform_admin)):
     """Open a single-elimination cup. Knockout rules: a level 90' tie goes to
     extra time and, if still level, a penalty shootout (require_result)."""
     from datetime import datetime
@@ -2414,7 +2417,7 @@ async def football_cup_open(body: FootballCupOpenBody, _: StackCaller = Depends(
 
 
 @router.post("/football/cup/tick")
-async def football_cup_tick(_: StackCaller = Depends(require_platform_admin)):
+def football_cup_tick(_: StackCaller = Depends(require_platform_admin)):
     """Advance the cup clock: open due rounds, resolve past deadlines (winner
     required — draws are settled in extra time / on penalties)."""
     from gaming.src.stack.agentic.games.football_managers.cup import tick
@@ -2431,7 +2434,7 @@ async def football_cup_reset(_: StackCaller = Depends(require_platform_admin)):
 
 
 @router.get("/football/cup/replay")
-async def football_cup_replay(round_no: int, home: str, away: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def football_cup_replay(round_no: int, home: str, away: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """A recorded cup tie, replayable on the tactics board (feed + lineups)."""
     from gaming.src.stack.agentic.games.football_managers.cup import get_cup_replay
 
