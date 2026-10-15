@@ -13,12 +13,19 @@
     "x-vercel-ip-country"
   ],
   "trusted_country_header": "x-boardman-client-country",
+  "channel_signals": {
+    "_comment": "Chat-channel country signals (src/channels/core/geo.py, CHANNELS_DESIGN section 5). money_ok for phone_cc is counsel's decision [COUNSEL]. enforce=false only logs: nothing new is blocked on Telegram yet.",
+    "whatsapp": {"source": "phone_cc", "money_ok": true, "spectator_ok": false, "enforce": true},
+    "telegram": {"source": "none", "money_ok": false, "spectator_ok": false, "enforce": false},
+    "web": {"source": "ip", "money_ok": true, "spectator_ok": true, "enforce": true}
+  },
   "money_routes": [
     {"kind": "deposit", "methods": ["GET"], "pattern": "/api/deposit/address"},
 
     {"kind": "spectator_bet", "methods": ["POST"], "pattern": "/api/rematch/web/spectator/bet"},
     {"kind": "spectator_lp", "methods": ["POST"], "pattern": "/api/rematch/web/spectator/lp"},
     {"kind": "withdraw", "methods": ["POST"], "pattern": "/api/rematch/web/spectator/lp/withdraw"},
+    {"kind": "withdraw", "methods": ["POST"], "pattern": "/api/channels/withdraw/*"},
     {"kind": "spectator_payout", "methods": ["POST"], "pattern": "/api/rematch/web/spectator/payout"},
 
     {"kind": "stake_create", "methods": ["POST"], "pattern": "/api/stack/v1/matches"},

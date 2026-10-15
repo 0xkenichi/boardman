@@ -146,8 +146,31 @@ async def get_or_create_profile(user: User) -> dict:
     return profile
 
 
+def _dual_write_identity(profile: Optional[dict], user: User) -> None:
+    """Mirror telegram_id -> profile into ``channel_identities`` (never raises)."""
+    if not profile or not profile.get("id"):
+        return
+    try:
+        from gaming.src.channels.core.identity.service import ensure_telegram_identity
+
+        ensure_telegram_identity(
+            profile["id"],
+            user.id,
+            chat_id=profile.get("gaming_telegram_chat_id") or user.id,
+            username=user.username or None,
+        )
+    except Exception:
+        logger.warning("[DB] channel identity dual-write skipped", exc_info=True)
+
+
 def _get_or_create_profile_sync(user: User) -> dict:
     """Sync body for :func:`get_or_create_profile`."""
+    profile = _get_or_create_profile_core(user)
+    _dual_write_identity(profile, user)
+    return profile
+
+
+def _get_or_create_profile_core(user: User) -> dict:
     sb = _get_supabase()
     table = sb.table("profiles")
 
