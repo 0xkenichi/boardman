@@ -589,9 +589,10 @@ def get_money_menu() -> InlineKeyboardMarkup:
     except Exception:
         pass
     try:
+        from gaming.src.backend.services.funding_rails import naira_paystack_enabled
         from gaming.src.backend.services.paystack import paystack_configured
 
-        if paystack_configured():
+        if paystack_configured() and naira_paystack_enabled():
             builder.row(
                 InlineKeyboardButton(
                     text="⚡ Pay with Paystack (₦)",
@@ -600,12 +601,18 @@ def get_money_menu() -> InlineKeyboardMarkup:
             )
     except Exception:
         pass
-    builder.row(
-        InlineKeyboardButton(
-            text="🇳🇬 We'll do it — pay Naira to our bank",
-            callback_data="ui:topup:ngn",
-        ),
-    )
+    try:
+        from gaming.src.backend.services.funding_rails import naira_bank_enabled
+
+        if naira_bank_enabled():
+            builder.row(
+                InlineKeyboardButton(
+                    text="🇳🇬 We'll do it — pay Naira to our bank",
+                    callback_data="ui:topup:ngn",
+                ),
+            )
+    except Exception:
+        pass
     builder.row(
         InlineKeyboardButton(
             text="🇺🇸 We'll do it — pay USD to our bank",

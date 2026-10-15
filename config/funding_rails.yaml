@@ -67,7 +67,7 @@ rails:
   paystack_ngn:
     id: paystack_ngn
     kind: funding
-    enabled: true
+    enabled: false            # real naira: off until licensed
     player_label: "Pay with Naira"
     can_stake: false
     deposit_mode: fiat
@@ -87,7 +87,7 @@ rails:
   bank_ngn:
     id: bank_ngn
     kind: funding
-    enabled: true
+    enabled: false            # real naira: off until licensed
     player_label: "Bank transfer (Naira)"
     can_stake: false
     deposit_mode: fiat

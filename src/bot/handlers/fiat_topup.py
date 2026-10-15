@@ -62,6 +62,26 @@ class FiatTopupWizard(StatesGroup):
     waiting_paystack_amount = State()
 
 
+async def _naira_paused(message: types.Message, state: FSMContext) -> None:
+    """Old ₦ buttons still sit in chat history; refuse them politely."""
+    from gaming.src.backend.services.funding_rails import NAIRA_PAUSED_TEXT
+
+    await state.clear()
+    await message.answer(NAIRA_PAUSED_TEXT, reply_markup=get_money_menu())
+
+
+def _naira_bank_on() -> bool:
+    from gaming.src.backend.services.funding_rails import naira_bank_enabled
+
+    return naira_bank_enabled()
+
+
+def _naira_paystack_on() -> bool:
+    from gaming.src.backend.services.funding_rails import naira_paystack_enabled
+
+    return naira_paystack_enabled()
+
+
 # ── Entry / chooser ──────────────────────────────────────────────────────────
 
 
@@ -140,6 +160,9 @@ async def ui_topup_kobox_info(callback: types.CallbackQuery, state: FSMContext) 
 @router.callback_query(F.data == "ui:topup:ngn")
 async def ui_topup_ngn_start(callback: types.CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
+    if not _naira_bank_on():
+        await _naira_paused(callback.message, state)
+        return
     if not bank_configured("ngn"):
         await callback.message.answer(
             "⚠️ Naira top-up is not configured yet. Try crypto deposit or contact support.",
@@ -222,6 +245,9 @@ async def _handle_amount(
 ) -> None:
     if not user:
         return
+    if currency != "usd" and not _naira_bank_on():
+        await _naira_paused(message, state)
+        return
     try:
         if currency == "usd":
             amount = parse_usd_amount(raw)
@@ -261,6 +287,9 @@ async def ui_topup_confirm(callback: types.CallbackQuery, state: FSMContext) -> 
         return
     data = await state.get_data()
     currency = (data.get("fiat_currency") or "ngn").lower()
+    if currency != "usd" and not _naira_bank_on():
+        await _naira_paused(callback.message, state)
+        return
     q = data.get("quote") or {}
     if not q:
         await callback.message.answer(
@@ -436,6 +465,9 @@ async def ui_topup_cancel_wizard(callback: types.CallbackQuery, state: FSMContex
 @router.callback_query(F.data == "ui:topup:paystack")
 async def ui_topup_paystack_start(callback: types.CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
+    if not _naira_paystack_on():
+        await _naira_paused(callback.message, state)
+        return
     from gaming.src.backend.services.paystack import paystack_configured, sla_minutes
 
     if not paystack_configured():
@@ -479,6 +511,9 @@ async def _start_paystack_for_amount(
     user: types.User | None,
 ) -> None:
     if not user:
+        return
+    if not _naira_paystack_on():
+        await _naira_paused(message, state)
         return
     from gaming.src.backend.services.paystack import (
         initialize_transaction,

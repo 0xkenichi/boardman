@@ -109,7 +109,16 @@ def test_balance(world, profile):
 # ── deposit ──────────────────────────────────────────────────────────────────
 
 
-def test_deposit_paystack_naira(world):
+@pytest.fixture
+def naira_on(monkeypatch):
+    """Naira rails ship disabled (no licence yet); these tests cover the flow
+    for when they are switched back on."""
+    monkeypatch.setattr(
+        "gaming.src.backend.services.funding_rails.naira_paystack_enabled", lambda: True
+    )
+
+
+def test_deposit_paystack_naira(world, naira_on):
     prof = wa_user(world.repo)
     wa = FakeChannel("wa")
     run(wa.text(U, "deposit"))
@@ -128,7 +137,7 @@ def test_deposit_paystack_naira(world):
     assert row["profile_id"] == prof["id"] and row["status"] == "paystack_paid"
 
 
-def test_deposit_typed_amount_and_validation(world):
+def test_deposit_typed_amount_and_validation(world, naira_on):
     wa_user(world.repo)
     wa = FakeChannel("wa")
     run(wa.text(U, "deposit"))
@@ -139,7 +148,7 @@ def test_deposit_typed_amount_and_validation(world):
     assert world.paystack_inits[-1]["amount_ngn"] == Decimal("15000")
 
 
-def test_deposit_check_is_owner_only(world):
+def test_deposit_check_is_owner_only(world, naira_on):
     wa_user(world.repo)
     wa_user(world.repo, number="2348099999999", tag="mallory")
     wa = FakeChannel("wa")
