@@ -1,0 +1,81 @@
+/* /football/players — the player book. Lives inside .fd-wrap (portal.css tokens). */
+
+.pl { max-width: 76rem; margin: 0 auto; padding: 0 16px 64px; }
+
+.pl-hero { padding: 40px 0 18px; text-align: center; }
+.pl-eyebrow {
+  margin: 0 0 10px; font-family: var(--bm-mono, monospace); font-size: 0.72rem;
+  letter-spacing: 0.16em; text-transform: uppercase; color: var(--bm-green, #256b48);
+}
+.pl-hero h1 { margin: 0; font-size: clamp(2.2rem, 6vw, 4rem); line-height: 0.95; }
+.pl-lede { max-width: 40rem; margin: 14px auto 0; font-size: 1.1rem; line-height: 1.45; color: #57534a; }
+.pl-counts { margin: 12px 0 0; font-family: var(--bm-mono, monospace); font-size: 0.8rem; color: #57534a; }
+.pl-counts strong { color: #201f1a; }
+
+/* filter bar sticks while you browse (tabs only on phones, so cards keep the screen) */
+.pl-bar {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; flex-direction: column; gap: 10px;
+  margin: 8px -16px 18px; padding: 10px 16px;
+  background: rgba(242, 238, 226, 0.94); backdrop-filter: blur(6px);
+  border-top: 1px solid rgba(32, 31, 26, 0.16); border-bottom: 1px solid rgba(32, 31, 26, 0.16);
+}
+.pl-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.pl-tabs::-webkit-scrollbar { display: none; }
+.pl-tab {
+  flex: 0 0 auto; padding: 6px 12px; border: 1px solid rgba(32, 31, 26, 0.2); border-radius: 999px;
+  background: transparent; color: #201f1a; cursor: pointer;
+  font-family: var(--bm-display, sans-serif); font-size: 0.95rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+}
+.pl-tab.on { background: #201f1a; color: #f2eee2; border-color: #201f1a; }
+.pl-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pl-slots { display: flex; gap: 4px; flex-wrap: wrap; }
+.pl-chip {
+  padding: 4px 8px; border: 1px solid rgba(32, 31, 26, 0.2); border-radius: 4px; background: transparent;
+  font-family: var(--bm-mono, monospace); font-size: 0.72rem; color: #57534a; cursor: pointer;
+}
+.pl-chip.on { background: var(--bm-green, #256b48); border-color: var(--bm-green, #256b48); color: #f9f6ec; }
+.pl-select, .pl-search {
+  height: 32px; padding: 0 10px; border: 1px solid rgba(32, 31, 26, 0.2); border-radius: 6px;
+  background: #f9f6ec; color: #201f1a; font-family: var(--bm-mono, monospace); font-size: 0.78rem;
+}
+.pl-search { flex: 1 1 200px; min-width: 0; }
+@media (max-width: 720px) {
+  .pl-bar { position: static; }
+  .pl-tabs { position: sticky; top: 0; }
+}
+
+.pl-row { margin: 0 0 28px; }
+.pl-row-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 10px; }
+.pl-row-head h2 { margin: 0; font-size: 1.6rem; }
+.pl-row-head p { margin: 0; font-style: italic; color: #57534a; }
+
+/* horizontal rail of cards: swipe on phones, scroll on desktop */
+.pl-rail {
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(170px, 190px); gap: 12px;
+  overflow-x: auto; padding: 4px 2px 14px; scroll-snap-type: x mandatory;
+}
+.pl-rail-item { scroll-snap-align: start; display: flex; }
+
+.pl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+@media (max-width: 520px) {
+  .pl-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .pl-row-head { flex-direction: column; gap: 2px; }
+}
+
+.pl-result { margin: 0 0 10px; font-family: var(--bm-mono, monospace); font-size: 0.78rem; color: #57534a; }
+.pl-empty { padding: 32px 0; text-align: center; font-style: italic; color: #57534a; }
+.pl-more {
+  display: block; margin: 22px auto 0; padding: 10px 18px; border: 1px solid #201f1a; border-radius: 6px;
+  background: transparent; cursor: pointer; font-family: var(--bm-display, sans-serif); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.pl-more:hover { background: #201f1a; color: #f2eee2; }
+
+.pl-skel {
+  aspect-ratio: 5 / 7; border-radius: 10px; border: 1px solid rgba(32, 31, 26, 0.12);
+  background: linear-gradient(100deg, #eae5d4 30%, #f2eee2 50%, #eae5d4 70%); background-size: 300% 100%;
+  animation: pl-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes pl-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .pl-skel { animation: none; } }

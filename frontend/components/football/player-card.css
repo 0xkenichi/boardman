@@ -1,0 +1,167 @@
+/* PlayerCard — a trading card printed in the Boardman book.
+   Same paper, ink and type as /v2 and the football portal. */
+
+.pc {
+  --pc-paper: #f9f6ec;
+  --pc-paper-2: #f2eee2;
+  --pc-ink: #201f1a;
+  --pc-muted: #57534a;
+  --pc-dim: #8a8478;
+  --pc-line: rgba(32, 31, 26, 0.16);
+  --pc-green: #256b48;
+  --pc-red: #b04a32;
+  --pc-gold: #a6782a;
+  --pc-display: 'Big Shoulders Variable', 'Arial Narrow', sans-serif;
+  --pc-serif: 'Instrument Serif', Georgia, serif;
+  --pc-mono: 'Space Mono', ui-monospace, Menlo, monospace;
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 14px 12px;
+  height: 100%;
+  min-width: 0;
+  background: var(--pc-paper);
+  color: var(--pc-ink);
+  border: 1px solid var(--pc-line);
+  border-radius: 10px;
+  box-shadow: 0 1px 0 rgba(32, 31, 26, 0.06), 0 10px 24px -18px rgba(32, 31, 26, 0.45);
+  overflow: hidden;
+  isolation: isolate;
+  /* deal-in: each card slides up and settles, staggered by --pc-i */
+  animation: pc-deal 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--pc-i, 0) * 40ms);
+  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 220ms;
+}
+
+.pc:hover {
+  transform: translateY(-4px) rotate(-0.4deg);
+  box-shadow: 0 1px 0 rgba(32, 31, 26, 0.06), 0 22px 36px -22px rgba(32, 31, 26, 0.55);
+}
+
+@keyframes pc-deal {
+  from { opacity: 0; transform: translateY(18px) rotate(1.5deg); }
+  to { opacity: 1; transform: none; }
+}
+
+.pc-top { display: flex; align-items: flex-start; justify-content: space-between; }
+.pc-rating { display: flex; flex-direction: column; line-height: 0.9; }
+.pc-rating strong { font-family: var(--pc-display); font-size: 2.4rem; font-weight: 800; }
+.pc-rating span { font-family: var(--pc-mono); font-size: 0.68rem; letter-spacing: 0.08em; color: var(--pc-muted); }
+.pc-nation {
+  font-family: var(--pc-mono); font-size: 0.68rem; letter-spacing: 0.06em;
+  padding: 2px 6px; border: 1px solid var(--pc-line); border-radius: 4px; color: var(--pc-muted);
+}
+
+/* generated crest: two-ink stripes at a per-player angle, initials on top */
+.pc-crest {
+  position: relative;
+  flex: 0 0 auto;
+  height: 92px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background:
+    repeating-linear-gradient(var(--pc-angle), transparent 0 14px, rgba(249, 246, 236, 0.16) 14px 16px),
+    linear-gradient(140deg, var(--pc-crest), color-mix(in srgb, var(--pc-crest-2) 70%, var(--pc-crest)));
+  color: #f9f6ec;
+}
+.pc-crest span { font-family: var(--pc-display); font-weight: 800; font-size: 2.6rem; letter-spacing: 0.04em; }
+
+.pc-names { min-width: 0; }
+.pc-call {
+  margin: 0; font-family: var(--pc-display); font-weight: 800; text-transform: uppercase;
+  font-size: 1.5rem; line-height: 1; letter-spacing: 0.01em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pc-full, .pc-title { margin: 2px 0 0; font-family: var(--pc-serif); font-size: 0.95rem; line-height: 1.15; }
+.pc-full { color: var(--pc-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-title { font-style: italic; color: var(--pc-green); }
+
+.pc-meta {
+  display: flex; flex-direction: column; gap: 2px;
+  font-family: var(--pc-mono); font-size: 0.64rem; letter-spacing: 0.03em; color: var(--pc-muted);
+}
+.pc-weapon { color: var(--pc-ink); }
+
+.pc-foot {
+  margin-top: auto;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding-top: 8px; border-top: 1px dashed var(--pc-line);
+  font-family: var(--pc-mono); font-size: 0.72rem;
+}
+.pc-price small { color: var(--pc-dim); }
+.pc-soon { color: var(--pc-muted); font-size: 0.62rem; letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* ink stamps */
+.pc-stamp {
+  font-family: var(--pc-mono); font-size: 0.6rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 2px 6px; border: 1.5px solid currentColor; border-radius: 3px; transform: rotate(-3deg);
+}
+.pc-stamp-icon { color: var(--pc-green); }
+.pc-stamp-headliner { color: var(--pc-ink); }
+.pc-stamp-legend { color: var(--pc-gold); }
+.pc-stamp-nigeria { color: var(--pc-green); }
+
+/* Icons: green rule + a slow foil sheen across the card */
+.pc-icon { border-color: rgba(37, 107, 72, 0.5); }
+.pc-icon::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.55) 45%, rgba(220, 240, 228, 0.35) 50%, transparent 62%);
+  background-size: 260% 100%;
+  mix-blend-mode: soft-light;
+  animation: pc-foil 5.5s ease-in-out infinite;
+  animation-delay: calc(var(--pc-i, 0) * 180ms);
+}
+@keyframes pc-foil {
+  0%, 55% { background-position: 130% 0; }
+  100% { background-position: -40% 0; }
+}
+
+/* real legends: gold edge, warm paper */
+.pc-real-legend { border-color: rgba(166, 120, 42, 0.65); background: #f6f0de; }
+
+/* licence pending / coming soon: printed but not issued */
+.pc-pending .pc-crest { filter: grayscale(1) contrast(0.9); opacity: 0.75; }
+.pc-pending .pc-rating strong, .pc-pending .pc-call { color: var(--pc-muted); }
+.pc-pending::before {
+  content: 'COMING SOON';
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  z-index: 3;
+  transform: translate(-50%, -50%) rotate(-12deg);
+  padding: 4px 10px;
+  font-family: var(--pc-mono); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.18em;
+  color: var(--pc-red);
+  border: 2px solid var(--pc-red);
+  border-radius: 4px;
+  background: rgba(249, 246, 236, 0.86);
+  pointer-events: none;
+}
+.pc-real-legend.pc-pending .pc-crest { filter: sepia(0.6) grayscale(0.4); opacity: 0.9; }
+.pc-real-legend.pc-pending::before { color: var(--pc-gold); border-color: var(--pc-gold); }
+
+/* sizes */
+.pc-sm { padding: 10px; gap: 6px; border-radius: 8px; }
+.pc-sm .pc-crest { height: 68px; }
+.pc-sm .pc-rating strong { font-size: 1.8rem; }
+.pc-sm .pc-crest span { font-size: 1.8rem; }
+.pc-sm .pc-call { font-size: 1.15rem; }
+.pc-sm .pc-full, .pc-sm .pc-title { font-size: 0.8rem; }
+.pc-lg { padding: 18px; }
+.pc-lg .pc-crest { height: 128px; }
+.pc-lg .pc-rating strong { font-size: 3rem; }
+.pc-lg .pc-crest span { font-size: 3.4rem; }
+.pc-lg .pc-call { font-size: 1.9rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pc, .pc-icon::after { animation: none; }
+  .pc { transition: none; }
+  .pc:hover { transform: none; }
+}
