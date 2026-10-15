@@ -199,10 +199,9 @@ def _onchain_already_final(match_id: str, chain_id: str) -> Optional[dict[str, A
 def _adjust_already_applied(profile_id: str, reason: str) -> bool:
     """Reconcile a play_adjust payout whose journal row never got written."""
     try:
-        from gaming.src.stack.agentic.store import load_json
+        from gaming.src.backend.services.play_adjust import was_applied
 
-        rec = (load_json("play_adjust.json", {"profiles": {}}).get("profiles") or {}).get(profile_id) or {}
-        return any(str(h.get("reason") or "") == reason[:80] for h in rec.get("history") or [])
+        return was_applied(profile_id, reason)
     except Exception:
         return False
 
@@ -1349,8 +1348,21 @@ class AgentMatchService:
                     updates["spectator_pool_resolve_error"] = str(exc)
 
             def _spectator_settle() -> dict[str, Any]:
+                # One transaction with its journal row: the book's payouts
+                # and every agentic-ledger credit they imply. Each payout
+                # comes out of what the book took in (tickets debited on
+                # their own rail + the seeds the lock really debited) and
+                # lands on the rail its ticket was paid from.
+                from gaming.src.stack.agentic.economy.spectator import funded_seeds_from_ledger
+
+                wallets = (str(m.get("agent_a_wallet") or ""), str(m.get("agent_b_wallet") or ""))
                 spec = (
-                    spec_book.settle(match_id, winner_side=winner_side)
+                    spec_book.settle(
+                        match_id,
+                        winner_side=winner_side,
+                        funded_seeds=funded_seeds_from_ledger(match_id, *wallets),
+                        wallets=wallets,
+                    )
                     if live
                     else {
                         "status": "missing",
@@ -1362,39 +1374,14 @@ class AgentMatchService:
                         "resolve_tx_hash": "",
                     }
                 )
-                # On-chain books push creator fees in the contract. Ledger only
-                # refunds JSON seeds (those were never deposited to the pool).
-                if not onchain_spec:
-                    for c in (spec.get("payouts") or {}).get("creators") or []:
-                        ledger.credit(
-                            f"creator:{c['creator_id']}",
-                            Decimal(str(c["amount"])),
-                            reason="creator_fee_spectator",
-                            ref=match_id,
-                        )
-                for sr in (spec.get("payouts") or {}).get("seed_refunds") or []:
-                    w = sr.get("wallet")
-                    amt = Decimal(str(sr.get("amount") or "0"))
-                    if w and amt > 0:
-                        ledger.credit(w, amt, reason=str(sr.get("reason") or "seed_refund_draw"), ref=match_id)
-                draw_book = (spec.get("payouts") or {}).get("draw_book") or {}
-                for sp in draw_book.get("agent_split") or []:
-                    w = sp.get("wallet")
-                    amt = Decimal(str(sp.get("amount") or "0"))
-                    if w and amt > 0:
-                        ledger.credit(w, amt, reason="draw_underwrite_win", ref=match_id)
-                for bt in draw_book.get("bettors") or []:
-                    bid = bt.get("bettor_id")
-                    amt = Decimal(str(bt.get("amount") or "0"))
-                    if bid and amt > 0:
-                        ledger.credit(str(bid), amt, reason="draw_win", ref=match_id)
-                fan_pays = list((spec.get("payouts") or {}).get("bettors") or [])
-                for bt in fan_pays:
-                    bid = str(bt.get("bettor_id") or "")
-                    amt = Decimal(str(bt.get("amount") or "0"))
-                    if not bid or amt <= 0:
-                        continue
-                    ledger.credit(bid, amt, reason=f"spectator_{bt.get('reason') or 'win'}", ref=match_id)
+                payouts = spec.get("payouts") or {}
+                # On-chain books: the pool pays every fan and the creators;
+                # the book only returns the ledger seeds (never deposited).
+                for wallet, amt, reason in SpectatorBook.ledger_credits(payouts):
+                    ledger.credit(wallet, amt, reason=reason, ref=match_id)
+                # Web / Telegram tickets go back to the play balance (the
+                # play_adjust:<i> steps below), never to the agentic ledger.
+                fan_pays = SpectatorBook.profile_payouts(payouts)
                 return {
                     "book": {
                         "status": spec.get("status"),
@@ -1406,6 +1393,7 @@ class AgentMatchService:
                         "resolve_tx_hash": spec.get("resolve_tx_hash"),
                     },
                     "fan_pays": fan_pays,
+                    "notify": list(payouts.get("bettors") or []),
                     "bets": list(spec.get("bets") or []),
                 }
 
@@ -1422,10 +1410,10 @@ class AgentMatchService:
                 def _adjust(bid: str = bid, amt: Decimal = amt, tag: str = tag) -> dict[str, Any]:
                     if _adjust_already_applied(bid, tag):
                         return {"reconciled": True}
-                    from gaming.src.backend.services.play_adjust import add_adjust
+                    from gaming.src.backend.services.play_adjust import apply_once
 
-                    add_adjust(bid, amt, reason=tag)
-                    return {"applied": str(amt)}
+                    applied = apply_once(bid, amt, key=tag)
+                    return {"applied": str(amt)} if applied else {"reconciled": True}
 
                 try:
                     self._external_step(match_id, f"play_adjust:{i}", _adjust)
@@ -1434,16 +1422,18 @@ class AgentMatchService:
                 except Exception:
                     logger.warning("[agentic] play_adjust payout failed %s", bid, exc_info=True)
 
+            notify_pays = list(spec_out.get("notify") or fan_pays)
+
             def _notify() -> dict[str, Any]:
                 _notify_spectator_outcomes(
                     match_id,
                     winner_side,
-                    fan_pays,
+                    notify_pays,
                     book={**(spec_out.get("book") or {}), "bets": spec_out.get("bets") or []},
                     result_code=str(result.get("result") or ""),
                     termination=str(result.get("termination") or ""),
                 )
-                return {"sent": len(fan_pays)}
+                return {"sent": len(notify_pays)}
 
             self._external_step(match_id, "notify", _notify)
         except leases.LeaseLost:

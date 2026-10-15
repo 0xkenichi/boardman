@@ -286,17 +286,27 @@ class HouseBetBody(BaseModel):
 
 
 @router.post("/house/matches/{match_id}/bets")
-async def house_take_bet(match_id: str, body: HouseBetBody, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+async def house_take_bet(match_id: str, body: HouseBetBody, caller: StackCaller = Depends(require_stack_caller)):
+    """A fan ticket paid from the bettor's agentic-ledger wallet (debited
+    with the ticket; the payout comes back there). The bettor is the caller.
+    Web / Telegram fans bet from their play balance via /api/rematch/web."""
     from decimal import Decimal
+    from gaming.src.stack.agentic import ledger
     from gaming.src.stack.agentic.house import get_house
 
+    bettor = _acting_party(caller, body.bettor_id, field="bettor_id")
+    if not bettor:
+        raise HTTPException(status_code=422, detail="bettor_id is required")
     try:
         out = get_house().take_bet(
             match_id,
-            bettor_id=body.bettor_id,
+            bettor_id=bettor,
             side=body.side,
             amount_usdc=Decimal(str(body.amount_usdc)),
+            funding="ledger",
         )
+    except ledger.InsufficientFunds as e:
+        raise HTTPException(402, str(e)) from e
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     return {"success": True, **out}
@@ -1160,10 +1170,16 @@ class BetBody(BaseModel):
 
 
 @router.post("/matches/{match_id}/spectator/bet")
-async def spectator_bet(match_id: str, body: BetBody, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+async def spectator_bet(match_id: str, body: BetBody, caller: StackCaller = Depends(require_stack_caller)):
+    """A fan ticket paid from the caller's agentic-ledger wallet: debited in
+    the same transaction as the ticket, paid back there on settlement."""
     from decimal import Decimal
+    from gaming.src.stack.agentic import ledger
     from gaming.src.stack.agentic.economy.spectator import SpectatorBook
 
+    bettor = _acting_party(caller, body.bettor_id, field="bettor_id")
+    if not bettor:
+        raise HTTPException(status_code=422, detail="bettor_id is required")
     try:
         from gaming.src.stack.agentic.matches import get_match_service
 
@@ -1174,10 +1190,13 @@ async def spectator_bet(match_id: str, body: BetBody, _: ApiKeyPrincipal = Depen
             SpectatorBook().ensure_from_match(mrec)
         book = SpectatorBook().place_bet(
             match_id,
-            bettor_id=body.bettor_id,
+            bettor_id=bettor,
             side=body.side,
             amount_usdc=Decimal(str(body.amount_usdc)),
+            funding="ledger",
         )
+    except ledger.InsufficientFunds as e:
+        raise HTTPException(402, str(e)) from e
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     return {"success": True, "book": book}

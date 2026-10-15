@@ -113,7 +113,7 @@ def test_place_bet_refused_and_nothing_booked(monkeypatch):
     SpectatorBook().open_book("agm_ks1", agent_a_id="x", agent_b_id="y")
     monkeypatch.setenv("SPECTATOR_BETTING_ENABLED", "0")
     with pytest.raises(sp.SpectatorBettingUnavailable):
-        SpectatorBook().place_bet("agm_ks1", bettor_id="fan", side="a", amount_usdc=Decimal("1"))
+        SpectatorBook().place_bet("agm_ks1", bettor_id="fan", side="a", amount_usdc=Decimal("1"), funding="profile")
     assert SpectatorBook().get("agm_ks1")["bets"] == []
 
 
@@ -143,7 +143,7 @@ def test_payouts_and_lp_withdraw_still_work_when_switch_is_off(monkeypatch):
     from gaming.src.stack.agentic.economy.spectator import SpectatorBook
 
     SpectatorBook().open_book("agm_ks2", agent_a_id="x", agent_b_id="y", pot_cap_usdc=Decimal("100"))
-    SpectatorBook().place_bet("agm_ks2", bettor_id="fan", side="a", amount_usdc=Decimal("12"))
+    SpectatorBook().place_bet("agm_ks2", bettor_id="fan", side="a", amount_usdc=Decimal("12"), funding="profile")
     AgentLPPool().deposit("agent_q", lp_id="lp1", amount_usdc=Decimal("10"))
     monkeypatch.setenv("SPECTATOR_BETTING_ENABLED", "off")
     settled = SpectatorBook().settle("agm_ks2", winner_side="a")

@@ -519,11 +519,11 @@ def abort_table(match_id: str, *, reason: str) -> dict[str, Any]:
       abort:onchain    cancel the on-chain escrow (both stakes back)
       abort:escrow     ledger draw-refund of both stakes
       abort:spectator_cancel_onchain   SpectatorPool cancel (fans claim refunds)
-      abort:spectator  void the demo book; both agents' spectator/draw seeds
-                       (what the lock debited, capped by what the book holds)
-                       credited back
-      abort:play_adjust:<i>  each ticket's stake back to the play wallet it
-                       was taken from
+      abort:spectator  void the demo book; ledger-funded tickets and both
+                       agents' spectator/draw seeds (what the lock debited,
+                       capped by what the book holds) credited back
+      abort:play_adjust:<i>  each web/Telegram ticket's stake back to the
+                       play wallet it was taken from
 
     Every refund comes out of money the table holds (escrow, book): nothing
     is credited that the lock or the bet did not take.
@@ -697,10 +697,23 @@ def _abort_under_lease(match_id: str, reason: str) -> dict[str, Any]:
             }
             if not onchain_book:
                 # On-chain fans claim from the pool; demo-book fans get their
-                # ticket back on the rail that took it (play_adjust, below).
-                # Never an agentic-ledger credit: that ledger never held their
-                # stake, so crediting it would mint money.
-                fan = list((voided.get("payouts") or {}).get("refunds") or [])
+                # ticket back on the rail that took it: the agentic ledger for
+                # tickets it debited (here, in this step), the play wallet
+                # for web/Telegram tickets (play_adjust, below). Never the
+                # ledger for a stake it never held: that would mint money.
+                from gaming.src.stack.agentic.economy.spectator import (
+                    FUNDING_LEDGER,
+                    FUNDING_PROFILE,
+                    bet_funding,
+                )
+
+                for r in (voided.get("payouts") or {}).get("refunds") or []:
+                    rail = bet_funding(r)
+                    amt = Decimal(str(r.get("amount") or "0"))
+                    if rail == FUNDING_LEDGER and r.get("bettor_id") and amt > 0:
+                        ledger.credit(str(r["bettor_id"]), amt, reason="spectator_refund_void", ref=match_id)
+                    elif rail == FUNDING_PROFILE:
+                        fan.append(r)
         # Return exactly what the lock debited for the book seeds (wallet and
         # amount from the ledger rows themselves, so a wallet swap at lock
         # time cannot misdirect the refund) — capped by the seeds the book
@@ -735,10 +748,10 @@ def _abort_under_lease(match_id: str, reason: str) -> dict[str, Any]:
         def _adjust(bid: str = bid, amt: Decimal = amt, tag: str = tag) -> dict[str, Any]:
             if matches_mod._adjust_already_applied(bid, tag):
                 return {"reconciled": True}
-            from gaming.src.backend.services.play_adjust import add_adjust
+            from gaming.src.backend.services.play_adjust import apply_once
 
-            add_adjust(bid, amt, reason=tag)
-            return {"applied": str(amt)}
+            applied = apply_once(bid, amt, key=tag)
+            return {"applied": str(amt)} if applied else {"reconciled": True}
 
         svc._external_step(match_id, f"abort:play_adjust:{i}", _adjust)
 
@@ -853,7 +866,11 @@ class HouseRuntime:
         bettor_id: str,
         side: str,
         amount_usdc: Decimal,
+        funding: str = "ledger",
     ) -> dict[str, Any]:
+        """Book a fan ticket. ``funding`` is the rail the stake comes from:
+        ``ledger`` debits the bettor's agentic-ledger wallet with the ticket;
+        ``profile`` is the web/Telegram play balance, taken by the caller."""
         from gaming.src.stack.agentic.matches import get_match_service
         from gaming.src.stack.agentic.economy.spectator import SpectatorBook, book_close_plies
 
@@ -883,6 +900,7 @@ class HouseRuntime:
             bettor_id=bettor_id,
             side=slot,
             amount_usdc=Decimal(str(amount_usdc)),
+            funding=funding,
         )
         try:
             get_match_service().persist_spectator_snapshot(match_id, book)

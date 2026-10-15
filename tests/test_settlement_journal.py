@@ -54,10 +54,10 @@ def _scenario(kind: str) -> tuple[str, dict[str, Any]]:
     AgentLPPool().deposit(NERO, lp_id="lp_bob", amount_usdc=Decimal("10"))
     svc.lock_both(mid)
     book = SpectatorBook()
-    book.place_bet(mid, bettor_id="fan_a1", side="a", amount_usdc=Decimal("1.5"))
-    book.place_bet(mid, bettor_id="fan_a2", side="a", amount_usdc=Decimal("0.75"))
-    book.place_bet(mid, bettor_id="fan_b1", side="b", amount_usdc=Decimal("2"))
-    book.place_bet(mid, bettor_id="fan_d1", side="draw", amount_usdc=Decimal("0.5"))
+    book.place_bet(mid, bettor_id="fan_a1", side="a", amount_usdc=Decimal("1.5"), funding="profile")
+    book.place_bet(mid, bettor_id="fan_a2", side="a", amount_usdc=Decimal("0.75"), funding="profile")
+    book.place_bet(mid, bettor_id="fan_b1", side="b", amount_usdc=Decimal("2"), funding="profile")
+    book.place_bet(mid, bettor_id="fan_d1", side="draw", amount_usdc=Decimal("0.5"), funding="profile")
     if kind == "win":
         result = {"result": "white_win", "winner_agent_id": RAJA, "termination": "CHECKMATE", "moves": []}
     else:

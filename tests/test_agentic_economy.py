@@ -62,7 +62,7 @@ def test_fee_split_math():
     )
 
 
-def test_spectator_pot_cap_and_draw_no_refund(tmp_path, monkeypatch):
+def test_spectator_pot_cap_and_draw_with_no_draw_ticket_refunds(tmp_path, monkeypatch):
     import gaming.src.stack.agentic.economy.spectator as spec_mod
     import gaming.src.stack.agentic.store as store_mod
 
@@ -86,22 +86,28 @@ def test_spectator_pot_cap_and_draw_no_refund(tmp_path, monkeypatch):
         agent_b_wallet="0xB",
     )
     assert rec["status"] == "open"
-    book.place_bet(mid, bettor_id="fan1", side="a", amount_usdc=Decimal("1"))
-    book.place_bet(mid, bettor_id="fan2", side="b", amount_usdc=Decimal("1"))
+    book.place_bet(mid, bettor_id="fan1", side="a", amount_usdc=Decimal("1"), funding="profile")
+    book.place_bet(mid, bettor_id="fan2", side="b", amount_usdc=Decimal("1"), funding="profile")
     # pot = 0.5+0.4+1+1 = 2.9, room 0.1
     try:
-        book.place_bet(mid, bettor_id="fan3", side="a", amount_usdc=Decimal("1"))
+        book.place_bet(mid, bettor_id="fan3", side="a", amount_usdc=Decimal("1"), funding="profile")
         assert False, "should reject over cap"
     except ValueError:
         pass
 
     settled = book.settle(mid, winner_side=None)
-    # Draw is a real outcome: A/B tickets are NOT refunded. With no draw
-    # bettors the pot has no winners — house keeps it.
-    assert settled["payouts"]["mode"] == "draw_hits"
-    assert settled["payouts"]["bettors"] == []
-    assert settled["payouts"]["seed_refunds"] == []
-    assert settled["payouts"]["pot"] == "2.9"
+    # Draw is a real outcome: A/B tickets lose to draw tickets. With no draw
+    # ticket nobody backed the result, so — exactly like SpectatorPool — every
+    # ticket and seed goes back and no fee is taken. (It used to vanish: no
+    # winner, no credit anywhere.)
+    pay = settled["payouts"]
+    assert pay["mode"] == "refund_no_winner"
+    assert sorted((b["bettor_id"], b["amount"], b["reason"]) for b in pay["bettors"]) == [
+        ("fan1", "1", "refund"), ("fan2", "1", "refund"),
+    ]
+    assert sorted((s["wallet"], s["amount"]) for s in pay["seed_refunds"]) == [("0xA", "0.5"), ("0xB", "0.4")]
+    assert pay["house_take"] == "0"
+    assert pay["pot"] == "2.9"
 
 
 def test_draw_book_hits_and_misses():
@@ -120,7 +126,7 @@ def test_draw_book_hits_and_misses():
         agent_a_wallet="0xA",
         agent_b_wallet="0xB",
     )
-    book.place_bet(mid, bettor_id="fan_d", side="draw", amount_usdc=Decimal("1"))
+    book.place_bet(mid, bettor_id="fan_d", side="draw", amount_usdc=Decimal("1"), funding="profile")
     hit = book.settle(mid, winner_side=None)
     assert hit["payouts"]["mode"] == "draw_hits"
     assert hit["payouts"]["draw_book"] == {}
@@ -145,8 +151,8 @@ def test_draw_book_hits_and_misses():
         agent_a_wallet="0xA",
         agent_b_wallet="0xB",
     )
-    book.place_bet(mid2, bettor_id="fan_d", side="draw", amount_usdc=Decimal("1"))
-    book.place_bet(mid2, bettor_id="fan_a", side="a", amount_usdc=Decimal("1"))
+    book.place_bet(mid2, bettor_id="fan_d", side="draw", amount_usdc=Decimal("1"), funding="profile")
+    book.place_bet(mid2, bettor_id="fan_a", side="a", amount_usdc=Decimal("1"), funding="profile")
     miss = book.settle(mid2, winner_side="a")
     db2 = miss["payouts"]["draw_book"]
     assert db2["mode"] == "draw_misses"

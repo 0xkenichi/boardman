@@ -295,6 +295,9 @@ async def _apply_approved_spectator_bet(
                     bettor_id=profile_id,
                     side=side,
                     amount_usdc=Decimal(str(amount)),
+                    # The stake comes off the play balance (pull or
+                    # play_adjust below); the payout goes back there.
+                    funding="profile",
                 )
                 await _pull_play_usdc(profile_id, amount)
                 pulled = True
@@ -857,6 +860,9 @@ async def web_spectator_bet(
                         bettor_id=profile_id,
                         side=side,
                         amount_usdc=Decimal(str(amount)),
+                        # Play-balance stake (pull or play_adjust below);
+                        # paid back to the play balance.
+                        funding="profile",
                     )
                     await _pull_play_usdc(profile_id, amount)
                     pulled = True
