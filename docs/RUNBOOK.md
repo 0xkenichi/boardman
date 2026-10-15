@@ -404,6 +404,22 @@ moved. Check afterwards: `ledger_txs` rows with `ref = '<transfer_key>'`
 Deposits are refused on mainnet (the football wallet is book-entry, testnet
 only); withdrawals always work so money can come back out.
 
+**One wallet per person.** `owner:<profile_id>` is the only ledger key for a
+person's football money: bridge, AFM bets/payouts/refunds, marketplace buys
+and proceeds, stack-API chess tickets. AFM bets used to use the bare
+`<profile_id>` key; that balance is folded in on the person's next bet, buy
+or bridge call (`football_wallet_merge_out/_in` rows). After deploy, fold
+everyone at once:
+
+```bash
+python scripts/merge_football_wallets.py          # dry run: who, how much, held back
+python scripts/merge_football_wallets.py --apply
+```
+
+"Held back" is chess spectator winnings the old settlement credited to bare
+ids without ever debiting a stake (minted). They stay on the bare key and are
+never merged; decide case by case whether to zero them (incident log).
+
 ---
 
 ## 4. Daily reconciliation
