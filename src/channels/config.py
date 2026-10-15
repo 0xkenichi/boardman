@@ -3,10 +3,15 @@
 Flags (see docs/RUNBOOK.md, "Channels"):
 
 ``CHANNELS_CORE_FLOWS``
-    Comma list of flows the shared core handles (``balance,deposit,link,withdraw``
-    or ``all``). Default empty: Telegram keeps its legacy handlers.
+    Comma list of flows the shared core handles (``balance,deposit,link,withdraw,
+    challenge,match,report,watch`` or ``all``). Default empty: Telegram keeps its
+    legacy handlers.
 ``CHANNELS_CORE_FLOWS_<CHANNEL>``
     Per-channel override, e.g. ``CHANNELS_CORE_FLOWS_WHATSAPP=all``.
+
+On Telegram ``all`` means the Phase 0 flows only: the skill-match flows
+(``challenge,match,report,watch``) must be named there, so an existing
+``all`` never takes over Telegram's challenge, lock and report handlers.
 ``WHATSAPP_ENABLED``
     ``1`` mounts the WhatsApp webhook. Off by default.
 ``TELEGRAM_WITHDRAW_WEB_PIN``
@@ -17,7 +22,9 @@ from __future__ import annotations
 
 import os
 
-PORTED_FLOWS = ("balance", "deposit", "link", "withdraw")
+PHASE0_FLOWS = ("balance", "deposit", "link", "withdraw")
+MATCH_FLOWS = ("challenge", "match", "report", "watch")
+PORTED_FLOWS = PHASE0_FLOWS + MATCH_FLOWS
 
 _TRUTHY = {"1", "true", "yes", "on"}
 _FALSY = {"0", "false", "no", "off"}
@@ -32,19 +39,21 @@ def _flag(name: str, default: bool) -> bool:
     return default
 
 
-def _parse_flows(raw: str) -> frozenset[str]:
+def _parse_flows(raw: str, channel: str = "") -> frozenset[str]:
     parts = {p.strip().lower() for p in raw.replace(";", ",").split(",") if p.strip()}
+    named = frozenset(p for p in parts if p in PORTED_FLOWS)
     if "all" in parts:
-        return frozenset(PORTED_FLOWS)
-    return frozenset(p for p in parts if p in PORTED_FLOWS)
+        everything = PHASE0_FLOWS if channel == "telegram" else PORTED_FLOWS
+        return frozenset(everything) | named
+    return named
 
 
 def enabled_flows(channel: str) -> frozenset[str]:
     """Flows the core owns on ``channel`` (per-channel override wins)."""
     specific = os.getenv(f"CHANNELS_CORE_FLOWS_{channel.upper()}")
     if specific is not None:
-        return _parse_flows(specific)
-    return _parse_flows(os.getenv("CHANNELS_CORE_FLOWS") or "")
+        return _parse_flows(specific, channel)
+    return _parse_flows(os.getenv("CHANNELS_CORE_FLOWS") or "", channel)
 
 
 def flow_enabled(channel: str, flow: str) -> bool:

@@ -64,8 +64,14 @@ async def on_text(ctx, text: str) -> None:
     ctx.principal.identity_id = fresh.identity_id
     ctx.principal.profile = fresh.profile
     ctx.principal.country_signals = fresh.country_signals
+    join = ctx.st.data.pop("_join", None)
     ctx.st.clear()
     ctx.say(f"You're in, *@{fresh.display_name}*.")
+    if join and ctx.enabled("match"):
+        from gaming.src.channels.core.flows import match
+
+        await match.join(ctx, str(join))
+        return
     from gaming.src.channels.core.flows import menu
 
     await menu.start(ctx)

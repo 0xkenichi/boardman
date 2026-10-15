@@ -33,6 +33,9 @@ class Choice:
     options: list[Option] = field(default_factory=list)
     button_label: str = "Choose"
     page: int = 0
+    # Approval nonce this prompt carries: the adapter records the sent
+    # message id against it (``approvals.bind_message``).
+    bind: str = ""
 
 
 @dataclass
