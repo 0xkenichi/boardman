@@ -168,3 +168,55 @@ def test_demo_managers_renamed_without_losing_owner():
     assert after["name"] == "Forge"
     assert after["owner_id"] == "profile_bought_it"
     assert after["stats"]["wins"] == 7
+
+
+def _originals():
+    from gaming.src.stack.agentic.games.football_managers import catalog as cat
+
+    return [p for p in cat.list_players() if p["origin"] == "original"]
+
+
+def test_every_nation_has_a_cast_with_one_titled_headliner():
+    from gaming.src.stack.agentic.games.football_managers.universe_nations import NATIONS
+
+    originals = _originals()
+    by_id = {p["player_id"]: p for p in originals}
+    for code, spec in NATIONS.items():
+        cast = [p for p in originals if p["player_id"].startswith(f"afm_og_{code.lower()}_")]
+        assert len(cast) == spec["count"], code
+        assert all(p["nation"] == code for p in cast)
+        heads = [p for p in cast if p["persona"]["tier"] == "headliner"]
+        assert len(heads) == 1, code
+        head = heads[0]["persona"]
+        assert head["title"].startswith("the ") and head["hometown"] in head["title"]
+        rival = by_id[head["rival_id"]]
+        assert rival["nation"] != code and rival["persona"]["tier"] == "headliner"
+    ng = sum(1 for p in originals if p["nation"] == "NG")
+    assert ng == max(sum(1 for p in originals if p["nation"] == c) for c in NATIONS)  # biggest cast
+
+
+def test_call_names_and_naming_conventions():
+    originals = _originals()
+    assert all(p["persona"].get("known_as") for p in originals)
+    names = [p["name"].lower() for p in originals]
+    assert len(names) == len(set(names))
+    br = [p for p in originals if p["player_id"].startswith("afm_og_br_")]
+    assert all(" " not in p["name"] and p["persona"]["full_name"] for p in br)  # one-word nickname
+    kr = [p for p in originals if p["player_id"].startswith("afm_og_kr_")]
+    assert all(p["name"].split()[0] == p["persona"]["known_as"] for p in kr)  # family name first
+
+
+def test_cast_fills_every_position_in_squad_proportions():
+    from collections import Counter
+
+    slots = Counter(p["slot"] for p in _originals())
+    for slot in ("GK", "RB", "CB", "LB", "CDM", "CM", "CAM", "RW", "ST", "LW"):
+        assert slots[slot] >= 20, (slot, slots)
+    assert slots["CB"] > slots["RB"]  # centre-backs come in pairs
+
+
+def test_originals_never_reuse_a_real_catalog_name():
+    from gaming.src.stack.agentic.games.football_managers import catalog as cat
+
+    real = {p["name"].lower() for p in cat.list_players() if p["origin"] in ("global_star", "real_ng")}
+    assert not real & {p["name"].lower() for p in _originals()}

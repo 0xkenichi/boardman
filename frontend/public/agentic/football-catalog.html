@@ -59,7 +59,7 @@
   <main>
     <h1>AFM player catalog</h1>
     <p class="sub">
-      Top signable players by position — Boardman originals and Nigerian players.
+      Top signable players by position — Boardman's world cast of originals from 58 nations, and Nigerian players.
       Global stars are listed as upcoming until their licence is signed.
     </p>
     <div class="bar">
@@ -95,9 +95,12 @@
       let t = "";
       if (isUpcoming(p)) t += "<span class='tag pending'>" + (p.availability_label || "Upcoming · licence pending") + "</span>";
       else if (persona.tier === "icon") t += "<span class='tag icon'>Icon</span>";
+      else if (persona.tier === "headliner") t += "<span class='tag icon'>Headliner</span>";
       if (p.origin === "real_ng") t += "<span class='tag ng'>Nigeria</span>";
+      const title = persona.title ? "<div class='weapon'>“" + persona.title + "”</div>" : "";
+      const legal = persona.full_name ? "<div class='mono'>" + persona.full_name + "</div>" : "";
       const weapon = persona.weapon ? "<div class='weapon'>" + (persona.archetype || "") + " · " + persona.weapon + "</div>" : "";
-      return t + weapon;
+      return t + title + legal + weapon;
     }
     function row(p) {
       const inj = p.injury ? '<div class="inj">' + p.injury + "</div>" : "";
