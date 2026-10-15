@@ -145,7 +145,7 @@ def _save(state: dict[str, Any]) -> None:
     from gaming.src.stack.agentic.json_cache import get_cache
 
     try:
-        save_json(STATE_FILE, state)
+        save_json(STATE_FILE, state, compact=True)  # tens of MB: no indent
     finally:
         get_cache().invalidate(STATE_FILE)
 
@@ -1187,6 +1187,10 @@ def _resolve_matchday(s: dict[str, Any], matchday: int) -> None:
                 "plans": lineups[a].get("plans") or {}},
         }
         table = apply_result(table, fx, res["home_goals"], res["away_goals"])
+        # The phase stream is ~90% of a stored result and a pure function of
+        # the feed + lineups: get_replay rebuilds it instead of the season
+        # file carrying it (a 10-club season was ~110MB with it).
+        res.pop("phases", None)
         results.append(res)
         _settle_match(s, matchday, h, a, res["outcome"])
     s["standings"] = {aid: _row_dict(r) for aid, r in table.items()}
@@ -1423,6 +1427,8 @@ def get_replay(matchday: int, home: str, away: str) -> dict[str, Any]:
         result = _reconstruct_replay(s, matchday, home, away, mid)
     if result is None:
         raise ValueError(f"no replay for MD {matchday}: {home} vs {away}")
+    if not result.get("phases"):
+        result = {**result, "phases": _phases_for(result, mid, home, away)}
 
     def side(aid: str) -> dict[str, Any]:
         from gaming.src.stack.agentic.games.football_managers.catalog import get_player
@@ -1594,6 +1600,24 @@ def prematch_view(matchday: int, home: str, away: str) -> dict[str, Any]:
         "deadline_at": info.get("deadline_at") or _iso(_deadline(s, matchday)),
         "resolved_at": info.get("resolved_at"),
     }
+
+
+def _phases_for(result: dict[str, Any], mid: str, home: str, away: str) -> list[dict[str, Any]]:
+    """Rebuild the board's phase stream exactly as the engine built it at
+    full time: from the feed, the starting XIs and the first-half shapes."""
+    from gaming.src.stack.agentic.games.football_managers.phases import build_phase_stream
+    from gaming.src.stack.agentic.json_cache import thaw
+
+    lineups = result.get("lineups") or {}
+    hl, al = lineups.get(home) or {}, lineups.get(away) or {}
+    return build_phase_stream(
+        mid,
+        thaw(result.get("feed") or []),
+        list(hl.get("xi") or []),
+        list(al.get("xi") or []),
+        str(hl.get("formation") or "4-3-3"),
+        str(al.get("formation") or "4-3-3"),
+    )
 
 
 def _reconstruct_replay(
