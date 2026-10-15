@@ -1263,18 +1263,23 @@ def _settle_match(s: dict[str, Any], matchday: int, home: str, away: str, outcom
     hw, aw = _wallet(home), _wallet(away)
     if not hw or not aw:
         return
+    # A side that can't cover the stake owes it instead, and no escrow opens:
+    # an escrow left "open"/"partial_lock" never settles, and other code
+    # (agent LP withdrawable, abort/recovery sweeps) reads those as live stakes.
+    short = {side: stake - L.balance(w) for w, side in ((hw, home), (aw, away))}
+    if any(v > 0 for v in short.values()):
+        for side, v in short.items():
+            if v > 0:
+                s["stake_debt"][side] = str(_d(s["stake_debt"][side]) + v)
+        return
     L.open_escrow(mid, agent_a_wallet=hw, agent_b_wallet=aw, stake_usdc=stake)
     locked: list[str] = []
     for w, side in ((hw, home), (aw, away)):
-        bal = L.balance(w)
-        if bal >= stake:
-            try:
-                L.lock(mid, w)
-                locked.append(w)
-            except ValueError:
-                s["stake_debt"][side] = str(_d(s["stake_debt"][side]) + stake)
-        else:
-            s["stake_debt"][side] = str(_d(s["stake_debt"][side]) + (stake - bal))
+        try:
+            L.lock(mid, w)
+            locked.append(w)
+        except ValueError:  # balance moved since the check (another process)
+            s["stake_debt"][side] = str(_d(s["stake_debt"][side]) + stake)
     esc = L.get_escrow(mid)
     if esc and esc.get("status") == "locked":
         if outcome == "draw":
