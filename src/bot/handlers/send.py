@@ -81,34 +81,13 @@ def _execute_transfer_sync(
     recipient_id: str | None,
     chain_id: str,
 ) -> dict:
-    circle = _circle_for_chain(chain_id)
-    result = circle.transfer_usdc(sender_wallet_id, recipient_address, float(amount))
+    # The transfer + audit now live in the withdrawals service, shared with
+    # withdrawals confirmed on the web (channels one-time link + PIN).
+    from gaming.src.backend.services.withdrawals import execute_transfer_sync
 
-    sb = get_supabase()
-    audit = {
-        "sender_id": sender_id,
-        "recipient_id": recipient_id,
-        "recipient_address": recipient_address.lower(),
-        "amount_usdc": float(amount),
-        "circle_transaction_id": result.get("transaction_id") if result.get("success") else None,
-        "tx_hash": result.get("tx_hash"),
-        "status": "pending" if result.get("success") else "failed",
-    }
-    try:
-        audit["settlement_chain"] = chain_id
-    except Exception:
-        pass
-    try:
-        sb.schema("gaming").table("wallet_debit_audit").insert(audit).execute()
-    except Exception as exc:
-        # Retry without optional chain column if schema is older
-        logger.warning("[Withdraw] audit insert failed, retry bare: %s", exc)
-        bare = {k: v for k, v in audit.items() if k != "settlement_chain"}
-        try:
-            sb.schema("gaming").table("wallet_debit_audit").insert(bare).execute()
-        except Exception:
-            logger.exception("[Withdraw] audit insert failed")
-    return result
+    return execute_transfer_sync(
+        sender_id, sender_wallet_id, recipient_address, amount, recipient_id, chain_id
+    )
 
 
 async def start_withdraw(message: types.Message, state: FSMContext) -> None:
