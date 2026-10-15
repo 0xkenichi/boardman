@@ -95,9 +95,9 @@ def _locked_table(monkeypatch, *, bets: bool = True, stake: float = 1, pre: dict
     if bets:
         book = SpectatorBook()
         book.ensure_from_match(MATCHES.get(mid))
-        book.place_bet(mid, bettor_id="fan_a", side="a", amount_usdc=Decimal("1.5"))
-        book.place_bet(mid, bettor_id="fan_b", side="b", amount_usdc=Decimal("0.75"))
-        book.place_bet(mid, bettor_id="fan_d", side="draw", amount_usdc=Decimal("0.5"))
+        book.place_bet(mid, bettor_id="fan_a", side="a", amount_usdc=Decimal("1.5"), funding="profile")
+        book.place_bet(mid, bettor_id="fan_b", side="b", amount_usdc=Decimal("0.75"), funding="profile")
+        book.place_bet(mid, bettor_id="fan_d", side="draw", amount_usdc=Decimal("0.5"), funding="profile")
     return mid
 
 

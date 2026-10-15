@@ -155,10 +155,16 @@ def place_bet(
             raise ValueError("betting is closed for this fixture")
 
         from gaming.src.stack.agentic import ledger as L
+        from gaming.src.stack.agentic.db import transaction
+        from gaming.src.stack.agentic.party_wallet import football_wallet, merge_legacy_wallet
 
         pot = f"afm_fixture_s{int(season_no)}_md{int(matchday)}_{home}_{away}"
-        L.debit(better, amt, reason="afm_spectator_bet", ref=pot)
-        L.credit(pot, amt, reason="afm_spectator_bet", ref=pot)
+        # The person's one football wallet (owner:<id>, shared with the
+        # marketplace and the bridge); the stake and the pot move together.
+        merge_legacy_wallet(better)
+        with transaction():
+            L.debit(football_wallet(better), amt, reason="afm_spectator_bet", ref=pot)
+            L.credit(pot, amt, reason="afm_spectator_bet", ref=pot)
 
         data = _load()
         fx = _fixture_key(season_no, matchday, home, away)
@@ -254,6 +260,13 @@ def season_boards(season_no: int, matchday: Optional[int] = None) -> list[dict[s
         return out
 
 
+def _payee(better: str) -> str:
+    """Where a bettor's winnings and refunds go: their one football wallet."""
+    from gaming.src.stack.agentic.party_wallet import football_wallet, is_person
+
+    return football_wallet(better) if is_person(better) else better
+
+
 def _wallet_of(agent_id: str) -> str:
     from gaming.src.stack.agentic.registry import get_registry
 
@@ -310,7 +323,7 @@ def settle_matchday(season_no: int, matchday: int, results: list[dict[str, Any]]
                             for better, st in (book.get("stakes", {}).get(winning) or {}).items():
                                 share = (distributable * _d(st) / stakes[winning]).quantize(Decimal("0.000001"))
                                 if share > 0:
-                                    L.credit(better, share, reason="afm_bet_payout", ref=fx)
+                                    L.credit(_payee(better), share, reason="afm_bet_payout", ref=fx)
                                     payouts[better] = str(share)
                                     paid += share
                         # only rounding dust can remain — the winners' shares sum to
@@ -402,7 +415,7 @@ def close_stale_books(max_hours: float = 6.0) -> int:
                         for side, stakers in (book.get("stakes") or {}).items():
                             for better, st in (stakers or {}).items():
                                 if _d(st) > 0:
-                                    L.credit(better, _d(st), reason="afm_bet_refund", ref=fx)
+                                    L.credit(_payee(better), _d(st), reason="afm_bet_refund", ref=fx)
                 except L.InsufficientFunds as exc:
                     logger.error("[afm_betting] pot %s short, book %s not refunded: %s", pot, fx, exc)
                     book["status"] = "settle_failed"

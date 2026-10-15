@@ -35,6 +35,8 @@
     {"kind": "buy", "methods": ["POST"], "pattern": "/api/stack/agentic/football/agents/offer"},
     {"kind": "buy", "methods": ["POST"], "pattern": "/api/stack/agentic/football/agents/offer/accept"},
     {"kind": "entry_fee", "methods": ["POST"], "pattern": "/api/stack/agentic/football/season/join"},
+    {"kind": "deposit", "methods": ["POST"], "pattern": "/api/stack/agentic/football/wallet/deposit"},
+    {"kind": "withdraw", "methods": ["POST"], "pattern": "/api/stack/agentic/football/wallet/withdraw"},
     {"kind": "spectator_bet", "methods": ["POST"], "pattern": "/api/stack/agentic/football/betting/bet"}
   ]
 }

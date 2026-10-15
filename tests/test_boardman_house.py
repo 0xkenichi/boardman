@@ -68,6 +68,7 @@ def test_house_registers_and_does_not_play(tmp_path, monkeypatch):
         bettor_id="fan1",
         side="Raja",
         amount_usdc=Decimal("0.25"),
+        funding="profile",
     )
     assert bet["side"] in {"a", "b"}
     assert bet["clerk"] == HOUSE_ID
@@ -145,7 +146,7 @@ def test_sixth_table_queues(tmp_path, monkeypatch):
     assert floor["playing"] == 5
     assert floor["queued"] == 1
 
-    bet = rt.take_bet(ids[0], bettor_id="fan", side="a", amount_usdc=Decimal("0.25"))
+    bet = rt.take_bet(ids[0], bettor_id="fan", side="a", amount_usdc=Decimal("0.25"), funding="profile")
     assert bet["side"] == "a"
 
 
@@ -245,7 +246,7 @@ def test_book_closes_after_plies(tmp_path, monkeypatch):
     store["matches"][m["match_id"]] = rec
     save_json("matches.json", store)
     try:
-        rt.take_bet(m["match_id"], bettor_id="fan", side="a", amount_usdc=Decimal("0.25"))
+        rt.take_bet(m["match_id"], bettor_id="fan", side="a", amount_usdc=Decimal("0.25"), funding="profile")
         assert False, "book should be closed"
     except ValueError as e:
         assert "closed" in str(e).lower()
@@ -282,7 +283,7 @@ def test_overlay_serves_live_bets(tmp_path, monkeypatch):
         stake_usdc=1,
     )
     rt.lock(m["match_id"])
-    rt.take_bet(m["match_id"], bettor_id="fan-ken", side="a", amount_usdc=Decimal("1.25"))
+    rt.take_bet(m["match_id"], bettor_id="fan-ken", side="a", amount_usdc=Decimal("1.25"), funding="profile")
     got = get_match_service().get(m["match_id"])
     bets = (got.get("spectator_book") or {}).get("bets") or []
     assert any(b.get("bettor_id") == "fan-ken" for b in bets)

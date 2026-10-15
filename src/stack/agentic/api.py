@@ -286,17 +286,27 @@ class HouseBetBody(BaseModel):
 
 
 @router.post("/house/matches/{match_id}/bets")
-async def house_take_bet(match_id: str, body: HouseBetBody, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+async def house_take_bet(match_id: str, body: HouseBetBody, caller: StackCaller = Depends(require_stack_caller)):
+    """A fan ticket paid from the bettor's agentic-ledger wallet (debited
+    with the ticket; the payout comes back there). The bettor is the caller.
+    Web / Telegram fans bet from their play balance via /api/rematch/web."""
     from decimal import Decimal
+    from gaming.src.stack.agentic import ledger
     from gaming.src.stack.agentic.house import get_house
 
+    bettor = _acting_party(caller, body.bettor_id, field="bettor_id")
+    if not bettor:
+        raise HTTPException(status_code=422, detail="bettor_id is required")
     try:
         out = get_house().take_bet(
             match_id,
-            bettor_id=body.bettor_id,
+            bettor_id=bettor,
             side=body.side,
             amount_usdc=Decimal(str(body.amount_usdc)),
+            funding="ledger",
         )
+    except ledger.InsufficientFunds as e:
+        raise HTTPException(402, str(e)) from e
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     return {"success": True, **out}
@@ -1160,10 +1170,16 @@ class BetBody(BaseModel):
 
 
 @router.post("/matches/{match_id}/spectator/bet")
-async def spectator_bet(match_id: str, body: BetBody, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+async def spectator_bet(match_id: str, body: BetBody, caller: StackCaller = Depends(require_stack_caller)):
+    """A fan ticket paid from the caller's agentic-ledger wallet: debited in
+    the same transaction as the ticket, paid back there on settlement."""
     from decimal import Decimal
+    from gaming.src.stack.agentic import ledger
     from gaming.src.stack.agentic.economy.spectator import SpectatorBook
 
+    bettor = _acting_party(caller, body.bettor_id, field="bettor_id")
+    if not bettor:
+        raise HTTPException(status_code=422, detail="bettor_id is required")
     try:
         from gaming.src.stack.agentic.matches import get_match_service
 
@@ -1174,10 +1190,13 @@ async def spectator_bet(match_id: str, body: BetBody, _: ApiKeyPrincipal = Depen
             SpectatorBook().ensure_from_match(mrec)
         book = SpectatorBook().place_bet(
             match_id,
-            bettor_id=body.bettor_id,
+            bettor_id=bettor,
             side=body.side,
             amount_usdc=Decimal(str(body.amount_usdc)),
+            funding="ledger",
         )
+    except ledger.InsufficientFunds as e:
+        raise HTTPException(402, str(e)) from e
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     return {"success": True, "book": book}
@@ -2251,6 +2270,107 @@ async def football_agents_wallet_unbind(body: FootballWalletUnbindBody, caller: 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"success": True, "removed": removed}
+
+
+# ---------------------------------------------------------------- wallet bridge
+#
+# Move USDC between the caller's play balance (Paystack / bot top-ups) and
+# their football ledger wallet (owner:<party>) that the marketplace pays
+# from. See wallet_bridge.py for the outbox + reconciler design.
+
+
+class FootballBridgeBody(BaseModel):
+    party_id: Optional[str] = None  # must be the caller (filled from it when omitted)
+    amount: str | int | float = Field(..., description="USDC, exact, at most 6 decimals (send a string)")
+    idempotency_key: str = Field(..., min_length=8, max_length=120)
+
+
+def _bridge_party(caller: StackCaller, body_party: Optional[str]) -> str:
+    # Only a signed-in human (BFF, master key + caller header) or the
+    # platform itself; a builder key has no play balance to bridge.
+    if not caller.trusted:
+        raise HTTPException(status_code=403, detail="the wallet bridge is for signed-in players")
+    party = _acting_party(caller, body_party, field="party_id")
+    if not party:
+        raise HTTPException(status_code=422, detail="party_id is required")
+    return party
+
+
+def _bridge_errors(exc: Exception) -> HTTPException:
+    from gaming.src.stack.agentic import wallet_bridge as wb
+
+    if isinstance(exc, wb.InsufficientBalance):
+        return HTTPException(status_code=402, detail=str(exc))
+    if isinstance(exc, wb.BridgeConflict):
+        return HTTPException(status_code=409, detail=str(exc))
+    if isinstance(exc, wb.BalanceUnavailable):
+        return HTTPException(status_code=503, detail=str(exc))
+    return HTTPException(status_code=400, detail=str(exc))
+
+
+def _bridge_reply(out: dict[str, Any]) -> dict[str, Any]:
+    if out.get("status") != "completed":
+        raise HTTPException(status_code=409, detail={"message": f"transfer {out.get('status')}", "transfer": out})
+    return {"success": True, "transfer": out, "ledger_balance_usdc": out.get("ledger_balance_usdc")}
+
+
+@router.post("/football/wallet/deposit")
+async def football_wallet_deposit(body: FootballBridgeBody, caller: StackCaller = Depends(require_stack_caller)):
+    """Play balance -> football wallet. Idempotent per idempotency_key."""
+    import asyncio
+
+    from gaming.src.stack.agentic import wallet_bridge as wb
+
+    party = _bridge_party(caller, body.party_id)
+    try:
+        chain = await wb.read_play_chain_usdc(party)
+        out = await asyncio.to_thread(wb.deposit, party, body.amount, body.idempotency_key, chain_usdc=chain)
+    except (wb.BridgeError, wb.BalanceUnavailable) as e:
+        raise _bridge_errors(e) from e
+    return _bridge_reply(out)
+
+
+@router.post("/football/wallet/withdraw")
+async def football_wallet_withdraw(body: FootballBridgeBody, caller: StackCaller = Depends(require_stack_caller)):
+    """Football wallet -> play balance. Idempotent per idempotency_key."""
+    import asyncio
+
+    from gaming.src.stack.agentic import wallet_bridge as wb
+
+    party = _bridge_party(caller, body.party_id)
+    try:
+        out = await asyncio.to_thread(wb.withdraw, party, body.amount, body.idempotency_key)
+    except wb.BridgeError as e:
+        raise _bridge_errors(e) from e
+    return _bridge_reply(out)
+
+
+@router.get("/football/wallet")
+async def football_wallet_balance(party_id: str = "", caller: StackCaller = Depends(require_stack_caller)):
+    """The caller's football (ledger) wallet balance and recent transfers."""
+    from gaming.src.stack.agentic import ledger
+    from gaming.src.stack.agentic import wallet_bridge as wb
+
+    party = _bridge_party(caller, party_id)
+    try:
+        wallet = wb.party_ledger_wallet(party)
+    except wb.BridgeError as e:
+        raise _bridge_errors(e) from e
+    return {
+        "success": True,
+        "party_id": party,
+        "ledger_wallet": wallet,
+        "ledger_balance_usdc": str(ledger.balance(wallet)),
+        "transfers": wb.history(party),
+    }
+
+
+@router.get("/admin/wallet-bridge/pending")
+async def wallet_bridge_pending(older_than_sec: float = 0, _: StackCaller = Depends(require_platform_admin)):
+    """Ops: transfers left between the play balance and the ledger."""
+    from gaming.src.stack.agentic import wallet_bridge as wb
+
+    return {"success": True, "transfers": [wb.view(r) for r in wb.pending(older_than_sec=older_than_sec)]}
 
 
 class FootballCupOpenBody(BaseModel):

@@ -363,7 +363,18 @@ def _explorer(cfg: dict[str, Any], tx_hash: str) -> str:
     return f"{base}{tx_hash}" if tx_hash else ""
 
 
+# BoardmanEscrow.MatchStatus — identical in v1 and v2. OPEN is 0, which is
+# also what an empty slot reads as: never use the status alone to decide
+# whether an escrow exists (read_onchain_match checks player1 for that).
 ONCHAIN_STATUS = {0: "OPEN", 1: "LOCKED", 2: "DISPUTED", 3: "RESOLVED", 4: "CANCELLED"}
+ONCHAIN_OPEN, ONCHAIN_LOCKED, ONCHAIN_DISPUTED, ONCHAIN_RESOLVED, ONCHAIN_CANCELLED = 0, 1, 2, 3, 4
+# Stakes still held by the escrow: cancelMatch refunds them.
+ONCHAIN_CANCELLABLE = frozenset({ONCHAIN_OPEN, ONCHAIN_LOCKED, ONCHAIN_DISPUTED})
+ONCHAIN_FINAL = frozenset({ONCHAIN_RESOLVED, ONCHAIN_CANCELLED})
+
+
+class OnchainMatchAbsent(RuntimeError):
+    """The escrow has no record of this match (player1 is the zero address)."""
 HOUSE_TX_LABELS = frozenset({"resolveMatch", "cancelMatch", "flagDispute"})
 
 
@@ -508,7 +519,7 @@ def read_onchain_match(match_id: str, chain_id: str = "arc") -> dict[str, Any]:
     zero = "0x0000000000000000000000000000000000000000"
     p1 = str(player1)
     if p1.lower() in {zero, "0x0", ""}:
-        raise RuntimeError(f"no on-chain escrow for {match_id}")
+        raise OnchainMatchAbsent(f"no on-chain escrow for {match_id}")
     return {
         "match_id": match_id,
         "match_id_bytes32": match_id_hex(match_id),

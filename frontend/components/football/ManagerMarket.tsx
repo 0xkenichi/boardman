@@ -7,14 +7,17 @@ import { ManagerDetailCard } from '@/components/football/ManagerDetailCard'
 import {
   MANAGER_ARCHETYPES,
   type CreateManagerInput,
+  type FootballWallet,
   type MarketAgent,
   type PartyWalletStatus,
   type SettlementMode,
   acceptManagerOffer,
   acquireManagerAgent,
   bindPartyWallet,
+  bridgeFootballWallet,
   createManagerAgent,
   delistManagerForSale,
+  fetchFootballWallet,
   fetchPartyWalletStatus,
   listManagerForSale,
   listMarketAgents,
@@ -69,6 +72,11 @@ export function ManagerMarket({ onChanged }: { onChanged?: () => void }) {
   const [bindAddress, setBindAddress] = useState('')
   const [bindWalletId, setBindWalletId] = useState('')
   const [walling, setWalling] = useState(false)
+  // play balance <-> football (ledger) wallet bridge, for the signed-in player
+  const [football, setFootball] = useState<FootballWallet | null>(null)
+  const [bridgeAmount, setBridgeAmount] = useState('')
+  const [bridging, setBridging] = useState(false)
+  const [bridgeError, setBridgeError] = useState<string | null>(null)
 
   // sell-panel per-owned-manager inputs (keyed by agent id)
   const [sellPrice, setSellPrice] = useState<Record<string, string>>({})
@@ -104,6 +112,44 @@ export function ManagerMarket({ onChanged }: { onChanged?: () => void }) {
   useEffect(() => {
     reloadWallet()
   }, [reloadWallet])
+
+  const reloadFootball = useCallback(() => {
+    // Signed-out visitors get a 401 here: the bridge row simply stays hidden.
+    fetchFootballWallet()
+      .then(setFootball)
+      .catch(() => setFootball(null))
+  }, [])
+
+  useEffect(() => {
+    reloadFootball()
+  }, [reloadFootball])
+
+  const onBridge = async (direction: 'deposit' | 'withdraw') => {
+    const amount = bridgeAmount.trim()
+    if (!/^\d+(\.\d{1,6})?$/.test(amount) || Number(amount) <= 0) {
+      setBridgeError('Enter a USDC amount, e.g. 10 or 2.50.')
+      return
+    }
+    setBridgeError(null)
+    setBridging(true)
+    // One key per click: a retry of this request is safe, a new click is a
+    // new transfer.
+    const key = `${direction}-${crypto.randomUUID()}`
+    try {
+      const out = await bridgeFootballWallet(direction, amount, key)
+      setFlash(
+        direction === 'deposit'
+          ? `Moved $${usd(amount)} from your play balance — football wallet now $${usd(out.ledger_balance_usdc)}.`
+          : `Moved $${usd(amount)} back to your play balance — football wallet now $${usd(out.ledger_balance_usdc)}.`,
+      )
+      setBridgeAmount('')
+      reloadFootball()
+    } catch (err) {
+      setBridgeError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBridging(false)
+    }
+  }
 
   const onBindWallet = async () => {
     if (!bindAddress.trim().toLowerCase().startsWith('0x')) {
@@ -493,6 +539,39 @@ export function ManagerMarket({ onChanged }: { onChanged?: () => void }) {
               </label>
             )}
           </div>
+          {football && wallet?.mode !== 'onchain' && (
+            <div className="fd-walletbar">
+              <span className="fd-chip">Football wallet ${usd(football.ledger_balance_usdc)}</span>
+              <span className="fd-walletnote">
+                buys here pay from it — top it up from the play balance you funded with Naira
+              </span>
+              <input
+                className="fd-input"
+                inputMode="decimal"
+                placeholder="USDC"
+                value={bridgeAmount}
+                onChange={(e) => setBridgeAmount(e.target.value)}
+                style={{ maxWidth: 110 }}
+              />
+              <button
+                className="fd-btn primary"
+                disabled={bridging}
+                onClick={() => onBridge('deposit')}
+                type="button"
+              >
+                {bridging ? '…' : 'Add from play balance'}
+              </button>
+              <button
+                className="fd-btn"
+                disabled={bridging || Number(football.ledger_balance_usdc) <= 0}
+                onClick={() => onBridge('withdraw')}
+                type="button"
+              >
+                Move back
+              </button>
+              {bridgeError && <span className="fd-walletnote dim">{bridgeError}</span>}
+            </div>
+          )}
           {wallet?.mode !== 'onchain' && (
             <div className="fd-walletbar">
               <input

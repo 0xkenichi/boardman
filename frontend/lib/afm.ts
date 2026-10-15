@@ -1272,6 +1272,55 @@ export async function fetchPartyWalletStatus(partyId: string): Promise<PartyWall
   return data.wallet
 }
 
+/** Your football (ledger) wallet — what marketplace buys pay from without a
+ *  bound Circle wallet — and your recent play-balance bridge transfers. */
+export interface FootballWallet {
+  party_id: string
+  ledger_wallet: string
+  ledger_balance_usdc: string
+  transfers: {
+    transfer_key: string
+    direction: 'deposit' | 'withdraw'
+    amount_usdc: string
+    status: string
+    error?: string | null
+    created_at: string
+  }[]
+}
+
+export async function fetchFootballWallet(): Promise<FootballWallet> {
+  const res = await fetch('/api/agentic/football/wallet', { cache: 'no-store' })
+  if (!res.ok) throw new Error(`football wallet failed (${res.status})`)
+  return (await res.json()) as FootballWallet
+}
+
+/** Move USDC between your play balance (Paystack / bot top-ups) and your
+ *  football wallet. `key` makes a retry safe: reuse it to retry the same
+ *  transfer, use a new one for a new transfer. */
+export async function bridgeFootballWallet(
+  direction: 'deposit' | 'withdraw',
+  amount: string,
+  key: string,
+): Promise<{ ledger_balance_usdc: string }> {
+  const res = await fetch(`/api/agentic/football/wallet/${direction}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amount, idempotency_key: key }),
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    detail?: string | { message?: string }
+    error?: string
+    ledger_balance_usdc?: string
+  }
+  if (!res.ok) {
+    const d = data.detail
+    const msg = typeof d === 'string' ? d : d?.message
+    if (res.status === 402) throw new Error(msg ?? 'Not enough money for that transfer.')
+    throw new Error(msg ?? data.error ?? `transfer failed (${res.status})`)
+  }
+  return { ledger_balance_usdc: data.ledger_balance_usdc ?? '0' }
+}
+
 /** Bind a real (Circle) wallet to a marketplace party so purchases can settle
  *  in real USDC. Pass wallet_id too when the party pays from that wallet. */
 export async function bindPartyWallet(

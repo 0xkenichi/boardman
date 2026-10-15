@@ -191,6 +191,10 @@ def _deadline(s: dict[str, Any], matchday: int) -> datetime:
     return _open_at(s, matchday) + timedelta(hours=int(s.get("lock_hours", LOCK_HOURS)))
 
 
+# Counterparty of club wages (book-entry), so the ledger always balances.
+AFM_WAGES_WALLET = "afm_house_wages"
+
+
 def _club_wage(club: dict[str, Any]) -> Decimal:
     total = Decimal("0")
     for pid in (club.get("starters") or []) + (club.get("bench") or []):
@@ -1050,7 +1054,14 @@ def _resolve_matchday(s: dict[str, Any], matchday: int) -> None:
         w = _wallet(aid)
         if not w:
             continue
-        _paid, short = _debit_budget(w, lineups[aid]["wage"], reason=f"afm_wages_s{no}", ref=f"s{no}_md{matchday}")
+        from gaming.src.stack.agentic.db import transaction
+
+        # Wages go to the house wages wallet, in the same transaction as the
+        # club debit — they used to be debited and credited to no one (B8).
+        with transaction():
+            paid, short = _debit_budget(w, lineups[aid]["wage"], reason=f"afm_wages_s{no}", ref=f"s{no}_md{matchday}")
+            if paid > 0:
+                L.credit(AFM_WAGES_WALLET, paid, reason=f"afm_wages_s{no}", ref=f"s{no}_md{matchday}:{aid}")
         s["wage_debt"][aid] = str(_d(s["wage_debt"][aid]) + short)
 
     sched = schedule_season(s["division"])

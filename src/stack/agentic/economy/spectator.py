@@ -5,16 +5,30 @@ People watch Raja vs Nero (or any agent match) and stake USDC on a side.
 Agent deploy policy can auto-seed a fraction of each side's stake into the pot
 (creator "puts skin" so the market has juice).
 
-Settlement:
-  pot = seeds + all spectator bets
-  platform takes spectator_fee_bps
-  creators of BOTH agents split creator_spectator_bps of pot (or of fee)
-  remainder goes pro-rata to bettors who picked the winning agent
+Settlement (mirrors SpectatorPool):
+  pot = funded seeds + all spectator bets
+  platform takes the tiered spectator fee
+  creators of BOTH agents split creator_spectator_bps of pot
+  remainder goes pro-rata to the FAN tickets on the winning side (seeds
+    underwrite: they never share in the winnings)
+  nobody backed the result → every ticket and seed is refunded, no fee
   draw → A/B tickets LOSE (not a push); draw tickets win the whole pool
   draw book (separate): both agents seed the same $; fans bet "draw"
     decisive game → agents split public draw bets 50/50 and get seeds back
     actual draw → draw bettors take everything (side bets + side seeds +
                   public draw + both agent draw seeds); side bettors lose
+
+Money conservation. Every ticket records the rail its stake was taken from
+(``funding``) and is paid or refunded on that same rail only:
+  ledger   place_bet debits the bettor's agentic-ledger wallet in the same
+           transaction that books the ticket (builder / stack API bettors);
+  profile  the caller already took the stake from the bettor's play balance
+           (web + Telegram via rematch_web); paid back through play_adjust;
+  onchain  a confirmed SpectatorPool deposit; the pool pays, never us.
+Seeds count only as far as the lock really debited them. Amounts are split in
+integer micro-USDC rounding down; the remainder (dust) joins the platform fee,
+which is credited to the treasury wallet — so every payout comes out of money
+the book took in, and the totals always balance to the micro.
 
 Demo book in the agentic database (one row per match); on-chain books are a
 projection of confirmed SpectatorPool txs. Every mutation is an atomic
@@ -28,6 +42,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Iterator, Optional
 
+from gaming.src.stack.agentic.db import transaction
+from gaming.src.stack.agentic.db.money import fmt, to_micro
 from gaming.src.stack.agentic.db.tables import BOOKS, HOT_SETTLED_BOOKS, hot_books  # noqa: F401
 
 # Legacy file names (imported by scripts/migrate_json_to_db.py). Books are one
@@ -46,6 +62,40 @@ SPECTATOR_TIER_PREMIUM_BPS = 1000
 DEFAULT_CREATOR_SPECTATOR_BPS = 200  # 2% of pot split across both creators
 # 12 full moves = 24 plies. Mid-game book freeze after the opening.
 DEFAULT_BOOK_CLOSE_PLIES = 24
+
+# Where a ticket's stake came from — and so where its payout goes.
+FUNDING_LEDGER = "ledger"
+FUNDING_PROFILE = "profile"
+FUNDING_ONCHAIN = "onchain"
+_SYSTEM_BETTOR_PREFIXES = ("0x", "agent_", "afm_", "house", "platform", "treasury", "boardman")
+
+
+def bet_funding(bet: dict[str, Any]) -> str:
+    """The rail a ticket was paid from. Tickets booked before the field
+    existed came from the web/bot play balance (the only path that took a
+    stake), so they are refunded and paid there too."""
+    f = str(bet.get("funding") or "")
+    if f in {FUNDING_LEDGER, FUNDING_PROFILE, FUNDING_ONCHAIN}:
+        return f
+    return FUNDING_ONCHAIN if bet.get("tx_hash") else FUNDING_PROFILE
+
+
+def ledger_wallet_of(bettor_id: Any) -> str:
+    """The ledger wallet a ledger-funded ticket was debited from."""
+    from gaming.src.stack.agentic.party_wallet import football_wallet, is_person
+
+    b = str(bettor_id or "")
+    return football_wallet(b) if is_person(b) else b
+
+
+def _assert_ledger_bettor(bettor_id: str) -> None:
+    """A ledger-funded ticket debits ``bettor_id`` itself: never a system
+    wallet (agents, pots, owner/creator/LP wallets, the House)."""
+    b = (bettor_id or "").strip()
+    if not b:
+        raise ValueError("bettor_id is required")
+    if ":" in b or b.lower().startswith(_SYSTEM_BETTOR_PREFIXES):
+        raise ValueError("bettor must be a spectator id, not a system wallet")
 
 
 def book_close_plies() -> int:
@@ -236,7 +286,15 @@ class SpectatorBook:
         bettor_id: str,
         side: str,
         amount_usdc: Decimal,
+        funding: str = FUNDING_LEDGER,
     ) -> dict[str, Any]:
+        """Book one ticket.
+
+        ``funding="ledger"`` (default) debits the bettor's agentic-ledger
+        wallet in the same transaction as the ticket: no debit, no ticket.
+        ``funding="profile"`` means the caller takes (or already took) the
+        stake from the bettor's play balance; the payout goes back there.
+        """
         side = side.lower()
         if side in {"d", "tie"}:
             side = "draw"
@@ -245,6 +303,12 @@ class SpectatorBook:
         if amount_usdc <= 0:
             raise ValueError("amount must be positive")
         amount_usdc = _d(amount_usdc)
+        if to_micro(amount_usdc) <= 0:
+            raise ValueError("amount must be at least 0.000001 USDC")
+        if funding not in {FUNDING_LEDGER, FUNDING_PROFILE}:
+            raise ValueError("funding must be ledger or profile (on-chain tickets use project_deposit)")
+        if funding == FUNDING_LEDGER:
+            _assert_ledger_bettor(bettor_id)
         # Kill switch / country allowlist — before any state is touched.
         _betting_gate(match_id)
 
@@ -255,22 +319,32 @@ class SpectatorBook:
                 )
             if book["status"] != "open":
                 raise ValueError(f"book not open: {book['status']}")
-            self._book_bet(book, bettor_id=bettor_id, side=side, amount_usdc=amount_usdc)
+            self._book_bet(book, bettor_id=bettor_id, side=side, amount_usdc=amount_usdc, funding=funding)
 
         try:
-            book = BOOKS.update(match_id, _apply)
+            with transaction():
+                book = BOOKS.update(match_id, _apply)
+                if book is None:
+                    raise ValueError("book not found")
+                if funding == FUNDING_LEDGER:
+                    from gaming.src.stack.agentic import ledger
+                    from gaming.src.stack.agentic.party_wallet import football_wallet, merge_legacy_wallet
+
+                    # The person's one ledger wallet (owner:<id>). Same
+                    # transaction as the ticket: InsufficientFunds rolls the
+                    # ticket back too.
+                    merge_legacy_wallet(bettor_id)
+                    ledger.debit(football_wallet(bettor_id), amount_usdc, reason="spectator_bet", ref=match_id)
         except _PotFull as exc:
             # Mark the book full (its own small transaction), then refuse.
             if exc.mark_full:
                 BOOKS.update(match_id, lambda b: b.update(status="full") if b.get("status") == "open" else None)
             raise ValueError(str(exc)) from None
-        if book is None:
-            raise ValueError("book not found")
         return book
 
     @staticmethod
     def _book_bet(
-        book: dict[str, Any], *, bettor_id: str, side: str, amount_usdc: Decimal
+        book: dict[str, Any], *, bettor_id: str, side: str, amount_usdc: Decimal, funding: str
     ) -> None:
         book.setdefault("totals", {})
         book["totals"].setdefault("draw", "0")
@@ -291,6 +365,7 @@ class SpectatorBook:
                 "bettor_id": bettor_id,
                 "side": side,
                 "amount": str(amount_usdc),
+                "funding": funding,
                 "ts": _now(),
             }
         )
@@ -357,6 +432,7 @@ class SpectatorBook:
                     "bettor_id": bettor_id,
                     "side": side,
                     "amount": str(amount_usdc),
+                    "funding": FUNDING_ONCHAIN,
                     "ts": _now(),
                     "tx_hash": txh,
                     "explorer": explorer,
@@ -420,6 +496,7 @@ class SpectatorBook:
                     "side": b.get("side"),
                     "amount": str(_d(b.get("amount") or "0")),
                     "reason": "refund_void",
+                    "funding": bet_funding(b),
                 }
                 for b in book.get("bets") or []
                 if b.get("bettor_id") and _d(b.get("amount") or "0") > 0
@@ -450,7 +527,12 @@ class SpectatorBook:
         winner_side: Optional[str],  # "a" | "b" | None for draw
         platform_fee_bps: int = DEFAULT_SPECTATOR_FEE_BPS,
         creator_bps: int = DEFAULT_CREATOR_SPECTATOR_BPS,
+        funded_seeds: Optional[dict[str, Any]] = None,
+        wallets: Optional[tuple[str, str]] = None,
     ) -> dict[str, Any]:
+        """Settle once. ``funded_seeds`` ({a, b, draw_a, draw_b}) are the seeds
+        the lock really debited (see ``funded_seeds_from_ledger``); default:
+        the book's own seeds. ``wallets`` are the agents' ledger wallets."""
         def _apply(book: dict[str, Any]) -> None:
             if book["status"] == "settled":
                 # Idempotent no-op ONLY for the same winner. A conflicting re-settle
@@ -461,7 +543,7 @@ class SpectatorBook:
                         f"book {match_id} already settled with winner_side={prev_side!r}; refusing conflicting settle winner_side={winner_side!r}"
                     )
                 return
-            self._settle_book(book, winner_side, platform_fee_bps, creator_bps)
+            self._settle_book(book, winner_side, platform_fee_bps, creator_bps, funded_seeds, wallets)
 
         book = BOOKS.update(match_id, _apply)
         if book is None:
@@ -474,235 +556,225 @@ class SpectatorBook:
         winner_side: Optional[str],
         platform_fee_bps: int,
         creator_bps: int,
+        funded_seeds: Optional[dict[str, Any]] = None,
+        wallets: Optional[tuple[str, str]] = None,
     ) -> None:
-        """Compute payouts and mark the book settled (pure, on the row being written)."""
-        totals = book.setdefault("totals", {})
-        totals.setdefault("draw", "0")
-        total_a = _d(totals.get("a") or "0")
-        total_b = _d(totals.get("b") or "0")
-        public_draw = sum(
-            (_d(b.get("amount") or "0") for b in book.get("bets") or [] if str(b.get("side") or "") == "draw"),
-            Decimal("0"),
-        )
-        pot = total_a + total_b
-        seed_a = _d(book.get("seed_a") or "0")
-        seed_b = _d(book.get("seed_b") or "0")
-        seed_draw = _d(book.get("seed_draw") or "0")
-        house_draw = seed_draw * 2
+        """Compute payouts and mark the book settled (pure, on the row being written).
 
-        def _draw_book_payouts(game_drawn: bool) -> dict[str, Any]:
-            if game_drawn:
-                if public_draw <= 0:
-                    unused = []
-                    if seed_draw > 0:
-                        unused = [
-                            {
-                                "side": "draw",
-                                "agent_id": book.get("agent_a_id"),
-                                "wallet": book.get("agent_a_wallet"),
-                                "amount": str(seed_draw),
-                                "reason": "draw_seed_unused",
-                            },
-                            {
-                                "side": "draw",
-                                "agent_id": book.get("agent_b_id"),
-                                "wallet": book.get("agent_b_wallet"),
-                                "amount": str(seed_draw),
-                                "reason": "draw_seed_unused",
-                            },
-                        ]
-                    return {
-                        "mode": "draw_seed_return",
-                        "public_draw": "0",
-                        "house_draw": str(house_draw),
-                        "bettors": [],
-                        "agent_split": [],
-                        "seed_refunds": unused,
-                    }
-                pot_d = public_draw + house_draw
-                fee = spectator_platform_fee_for_pot(pot_d, platform_fee_bps)
-                dist = pot_d - fee
-                bettors = []
-                for b in book.get("bets") or []:
-                    if str(b.get("side") or "") != "draw":
-                        continue
-                    share = _d(b["amount"]) / public_draw * dist
+        Everything is integer micro-USDC; every split rounds down and the
+        remainder goes to the house, so ``money in == money out`` exactly.
+        """
+        if winner_side is not None:
+            winner_side = winner_side.lower()
+            if winner_side not in {"a", "b"}:
+                raise ValueError("winner_side must be a, b, or None")
+        book.setdefault("totals", {}).setdefault("draw", "0")
+        wa = str((wallets[0] if wallets else "") or book.get("agent_a_wallet") or "")
+        wb = str((wallets[1] if wallets else "") or book.get("agent_b_wallet") or "")
+        agents = {
+            "a": (book.get("agent_a_id"), wa),
+            "b": (book.get("agent_b_id"), wb),
+        }
+
+        def _cap(key: str, book_key: str) -> int:
+            have = to_micro(book.get(book_key) or "0")
+            if funded_seeds is None:
+                return max(0, have)
+            return max(0, min(have, to_micro(funded_seeds.get(key) or "0")))
+
+        seeds = {
+            "a": _cap("a", "seed_a"),
+            "b": _cap("b", "seed_b"),
+            "draw_a": _cap("draw_a", "seed_draw"),
+            "draw_b": _cap("draw_b", "seed_draw"),
+        }
+        tickets = [
+            {
+                "bettor_id": str(b.get("bettor_id") or ""),
+                "side": str(b.get("side") or ""),
+                "micro": to_micro(b.get("amount") or "0"),
+                "funding": bet_funding(b),
+            }
+            for b in book.get("bets") or []
+            if b.get("bettor_id") and to_micro(b.get("amount") or "0") > 0
+        ]
+        house = {"fee": 0, "dust": 0, "unassigned": 0}
+        bettors: list[dict[str, Any]] = []
+        creators: list[dict[str, Any]] = []
+        seed_refunds: list[dict[str, Any]] = []
+
+        def _pay_agent(side: str, micro: int, reason: str, *, draw: bool = False) -> Optional[dict[str, Any]]:
+            if micro <= 0:
+                return None
+            agent_id, wallet = agents[side]
+            if not wallet:
+                house["unassigned"] += micro  # nobody to pay: never vanishes
+                return None
+            row = {"agent_id": agent_id, "wallet": wallet, "amount": fmt(micro), "reason": reason}
+            if draw:
+                row["side"] = "draw"
+            return row
+
+        def _refund_seed(key: str, reason: str) -> None:
+            side = "a" if key in {"a", "draw_a"} else "b"
+            row = _pay_agent(side, seeds[key], reason, draw=key.startswith("draw"))
+            if row:
+                seed_refunds.append(row)
+
+        def _refund_tickets(pred) -> None:
+            for t in tickets:
+                if pred(t):
                     bettors.append(
                         {
-                            "bettor_id": b["bettor_id"],
-                            "amount": str(share.quantize(Decimal("0.000001"))),
-                            "reason": "draw_win",
+                            "bettor_id": t["bettor_id"],
+                            "side": t["side"],
+                            "amount": fmt(t["micro"]),
+                            "reason": "refund",
+                            "funding": t["funding"],
                         }
                     )
-                return {
-                    "mode": "draw_hits",
-                    "public_draw": str(public_draw),
-                    "house_draw": str(house_draw),
-                    "pot": str(pot_d),
-                    "platform_fee": str(fee),
-                    "bettors": bettors,
-                    "agent_split": [],
-                    "seed_refunds": [],
-                }
-            half = (public_draw / 2).quantize(Decimal("0.000001"))
-            split = []
-            if half > 0:
-                split = [
-                    {
-                        "agent_id": book.get("agent_a_id"),
-                        "wallet": book.get("agent_a_wallet"),
-                        "amount": str(half),
-                        "reason": "draw_underwrite_win",
-                    },
-                    {
-                        "agent_id": book.get("agent_b_id"),
-                        "wallet": book.get("agent_b_wallet"),
-                        "amount": str(half),
-                        "reason": "draw_underwrite_win",
-                    },
-                ]
-            returned = []
-            if seed_draw > 0:
-                returned = [
-                    {
-                        "side": "draw",
-                        "agent_id": book.get("agent_a_id"),
-                        "wallet": book.get("agent_a_wallet"),
-                        "amount": str(seed_draw),
-                        "reason": "draw_seed_return",
-                    },
-                    {
-                        "side": "draw",
-                        "agent_id": book.get("agent_b_id"),
-                        "wallet": book.get("agent_b_wallet"),
-                        "amount": str(seed_draw),
-                        "reason": "draw_seed_return",
-                    },
-                ]
-            return {
+
+        def _split(pot: int, winners: list[dict[str, Any]], reason: str) -> dict[str, Any]:
+            """Fee + creator pool off the pot; the rest pro-rata to winners."""
+            fee = to_micro(spectator_platform_fee_for_pot(fmt(pot), platform_fee_bps))
+            creator_pool = pot * max(0, int(creator_bps)) // 10_000
+            if fee + creator_pool > pot:  # unreachable under the tiers; guard anyway
+                creator_pool = min(creator_pool, pot)
+                fee = pot - creator_pool
+            dist = pot - fee - creator_pool
+            fan_win = sum(t["micro"] for t in winners)
+            paid = 0
+            for t in winners:
+                share = t["micro"] * dist // fan_win
+                paid += share
+                if share > 0:
+                    bettors.append(
+                        {
+                            "bettor_id": t["bettor_id"],
+                            "side": t["side"],
+                            "amount": fmt(share),
+                            "reason": reason,
+                            "funding": t["funding"],
+                        }
+                    )
+            house["fee"] += fee
+            house["dust"] += dist - paid
+            half = creator_pool // 2
+            for cid, amt in ((book.get("creator_a_id"), half), (book.get("creator_b_id"), creator_pool - half)):
+                if amt <= 0:
+                    continue
+                if cid:
+                    creators.append({"creator_id": cid, "amount": fmt(amt), "reason": "creator_spectator_fee"})
+                else:
+                    house["unassigned"] += amt
+            return {"pot": fmt(pot), "platform_fee": fmt(fee), "creator_pool": fmt(creator_pool), "distributable": fmt(dist)}
+
+        side_fans = [t for t in tickets if t["side"] in {"a", "b"}]
+        draw_fans = [t for t in tickets if t["side"] == "draw"]
+        public_draw = sum(t["micro"] for t in draw_fans)
+        draw_book: dict[str, Any] = {}
+
+        if book.get("onchain"):
+            # SpectatorPool holds (and pays) every fan ticket. The seeds the
+            # ledger debited were never deposited to the pool: all go back.
+            for key in ("a", "b", "draw_a", "draw_b"):
+                _refund_seed(key, "seed_refund_onchain")
+            summary: dict[str, Any] = {"mode": "onchain", "pot": "0", "platform_fee": "0", "creator_pool": "0", "distributable": "0"}
+            bettors = []
+        elif winner_side is None:
+            # Draw is a real outcome — NOT a push. A/B side tickets LOSE; draw
+            # tickets win the entire pool (side stakes + side seeds + draw
+            # stakes + both draw seeds), minus platform/creator fees.
+            pot = sum(t["micro"] for t in tickets) + sum(seeds.values())
+            if pot <= 0:
+                summary = {"mode": "draw_hits", "pot": "0", "platform_fee": "0", "creator_pool": "0", "distributable": "0"}
+            elif public_draw <= 0:
+                # Nobody backed the draw: everything goes back (as the pool does).
+                _refund_tickets(lambda t: True)
+                for key in ("a", "b", "draw_a", "draw_b"):
+                    _refund_seed(key, "seed_refund_no_winner")
+                summary = {"mode": "refund_no_winner", "pot": fmt(pot), "platform_fee": "0", "creator_pool": "0", "distributable": "0"}
+            else:
+                summary = {"mode": "draw_hits", **_split(pot, draw_fans, "draw_win")}
+        else:
+            pot = sum(t["micro"] for t in side_fans) + seeds["a"] + seeds["b"]
+            winners = [t for t in side_fans if t["side"] == winner_side]
+            if pot <= 0:
+                summary = {"mode": "winner_take_side", "pot": "0", "platform_fee": "0", "creator_pool": "0", "distributable": "0"}
+            elif not winners:
+                # Nobody backed the winner: the side market is refunded.
+                _refund_tickets(lambda t: t["side"] in {"a", "b"})
+                _refund_seed("a", "seed_refund_no_winner")
+                _refund_seed("b", "seed_refund_no_winner")
+                summary = {"mode": "refund_no_winner", "pot": fmt(pot), "platform_fee": "0", "creator_pool": "0", "distributable": "0"}
+            else:
+                summary = {"mode": "winner_take_side", **_split(pot, winners, "win")}
+            # Separate draw book: the game was decisive, so draw tickets lose
+            # to the agents that underwrote them, and their draw seeds return.
+            half = public_draw // 2
+            split = [r for r in (
+                _pay_agent("a", half, "draw_underwrite_win"),
+                _pay_agent("b", public_draw - half, "draw_underwrite_win"),
+            ) if r]
+            returned = [r for r in (
+                _pay_agent("a", seeds["draw_a"], "draw_seed_return", draw=True),
+                _pay_agent("b", seeds["draw_b"], "draw_seed_return", draw=True),
+            ) if r]
+            draw_book = {
                 "mode": "draw_misses",
-                "public_draw": str(public_draw),
-                "house_draw": str(house_draw),
+                "public_draw": fmt(public_draw),
+                "house_draw": fmt(seeds["draw_a"] + seeds["draw_b"]),
                 "bettors": [],
                 "agent_split": split,
                 "seed_refunds": returned,
             }
+            seed_refunds.extend(returned)
 
-        if winner_side is None:
-            # Draw is a real outcome — NOT a push. A/B side tickets LOSE; draw
-            # tickets win the entire pool (side stakes + side seeds + draw
-            # stakes + house draw seed), minus platform/creator fees.
-            draw_pot = pot + public_draw + house_draw
-            d_fee = spectator_platform_fee_for_pot(draw_pot, platform_fee_bps)
-            d_creator_pool = _bps(draw_pot, creator_bps)
-            d_c_each = (d_creator_pool / 2).quantize(Decimal("0.000001"))
-            d_distributable = draw_pot - d_fee - d_creator_pool
-            draw_winners = []
-            if public_draw > 0 and d_distributable > 0:
-                for b in book.get("bets") or []:
-                    if str(b.get("side") or "") != "draw":
-                        continue
-                    share = _d(b["amount"]) / public_draw * d_distributable
-                    draw_winners.append(
-                        {
-                            "bettor_id": b["bettor_id"],
-                            "amount": str(share.quantize(Decimal("0.000001"))),
-                            "reason": "draw_win",
-                        }
-                    )
-            creators = []
-            if d_c_each > 0:
-                if book.get("creator_a_id"):
-                    creators.append(
-                        {
-                            "creator_id": book["creator_a_id"],
-                            "amount": str(d_c_each),
-                            "reason": "creator_spectator_fee",
-                        }
-                    )
-                if book.get("creator_b_id"):
-                    creators.append(
-                        {
-                            "creator_id": book["creator_b_id"],
-                            "amount": str(d_c_each),
-                            "reason": "creator_spectator_fee",
-                        }
-                    )
-            book["status"] = "settled"
-            book["settled_at"] = _now()
-            book["payouts"] = {
-                "mode": "draw_hits",
-                "winner_side": None,
-                "pot": str(draw_pot),
-                "platform_fee": str(d_fee),
-                "creator_pool": str(d_creator_pool),
-                "distributable": str(d_distributable),
-                "bettors": draw_winners,
-                "creators": creators,
-                "draw_book": {},
-                "seed_refunds": [],
-            }
-            return
-
-        winner_side = winner_side.lower()
-        if winner_side not in {"a", "b"}:
-            raise ValueError("winner_side must be a, b, or None")
-
-        platform_fee = spectator_platform_fee_for_pot(pot, platform_fee_bps)
-        creator_pool = _bps(pot, creator_bps)
-        # split creator pool 50/50 both creators (both brought the match)
-        c_each = (creator_pool / 2).quantize(Decimal("0.000001"))
-        distributable = pot - platform_fee - creator_pool
-        win_total = total_a if winner_side == "a" else total_b
-
-        draw_book = _draw_book_payouts(game_drawn=False)
-        bettor_payouts = []
-        if win_total > 0 and distributable > 0:
-            for b in book["bets"]:
-                if b["side"] != winner_side:
-                    continue
-                share = _d(b["amount"]) / win_total * distributable
-                bettor_payouts.append(
-                    {
-                        "bettor_id": b["bettor_id"],
-                        "amount": str(share.quantize(Decimal("0.000001"))),
-                        "reason": "win",
-                    }
-                )
-
-        creators = []
-        if c_each > 0:
-            if book.get("creator_a_id"):
-                creators.append(
-                    {
-                        "creator_id": book["creator_a_id"],
-                        "amount": str(c_each),
-                        "reason": "creator_spectator_fee",
-                    }
-                )
-            if book.get("creator_b_id"):
-                creators.append(
-                    {
-                        "creator_id": book["creator_b_id"],
-                        "amount": str(c_each),
-                        "reason": "creator_spectator_fee",
-                    }
-                )
-
+        house_take = house["fee"] + house["dust"] + house["unassigned"]
         book["status"] = "settled"
         book["settled_at"] = _now()
         book["payouts"] = {
-            "mode": "winner_take_side",
+            **summary,
             "winner_side": winner_side,
-            "pot": str(pot),
-            "platform_fee": str(platform_fee),
-            "creator_pool": str(creator_pool),
-            "distributable": str(distributable),
-            "bettors": bettor_payouts,
+            "funded_seeds": {k: fmt(v) for k, v in seeds.items()},
+            "bettors": bettors,
             "creators": creators,
             "draw_book": draw_book,
-            "seed_refunds": list(draw_book.get("seed_refunds") or []),
+            "seed_refunds": seed_refunds,
+            "house": {k: fmt(v) for k, v in house.items()},
+            "house_take": fmt(house_take),
         }
+
+    @staticmethod
+    def ledger_credits(payouts: dict[str, Any]) -> list[tuple[str, Decimal, str]]:
+        """Every agentic-ledger credit a settled book owes: ledger-funded
+        tickets, creators, agents (seeds, draw underwriting) and the house.
+        Profile- and on-chain-funded tickets are never paid here."""
+        from gaming.src.stack.agentic.ledger import TREASURY_WALLET
+
+        out: list[tuple[str, Decimal, str]] = []
+
+        def _add(wallet: Any, amount: Any, reason: str) -> None:
+            amt = _d(amount or "0")
+            if wallet and amt > 0:
+                out.append((str(wallet), amt, reason))
+
+        for bt in payouts.get("bettors") or []:
+            if bet_funding(bt) == FUNDING_LEDGER:
+                _add(ledger_wallet_of(bt.get("bettor_id")), bt.get("amount"), f"spectator_{bt.get('reason') or 'win'}")
+        for c in payouts.get("creators") or []:
+            _add(f"creator:{c['creator_id']}", c.get("amount"), "creator_fee_spectator")
+        for sr in payouts.get("seed_refunds") or []:
+            _add(sr.get("wallet"), sr.get("amount"), str(sr.get("reason") or "seed_refund"))
+        for sp in (payouts.get("draw_book") or {}).get("agent_split") or []:
+            _add(sp.get("wallet"), sp.get("amount"), "draw_underwrite_win")
+        _add(TREASURY_WALLET, payouts.get("house_take"), "spectator_fee")
+        return out
+
+    @staticmethod
+    def profile_payouts(payouts: dict[str, Any]) -> list[dict[str, Any]]:
+        """Tickets paid back on the play balance (web / Telegram bettors)."""
+        return [bt for bt in payouts.get("bettors") or [] if bet_funding(bt) == FUNDING_PROFILE]
 
     def get(self, match_id: str) -> Optional[dict[str, Any]]:
         """Indexed lookup — live or settled, no archive file to parse."""
@@ -722,3 +794,29 @@ class _PotFull(Exception):
     def __init__(self, msg: str, *, mark_full: bool) -> None:
         super().__init__(msg)
         self.mark_full = mark_full
+
+
+def funded_seeds_from_ledger(match_id: str, wallet_a: str, wallet_b: str) -> dict[str, Decimal]:
+    """The seeds the lock really debited for this table, per agent.
+
+    Read from the ledger rows themselves (``spectator_seed`` / ``draw_seed``
+    debits with ref=match_id), so a book whose lock never ran pays out no
+    seed it never held.
+    """
+    from gaming.src.stack.agentic import ledger
+
+    wa, wb = (wallet_a or "").lower(), (wallet_b or "").lower()
+    out = {"a": 0, "b": 0, "draw_a": 0, "draw_b": 0}
+    for t in ledger.txs(ref=match_id):
+        if t.get("type") != "debit":
+            continue
+        w = str(t.get("wallet") or "").lower()
+        side = "a" if w and w == wa else "b" if w and w == wb else None
+        if side is None:
+            continue
+        reason = t.get("reason")
+        if reason == "spectator_seed":
+            out[side] += to_micro(t.get("amount") or "0")
+        elif reason == "draw_seed":
+            out[f"draw_{side}"] += to_micro(t.get("amount") or "0")
+    return {k: Decimal(fmt(v)) for k, v in out.items()}

@@ -179,7 +179,7 @@ def test_concurrent_bets_are_all_booked():
 
     def bettor(i: int) -> None:
         for _ in range(10):
-            SpectatorBook().place_bet("agm_bets", bettor_id=f"fan{i}", side="a", amount_usdc=Decimal("0.5"))
+            SpectatorBook().place_bet("agm_bets", bettor_id=f"fan{i}", side="a", amount_usdc=Decimal("0.5"), funding="profile")
 
     ts = [threading.Thread(target=bettor, args=(i,)) for i in range(6)]
     for t in ts:

@@ -921,6 +921,10 @@ def _ledger_settle(
 
     buyer_wallet = _owner_party_wallet(buyer_id)
     seller_wallet = _owner_party_wallet(seller)
+    if buyer_wallet.startswith("owner:"):
+        from gaming.src.stack.agentic.party_wallet import merge_legacy_wallet
+
+        merge_legacy_wallet(buyer_id)  # one wallet per person (B9)
     if L.demo_faucet_explicit():
         L.ensure_funded(buyer_wallet, price)  # local demo only (explicit flag)
     try:
