@@ -156,6 +156,10 @@
   max-width: 34rem;
 }
 
+.v2-small {
+  font-size: 0.92rem;
+}
+
 .v2-body strong {
   color: var(--v2-text);
   font-weight: 600;
@@ -689,6 +693,8 @@
 .v2-code-line {
   font-size: 0.76rem;
   color: var(--v2-text);
+  /* long routes break inside the panel on a phone instead of widening it */
+  overflow-wrap: anywhere;
 }
 
 .v2-c-dim {

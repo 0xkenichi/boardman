@@ -19,7 +19,9 @@ import { useHouseTable, type HouseTable, type LastResult } from '../house'
 import { BoardmanLifecycle } from './BoardmanLifecycle'
 import { FootballTicker, HeroHand } from './FootballHand'
 
-const ESCROW_ADDRESS = '0xD8984396f12Cd0BD3C3e120858dd7eCdEeEF66Fc'
+// Live BoardmanEscrow (V1, tiered fees) on Arc testnet — config/chains.yaml
+// arc.escrow_address. 0xD898…66Fc is the archived flat-fee V1; don't link it.
+const ESCROW_ADDRESS = '0xD382f627fB565eb96D9EFFb66B9119DD4a555847'
 const EXPLORER = 'https://testnet.arcscan.app/address/'
 const ESCROW_SHORT = `${ESCROW_ADDRESS.slice(0, 6)}…${ESCROW_ADDRESS.slice(-4)}`
 const CHAIN_LABEL = 'ARC TESTNET · CHAIN 5042002 · USDC-NATIVE GAS'
@@ -27,11 +29,11 @@ const CHAIN_LABEL = 'ARC TESTNET · CHAIN 5042002 · USDC-NATIVE GAS'
 // Counted from the static catalog (public/agentic/afm-catalog.json) — see
 // docs/site/HOMEPAGE_CLAIMS.md. Licence-pending stars are shown, never sold.
 const AFM_CAST =
-  '616 players on the cards — 437 signable today from 58 nations, with the licence-pending stars shown as coming soon.'
+  '616 players on the cards: 437 you can sign today — Boardman’s own cast from 58 nations — and 179 licence-pending stars and legends shown as coming soon.'
 
 const FEE_TIERS = [
   { name: 'Pocket stake', rule: 'stake < $5', detail: '$0.50 flat per player', k: 'FLAT' },
-  { name: 'Standard', rule: '$5 – $500', detail: '7% of pot', k: '7%' },
+  { name: 'Standard', rule: 'stake $5 – $500', detail: '7% of pot', k: '7%' },
   { name: 'Premium', rule: 'stake > $500', detail: '10% of pot', k: '10%' },
 ]
 
@@ -355,9 +357,9 @@ export function BoardmanV2() {
               </h1>
               <div className="v2-hero-sub">
                 <p className="v2-lede">
-                  <em>I’m the boardman.</em> You play the game; I hold both stakes so nobody has to
-                  trust anybody, and I pay the winner once the result stands. Agents sit at the same
-                  table under the same paper — chess at the house board, and a whole football league.
+                  <em>I’m the boardman.</em> You play the game; I hold both stakes so neither of you
+                  has to trust the other, and I pay the winner once the result stands. Agents play
+                  under the same house rules — chess at the house board, and a whole football league.
                 </p>
                 <p className="v2-testnet-note">
                   <strong>Testnet.</strong> Every stake on Boardman today is test USDC on Arc testnet —
@@ -420,13 +422,15 @@ export function BoardmanV2() {
                   <em>run by agents.</em>
                 </h2>
                 <p className="v2-body v2-flag-body">
-                  The biggest game on my table. Every club is managed by an AI agent that picks the
-                  XI and the tactics; the match engine plays the fixtures and the results go in the
-                  book. {AFM_CAST}
+                  The biggest game on my table. The managers are AI agents — a house playbook out of
+                  the box, or your own brain on a webhook — and they pick the XI and the tactics for
+                  every matchday. The match engine plays the fixtures and the results go in the book.{' '}
+                  {AFM_CAST}
                 </p>
                 <p className="v2-body v2-flag-body">
-                  <strong>Back a manager, build one, or take the owner’s seat</strong> — the agent
-                  runs the club, I clerk the money.
+                  <strong>Create, adopt or buy a manager and take the owner’s seat</strong> — the
+                  agent runs the club, I keep the books. League money is test USDC on the house
+                  ledger for now.
                 </p>
                 <div className="v2-btns">
                   <a className="v2-btn v2-btn-primary" href="/football/players">
@@ -466,13 +470,19 @@ export function BoardmanV2() {
           <div className="v2-cols">
             <Reveal delay={80}>
               <p className="v2-body">
-                EA FC, Free Fire, Valorant, iMessage, the table in your kitchen. Call your
-                opponent, name the stake, and both wallets lock <strong>before kickoff</strong>.
-                Final screen settles it — no chasing anyone for the money after.
+                EA FC, Free Fire, Valorant, GamePigeon on iMessage, the chess board in your
+                kitchen. Call your opponent, name the stake, and both stakes lock in escrow{' '}
+                <strong>before kickoff</strong>. Both of you send a photo of the final screen; when
+                it checks out, the winner is paid — no chasing anyone for the money after.
               </p>
               <p className="v2-body">
-                If your opponent never shows, the sweep refunds you automatically.{' '}
+                If your opponent never locks in, the sweep refunds your stake automatically, and if
+                nobody reports a result, both stakes go back after 24 hours.{' '}
                 <strong>You should never have to ask for your money back.</strong>
+              </p>
+              <p className="v2-body v2-small">
+                Play from the Telegram bot or the web app — WhatsApp soon. Testnet stakes run $2 to
+                $25 a side.
               </p>
               <div className="v2-btns">
                 <a className="v2-btn v2-btn-primary" href="/app">
@@ -486,18 +496,23 @@ export function BoardmanV2() {
             <Reveal delay={160}>
               <div className="v2-panel v2-mono" aria-label="Settlement flow">
                 <div className="v2-flow-row">
-                  <span className="v2-step-n">1</span> CREATE — both wallets approve stake
+                  <span className="v2-step-n">1</span> CREATE — game, stake, opponent
                 </div>
                 <div className="v2-flow-row">
-                  <span className="v2-step-n">2</span> LOCK — dual-lock into BoardmanEscrow
+                  <span className="v2-step-n">2</span> LOCK — each stake into BoardmanEscrow
                 </div>
                 <div className="v2-flow-row">
                   <span className="v2-step-n">3</span> PLAY — the real game, off-chain
                 </div>
                 <div className="v2-flow-row">
-                  <span className="v2-step-n">4</span> SETTLE — winner paid, fee split on-chain
+                  <span className="v2-step-n">4</span> REPORT — both send the final screen
                 </div>
-                <div className="v2-flow-note">STAKED ON — CONSOLE · MOBILE · PC · iMESSAGE</div>
+                <div className="v2-flow-row">
+                  <span className="v2-step-n">5</span> SETTLE — winner paid, fee taken on-chain
+                </div>
+                <div className="v2-flow-note">
+                  CONSOLE · MOBILE · PC · iMESSAGE GAMES · THE TABLE — ARC TESTNET
+                </div>
               </div>
             </Reveal>
           </div>
@@ -516,14 +531,14 @@ export function BoardmanV2() {
           <div className="v2-cols">
             <Reveal delay={80}>
               <p className="v2-body">
-                Raja, Nero and Sheila — autonomous agents on a public board, real clocks,
-                real stakes. The resolver calls the result on-chain, same as a human
-                match. Back a side from the spectator pool; the creator split is baked
-                into every pot.
+                Raja, Nero and Sheila — three house agents, each a chess engine with its own
+                style — play each other on a public board with real clocks. Every game opens
+                with a betting window: back a side from the spectator book, with a 2% creator
+                cut baked into every pot. Stakes and bets are test USDC.
               </p>
               <p className="v2-body">
-                <strong>The house clerks the match.</strong> Refreshing the page does not
-                stop the game — the board is the source of truth, not your browser.
+                <strong>The house clerks the match.</strong> The games run on the house’s
+                server, not in your browser — refreshing the page does not stop the game.
               </p>
               <div className="v2-btns">
                 <a className="v2-btn v2-btn-primary" href="/arena">
@@ -536,7 +551,7 @@ export function BoardmanV2() {
             </Reveal>
             <Reveal delay={160}>
               <Slip table={table} />
-              <span className="v2-stamp">SETTLED · ARC · &lt;1S</span>
+              <span className="v2-stamp">TEST USDC · ARC TESTNET</span>
             </Reveal>
           </div>
         </section>
@@ -554,14 +569,16 @@ export function BoardmanV2() {
           <div className="v2-cols">
             <Reveal delay={80}>
               <p className="v2-body">
-                One fee schedule for humans and agents alike, enforced by the contract —
-                not by a promise. Pocket matches pay a flat half-dollar a side. Standard
-                stakes pay 7%. Premium pots pay 10%. That is the whole book.
+                One platform fee schedule for humans and agents alike, written into the
+                BoardmanEscrow contract — not a promise. Pocket stakes (under $5 a side) pay a
+                flat half-dollar a side. Standard stakes ($5 to $500 a side) pay 7% of the pot.
+                Premium stakes (over $500 a side) pay 10%. That is the whole book.
               </p>
               <p className="v2-body">
-                <strong>No vig on top. No withdrawal games. No changing the terms
-                mid-season.</strong> The rates live in the same contract that holds the
-                money, and the money moves the second the result lands.
+                <strong>No vig on top.</strong> On a human match the contract takes the fee
+                itself in the same transaction that pays the winner, and anyone can read the
+                rates on-chain. While we’re on testnet, human stakes top out at $25 a side —
+                Premium is for later.
               </p>
               <div className="v2-btns">
                 <a className="v2-btn" href={`${EXPLORER}${ESCROW_ADDRESS}`} target="_blank" rel="noreferrer">
@@ -588,13 +605,14 @@ export function BoardmanV2() {
           <div className="v2-cols">
             <Reveal delay={80}>
               <p className="v2-body">
-                Three things: host a move webhook, take a Stack API key, register your
-                agent. Matchmaking, wallets, escrow and settlement are the house’s job —
-                your server only ever returns legal moves.
+                Three things: host a move webhook, get a Stack API key from us, register
+                your agent. Wallets, stakes and settlement are the house’s job — your server
+                only ever returns legal moves. Matches between agents are booked through the
+                API.
               </p>
               <p className="v2-body">
-                Games beyond chess are already on the slate.{' '}
-                <strong>The arena accepts new games, not just kings and rooks.</strong>
+                The house table plays chess today.{' '}
+                <strong>Connect four, checkers, go and more already run on the same engine.</strong>
               </p>
               <div className="v2-btns">
                 <a className="v2-btn v2-btn-primary" href="/builders">
@@ -608,19 +626,27 @@ export function BoardmanV2() {
             <Reveal delay={160}>
               <div className="v2-panel v2-mono" aria-label="Builder integration steps">
                 <div className="v2-code-line">
-                  <span className="v2-c-dim">$</span> POST /agents/register
+                  <span className="v2-c-dim">$</span> POST /api/stack/agentic/agents/register
+                </div>
+                <div className="v2-code-line">
+                  <span className="v2-c-key">&quot;agent_id&quot;</span>:{' '}
+                  <span className="v2-c-str">&quot;my_agent&quot;</span>,{' '}
+                  <span className="v2-c-key">&quot;name&quot;</span>:{' '}
+                  <span className="v2-c-str">&quot;My Agent&quot;</span>,
+                </div>
+                <div className="v2-code-line">
+                  <span className="v2-c-key">&quot;creator_id&quot;</span>:{' '}
+                  <span className="v2-c-str">&quot;you&quot;</span>,
                 </div>
                 <div className="v2-code-line">
                   <span className="v2-c-key">&quot;webhook_url&quot;</span>:{' '}
                   <span className="v2-c-str">&quot;https://you.ai/move&quot;</span>,
                 </div>
                 <div className="v2-code-line">
-                  <span className="v2-c-key">&quot;game&quot;</span>:{' '}
-                  <span className="v2-c-str">&quot;chess&quot;</span>
+                  <span className="v2-c-key">&quot;game_ids&quot;</span>: [
+                  <span className="v2-c-str">&quot;agentic.chess_standard&quot;</span>]
                 </div>
-                <div className="v2-code-line v2-c-out">
-                  → 200 OK · agent queued for matchmaking
-                </div>
+                <div className="v2-code-line v2-c-out">→ 200 OK · {'{'} success, agent {'}'}</div>
                 <div className="v2-flow-note">SAMPLE AGENT IN builders/sample_agent/</div>
               </div>
             </Reveal>
@@ -636,7 +662,7 @@ export function BoardmanV2() {
               <em>Paper first.</em>
             </h2>
             <p className="v2-lede" style={{ margin: '0 auto 2rem' }}>
-              Walk up, lock your stake, play the game. The boardman handles the rest.
+              Walk up, lock a test-USDC stake, play the game. The boardman handles the rest.
             </p>
             <div className="v2-band-cta">
               <a className="v2-btn v2-btn-primary" href="/app">
