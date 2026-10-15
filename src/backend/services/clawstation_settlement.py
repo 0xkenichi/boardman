@@ -212,6 +212,19 @@ async def _resolve_screenshot_source(ref: str) -> str:
         return ref
     if len(ref) > 200 and "/" not in ref:
         return ref  # already base64
+    if ref.startswith("evidence://"):
+        # Chat screenshots copied to our storage (WhatsApp media, CHANNELS_DESIGN §4.4)
+        try:
+            import asyncio
+            import base64
+
+            from gaming.src.channels.core.evidence import read_evidence
+
+            data, mime = await asyncio.to_thread(read_evidence, ref)
+            return f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"
+        except Exception as exc:
+            logger.warning("[Settlement] evidence read failed: %s", exc)
+            return ref
     # Telegram file_id → Bot API file URL
     try:
         from gaming.src.bot.telegram_env import telegram_bot_token
@@ -498,12 +511,15 @@ async def _notify_result(
                 buttons = rematch_after_result_menu(rival_id)
             except Exception:
                 buttons = None
+        from gaming.src.channels.core.match_notices import result_notice
+
         await notify_user(
             uid,
             f"{head}\n\n"
             f"<b>Balance</b>\n{bal}\n\n"
             f"Tap <b>Rematch</b> — or open Wallet.",
             buttons=buttons,
+            notice=await result_notice(uid, challenge, won=you_won, pot=pot),
         )
 
     if winner_id is None:
@@ -592,9 +608,12 @@ async def settle_challenge(challenge_id: str, admin_winner_id: Optional[str] = N
                 logger.warning("[Settlement] flag_dispute: %s", exc)
             _update_challenge(challenge_id, "disputed")
             msg = conflict_message(challenge_id, analysis["reason"])
-            await notify_user(challenge["creator_id"], msg)
+            from gaming.src.channels.core.match_notices import match_disputed
+
+            notice = match_disputed(challenge, str(analysis.get("reason") or ""))
+            await notify_user(challenge["creator_id"], msg, notice=notice)
             if challenge.get("opponent_id"):
-                await notify_user(challenge["opponent_id"], msg)
+                await notify_user(challenge["opponent_id"], msg, notice=notice)
             return {"success": True, "action": "disputed", "reason": analysis["reason"]}
 
         if action == "conflict":
@@ -619,9 +638,12 @@ async def settle_challenge(challenge_id: str, admin_winner_id: Optional[str] = N
                     analysis["reason"]
                     + (f" AI: {ai.get('reason')}" if ai.get("reason") else ""),
                 )
-                await notify_user(challenge["creator_id"], msg)
+                from gaming.src.channels.core.match_notices import match_disputed
+
+                notice = match_disputed(challenge, str(analysis.get("reason") or ""))
+                await notify_user(challenge["creator_id"], msg, notice=notice)
                 if challenge.get("opponent_id"):
-                    await notify_user(challenge["opponent_id"], msg)
+                    await notify_user(challenge["opponent_id"], msg, notice=notice)
                 return {
                     "success": True,
                     "action": "disputed",
@@ -976,9 +998,12 @@ async def settle_no_show(challenge_id: str, analysis: Optional[dict] = None) -> 
             f"AI conf={conf:.0%}\n\n"
             f"{support_id_block(challenge)}"
         )
-        await notify_user(challenge["creator_id"], msg)
+        from gaming.src.channels.core.match_notices import match_disputed
+
+        notice = match_disputed(challenge, "Opponent no-show; the winner could not be verified automatically.")
+        await notify_user(challenge["creator_id"], msg, notice=notice)
         if challenge.get("opponent_id"):
-            await notify_user(challenge["opponent_id"], msg)
+            await notify_user(challenge["opponent_id"], msg, notice=notice)
         return {
             "success": True,
             "action": "disputed_no_show",

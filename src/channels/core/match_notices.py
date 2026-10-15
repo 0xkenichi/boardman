@@ -199,3 +199,24 @@ def match_refunded(ch: dict, *, reason: str, amount: Any) -> Notice:
         options=[Option(WALLET_ID, "Wallet")],
         template_payloads=[WALLET_ID],
     )
+
+
+async def result_notice(profile_id: str, ch: dict, *, won: Optional[bool], pot: Any) -> Optional[Notice]:
+    """``match_result`` with the live balance, built only for WhatsApp-first
+    players (Telegram keeps the legacy banner; no extra balance lookup)."""
+    import asyncio
+
+    from gaming.src.channels.core.bridge import preferred_channel
+
+    if not await asyncio.to_thread(preferred_channel, profile_id):
+        return None
+    balance: Any = "?"
+    try:
+        from gaming.src.backend.services.clawstation_circle import get_balance_summary
+
+        s = await get_balance_summary(profile_id)
+        balance = s.get("spendable_usdc") or 0
+    except Exception:
+        pass
+    amount = pot if won is True else ch.get("amount_usdc")
+    return match_result(ch, won=won, amount=amount, balance=balance)
