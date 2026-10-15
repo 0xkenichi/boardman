@@ -43,9 +43,9 @@ RUN python -m venv /app/.venv \
 
 COPY src /app/src
 COPY config /app/config
-# Session loop + the operator scripts the runbook runs in-container.
-COPY scripts/run_house_session.py scripts/settle_stuck_matches.py \
-     scripts/verify_onchain_settlement.py /app/scripts/
+# Session loop + every operator script the runbook runs in-container
+# (migrations, recovery, backfills, wallet rotation, reconcilers).
+COPY scripts/*.py /app/scripts/
 COPY deploy/start_akash.sh deploy/start_akash.py /app/deploy/
 # Lowercase path is what house.py / start_akash.py look for (case-sensitive on Linux).
 COPY --from=ethereal /out/ /app/engines/Ethereal/src/
