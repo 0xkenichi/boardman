@@ -469,6 +469,7 @@ Keys that move money or impersonate the platform:
 | `REMATCH_SESSION_SECRET` | Vercel | Forge user sessions |
 | `TELEGRAM_BOT_TOKEN_*` | Railway + Vercel | Impersonate the bot |
 | `SUPABASE_SERVICE_ROLE_KEY`, `CIRCLE_*`, `PAYSTACK_SECRET_KEY` | Railway / Vercel | User data, custodial wallets, fiat |
+| `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET` | API server | Message players as Boardman; forge inbound WhatsApp messages |
 
 1. **Contain (minutes)**
    - Escrow owner calls `pause()` on BoardmanEscrow and SpectatorPool.
@@ -553,3 +554,85 @@ The URL must be loopback (the tests stay hermetic). Each test gets its own
 schema, dropped afterwards. Never point it at Supabase. CI runs the same
 money/storage subset on a `postgres:16` service container (job
 `python-postgres` in `.github/workflows/ci.yml`).
+
+---
+
+## 8. Chat channels (WhatsApp, Telegram core flows)
+
+Design: `docs/channels/CHANNELS_DESIGN.md`. Meta setup click-path:
+`docs/channels/WHATSAPP_SETUP.md`. Everything is off by default except the
+Telegram web PIN.
+
+### 8.1 Schema and backfill
+
+1. Apply `supabase/migrations/20261016120000_channel_identities.sql` to the
+   profiles database (Supabase). Idempotent.
+2. `supabase/migrations/20261016120100_channels_state.sql` is the Postgres
+   rendering of the channels state tables; the app also creates them on first
+   use (SQLite or Postgres), so apply it only when the agentic store is Postgres.
+3. `python scripts/backfill_channel_identities.py` (dry run, prints counts),
+   then `--apply`. Safe to re-run. From then on the bot dual-writes every
+   Telegram profile lookup.
+
+**The bot and the API must share one agentic store** (the same
+`BOARDMAN_DATABASE_URL`, or the same `BOARDMAN_AGENTIC_DATA` dir on one
+machine): a withdraw link issued by the bot is confirmed by the API.
+
+### 8.2 Variables
+
+Flags (bot **and** API):
+
+- `CHANNELS_CORE_FLOWS` — comma list of flows the shared core runs on every
+  channel: `balance`, `deposit`, `link`, `withdraw`, or `all`. Default empty:
+  Telegram keeps its legacy handlers. Rollback = clear it and restart.
+- `CHANNELS_CORE_FLOWS_TELEGRAM`, `CHANNELS_CORE_FLOWS_WHATSAPP` — per-channel
+  override (e.g. `CHANNELS_CORE_FLOWS_WHATSAPP=all` with Telegram left empty).
+- `TELEGRAM_WITHDRAW_WEB_PIN` — default `1`: Telegram withdrawals confirm on
+  `/app/withdraw/<token>` with a PIN; `/set_tx_password` and
+  `/reset_tx_password` point to the web. `0` restores the typed password.
+  **Deploy the frontend page before (or with) the backend.**
+- `WHATSAPP_ENABLED` — `1` mounts `/webhooks/whatsapp` on the API. Default off.
+
+WhatsApp (API server; values from the password manager):
+
+- `WHATSAPP_APP_SECRET` (secret: webhook signature), `WHATSAPP_VERIFY_TOKEN`
+  (secret: webhook handshake), `WHATSAPP_ACCESS_TOKEN` (secret: system-user
+  token), `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_DISPLAY_NUMBER` (digits, for
+  `wa.me` links; also set on the bot), optional `WHATSAPP_GRAPH_VERSION`.
+
+Links and identity (bot and API):
+
+- `CHANNELS_SITE_URL` — base for one-time links (default `BOARDMAN_URL`,
+  else `https://boardman.playingsidequest.fun`).
+- `CHANNELS_LINK_PEPPER` (secret) — HMAC key for link codes at rest. Set it
+  once; changing it invalidates codes issued in the last 10 minutes only.
+- `CHANNELS_IDENTITY_STORE` — leave unset (Supabase). `memory` is for local
+  development without Supabase.
+
+Tuning (defaults are fine): `CHANNELS_LINK_CODE_TTL_SEC` (600),
+`CHANNELS_LINK_ISSUE_PER_HOUR` (5), `CHANNELS_LINK_REDEEM_PER_10MIN` (5),
+`CHANNELS_LINK_WITHDRAW_HOLD_HOURS` (72: withdrawals from a newly linked chat
+wait this long), `CHANNELS_WITHDRAW_LINK_TTL_SEC` (600),
+`CHANNELS_WITHDRAW_LINKS_PER_HOUR` (5), `CHANNELS_PIN_TRIES_PER_HOUR` (10),
+`CHANNELS_WA_MAX_AGE_SEC` (259200: older webhook deliveries are dropped),
+`CHANNELS_EVIDENCE_STORE` (`local` | `supabase`), `CHANNELS_EVIDENCE_BUCKET`
+(`match-evidence`, private), `CHANNELS_MEDIA_MAX_BYTES` (8 MiB).
+
+Geo: `config/compliance/geo_fence.json` → `channel_signals`. WhatsApp phone
+country codes are enforced; Telegram only logs (`enforce: false`).
+`POST /api/channels/withdraw/*` is a geo-fenced money route.
+
+### 8.3 Operations
+
+- **Turn WhatsApp off fast:** `WHATSAPP_ENABLED=0` and restart the API (the
+  webhook disappears; Meta retries, then gives up). Or clear
+  `CHANNELS_CORE_FLOWS_WHATSAPP` to keep the webhook but offer nothing.
+- **A player says "I didn't link that number":** look up
+  `channel_identities` by profile, set `revoked_at` on the row, and pause
+  withdrawals for the profile while you investigate.
+- **Merge requests for two funded profiles** are refused by design and come
+  to support: move funds manually, then link.
+- **Stuck withdraw link** (`channel_tokens.status = 'claimed'` with no result):
+  the payout crashed mid-way. Check `gaming.wallet_debit_audit` and Circle for
+  the transfer before doing anything; never reopen the token.
+

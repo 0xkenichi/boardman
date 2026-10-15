@@ -1,6 +1,6 @@
 # Boardman on every chat app: channels design
 
-Status: design proposal, 2026-10-15. Nothing here is implemented. Based on `main` at 54f1a9e.
+Status: design approved 2026-10-15, based on `main` at 54f1a9e. Phase 0 plus the balance, deposit, link and withdraw flows are implemented (`src/channels`, docs/RUNBOOK.md §8); everything after that is still a proposal.
 
 Scope: ship the full Telegram bot experience on WhatsApp (Nigeria/Africa first), keep Telegram working the whole time, and prepare for iMessage later.
 
