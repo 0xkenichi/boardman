@@ -25,9 +25,10 @@ class DepositError(Exception):
 
 
 def paystack_ready() -> bool:
+    from gaming.src.backend.services.funding_rails import naira_paystack_enabled
     from gaming.src.backend.services.paystack import paystack_configured
 
-    return paystack_configured()
+    return paystack_configured() and naira_paystack_enabled()
 
 
 def paystack_email(profile: dict, channel: str, external_id: str) -> str:

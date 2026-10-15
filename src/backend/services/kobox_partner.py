@@ -66,17 +66,27 @@ def offramp_copy_html() -> str:
 
 
 def get_money_intro_html(rate_ngn: float | int) -> str:
+    from gaming.src.backend.services.funding_rails import naira_bank_enabled, naira_paystack_enabled
+
     name = kobox_name()
+    naira_on = naira_paystack_enabled() or naira_bank_enabled() or kobox_enabled()
+    options = ""
+    if naira_paystack_enabled():
+        options += "• <b>Paystack</b> — pay ₦ in-app. We credit play balance after pay\n"
+    if kobox_enabled():
+        options += f"• <b>{name}</b> — self-serve Naira ↔ USDC → send to play address\n"
+    if naira_bank_enabled():
+        options += f"• <b>Our bank</b> — transfer ₦ / USD (₦{rate_ngn:,.0f}/$1 + fee)\n"
+    else:
+        options += "• <b>Our bank</b> — transfer USD (+ fee)\n"
     return (
         "💧 <b>Get money</b>\n\n"
         f"One <b>play balance</b> for stakes — you don't pick networks to play.\n"
         f"Fund however you like; we put USDC on your play wallet (matches always stake there).\n\n"
-        f"{onramp_copy_html()}\n\n"
-        f"<b>Options</b>\n"
-        f"• <b>Paystack</b> — pay ₦ in-app. We credit play balance after pay\n"
-        f"• <b>{name}</b> — self-serve Naira ↔ USDC → send to play address\n"
-        f"• <b>Our bank</b> — transfer ₦ / USD (₦{rate_ngn:,.0f}/$1 + fee)\n"
-        f"• <b>USDC (link)</b> — send USDC with a memo; we credit play balance\n"
+        + (f"{onramp_copy_html()}\n\n" if naira_on else "")
+        + f"<b>Options</b>\n"
+        + options
+        + f"• <b>USDC (link)</b> — send USDC with a memo; we credit play balance\n"
         f"• <b>USDC (alt)</b> — send USDC with your ref; we credit play balance\n"
         f"• <b>Crypto</b> — send USDC straight to your play address\n\n"
         f"<i>One play balance for all stakes. Funding path is just plumbing.</i>\n"

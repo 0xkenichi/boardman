@@ -174,6 +174,24 @@ def funding_rail_enabled(rail_id: str) -> bool:
     return True
 
 
+# Naira on-ramps take real money. They stay off (config/funding_rails.yaml)
+# until there is a licence to accept it; every entry point checks these.
+NAIRA_PAUSED_TEXT = (
+    "Naira top-ups are paused for now. You can still add funds with "
+    "crypto (Crypto / play address)."
+)
+
+
+def naira_paystack_enabled() -> bool:
+    """Paystack ₦ card / bank / USSD top-ups (rail ``paystack_ngn``)."""
+    return funding_rail_enabled("paystack_ngn")
+
+
+def naira_bank_enabled() -> bool:
+    """Manual ₦ bank-transfer top-ups (rail ``bank_ngn``)."""
+    return funding_rail_enabled("bank_ngn")
+
+
 @dataclass
 class AbstractBalance:
     """Player-facing money snapshot — one number, optional breakdown."""
