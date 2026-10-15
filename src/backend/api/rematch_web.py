@@ -522,7 +522,7 @@ async def _finish_after_approval(approval_id: str) -> None:
 
 
 @router.get("/profile")
-async def web_profile_by_telegram(
+def web_profile_by_telegram(
     telegram_id: int = Query(..., description="Telegram user id"),
     x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
     x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
@@ -590,7 +590,7 @@ async def web_profile_by_telegram(
 
 
 @router.get("/profile/by-tag")
-async def web_profile_by_tag(
+def web_profile_by_tag(
     tag: str = Query(...),
     x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
     x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
@@ -1267,7 +1267,7 @@ async def web_spectator_lp_withdraw(
 
 
 @router.get("/matches")
-async def web_match_history(
+def web_match_history(
     profile_id: str = Query(...),
     limit: int = Query(30, ge=1, le=100),
     x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),

@@ -172,7 +172,7 @@ class DemoBody(BaseModel):
 
 
 @router.get("/health")
-async def agentic_health():
+def agentic_health():
     """Liveness (no key) — does not list agents or accept writes.
 
     Public, so it never reveals filesystem paths or which provider keys are
@@ -202,7 +202,7 @@ async def agentic_health():
 
 
 @router.get("/games")
-async def list_games(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def list_games(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.registry import get_registry
     from gaming.src.stack.agentic.games.catalog import list_games as catalog_games
 
@@ -216,7 +216,7 @@ async def list_games(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
 
 
 @router.get("/agents")
-async def list_agents(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def list_agents(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.registry import get_registry
 
     agents = get_registry().list_agents()
@@ -225,7 +225,7 @@ async def list_agents(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
 
 
 @router.get("/house")
-async def house_snapshot(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def house_snapshot(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Boardman House cashier — does not play. Telegram remains human-vs-human."""
     from gaming.src.stack.agentic.house import get_house
 
@@ -234,7 +234,7 @@ async def house_snapshot(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
 
 
 @router.get("/house/floor")
-async def house_floor(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def house_floor(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Live tables (cap 5 playing) + queued + waiting."""
     from gaming.src.stack.agentic.house import get_house
 
@@ -286,7 +286,7 @@ class HouseBetBody(BaseModel):
 
 
 @router.post("/house/matches/{match_id}/bets")
-async def house_take_bet(match_id: str, body: HouseBetBody, caller: StackCaller = Depends(require_stack_caller)):
+def house_take_bet(match_id: str, body: HouseBetBody, caller: StackCaller = Depends(require_stack_caller)):
     """A fan ticket paid from the bettor's agentic-ledger wallet (debited
     with the ticket; the payout comes back there). The bettor is the caller.
     Web / Telegram fans bet from their play balance via /api/rematch/web."""
@@ -399,7 +399,7 @@ def _next_table(sched: dict[str, Any], now: Any) -> tuple[Optional[str], Optiona
 
 
 @router.get("/house/schedule")
-async def house_schedule_get(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def house_schedule_get(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Schedule plus when the session will actually seat the next table.
 
     next_game_at uses the same arithmetic the house session uses to wake up
@@ -424,7 +424,7 @@ async def house_schedule_get(_: ApiKeyPrincipal = Depends(require_stack_api_key)
 
 
 @router.post("/house/schedule")
-async def house_schedule_set(
+def house_schedule_set(
     body: HouseScheduleBody = HouseScheduleBody(),
     _: ApiKeyPrincipal = Depends(require_stack_api_key),
 ):
@@ -590,7 +590,7 @@ def house_play(match_id: str, body: HousePlayBody = HousePlayBody(), _: ApiKeyPr
 
 
 @router.post("/agents/demo/seed")
-async def seed_demo_agents(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def seed_demo_agents(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.registry import get_registry
     from gaming.src.stack.agentic.chess.personas import get_persona
 
@@ -821,14 +821,14 @@ def get_agent_wallet(
 
 
 @router.get("/matches")
-async def list_matches(limit: int = 30, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def list_matches(limit: int = 30, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.matches import get_match_service
 
     return {"success": True, "matches": get_match_service().list_matches(limit)}
 
 
 @router.get("/matches/{match_id}")
-async def get_match(match_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def get_match(match_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.matches import get_match_service
 
     m = get_match_service().get(match_id)
@@ -928,7 +928,7 @@ class RegisterAgentBody(BaseModel):
 
 
 @router.post("/agents/register")
-async def register_agent(body: RegisterAgentBody, principal: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def register_agent(body: RegisterAgentBody, principal: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Deploy a third-party agent (wallet + identity + fees + optional webhook)."""
     from gaming.src.stack.agentic.registry import get_registry
 
@@ -1111,7 +1111,7 @@ def _demo_stream(body: DemoBody):
 
 
 @router.get("/ledger")
-async def ledger_snapshot(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def ledger_snapshot(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic import ledger
 
     snap = ledger.snapshot()
@@ -1126,14 +1126,14 @@ async def ledger_snapshot(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
 
 
 @router.get("/time-controls")
-async def time_controls(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def time_controls(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.clock import list_time_controls
 
     return {"success": True, "controls": list_time_controls()}
 
 
 @router.get("/economy/policy")
-async def economy_policy(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def economy_policy(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Public fee / deploy policy for creators wiring agents."""
     from gaming.src.stack.agentic.economy.fees import (
         DEFAULT_PLATFORM_FEE_BPS,
@@ -1179,7 +1179,7 @@ class BetBody(BaseModel):
 
 
 @router.post("/matches/{match_id}/spectator/bet")
-async def spectator_bet(match_id: str, body: BetBody, caller: StackCaller = Depends(require_stack_caller)):
+def spectator_bet(match_id: str, body: BetBody, caller: StackCaller = Depends(require_stack_caller)):
     """A fan ticket paid from the caller's agentic-ledger wallet: debited in
     the same transaction as the ticket, paid back there on settlement."""
     from decimal import Decimal
@@ -1212,7 +1212,7 @@ async def spectator_bet(match_id: str, body: BetBody, caller: StackCaller = Depe
 
 
 @router.get("/matches/{match_id}/spectator")
-async def spectator_book(match_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def spectator_book(match_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.economy.spectator import SpectatorBook
 
     book = SpectatorBook().get(match_id)
@@ -1222,7 +1222,7 @@ async def spectator_book(match_id: str, _: ApiKeyPrincipal = Depends(require_sta
 
 
 @router.get("/matches/{match_id}/odds")
-async def match_odds(match_id: str, eval_pawns: Optional[float] = None, ply: int = 0, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def match_odds(match_id: str, eval_pawns: Optional[float] = None, ply: int = 0, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """
     Live market snapshot: prior win-rate + pool odds + eval blend + risk/reward.
     """
@@ -1448,7 +1448,7 @@ def admin_metrics_detail(_: StackCaller = Depends(require_platform_admin)):
 
 
 @router.get("/football/catalog")
-async def football_catalog(
+def football_catalog(
     q: Optional[str] = None,
     slot: Optional[str] = None,
     pos: Optional[str] = None,
@@ -1511,7 +1511,7 @@ class FootballSeasonOpenBody(BaseModel):
 
 
 @router.post("/football/simulate")
-async def football_simulate(body: FootballSimBody, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def football_simulate(body: FootballSimBody, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Run the AFM match engine on two submitted XIs (watchable friendly sim).
 
     The engine stays authoritative server-side: same seeded `simulate_match`
@@ -1595,7 +1595,7 @@ def football_club(agent_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_
 
 
 @router.put("/football/clubs/{agent_id}/lineup")
-async def football_club_lineup(agent_id: str, body: FootballLineupBody, caller: StackCaller = Depends(require_stack_caller)):
+def football_club_lineup(agent_id: str, body: FootballLineupBody, caller: StackCaller = Depends(require_stack_caller)):
     """Set a club's lineup + tactics (agent afm_set_lineup / board Save).
     Owner only."""
     from gaming.src.stack.agentic.games.football_managers.club_store import (
@@ -1699,7 +1699,7 @@ def football_season(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
 
 
 @router.post("/football/season/join")
-async def football_season_join(body: FootballSeasonJoinBody, caller: StackCaller = Depends(require_stack_caller)):
+def football_season_join(body: FootballSeasonJoinBody, caller: StackCaller = Depends(require_stack_caller)):
     """afm_join_season — queue the club for the next season (owner only)."""
     from gaming.src.stack.agentic.games.football_managers.season import join_season
 
@@ -1735,7 +1735,7 @@ def football_season_tick(_: StackCaller = Depends(require_platform_admin)):
 
 
 @router.post("/football/season/reset")
-async def football_season_reset(_: StackCaller = Depends(require_platform_admin)):
+def football_season_reset(_: StackCaller = Depends(require_platform_admin)):
     """Dev/ops: drop the current season state (no money moves)."""
     from gaming.src.stack.agentic.games.football_managers.season import reset_season
 
@@ -1786,7 +1786,7 @@ def football_betting_odds(
 
 
 @router.post("/football/betting/bet")
-async def football_betting_bet(body: FootballBetBody, caller: StackCaller = Depends(require_stack_caller)):
+def football_betting_bet(body: FootballBetBody, caller: StackCaller = Depends(require_stack_caller)):
     """Back a fixture outcome: debit the better, pool into the fixture pot.
     The better is always the caller."""
     from gaming.src.stack.agentic.games.football_managers.betting import place_bet
@@ -1813,7 +1813,7 @@ async def football_betting_bet(body: FootballBetBody, caller: StackCaller = Depe
 
 
 @router.get("/football/betting/my")
-async def football_betting_my(better: str = "", season_no: Optional[int] = None, caller: StackCaller = Depends(require_stack_caller)):
+def football_betting_my(better: str = "", season_no: Optional[int] = None, caller: StackCaller = Depends(require_stack_caller)):
     """A spectator's bets with status (open/settled) beside each — the
     caller's own only."""
     from gaming.src.stack.agentic.games.football_managers.betting import my_bets
@@ -1826,7 +1826,7 @@ async def football_betting_my(better: str = "", season_no: Optional[int] = None,
 
 
 @router.post("/football/betting/settle")
-async def football_betting_settle(body: FootballBetSettleBody, _: StackCaller = Depends(require_platform_admin)):
+def football_betting_settle(body: FootballBetSettleBody, _: StackCaller = Depends(require_platform_admin)):
     """Dev/ops: settle a matchday's books against its stored results."""
     from gaming.src.stack.agentic.games.football_managers.betting import (
         settle_matchday,
@@ -2014,7 +2014,7 @@ def football_agents(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
 
 
 @router.post("/football/agents/create")
-async def football_agents_create(body: FootballAgentCreateBody, caller: StackCaller = Depends(require_stack_caller)):
+def football_agents_create(body: FootballAgentCreateBody, caller: StackCaller = Depends(require_stack_caller)):
     """Create a manager agent + seed its club (owner seat, step 1)."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
         create_manager_agent,
@@ -2036,7 +2036,7 @@ async def football_agents_create(body: FootballAgentCreateBody, caller: StackCal
 
 
 @router.post("/football/agents/acquire")
-async def football_agents_acquire(body: FootballAgentAcquireBody, caller: StackCaller = Depends(require_stack_caller)):
+def football_agents_acquire(body: FootballAgentAcquireBody, caller: StackCaller = Depends(require_stack_caller)):
     """Adopt an unlisted developer-built manager: ownership moves to the caller."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
         acquire_manager_agent,
@@ -2055,7 +2055,7 @@ async def football_agents_acquire(body: FootballAgentAcquireBody, caller: StackC
 
 
 @router.post("/football/agents/webhook")
-async def football_agents_webhook(body: FootballAgentWebhookBody, caller: StackCaller = Depends(require_stack_caller)):
+def football_agents_webhook(body: FootballAgentWebhookBody, caller: StackCaller = Depends(require_stack_caller)):
     """Owner seat: point your manager at the webhook hosting its brain.
 
     From the next matchday ask on, the House POSTs the matchday context here
@@ -2078,7 +2078,7 @@ async def football_agents_webhook(body: FootballAgentWebhookBody, caller: StackC
 
 
 @router.post("/football/agents/list")
-async def football_agents_list(body: FootballAgentListBody, caller: StackCaller = Depends(require_stack_caller)):
+def football_agents_list(body: FootballAgentListBody, caller: StackCaller = Depends(require_stack_caller)):
     """Owner seat: list your manager for sale (price + creator cut)."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
         list_manager_for_sale,
@@ -2098,7 +2098,7 @@ async def football_agents_list(body: FootballAgentListBody, caller: StackCaller 
 
 
 @router.post("/football/agents/delist")
-async def football_agents_delist(body: FootballAgentDelistBody, caller: StackCaller = Depends(require_stack_caller)):
+def football_agents_delist(body: FootballAgentDelistBody, caller: StackCaller = Depends(require_stack_caller)):
     """Owner seat: pull your manager off the marketplace."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
         delist_manager_agent,
@@ -2115,7 +2115,7 @@ async def football_agents_delist(body: FootballAgentDelistBody, caller: StackCal
 
 
 @router.post("/football/agents/offer")
-async def football_agents_offer(body: FootballAgentOfferBody, caller: StackCaller = Depends(require_stack_caller)):
+def football_agents_offer(body: FootballAgentOfferBody, caller: StackCaller = Depends(require_stack_caller)):
     """A buyer names their price on a listed manager. Offers below the owner's
     reserve are auto-declined; the rest land pending for the owner."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
@@ -2161,7 +2161,7 @@ async def football_agents_offer_accept(body: FootballAgentOfferDecisionBody, cal
 
 
 @router.post("/football/agents/offer/reject")
-async def football_agents_offer_reject(body: FootballAgentOfferDecisionBody, caller: StackCaller = Depends(require_stack_caller)):
+def football_agents_offer_reject(body: FootballAgentOfferDecisionBody, caller: StackCaller = Depends(require_stack_caller)):
     """The owner turns a buyer's offer down — the listing stays up."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
         reject_manager_offer,
@@ -2210,7 +2210,7 @@ async def football_agents_purchase(body: FootballAgentPurchaseBody, caller: Stac
 
 
 @router.get("/football/agents/wallet")
-async def football_agents_wallet(party_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def football_agents_wallet(party_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Wallet status for a marketplace party: what they pay with and get paid
     to — demo ledger wallet vs a bound real (Circle) wallet on Arc."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
@@ -2221,7 +2221,7 @@ async def football_agents_wallet(party_id: str, _: ApiKeyPrincipal = Depends(req
 
 
 @router.get("/football/agents/sales")
-async def football_agents_sales(party_id: str = "", _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def football_agents_sales(party_id: str = "", _: ApiKeyPrincipal = Depends(require_stack_api_key)):
     """Owner dashboard desk: money a party has earned from manager sales and
     the listing history — earnings (seller proceeds + developer creator cuts),
     the managers they own with their live listing state, and the timeline of
@@ -2234,7 +2234,7 @@ async def football_agents_sales(party_id: str = "", _: ApiKeyPrincipal = Depends
 
 
 @router.post("/football/agents/wallet/bind")
-async def football_agents_wallet_bind(body: FootballWalletBindBody, caller: StackCaller = Depends(require_stack_caller)):
+def football_agents_wallet_bind(body: FootballWalletBindBody, caller: StackCaller = Depends(require_stack_caller)):
     """Bind a real (Circle) wallet to a marketplace party so purchases can
     settle in real USDC (the demo ledger stays the fallback until then)."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
@@ -2262,7 +2262,7 @@ async def football_agents_wallet_bind(body: FootballWalletBindBody, caller: Stac
 
 
 @router.post("/football/agents/wallet/unbind")
-async def football_agents_wallet_unbind(body: FootballWalletUnbindBody, caller: StackCaller = Depends(require_stack_caller)):
+def football_agents_wallet_unbind(body: FootballWalletUnbindBody, caller: StackCaller = Depends(require_stack_caller)):
     """Remove a marketplace party's wallet binding (back to demo ledger)."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
         NotOwnerError,
@@ -2355,7 +2355,7 @@ async def football_wallet_withdraw(body: FootballBridgeBody, caller: StackCaller
 
 
 @router.get("/football/wallet")
-async def football_wallet_balance(party_id: str = "", caller: StackCaller = Depends(require_stack_caller)):
+def football_wallet_balance(party_id: str = "", caller: StackCaller = Depends(require_stack_caller)):
     """The caller's football (ledger) wallet balance and recent transfers."""
     from gaming.src.stack.agentic import ledger
     from gaming.src.stack.agentic import wallet_bridge as wb
@@ -2375,7 +2375,7 @@ async def football_wallet_balance(party_id: str = "", caller: StackCaller = Depe
 
 
 @router.get("/admin/wallet-bridge/pending")
-async def wallet_bridge_pending(older_than_sec: float = 0, _: StackCaller = Depends(require_platform_admin)):
+def wallet_bridge_pending(older_than_sec: float = 0, _: StackCaller = Depends(require_platform_admin)):
     """Ops: transfers left between the play balance and the ledger."""
     from gaming.src.stack.agentic import wallet_bridge as wb
 
@@ -2435,7 +2435,7 @@ def football_cup_tick(_: StackCaller = Depends(require_platform_admin)):
 
 
 @router.post("/football/cup/reset")
-async def football_cup_reset(_: StackCaller = Depends(require_platform_admin)):
+def football_cup_reset(_: StackCaller = Depends(require_platform_admin)):
     """Dev/ops: drop the current cup state (no money moves)."""
     from gaming.src.stack.agentic.games.football_managers.cup import reset_cup
 

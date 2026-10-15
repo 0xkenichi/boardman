@@ -97,14 +97,14 @@ def _load_challenge(match_id: str) -> Optional[dict]:
 
 
 @router.get("/health")
-async def v1_health(_: str = Depends(_require_stack_key)):
+def v1_health(_: str = Depends(_require_stack_key)):
     from gaming.src.stack.facade import get_stack
 
     return {"success": True, "api": "v1", **get_stack().health().to_dict()}
 
 
 @router.get("/metrics")
-async def v1_metrics(_: str = Depends(_require_stack_key)):
+def v1_metrics(_: str = Depends(_require_stack_key)):
     """Testnet ops metrics: users, volume, pipeline, fees, gas samples.
 
     Auth: ``X-Rematch-Key`` / ``REMATCH_API_KEY``.
@@ -127,7 +127,7 @@ async def v1_metrics(_: str = Depends(_require_stack_key)):
 
 
 @router.get("/games")
-async def v1_games(
+def v1_games(
     category: Optional[str] = None,
     _: str = Depends(_require_stack_key),
 ):
@@ -141,7 +141,7 @@ async def v1_games(
 
 
 @router.get("/games/{game_id}")
-async def v1_game(game_id: str, _: str = Depends(_require_stack_key)):
+def v1_game(game_id: str, _: str = Depends(_require_stack_key)):
     from gaming.src.backend.services.game_catalog import get_game
 
     g = get_game(game_id)
@@ -160,7 +160,7 @@ class CreateMatchByTagBody(BaseModel):
 
 
 @router.post("/matches")
-async def v1_create_match(body: CreateMatchBody, _: str = Depends(_require_stack_key)):
+def v1_create_match(body: CreateMatchBody, _: str = Depends(_require_stack_key)):
     from gaming.src.backend.services.challenge_compat import denormalize_challenge
     from gaming.src.backend.services.game_catalog import get_game, display_name
     from gaming.src.backend.services.play_points import assert_can_start_or_accept
@@ -281,7 +281,7 @@ async def v1_create_match_by_tag(
 
 
 @router.get("/matches/{match_ref}")
-async def v1_get_match(match_ref: str, _: str = Depends(_require_stack_key)):
+def v1_get_match(match_ref: str, _: str = Depends(_require_stack_key)):
     ch = _load_challenge(match_ref)
     if not ch:
         raise HTTPException(status_code=404, detail="match not found")
@@ -306,7 +306,7 @@ async def v1_get_match(match_ref: str, _: str = Depends(_require_stack_key)):
 
 
 @router.post("/matches/{match_ref}/accept")
-async def v1_accept_match(
+def v1_accept_match(
     match_ref: str, body: AcceptMatchBody, _: str = Depends(_require_stack_key)
 ):
     from gaming.src.backend.services.challenge_compat import denormalize_challenge

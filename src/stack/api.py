@@ -17,13 +17,13 @@ router = APIRouter(prefix="/api/stack/v0", tags=["rematch-stack"])
 
 
 @router.get("/health")
-async def stack_health():
+def stack_health():
     """Stack liveness and dependency checks."""
     return get_stack().health().to_dict()
 
 
 @router.get("/catalog")
-async def stack_catalog():
+def stack_catalog():
     """Capability discovery for builder clients."""
     caps = get_stack().capabilities().to_dict()
     try:
@@ -38,7 +38,7 @@ async def stack_catalog():
 
 
 @router.get("/chains")
-async def stack_chains(include_disabled: bool = False):
+def stack_chains(include_disabled: bool = False):
     """Settlement chains. Default: live only (Arc testnet). ?include_disabled=1 for roadmap."""
     chains = get_stack().list_chains(include_disabled=include_disabled)
     return {
@@ -50,7 +50,7 @@ async def stack_chains(include_disabled: bool = False):
 
 
 @router.get("/public/board")
-async def stack_public_board():
+def stack_public_board():
     """Public leaderboard + open challenges (same shape as /api/rematch/public)."""
     try:
         return get_stack().public_board()
