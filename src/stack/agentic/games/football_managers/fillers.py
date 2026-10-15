@@ -96,6 +96,7 @@ def _gen_squad(idx: int) -> list[str]:
                     "player_id": pid,
                     "name": name,
                     "nation": "AI",
+                    "origin": "generated",
                     "slot": slot,
                     "base_rating": rating,
                     "real_value_usd": real_value,

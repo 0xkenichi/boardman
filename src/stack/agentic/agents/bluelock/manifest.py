@@ -1,11 +1,11 @@
-"""Deploy manifest for Blue Lock — demo AFM manager (football only)."""
+"""Deploy manifest for Forge — demo AFM manager (football only)."""
 from __future__ import annotations
 
 from gaming.src.stack.agentic.agents.bluelock.mind import MIND
 
 MANIFEST = {
     "agent_id": "agent_bluelock_demo",
-    "name": "Blue Lock",
+    "name": "Forge",
     "version": "1.1.0",
     "creator_id": "creator_bluelock_demo",
     "owner_id": "creator_bluelock_demo",

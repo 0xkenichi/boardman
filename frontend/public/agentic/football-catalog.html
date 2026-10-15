@@ -39,6 +39,13 @@
     td { padding: 8px; border-bottom: 1px solid var(--line); color: #d4d4d8; }
     .stars { color: var(--amber); letter-spacing: 1px; }
     .inj { color: #f87171; font-size: 0.72rem; }
+    .tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 0.66rem;
+           font-weight: 700; letter-spacing: 0.03em; vertical-align: middle; }
+    .tag.icon { background: #2e1065; color: #ddd6fe; }
+    .tag.ng { background: #052e16; color: #86efac; }
+    .tag.pending { background: #27272a; color: #a1a1aa; }
+    .weapon { color: #c4b5fd; font-size: 0.72rem; }
+    tr.upcoming td { color: #71717a; }
     .mono { font-family: ui-monospace, Menlo, monospace; font-size: 0.75rem; color: var(--muted); }
     a.btn {
       display: inline-block; padding: 8px 12px; border-radius: 10px;
@@ -52,7 +59,8 @@
   <main>
     <h1>AFM player catalog</h1>
     <p class="sub">
-      Top players by position — rating, price, and weekly form.
+      Top signable players by position — Boardman originals and Nigerian players.
+      Global stars are listed as upcoming until their licence is signed.
     </p>
     <div class="bar">
       <input id="q" placeholder="Search name" />
@@ -81,16 +89,27 @@
       return Number.isFinite(n) ? "$" + n.toFixed(2) : "—";
     }
 
+    function isUpcoming(p) { return p.availability === "upcoming"; }
+    function tags(p) {
+      const persona = p.persona || {};
+      let t = "";
+      if (isUpcoming(p)) t += "<span class='tag pending'>" + (p.availability_label || "Upcoming · licence pending") + "</span>";
+      else if (persona.tier === "icon") t += "<span class='tag icon'>Icon</span>";
+      if (p.origin === "real_ng") t += "<span class='tag ng'>Nigeria</span>";
+      const weapon = persona.weapon ? "<div class='weapon'>" + (persona.archetype || "") + " · " + persona.weapon + "</div>" : "";
+      return t + weapon;
+    }
     function row(p) {
       const inj = p.injury ? '<div class="inj">' + p.injury + "</div>" : "";
+      const up = isUpcoming(p);
       return (
-        "<tr>" +
-          "<td><strong>" + (p.name || "") + "</strong> <span class='mono'>" + (p.nation || "") + "</span>" + inj + "</td>" +
+        "<tr" + (up ? " class='upcoming'" : "") + ">" +
+          "<td><strong>" + (p.name || "") + "</strong> <span class='mono'>" + (p.nation || "") + "</span>" + tags(p) + inj + "</td>" +
           "<td>" + (p.slot || p.primary_pos || "") + "</td>" +
           "<td>" + (p.base_rating || p.rating || "—") + "</td>" +
           "<td class='stars'>" + stars(p.stars) + "</td>" +
-          "<td>" + usd(p.game_price_usdc || p.price) + "</td>" +
-          "<td>" + usd(p.wage_per_matchday_usdc || p.wage) + "</td>" +
+          "<td>" + (up ? "—" : usd(p.game_price_usdc || p.price)) + "</td>" +
+          "<td>" + (up ? "—" : usd(p.wage_per_matchday_usdc || p.wage)) + "</td>" +
           "<td>" + (p.form != null ? Number(p.form).toFixed(1) : "—") + "</td>" +
           "<td>" + (p.weekly_goals || 0) + " / " + (p.weekly_assists || 0) + "</td>" +
           "<td>" + (p.weekly_rating != null ? Number(p.weekly_rating).toFixed(2) : "—") + "</td>" +
@@ -111,19 +130,26 @@
 
     function render() {
       const q = (document.getElementById("q").value || "").trim().toLowerCase();
-      let rows = all.slice();
+      let rows = all.slice().sort((a, b) => (b.base_rating || 0) - (a.base_rating || 0));
       if (q) rows = rows.filter((p) => (p.name || "").toLowerCase().includes(q));
       if (slotFilter) rows = rows.filter((p) => (p.slot || "") === slotFilter);
       const el = document.getElementById("result");
+      const signable = rows.filter((p) => !isUpcoming(p));
+      const upcoming = rows.filter(isUpcoming);
+      const pending = upcoming.length
+        ? '<div class="slot"><h2>Upcoming · licence pending · ' + upcoming.length + '</h2>' +
+          '<p class="mono">Real global stars. Not signable until their image-rights licence is in place.</p>' +
+          table(upcoming.slice(0, 30)) + "</div>"
+        : "";
       if (slotFilter) {
-        el.innerHTML = '<div class="slot"><h2>' + (LABELS[slotFilter] || slotFilter) + " · top " + Math.min(10, rows.length) + '</h2>' +
-          table(rows.slice(0, 10)) + "</div>";
+        el.innerHTML = '<div class="slot"><h2>' + (LABELS[slotFilter] || slotFilter) + " · top " + Math.min(10, signable.length) + '</h2>' +
+          table(signable.slice(0, 10)) + "</div>" + pending;
         return;
       }
       el.innerHTML = SLOTS.map((s) => {
-        const list = rows.filter((p) => (p.slot || "") === s).slice(0, 10);
+        const list = signable.filter((p) => (p.slot || "") === s).slice(0, 10);
         return '<div class="slot"><h2>' + (LABELS[s] || s) + " · " + list.length + "</h2>" + table(list) + "</div>";
-      }).join("");
+      }).join("") + pending;
     }
 
     function setChip(slot) {

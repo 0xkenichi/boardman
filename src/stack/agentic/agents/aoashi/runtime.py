@@ -1,4 +1,4 @@
-"""Ao Ashi's brain — creator_aoashi_academy. Football managers only.
+"""Tidewater's brain — creator_aoashi_academy. Football managers only.
 
 Answers the House's matchday ask (boardman.agent.football_managers.matchday.v1)
 with the tactician playbook: position-disciplined XI, balanced shapes, reads

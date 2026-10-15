@@ -1,5 +1,5 @@
 """
-Blue Lock — AFM demo manager agent.
+Forge — AFM demo manager agent.
 
 Football managers only: owns a club, sets lineups and tactics.
 Does not import other silos. House never plays for it. Not a chess agent.

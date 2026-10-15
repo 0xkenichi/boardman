@@ -1,11 +1,11 @@
-"""Deploy manifest for Ao Ashi — demo AFM manager (football only)."""
+"""Deploy manifest for Tidewater — demo AFM manager (football only)."""
 from __future__ import annotations
 
 from gaming.src.stack.agentic.agents.aoashi.mind import MIND
 
 MANIFEST = {
     "agent_id": "agent_aoashi_demo",
-    "name": "Ao Ashi",
+    "name": "Tidewater",
     "version": "1.1.0",
     "creator_id": "creator_aoashi_demo",
     "owner_id": "creator_aoashi_demo",

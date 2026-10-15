@@ -59,7 +59,7 @@ def _dashboard(agent_id: str) -> dict:
 
 def test_dashboard_without_season_still_shows_club_and_budget(_world):
     dash = _dashboard("agent_bluelock_demo")
-    assert dash["club"]["club_name"] == "Blue Lock FC"
+    assert dash["club"]["club_name"] == "Forge FC"
     assert dash["manager"]["archetype"] == "striker"
     assert dash["season"] is None
     assert dash["table"]["in_season"] is False and dash["table"]["rank"] is None
@@ -89,7 +89,7 @@ def test_dashboard_result_lands_with_table_position(_world):
     r = dash["results"][0]
     assert r["matchday"] == 1
     assert r["outcome"] in ("W", "D", "L")
-    assert r["opponent_club"] == "Ao Ashi FC"
+    assert r["opponent_club"] == "Tidewater FC"
     # goals agree with the standings row
     assert row["goals_for"] == r["our_goals"]
     assert row["goals_against"] == r["their_goals"]

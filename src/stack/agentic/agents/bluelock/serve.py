@@ -1,4 +1,4 @@
-"""Blue Lock webhook — what creator_bluelock_demo hosts. House only POSTs here."""
+"""Forge webhook — what creator_bluelock_demo hosts. House only POSTs here."""
 from __future__ import annotations
 
 import os
@@ -11,7 +11,7 @@ DEFAULT_PORT = 18771
 
 def main() -> None:
     port = int(os.getenv("BLUELOCK_WEBHOOK_PORT") or DEFAULT_PORT)
-    serve_builder_webhook(name="Blue Lock", pick=handle_webhook, port=port)
+    serve_builder_webhook(name="Forge", pick=handle_webhook, port=port)
 
 
 if __name__ == "__main__":

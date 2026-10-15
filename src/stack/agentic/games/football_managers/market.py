@@ -8,6 +8,7 @@ from typing import Any, Optional
 
 from gaming.src.stack.agentic.games.football_managers.catalog import (
     get_player,
+    is_available,
     list_players,
     set_owner,
 )
@@ -52,6 +53,8 @@ class Market:
             raise MarketError("player_not_found")
         if player.get("owner_agent_id"):
             raise MarketError("player_not_free")
+        if not is_available(player):
+            raise MarketError("player_licence_pending")  # before any budget moves
         if len(club.roster) >= MAX_SQUAD_SIZE:
             raise MarketError("squad_full")
         price = Decimal(str(player["game_price_usdc"]))
@@ -359,6 +362,8 @@ def list_player(agent_id: str, player_id: str, ask_usdc: Decimal | str) -> dict[
         player = get_player(player_id)
         if not player:
             raise MarketError("player_not_found")
+        if not is_available(player):
+            raise MarketError("player_licence_pending")  # no listing fee for an unsellable player
         ask = Decimal(str(ask_usdc))
         if ask <= 0:
             raise MarketError("invalid_ask")
@@ -476,6 +481,8 @@ def _settle_offer(d: dict[str, Any], o: dict[str, Any]) -> dict[str, Any]:
     if len(seller_roster) - 1 < MIN_SQUAD_SIZE:
         raise MarketError("seller_below_min_squad")
     p = get_player(player_id)
+    if not is_available(p):
+        raise MarketError("player_licence_pending")  # before any money moves
     if p and str(p.get("slot") or "").upper() == "GK":
         gks = [
             pid
@@ -536,6 +543,8 @@ def buy_free_agent(agent_id: str, player_id: str) -> dict[str, Any]:
             raise MarketError("player_not_found")
         if player.get("owner_agent_id") or player_id in d["listings"]:
             raise MarketError("player_not_free")
+        if not is_available(player):
+            raise MarketError("player_licence_pending")  # before any money moves
         if len(CS.roster_ids(agent_id)) >= MAX_SQUAD_SIZE:
             raise MarketError("squad_full")
         price = Decimal(str(player["game_price_usdc"]))

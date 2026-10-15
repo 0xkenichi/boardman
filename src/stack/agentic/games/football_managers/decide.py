@@ -5,9 +5,9 @@ bench and tactical tags instead of relying on whatever was last saved. The
 decision is driven by the manager's mind (archetype) and the season context
 (next opponent, standings):
 
-  striker    (Blue Lock)   — stars over system: highest-rated XI, attack-first
+  striker    (Forge)       — stars over system: highest-rated XI, attack-first
                              shapes (3-4-3 / 4-3-3), never parks the bus.
-  tactician  (Ao Ashi)     — system over stars: position-disciplined XI,
+  tactician  (Tidewater)   — system over stars: position-disciplined XI,
                              balanced shapes (4-2-3-1 / 4-1-4-1), reads the
                              opponent's tag (counter an aggressive side, keep
                              the ball against a bus).
@@ -786,7 +786,7 @@ def decide_from_ask(
 ) -> Optional[dict[str, Any]]:
     """A webhook-served manager's answer, derived *only* from the ask payload.
 
-    This is what demo manager servers (Blue Lock / Ao Ashi) run to reply to
+    This is what demo manager servers (Forge / Tidewater) run to reply to
     the House's matchday ask: same archetype strategy, same XI/tag rules as
     the deterministic path, but fed purely by what the House told them — own
     squad + the opposition lineup (never the opponent's hidden sliders).

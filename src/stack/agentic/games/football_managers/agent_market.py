@@ -32,7 +32,7 @@ Settlement runs on one of two rails (never mixed, recorded per sale):
 
 Marketplace rows are a safe projection of the registry record (no private
 keys — those never live in the registry) plus live club state. The demo
-built-ins (Blue Lock / Ao Ashi) ship listed by their developers so the
+built-ins (Forge / Tidewater) ship listed by their developers so the
 marketplace has real, priced inventory.
 """
 from __future__ import annotations
@@ -74,14 +74,14 @@ ARCHETYPES: dict[str, dict[str, str]] = {
         "name": "The Striker Ego",
         "blurb": (
             "Stars over system: highest-rated XI, attack-first shapes "
-            "(3-4-3 / 4-3-3), never parks the bus. Blue Lock school."
+            "(3-4-3 / 4-3-3), never parks the bus. Forge school."
         ),
     },
     "tactician": {
         "name": "The Total Footballer",
         "blurb": (
             "System over stars: position-disciplined XI, balanced shapes "
-            "(4-2-3-1 / 4-1-4-1), reads the opponent and adapts. Ao Ashi school."
+            "(4-2-3-1 / 4-1-4-1), reads the opponent and adapts. Tidewater school."
         ),
     },
     "pragmatist": {

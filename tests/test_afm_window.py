@@ -70,6 +70,28 @@ def _demo_ids(n=3):
     return ordered[:n]
 
 
+def _runway(pid):
+    from gaming.src.stack.agentic.games.football_managers.catalog import get_player
+    from gaming.src.stack.agentic.games.football_managers.market import WAGE_RUNWAY_MATCHDAYS
+
+    return Decimal(str(get_player(pid)["wage_per_matchday_usdc"])) * WAGE_RUNWAY_MATCHDAYS
+
+
+def _trim_squad(agent_id, target):
+    """Cut a club down to `target` players (drops from the back of the roster)."""
+    from gaming.src.stack.agentic.games.football_managers import club_store as CS
+    from gaming.src.stack.agentic.games.football_managers.catalog import set_owner
+
+    state = CS._state()
+    rec = state["clubs"][agent_id]
+    for pid in rec["roster"][target:]:
+        set_owner(pid, None)
+    rec["roster"] = rec["roster"][:target]
+    rec["starters"] = [x for x in rec.get("starters") or [] if x in rec["roster"]]
+    rec["bench"] = [x for x in rec.get("bench") or [] if x in rec["roster"]]
+    CS._save(state)
+
+
 def _pad_squad(agent_id, target, *, skip_gk=False):
     """Cheap free-agent buys until the squad is deep enough to trade."""
     from gaming.src.stack.agentic.games.football_managers import catalog as cat
@@ -176,6 +198,7 @@ def test_list_fee_bid_and_sale_move_money_and_player(_world, _season):
     sw, bw = M._wallet_of(seller), M._wallet_of(buyer)
     sw0, bw0 = L.balance(sw), L.balance(bw)
     house0 = L.balance(M.HOUSE_MARKET_WALLET)
+    tb0 = CS.transfer_balance(buyer)
 
     # listing charges 1% of the ask up front, to the House
     out = M.list_player(seller, pid, price)
@@ -202,7 +225,9 @@ def test_list_fee_bid_and_sale_move_money_and_player(_world, _season):
     assert L.balance(sw) == (sw0 - fee) + net
     assert L.balance(M.HOUSE_MARKET_WALLET) == house0 + fee + tax
     # club transfer balances moved the other way
-    assert CS.transfer_balance(buyer) < Decimal("60.00") - price + Decimal("1.00")
+    # at least price + wage runway; today it is 2x price + runway because
+    # transfer_balance counts the fee in both budget and squad spend (reported)
+    assert CS.transfer_balance(buyer) <= tb0 - price - _runway(pid)
     # the rival's queued offer was rejected as outbid
     assert M._mload()["offers"][bid2["offer_id"]]["status"] == "rejected"
     # and the listing is consumed
@@ -266,13 +291,16 @@ def test_free_agent_instant_buy(_world, _season):
     price = Decimal(str(cat.get_player(pid)["game_price_usdc"]))
     bw, house0 = M._wallet_of(buyer), L.balance(M.HOUSE_MARKET_WALLET)
     roster0 = len(CS.roster_ids(buyer))
+    tb0 = CS.transfer_balance(buyer)
 
     out = M.buy_free_agent(buyer, pid)
     assert out == {"ok": True, "player_id": pid, "price_usdc": str(price)}
     assert cat.get_player(pid)["owner_agent_id"] == buyer
     assert len(CS.roster_ids(buyer)) == roster0 + 1
     assert L.balance(M.HOUSE_MARKET_WALLET) == house0 + price
-    assert CS.transfer_balance(buyer) < Decimal("60.00")
+    # at least price + wage runway; today it is 2x price + runway because
+    # transfer_balance counts the fee in both budget and squad spend (reported)
+    assert CS.transfer_balance(buyer) <= tb0 - price - _runway(pid)
     # and it is gone from the market
     with pytest.raises(M.MarketError):
         M.buy_free_agent(_demo_ids(2)[1], pid)
@@ -292,6 +320,7 @@ def test_ask_carries_the_window_payload(_world, _season):
 
     M.open_window(1, "mid", closes_at="soon")
     CS.adjust_budget(agent_id, Decimal("60.00"))
+    _trim_squad(agent_id, 13)  # squads now auto-build to 16; make the gap explicit
     ask = MP.build_matchday_ask(agent_id, _raw(_season), 1)
     tw = ask["transfer_window"]
     assert tw["open"] is True and tw["phase"] == "mid"

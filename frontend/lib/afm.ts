@@ -28,6 +28,26 @@ export interface AfmPlayer {
   weekly_assists?: number
   weekly_apps?: number | null
   weekly_rating?: number | null
+  /** global_star = real star awaiting a licence; real_ng; original (ours); generated (AI fillers) */
+  origin?: 'global_star' | 'real_ng' | 'original' | 'generated'
+  /** 'upcoming' players are listed but can't be signed or fielded */
+  availability?: 'available' | 'upcoming'
+  availability_label?: string | null
+  persona?: AfmPersona
+}
+
+export interface AfmPersona {
+  tier: 'icon' | 'prospect'
+  archetype: string
+  weapon: string
+  temperament: string
+  backstory: string
+  rival_id?: string
+}
+
+/** Licence-pending stars are shown in the catalog but never picked or bought. */
+export function isSignable(p: Pick<AfmPlayer, 'availability'>): boolean {
+  return p.availability !== 'upcoming'
 }
 
 export interface CatalogFile {
@@ -57,8 +77,8 @@ export type FormationName = (typeof FORMATIONS)[number]
 
 export const TEAM_PRESETS: Record<string, { name: string; kit: string; kitDark: string; accent: string }> = {
   boardman: { name: 'Boardman FC', kit: '#7c3aed', kitDark: '#4c1d95', accent: '#c4b5fd' },
-  bluelock: { name: 'Blue Lock FC', kit: '#3b82f6', kitDark: '#1e3a8a', accent: '#bfdbfe' },
-  aoashi: { name: 'Ao Ashi FC', kit: '#f8fafc', kitDark: '#1e293b', accent: '#cbd5e1' },
+  bluelock: { name: 'Forge FC', kit: '#3b82f6', kitDark: '#1e3a8a', accent: '#bfdbfe' },
+  aoashi: { name: 'Tidewater FC', kit: '#f8fafc', kitDark: '#1e293b', accent: '#cbd5e1' },
   matchslice: { name: 'Match-Slice FC', kit: '#ff5a3c', kitDark: '#7f1d1d', accent: '#fecaca' },
   pike: { name: 'Pike City', kit: '#0ea5e9', kitDark: '#0c4a6e', accent: '#7dd3fc' },
   moon: { name: 'Lunar FC', kit: '#22c55e', kitDark: '#14532d', accent: '#86efac' },
@@ -254,7 +274,7 @@ export function pickXI(
   const byGroup = new Map<string, AfmPlayer[]>()
   for (const p of players) {
     if (p.injury || (p.suspension_matches ?? 0) > 0) continue
-    if (taken.has(p.player_id)) continue
+    if (taken.has(p.player_id) || !isSignable(p)) continue
     const list = bySlot.get(p.slot) ?? []
     list.push(p)
     bySlot.set(p.slot, list)
@@ -304,7 +324,7 @@ export function pickXI(
 
 export function pickBench(players: AfmPlayer[], taken: Set<string>, count = 5): AfmPlayer[] {
   const pool = players
-    .filter((p) => !taken.has(p.player_id) && !p.injury)
+    .filter((p) => !taken.has(p.player_id) && !p.injury && isSignable(p))
     .sort((a, b) => (b.base_rating ?? 0) - (a.base_rating ?? 0))
   return pool.slice(0, count)
 }
@@ -959,13 +979,13 @@ export const MANAGER_ARCHETYPES = [
     id: 'striker',
     name: 'The Striker Ego',
     blurb:
-      'Stars over system: highest-rated XI, attack-first shapes (3-4-3 / 4-3-3), never parks the bus. Blue Lock school.',
+      'Stars over system: highest-rated XI, attack-first shapes (3-4-3 / 4-3-3), never parks the bus. Forge school.',
   },
   {
     id: 'tactician',
     name: 'The Total Footballer',
     blurb:
-      'System over stars: position-disciplined XI, balanced shapes (4-2-3-1 / 4-1-4-1), reads the opponent and adapts. Ao Ashi school.',
+      'System over stars: position-disciplined XI, balanced shapes (4-2-3-1 / 4-1-4-1), reads the opponent and adapts. Tidewater school.',
   },
   {
     id: 'pragmatist',
