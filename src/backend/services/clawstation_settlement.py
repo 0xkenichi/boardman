@@ -21,6 +21,7 @@ from gaming.src.backend.services.clawstation_escrow import (
     EscrowError,
     flag_dispute,
     resolve_match,
+    settlement_split,
 )
 
 logger = logging.getLogger(__name__)
@@ -467,7 +468,7 @@ async def _notify_result(
         f"\n<code>{tx_hash_disp}</code>" if tx_hash_disp else ""
     )
 
-    pot = float(amount * 2 * Decimal("0.93"))
+    pot = float(settlement_split(amount)[2])
     home, away, scoreline = _score_from_challenge(challenge)
 
     def _tag_for(uid: Optional[str]) -> str:

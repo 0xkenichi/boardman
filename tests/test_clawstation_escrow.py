@@ -548,3 +548,82 @@ async def test_flag_dispute_calls_blockchain_flag(monkeypatch):
     assert result["success"] is True
     assert result["tx_hash"] == "0xFlagHash"
     mock_bl.flag_dispute_onchain.assert_awaited_once_with("challenge_1")
+
+
+@pytest.mark.parametrize(
+    "stake, fee, payout",
+    [
+        # Pocket: under $5 a side → $0.50 flat per player ($1 on the pot)
+        (Decimal("2"), Decimal("1"), Decimal("3")),
+        (Decimal("4.99"), Decimal("1"), Decimal("8.98")),
+        # Standard: $5 to $500 a side → 7% of the pot
+        (Decimal("5"), Decimal("0.7"), Decimal("9.3")),
+        (Decimal("25"), Decimal("3.5"), Decimal("46.5")),
+        (Decimal("500"), Decimal("70"), Decimal("930")),
+        # Premium: over $500 a side → 10% of the pot
+        (Decimal("600"), Decimal("120"), Decimal("1080")),
+    ],
+)
+def test_settlement_split_follows_the_contract_tiers(stake, fee, payout):
+    from gaming.src.backend.services.clawstation_escrow import settlement_split
+
+    pot, got_fee, got_payout = settlement_split(stake)
+    assert pot == stake * 2
+    assert got_fee == fee
+    assert got_payout == payout
+    assert got_fee + got_payout == pot
+
+
+def _capture_resolve(monkeypatch, stake, onchain_status=None):
+    """Make resolve_match run on a ``stake``-a-side challenge; collect its audit rows."""
+    mod = "gaming.src.backend.services.clawstation_escrow"
+    rows: list[dict] = []
+    monkeypatch.setattr(
+        f"{mod}._load_challenge",
+        lambda cid: {
+            "id": cid,
+            "creator_id": "user_1",
+            "opponent_id": "user_2",
+            "status": "submitted",
+            "amount_usdc": float(stake),
+            "winner_id": "user_1",
+            "settlement_chain": "base",
+        },
+    )
+    monkeypatch.setattr(f"{mod}._find_existing_audit", lambda *a, **k: None)
+    monkeypatch.setattr(f"{mod}._record_audit", lambda **kw: rows.append(kw))
+    monkeypatch.setattr(f"{mod}._update_challenge", lambda *a, **k: None)
+    mock_bl = MagicMock()
+    mock_bl.get_match_status.return_value = onchain_status
+    mock_bl.resolve_match_onchain = AsyncMock(
+        return_value={"tx_hash": "0xResolveHash", "block": 1, "gas_used": 1}
+    )
+    monkeypatch.setattr(
+        "backend.blockchain_layer.get_blockchain_layer_for_chain", lambda chain: mock_bl
+    )
+    return rows
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "stake, fee",
+    [(Decimal("2"), Decimal("1")), (Decimal("10"), Decimal("1.4")), (Decimal("600"), Decimal("120"))],
+)
+@pytest.mark.parametrize("recovered", [False, True])
+async def test_resolve_audit_rows_record_the_tier_fee(monkeypatch, stake, fee, recovered):
+    """Audit rows used to hardcode 7%: a $2 Pocket match logged a $0.28 fee
+    while the contract took $1. Both the normal and the crash-recovery path
+    now record the fee the contract's tier charges."""
+    status = {"status": "RESOLVED", "resolved_tx_hash": "0xOld"} if recovered else None
+    rows = _capture_resolve(monkeypatch, stake, onchain_status=status)
+
+    result = await resolve_match("challenge_1", "0xWinnerAddress")
+
+    assert result["success"] is True
+    assert bool(result.get("recovered")) is recovered
+    by_movement = {r["movement"]: r for r in rows}
+    pot = stake * 2
+    assert by_movement["fee"]["amount"] == fee
+    assert by_movement["payout"]["amount"] == pot - fee
+    assert by_movement["payout"]["metadata"]["fee_usdc"] == float(fee)
+    assert by_movement["payout"]["metadata"]["total_pot_usdc"] == float(pot)
