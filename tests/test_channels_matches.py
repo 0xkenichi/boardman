@@ -599,3 +599,41 @@ def test_legacy_telegram_report_finalize_uses_the_shared_service(mworld, monkeyp
     assert "Report submitted for fair ruling" in cb.message.answer.call_args_list[-1].args[0]
     sent = [c.kwargs["text"] for c in world.bot.send_message.call_args_list]
     assert any("Opponent reported" in t for t in sent)
+
+
+def test_telegram_match_entry_points_need_explicit_flags(mworld, monkeypatch):
+    from gaming.src.channels.telegram import adapter
+
+    monkeypatch.setenv("CHANNELS_CORE_FLOWS", "all")
+    monkeypatch.delenv("CHANNELS_CORE_FLOWS_TELEGRAM", raising=False)
+    for flow in ("challenge", "match", "report"):
+        assert run(adapter.CoreFlow(flow)(None)) is False
+    monkeypatch.setenv("CHANNELS_CORE_FLOWS_TELEGRAM", "challenge,match,report")
+    assert all(run(adapter.CoreFlow(f)(None)) for f in ("challenge", "match", "report"))
+
+
+def test_telegram_report_photo_is_stored_not_a_file_id(mworld):
+    from unittest.mock import AsyncMock, MagicMock
+
+    from gaming.src.channels.core import state as conv_state
+    from gaming.src.channels.core.evidence import read_evidence
+    from gaming.src.channels.telegram import adapter
+
+    msg = MagicMock()
+    msg.from_user = MagicMock(id=5001)
+    msg.photo = [MagicMock(file_id="AgACsmall"), MagicMock(file_id="AgACbig")]
+    bot = AsyncMock()
+    bot.get_file = AsyncMock(return_value=MagicMock(file_path="photos/file_1.jpg"))
+
+    async def download(path, destination):
+        destination.write(b"\xff\xd8\xffjpeg-final-screen")
+
+    bot.download_file = download
+    st = conv_state.load("telegram", "5001")
+    st.set("report", "photo", cid="x")
+    conv_state.save(st)
+    assert run(adapter.ActiveCoreReport()(msg, None)) is True
+    ref, mime = run(adapter.telegram_photo_to_evidence(msg, bot))
+    assert ref.startswith("evidence://local/telegram/") and mime == "image/jpeg"
+    assert read_evidence(ref)[0] == b"\xff\xd8\xffjpeg-final-screen"
+    bot.get_file.assert_awaited_with("AgACbig")
