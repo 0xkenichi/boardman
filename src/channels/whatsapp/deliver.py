@@ -29,7 +29,7 @@ class WhatsAppDeliverer:
         tpl = templates.for_kind(notice.kind)
         if tpl is None:
             return None, None
-        payloads = [o.id for o in getattr(notice, "options", [])][: len(tpl.buttons)]
+        payloads = notice.payloads(len(tpl.buttons))
         msg = templates.message(tpl, notice.params, payloads)
         wamid = await asyncio.to_thread(self.client.send, self._to(ident), msg)
         return tpl.name, wamid

@@ -35,6 +35,13 @@ class Notice:
     params: dict[str, Any] = field(default_factory=dict)
     text: str = ""  # the free-form body (window / Telegram)
     options: list[Option] = field(default_factory=list)
+    # Quick-reply payloads for the template, in the template's button order.
+    # Defaults to the option ids when empty.
+    template_payloads: list[str] = field(default_factory=list)
+
+    def payloads(self, n: int) -> list[str]:
+        src = self.template_payloads or [o.id for o in self.options]
+        return list(src)[:n]
 
     def as_outs(self) -> list[Out]:
         if self.options:
@@ -103,12 +110,15 @@ class NotificationService:
 
     async def notify(self, profile_id: str, notice: Notice, *, all_channels: bool = False,
                      exclude: Optional[tuple[str, str]] = None,
+                     only: Optional[set[str]] = None,
                      now: Optional[datetime] = None) -> list[Delivery]:
         now = now or utcnow()
         idents = await asyncio.to_thread(self.repo.for_profile, profile_id)
         results: list[Delivery] = []
         for ident in idents:
             if exclude and (ident.channel, ident.external_id) == exclude:
+                continue
+            if only is not None and ident.channel not in only:
                 continue
             d = await self._deliver(ident, notice, now)
             if d is None:
@@ -153,14 +163,25 @@ class TelegramDeliverer:
         from gaming.src.channels.telegram.render import render_for_notify
 
         text, markup = render_for_notify(outs)
-        ok = await notify_user(ident.profile_id, text, buttons=markup)
+        ok = await notify_user(ident.profile_id, text, buttons=markup, direct=True)
         return "" if ok else None  # Telegram ids are not tracked
 
     async def send_template(self, ident: Identity, notice: Notice):
         return None, None
 
 
+_override: Optional[NotificationService] = None
+
+
+def set_default_service(svc: Optional[NotificationService]) -> None:
+    """Install a service for this process (tests; ``None`` restores the default)."""
+    global _override
+    _override = svc
+
+
 def default_service() -> NotificationService:
+    if _override is not None:
+        return _override
     deliverers: dict[str, Deliverer] = {"telegram": TelegramDeliverer()}
     try:
         from gaming.src.channels import config

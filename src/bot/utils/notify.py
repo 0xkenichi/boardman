@@ -121,13 +121,32 @@ async def notify_user(
     text: str,
     buttons: InlineKeyboardMarkup | None = None,
     max_retries: int = 3,
+    *,
+    notice=None,
+    direct: bool = False,
 ) -> bool:
     """Send a DM to the Telegram chat id stored on the user's profile.
 
     Retries on ``TelegramRetryAfter`` with exponential backoff.  On
     ``TelegramForbiddenError`` or persistent failure the notification is
     logged to ``gaming.notification_failures`` for replay.
+
+    Players whose channel is WhatsApp get the notice there instead
+    (``channels.core.bridge``; only when ``WHATSAPP_ENABLED=1``). ``notice`` is
+    the structured version (template params) for them; ``direct=True`` skips
+    the bridge (the core's own Telegram deliverer).
     """
+    if not direct:
+        try:
+            from gaming.src.channels.core.bridge import deliver as _channel_deliver
+
+            routed = await _channel_deliver(user_id, text, buttons, notice)
+        except Exception:
+            logger.warning("[Notify] channel bridge failed for %s", user_id, exc_info=True)
+            routed = None
+        if routed is not None:
+            return routed
+
     bot = _ensure_bot()
     if bot is None:
         logger.error("[Notify] Bot instance not set; cannot notify user %s", user_id)

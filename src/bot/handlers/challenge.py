@@ -135,41 +135,17 @@ async def _create_challenge(
     visibility: str,
     settlement_chain: str,
 ) -> dict:
-    from gaming.src.backend.services.match_codes import display_code
+    from gaming.src.channels.core.actions.matches import insert_challenge
 
-    challenge_id = str(uuid.uuid4())
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
-    # Never insert public_code — live gaming.challenges has no such column (PGRST204)
-    record = denormalize_challenge(
-        {
-            "id": challenge_id,
-            "creator_id": creator_id,
-            "opponent_id": opponent_id,
-            "amount_usdc": float(amount),
-            "game": game,
-            "visibility": visibility,
-            "status": "open",
-            "expires_at": expires_at.isoformat(),
-            "message": f"Boardman {visibility} challenge",
-            "settlement_chain": settlement_chain,
-        }
+    return insert_challenge(
+        creator_id=creator_id,
+        opponent_id=opponent_id,
+        amount=amount,
+        game=game,
+        visibility=visibility,
+        settlement_chain=settlement_chain,
+        message=f"Boardman {visibility} challenge",
     )
-    sb = get_supabase()
-    try:
-        result = sb.schema("gaming").table("challenges").insert(record).execute()
-    except Exception as exc:
-        err = str(exc).lower()
-        if "settlement_chain" in err and ("column" in err or "schema cache" in err):
-            record.pop("settlement_chain", None)
-            result = sb.schema("gaming").table("challenges").insert(record).execute()
-        else:
-            raise
-    if not result.data:
-        raise RuntimeError("Challenge insert returned no data")
-    ch = normalize_challenge(result.data[0])
-    if ch is not None:
-        ch["public_code"] = display_code(None, challenge_id=challenge_id)
-    return ch
 
 
 async def _get_open_challenge(challenge_id: str) -> Optional[dict]:
@@ -184,22 +160,9 @@ async def _update_challenge_status(challenge_id: str, status: str) -> None:
 
 
 async def _create_bet(challenge: dict, opponent_id: str) -> Optional[dict]:
-    bet_id = str(uuid.uuid4())
-    record = {
-        "id": bet_id,
-        "challenge_id": challenge["id"],
-        "challenger_id": challenge["creator_id"],
-        "opponent_id": opponent_id,
-        "amount_usdc": float(challenge["amount_usdc"]),
-        "status": "pending",
-    }
-    sb = get_supabase()
-    try:
-        result = sb.schema("gaming").table("bets").insert(record).execute()
-        return result.data[0] if result.data else None
-    except Exception as exc:
-        logger.warning("[Challenge] gaming.bets insert skipped: %s", exc)
-        return None
+    from gaming.src.channels.core.actions.matches import create_bet
+
+    return create_bet(challenge, opponent_id)
 
 
 @router.message(Command("challenge"))
@@ -360,74 +323,41 @@ async def cmd_challenge(message: types.Message) -> None:
 
 @router.callback_query(F.data.startswith("challenge:accept:"))
 async def cb_accept(callback: types.CallbackQuery) -> None:
-    """Accept a challenge."""
+    """Accept a challenge (``matches.accept_challenge`` does the checks and writes)."""
     try:
         await callback.answer("Accepting…")
     except Exception:
         pass
-    from gaming.src.backend.services.safety import is_paused, pause_message
-
-    if is_paused():
-        await callback.message.answer(pause_message(), parse_mode=ParseMode.HTML)
-        return
+    from gaming.src.channels.core.actions.matches import MatchRefused, accept_challenge
 
     challenge_id = callback.data.split(":", 2)[2]
-    challenge = await _get_open_challenge(challenge_id)
-    if not challenge or challenge.get("status") != "open":
-        await callback.message.answer("❌ Challenge is no longer available.", parse_mode=None)
-        return
-
     accepter = await get_or_create_profile(callback.from_user)
-    if challenge["creator_id"] == accepter["id"]:
-        await callback.message.answer("❌ You cannot accept your own challenge.", parse_mode=None)
-        return
-
-    if challenge.get("visibility") == "private" and challenge.get("opponent_id") != accepter["id"]:
-        await callback.message.answer("❌ This challenge is not for you.", parse_mode=None)
-        return
-
-    from gaming.src.backend.services.play_points import assert_can_start_or_accept
-
-    # Allow accept if the only active match is THIS challenge (invited target)
-    blocked = assert_can_start_or_accept(accepter["id"])
-    if blocked and challenge.get("id") not in (blocked or ""):
-        # If they have a different active match, block
-        from gaming.src.backend.services.play_points import get_active_challenge
-
-        active = get_active_challenge(accepter["id"])
-        if active and active.get("id") != challenge.get("id"):
+    try:
+        ch_full = await accept_challenge(challenge_id, accepter)
+    except MatchRefused as exc:
+        if exc.kind == "paused":
+            await callback.message.answer(exc.detail["html"], parse_mode=ParseMode.HTML)
+        elif exc.kind == "busy":
+            active = exc.detail.get("active") or {}
             await callback.message.answer(
                 f"❌ You already have an open match.\n"
                 f"Finish <code>{active.get('id')}</code> first.\n"
                 f"/match_info {active.get('id')}",
                 parse_mode=ParseMode.HTML,
             )
-            return
-
-    # Balance check for opponent
-    amount = Decimal(str(challenge["amount_usdc"]))
-    try:
-        bal = await get_usdc_balance(accepter["id"])
-        if bal < amount:
+        elif exc.kind == "funds":
+            amount, bal = exc.detail["amount"], exc.detail["balance"]
             await callback.message.answer(
                 f"❌ Need {bold(f'${amount:,.2f}')} USDC to accept. You have {bold(f'${bal:,.2f}')}.",
                 parse_mode=ParseMode.HTML,
             )
-            return
-    except Exception as exc:
-        logger.warning("[Challenge] balance check on accept: %s", exc)
+        else:
+            await callback.message.answer(f"❌ {exc.message}", parse_mode=None)
+        return
 
-    sb = get_supabase()
-    sb.schema("gaming").table("challenges").update(
-        denormalize_challenge({"status": "accepted", "opponent_id": accepter["id"]})
-    ).eq("id", challenge_id).execute()
-    await _create_bet(challenge, accepter["id"])
-
-    chain = challenge.get("settlement_chain") or default_chain_id()
+    chain = ch_full.get("settlement_chain") or default_chain_id()
     from gaming.src.bot.keyboards import match_actions_menu
 
-    ch_full = await _get_open_challenge(challenge_id) or challenge
-    ch_full = {**ch_full, "status": "accepted", "opponent_id": accepter["id"]}
     await callback.message.answer(
         f"✅ Challenge accepted.\n\n"
         f"Network: {bold(chain)}\n"
@@ -436,11 +366,14 @@ async def cb_accept(callback: types.CallbackQuery) -> None:
         parse_mode=ParseMode.HTML,
         reply_markup=match_actions_menu(ch_full, accepter["id"]),
     )
+    from gaming.src.channels.core import match_notices
+
     await notify_user(
-        challenge["creator_id"],
+        ch_full["creator_id"],
         f"🎮 Accepted by @{h(accepter.get('gaming_tag') or 'player')}.\n"
         f"Tap <b>My match</b> → <b>Lock my stake</b> first.",
-        buttons=match_actions_menu(ch_full, challenge["creator_id"]),
+        buttons=match_actions_menu(ch_full, ch_full["creator_id"]),
+        notice=match_notices.challenge_answered(ch_full, accepter, accepted=True),
     )
 
 
@@ -448,25 +381,25 @@ async def cb_accept(callback: types.CallbackQuery) -> None:
 async def cb_decline(callback: types.CallbackQuery) -> None:
     """Decline a challenge."""
     await callback.answer()
+    from gaming.src.channels.core.actions.matches import MatchRefused, decline_challenge
+
     challenge_id = callback.data.split(":", 2)[2]
-    challenge = await _get_open_challenge(challenge_id)
-    if not challenge or challenge.get("status") != "open":
-        await callback.message.answer("❌ Challenge is no longer available.", parse_mode=None)
-        return
-
     decliner = await get_or_create_profile(callback.from_user)
-    if challenge.get("visibility") == "private" and challenge.get("opponent_id") != decliner["id"]:
-        await callback.message.answer("❌ This challenge is not for you.", parse_mode=None)
+    try:
+        challenge = await decline_challenge(challenge_id, decliner)
+    except MatchRefused as exc:
+        await callback.message.answer(f"❌ {exc.message}", parse_mode=None)
         return
 
-    await _update_challenge_status(challenge_id, "declined")
     await callback.message.answer("❌ Challenge declined.", parse_mode=None)
     from gaming.src.backend.services.match_codes import display_code
+    from gaming.src.channels.core import match_notices
 
     await notify_user(
         challenge["creator_id"],
         f"🚫 {code(decliner.get('gaming_tag') or 'opponent')} declined your challenge "
         f"{code(display_code(challenge))}.",
+        notice=match_notices.challenge_answered(challenge, decliner, accepted=False),
     )
 
 

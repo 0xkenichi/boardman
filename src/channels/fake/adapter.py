@@ -172,7 +172,7 @@ class RecordingDeliverer:
         tpl = templates.for_kind(notice.kind)
         if tpl is None:
             return None, None
-        msg = templates.message(tpl, notice.params, [o.id for o in notice.options][: len(tpl.buttons)])
+        msg = templates.message(tpl, notice.params, notice.payloads(len(tpl.buttons)))
         self.templates.append((ident.external_id, msg))
         return tpl.name, f"wamid.T{next(_seq)}"
 
