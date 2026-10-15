@@ -5,7 +5,7 @@ import { BookShell } from '@/components/rematch/BookShell'
 export const metadata: Metadata = {
   title: 'How it works',
   description:
-    'Four easy steps: put the money in a safe box, play the game, show who won, get paid. Boardman holds the money so nobody has to trust anybody.',
+    'Four easy steps: lock the stakes in escrow, play the game, show who won, get paid. Boardman holds the stakes so the two players don’t have to trust each other. Testnet only — test USDC.',
 }
 
 const STEPS = [
@@ -13,7 +13,7 @@ const STEPS = [
     n: '1',
     tag: 'LOCK',
     title: 'Both players put money in a safe box',
-    body: 'You and your friend each put in the same amount of game money. A robot called Boardman locks it in a box before you start playing. Nobody can take it back now — not even Boardman. That way, nobody has to trust anybody.',
+    body: 'You and your friend each put in the same amount of game money — test USDC on Arc testnet for now. Each of you locks your stake into an escrow contract before you start playing: the challenger first, then the opponent. Once both are in, neither of you can take it back, so you don’t have to trust each other. You do trust Boardman to referee.',
   },
   {
     n: '2',
@@ -30,8 +30,8 @@ const STEPS = [
   {
     n: '4',
     tag: 'PAID',
-    title: 'The winner gets the money — right away',
-    body: 'The box opens, the winner takes everything, and Boardman keeps a small piece for holding it. On a real blockchain, so nobody can argue with the receipt. Usually it lands in less than a second.',
+    title: 'The winner gets the money',
+    body: 'When both reports agree — or the picture check is sure — Boardman tells the box to pay. The winner gets the pot, and the contract takes Boardman’s small fee in the same transaction. If you disagree, there is a short dispute window and a person decides first. The payout is a transaction anyone can look up on the Arc testnet explorer.',
   },
 ]
 

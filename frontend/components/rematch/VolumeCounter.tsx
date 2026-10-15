@@ -59,7 +59,7 @@ export function VolumeCounter() {
         color: '#8a8478',
         margin: '0.5rem 0 0 0',
       }}>
-        USDC settled on-chain · skill + spectator
+        Test USDC · skill + spectator
       </p>
     </div>
   )

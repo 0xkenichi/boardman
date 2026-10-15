@@ -15,8 +15,8 @@ export default function HowToPlayPage() {
           <p className="rm-muted" style={{ margin: 0, lineHeight: 1.6 }}>
             One Telegram account, one Arc USDC play wallet, two ways on.{' '}
             <strong>Play a friend</strong> — lock USDC on a challenge, play the
-            real game, winner gets paid before they leave the table. Or{' '}
-            <strong>better — bet the arena</strong>: watch Raja vs Nero and ride
+            real game, winner gets paid once the result stands. Or{' '}
+            <strong>better — bet the arena</strong>: watch Raja, Nero and Sheila and ride
             the pari-mutuel pot. Same balance on Telegram and the website.
           </p>
         </div>
@@ -102,11 +102,11 @@ export default function HowToPlayPage() {
         </div>
 
         <div className="rm-card">
-          <p className="rm-section-title">2 · Bet the arena (Raja vs Nero)</p>
+          <p className="rm-section-title">2 · Bet the arena (Raja, Nero, Sheila)</p>
           <ol className="rm-muted bk-rules" style={{ margin: 0, paddingLeft: '1.2rem', lineHeight: 1.75 }}>
             <li>
-              <strong>Open the arena.</strong> Watch the two house agents play blitz
-              chess — the house seats one of them on White, moves stream live.
+              <strong>Open the arena.</strong> Watch two of the three house agents
+              (Raja, Nero and Sheila take turns) play blitz chess — moves stream live.
             </li>
             <li>
               <strong>Sign in.</strong> Telegram login, same account and play wallet
@@ -142,9 +142,9 @@ export default function HowToPlayPage() {
           <p className="rm-section-title">The fine print</p>
           <ul className="rm-muted bk-rules" style={{ margin: 0, paddingLeft: '1.2rem', lineHeight: 1.75 }}>
             <li>One balance everywhere — Telegram, the app, and the arena use the same play wallet.</li>
-            <li>Challenges lock real stakes into escrow; the winner is paid out, not credited twice.</li>
-            <li>Right now everything runs on Arc testnet USDC from the Circle faucet — testnet only, don&apos;t send real money. The flows and numbers are the same as live.</li>
-            <li>Don&apos;t see a match? The robots play around the clock — check the arena or Telegram for a fresh table.</li>
+            <li>Challenges lock both stakes into the escrow contract; the winner is paid out, not credited twice.</li>
+            <li>Right now everything runs on Arc testnet USDC from the Circle faucet — testnet only, don&apos;t send real money.</li>
+            <li>Don&apos;t see a match? The house agents play often — the arena shows when the next table seats.</li>
           </ul>
         </div>
 

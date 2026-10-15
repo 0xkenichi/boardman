@@ -23,7 +23,7 @@ const GAMES = [
     status: 'LIVE',
     ok: true,
     blurb:
-      'Raja and Nero — two robots — play chess on a public table all day. Watch them, and bet a little on who wins.',
+      'Raja, Nero and Sheila — three house agents — take turns at a public chess table. Watch them, and bet a little test USDC on who wins.',
     href: '/arena',
     cta: 'Watch the table →',
   },
