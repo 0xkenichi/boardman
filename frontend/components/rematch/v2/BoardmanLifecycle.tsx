@@ -5,7 +5,7 @@
  *
  * A pinned viewport where one match plays out as you scroll:
  *   01 LOCK    both players' stakes fly into the escrow vault
- *   02 PLAY    pot sits in escrow while the real game happens; fans pile in
+ *   02 PLAY    pot sits in escrow while the real game happens
  *   03 SETTLE  contract splits pot → winner payout + platform fee
  *   04 PROOF   mono receipt: pot, fee, payout — reconciled
  *
@@ -23,29 +23,29 @@ const CHAPTERS = [
     n: '01',
     tag: 'LOCK',
     title: 'Both sides lock.\nNobody can blink.',
-    body: 'Each player stakes USDC into BoardmanEscrow before the game starts. The money leaves both wallets at the same moment. There is no invoice, no trust fall, no "I’ll pay you after".',
-    stat: 'DUAL-LOCK · ATOMIC',
+    body: 'Each player locks their stake into BoardmanEscrow before the game starts — the challenger first, then the opponent. Nothing kicks off until both stakes are in, and if the opponent never locks, the challenger’s stake goes back. No invoice, no trust fall, no "I’ll pay you after".',
+    stat: 'DUAL-LOCK · ON-CHAIN',
   },
   {
     n: '02',
     tag: 'PLAY',
     title: 'The pot waits\nwhile the world plays.',
-    body: 'The stake sits in the contract — not with us — while the real game happens on any platform: console, phone, PC, a physical board. Fans can back a side from the spectator pool.',
-    stat: 'NON-CUSTODIAL · SPECTATOR POOL',
+    body: 'Both stakes sit in the escrow contract while the real game happens wherever it happens: console, phone, PC, a physical board. Nobody can pull their stake back mid-game.',
+    stat: 'HELD IN ESCROW',
   },
   {
     n: '03',
     tag: 'SETTLE',
     title: 'One result in.\nTwo transfers out.',
-    body: 'The resolver submits the outcome and the contract does the math: winner payout, platform fee by tier, on-chain, sub-second finality. No humans touch the money on the way through.',
-    stat: 'RESOLVER · TIERED FEE',
+    body: 'Both players report the score with a photo of the final screen. When the reports agree — or the screen reader is sure — the resolver submits the result and the contract does the math: winner payout and the tiered fee, in one transaction. Disagreements get a short dispute window and a human referee.',
+    stat: 'RESOLVER · TIERED FEE · DISPUTE WINDOW',
   },
   {
     n: '04',
     tag: 'PROOF',
     title: 'A receipt\non the chain.',
-    body: 'Every match ends in a public artifact: pot in, fee taken, payout out — reconciled against the contract balance. What happened to the money is never a question.',
-    stat: 'RECONCILED · PUBLIC',
+    body: 'Every settlement is a transaction anyone can look up on the Arc testnet explorer: pot in, fee taken, payout out. The house checks its own books against the contract balance around the clock.',
+    stat: 'ON-CHAIN · RECONCILED',
   },
 ]
 
@@ -88,7 +88,6 @@ export function BoardmanLifecycle() {
   const stage = Math.min(3, Math.floor(p * 4))
   const local = Math.min(1, Math.max(0, p * 4 - stage))
   const locked = p > 0.1
-  const played = stage >= 1
   const settling = stage >= 2
   const settled = stage >= 3
   const chapter = CHAPTERS[stage]
@@ -151,19 +150,7 @@ export function BoardmanLifecycle() {
               <span className="lc-vault-pot v2-mono">
                 {settling ? (settled ? pad(0) : pad(POT * (1 - local))) : pad(POT)}
               </span>
-              <span className="v2-mono lc-vault-sub">USDC HELD · NOT CUSTODIAL</span>
-
-              {/* spectator dots — stage 02 */}
-              <div className={`lc-fans ${played && stage === 1 ? 'lc-fans-on' : ''}`}>
-                {Array.from({ length: 12 }, (_, i) => (
-                  <span
-                    key={i}
-                    className="lc-fan"
-                    style={{ transitionDelay: `${i * 60}ms` }}
-                  />
-                ))}
-                <span className="v2-mono lc-fans-note">SPECTATOR POOL · 12 BACKING</span>
-              </div>
+              <span className="v2-mono lc-vault-sub">TEST USDC HELD IN ESCROW</span>
 
               {/* split bars — stage 03 */}
               <div className={`lc-split ${settling ? 'lc-split-on' : ''}`}>
@@ -202,8 +189,8 @@ export function BoardmanLifecycle() {
                 <span>$111.60</span>
               </div>
               <div className="lc-rc-row lc-rc-dim">
-                <span>ARC · 5042002 · EXAMPLE RECEIPT</span>
-                <span>&lt; 1s</span>
+                <span>ARC TESTNET · EXAMPLE RECEIPT</span>
+                <span>TEST USDC</span>
               </div>
             </div>
           </div>
