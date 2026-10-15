@@ -272,9 +272,35 @@ def _price(p: dict[str, Any]) -> Decimal:
     return Decimal(str(p.get("game_price_usdc") or "0"))
 
 
+def _runway(p: dict[str, Any]) -> Decimal:
+    return Decimal(str(p.get("wage_per_matchday_usdc") or "0")) * WAGE_RUNWAY_MATCHDAYS
+
+
 def _cost_with_runway(p: dict[str, Any]) -> Decimal:
-    wage = Decimal(str(p.get("wage_per_matchday_usdc") or "0"))
-    return _price(p) + wage * WAGE_RUNWAY_MATCHDAYS
+    return _price(p) + _runway(p)
+
+
+# Transfer authority model
+# ------------------------
+# ``budget_usdc`` is the club's authority ledger: the owner's grant (plus any
+# top-ups) and realised transfer gains/losses. The squad commits against it
+# at each player's *cost basis* (what the club paid; catalog price for the
+# seeded build) plus his wage runway:
+#
+#     transfer_balance = budget_usdc − Σ (cost_basis + wage runway)
+#
+# A purchase never touches ``budget_usdc`` — recording the basis is what
+# consumes the price, exactly once. A sale moves ``net − basis`` into the
+# seller's budget and frees the runway (seller gains net + runway); a release
+# writes the basis off and frees the runway (club gains the runway only).
+COST_BASIS_KEY = "cost_basis_usdc"
+
+
+def _basis(rec: dict[str, Any], pid: str, p: Optional[dict[str, Any]]) -> Decimal:
+    paid = (rec.get(COST_BASIS_KEY) or {}).get(pid)
+    if paid is not None:
+        return Decimal(str(paid))
+    return _price(p or {})  # legacy rosters: valued at today's catalog price
 
 
 def _formation_slots(formation: str) -> list[str]:
@@ -415,6 +441,9 @@ def ensure_club_for_agent(
         rec["tactical_tags"] = ["balanced"]
         rec["is_filler"] = is_filler
         rec["roster"] = roster
+        rec[COST_BASIS_KEY] = {
+            pid: str(_price(get_player(pid) or {})) for pid in roster
+        }
         # legal default lineup = first 11 (covers all slots by construction)
         starters = roster[:STARTERS]
         bench = roster[STARTERS : STARTERS + MAX_BENCH]
@@ -467,6 +496,11 @@ def _retire_unavailable(state: dict[str, Any]) -> list[dict[str, str]]:
                     else:
                         ids.remove(old)
                     club[key] = ids
+            basis = club.get(COST_BASIS_KEY)
+            if isinstance(basis, dict):
+                paid = basis.pop(old, None)
+                if pick and paid is not None:
+                    basis[pick["player_id"]] = paid  # the swap carries the cost
             if pick:
                 pool.remove(pick)
                 set_owner(pick["player_id"], aid)
@@ -552,11 +586,7 @@ def _club_out(aid: str, club: dict[str, Any]) -> dict[str, Any]:
                 out.append(p)
         return out
 
-    spend = sum(
-        (_price(players.get(pid)) + Decimal(str(players.get(pid, {}).get("wage_per_matchday_usdc") or "0")) * WAGE_RUNWAY_MATCHDAYS)
-        for pid in club.get("roster", [])
-        if pid in players
-    )
+    spend = _squad_spend(club, players)
     return {
         "agent_id": aid,
         "club_name": club.get("club_name") or club_name_for_agent(aid),
@@ -588,13 +618,15 @@ def get_club(agent_id: str) -> Optional[dict[str, Any]]:
 # clubs. Raw club records store roster/starter/bench as player-id strings.
 
 
-def _squad_spend(rec: dict[str, Any]) -> Decimal:
-    """Committed spend: price + wage runway for every rostered player."""
+def _squad_spend(
+    rec: dict[str, Any], players: Optional[dict[str, dict[str, Any]]] = None
+) -> Decimal:
+    """Committed spend: cost basis + wage runway for every rostered player."""
     total = Decimal("0")
     for pid in rec.get("roster") or []:
-        p = get_player(pid)
+        p = players.get(pid) if players is not None else get_player(pid)
         if p:
-            total += _price(p) + Decimal(str(p.get("wage_per_matchday_usdc") or "0")) * WAGE_RUNWAY_MATCHDAYS
+            total += _basis(rec, pid, p) + _runway(p)
     return total
 
 
@@ -605,7 +637,7 @@ def roster_ids(agent_id: str) -> list[str]:
 
 
 def transfer_balance(agent_id: str) -> Decimal:
-    """Budget authority left after the committed squad (price + wage runway)."""
+    """Budget authority left after the committed squad (basis + wage runway)."""
     with _lock:
         rec = _club_state(agent_id)
         if not rec:
@@ -614,8 +646,15 @@ def transfer_balance(agent_id: str) -> Decimal:
         return budget - _squad_spend(rec)
 
 
+def cost_basis(agent_id: str, player_id: str) -> Decimal:
+    """What the club carries a rostered player at (paid price, else catalog)."""
+    with _lock:
+        rec = _club_state(agent_id)
+        return _basis(rec, player_id, get_player(player_id))
+
+
 def adjust_budget(agent_id: str, delta: Decimal) -> Decimal:
-    """Move a club's budget authority; refuses to go below zero."""
+    """Move a club's budget authority (owner top-ups); refuses to go below zero."""
     with _lock:
         state = _state()
         rec = state.get("clubs", {}).get(agent_id)
@@ -629,18 +668,46 @@ def adjust_budget(agent_id: str, delta: Decimal) -> Decimal:
         return new
 
 
-def move_player(player_id: str, *, from_agent: Optional[str], to_agent: str) -> None:
-    """Complete a transfer: roster surgery + catalog ownership, atomically."""
+def _drop_from_squad(rec: dict[str, Any], player_id: str) -> Decimal:
+    """Take a player off a club record; returns the cost basis it carried."""
+    basis = _basis(rec, player_id, get_player(player_id))
+    for key in ("roster", "starters", "bench"):
+        rec[key] = [p for p in (rec.get(key) or []) if p != player_id]
+    if isinstance(rec.get(COST_BASIS_KEY), dict):
+        rec[COST_BASIS_KEY].pop(player_id, None)
+    return basis
+
+
+def _rostered_by(clubs: dict[str, Any], player_id: str) -> list[str]:
+    return [aid for aid, c in clubs.items() if player_id in (c.get("roster") or [])]
+
+
+def club_of_player(player_id: str) -> Optional[str]:
+    """The club whose persisted roster holds a player (None when free)."""
+    with _lock:
+        owners = _rostered_by(_state().get("clubs", {}), player_id)
+        return owners[0] if owners else None
+
+
+def move_player(
+    player_id: str,
+    *,
+    from_agent: Optional[str],
+    to_agent: str,
+    price: Optional[Decimal] = None,
+    seller_net: Optional[Decimal] = None,
+) -> None:
+    """Complete a transfer: roster surgery, authority and catalog ownership, atomically.
+
+    ``price`` is what the buying club paid; it becomes the player's cost basis
+    there (consuming the price from its transfer balance exactly once). With
+    no price the player carries his existing basis across. ``seller_net`` is
+    what the selling club received: its budget moves by ``net − basis`` so its
+    balance rises by net + the freed wage runway.
+    """
     with _lock:
         state = _state()
         clubs = state.get("clubs", {})
-        if from_agent:
-            rec = clubs.get(from_agent)
-            if not rec or player_id not in (rec.get("roster") or []):
-                raise KeyError(f"{from_agent} does not roster {player_id}")
-            rec["roster"] = [p for p in (rec.get("roster") or []) if p != player_id]
-            rec["starters"] = [p for p in (rec.get("starters") or []) if p != player_id]
-            rec["bench"] = [p for p in (rec.get("bench") or []) if p != player_id]
         dst = clubs.get(to_agent)
         if not dst:
             raise KeyError(to_agent)
@@ -648,9 +715,66 @@ def move_player(player_id: str, *, from_agent: Optional[str], to_agent: str) -> 
             raise ValueError("already_rostered")
         if len(dst.get("roster") or []) >= MAX_SQUAD_SIZE:
             raise ValueError("squad_full")
+        # one club per player: the catalog owner is in-memory and resets on
+        # restart, so the club rosters are the source of truth
+        elsewhere = [a for a in _rostered_by(clubs, player_id) if a != from_agent]
+        if elsewhere:
+            raise ValueError(f"player_owned_elsewhere:{elsewhere[0]}")
+        basis = _price(get_player(player_id) or {})
+        if from_agent:
+            src = clubs.get(from_agent)
+            if not src or player_id not in (src.get("roster") or []):
+                raise KeyError(f"{from_agent} does not roster {player_id}")
+            basis = _drop_from_squad(src, player_id)
+            if seller_net is not None:
+                budget = Decimal(str(src.get("budget_usdc") or "0"))
+                src["budget_usdc"] = str(budget + Decimal(str(seller_net)) - basis)
         dst.setdefault("roster", []).append(player_id)
+        dst.setdefault(COST_BASIS_KEY, {})[player_id] = str(
+            Decimal(str(price)) if price is not None else basis
+        )
         set_owner(player_id, to_agent)
         _save(state)
+
+
+def release_player(agent_id: str, player_id: str) -> Decimal:
+    """Let a player go for nothing: the basis is written off, the runway freed.
+
+    Returns the cost basis written off. The club's transfer balance rises by
+    the player's wage runway only — a release earns no fee back.
+    """
+    with _lock:
+        state = _state()
+        rec = state.get("clubs", {}).get(agent_id)
+        if not rec or player_id not in (rec.get("roster") or []):
+            raise KeyError(f"{agent_id} does not roster {player_id}")
+        basis = _drop_from_squad(rec, player_id)
+        budget = Decimal(str(rec.get("budget_usdc") or "0"))
+        rec["budget_usdc"] = str(budget - basis)
+        set_owner(player_id, None)
+        _save(state)
+        return basis
+
+
+def sync_catalog_owners() -> int:
+    """Re-assert catalog ownership from the persisted club rosters.
+
+    Catalog ``owner_agent_id`` lives in memory, so after a restart every
+    rostered player looks free until this runs. Returns players re-claimed.
+    """
+    n = 0
+    with _lock:
+        for aid, club in _state().get("clubs", {}).items():
+            for pid in club.get("roster") or []:
+                p = get_player(pid)
+                if not p or p.get("owner_agent_id") == aid:
+                    continue
+                try:
+                    set_owner(pid, aid)
+                    n += 1
+                except Exception:
+                    pass  # licence-pending: _retire_unavailable swaps it out
+    return n
 
 
 def set_lineup(

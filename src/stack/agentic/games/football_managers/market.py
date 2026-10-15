@@ -180,6 +180,10 @@ from gaming.src.stack.agentic.store import load_json, save_json
 
 HOUSE_MARKET_WALLET = "afm_house_market"
 _WINDOW_FILE = "afm_transfer_window.json"
+# Tags buy/sale log entries settled under the cost-basis authority model, so
+# scripts/repair_afm_transfer_authority.py only replays older entries (which
+# debited the price from the budget on top of the squad commitment).
+AUTHORITY_MODEL = "basis_v1"
 
 _market_lock = threading.RLock()
 
@@ -504,9 +508,11 @@ def _settle_offer(d: dict[str, Any], o: dict[str, Any]) -> dict[str, Any]:
             L.credit(HOUSE_MARKET_WALLET, tax, reason="afm_transfer_tax", ref=player_id)
     except Exception as exc:
         raise MarketError(f"ledger_settlement_failed:{exc}") from exc
-    CS.adjust_budget(buyer, -price)
-    CS.adjust_budget(seller, net)
-    CS.move_player(player_id, from_agent=seller, to_agent=buyer)
+    # authority: the buyer carries the player at the price paid (consumed
+    # once, via its squad commitment); the seller books net − basis
+    CS.move_player(
+        player_id, from_agent=seller, to_agent=buyer, price=price, seller_net=net
+    )
     d["listings"].pop(player_id, None)
     o["status"] = "accepted"
     o["resolved_at"] = _now_iso()
@@ -515,7 +521,7 @@ def _settle_offer(d: dict[str, Any], o: dict[str, Any]) -> dict[str, Any]:
             other["status"] = "rejected"
             other["resolved_at"] = _now_iso()
     d["log"].append(
-        {"at": _now_iso(), "kind": "sale", "player_id": player_id, "from": seller, "to": buyer, "price_usdc": str(price), "tax_usdc": str(tax)}
+        {"at": _now_iso(), "kind": "sale", "player_id": player_id, "from": seller, "to": buyer, "price_usdc": str(price), "tax_usdc": str(tax), "authority": AUTHORITY_MODEL}
     )
     _msave(d)
     return {
@@ -541,7 +547,11 @@ def buy_free_agent(agent_id: str, player_id: str) -> dict[str, Any]:
         player = get_player(player_id)
         if not player:
             raise MarketError("player_not_found")
-        if player.get("owner_agent_id") or player_id in d["listings"]:
+        if (
+            player.get("owner_agent_id")
+            or player_id in d["listings"]
+            or CS.club_of_player(player_id)  # catalog owners reset on restart
+        ):
             raise MarketError("player_not_free")
         if not is_available(player):
             raise MarketError("player_licence_pending")  # before any money moves
@@ -554,13 +564,55 @@ def buy_free_agent(agent_id: str, player_id: str) -> dict[str, Any]:
             raise MarketError("buyer_wallet_short")
         L.debit(wallet, price, reason="afm_free_agent_fee", ref=player_id)
         L.credit(HOUSE_MARKET_WALLET, price, reason="afm_free_agent_fee", ref=player_id)
-        CS.adjust_budget(agent_id, -price)
-        CS.move_player(player_id, from_agent=None, to_agent=agent_id)
+        # the squad commitment (basis = price) consumes the price once
+        CS.move_player(player_id, from_agent=None, to_agent=agent_id, price=price)
         d["log"].append(
-            {"at": _now_iso(), "kind": "free_agent", "player_id": player_id, "club": agent_id, "price_usdc": str(price)}
+            {"at": _now_iso(), "kind": "free_agent", "player_id": player_id, "club": agent_id, "price_usdc": str(price), "authority": AUTHORITY_MODEL}
         )
         _msave(d)
         return {"ok": True, "player_id": player_id, "price_usdc": str(price)}
+
+
+def release_player(agent_id: str, player_id: str) -> dict[str, Any]:
+    """Release a squad player to the free market while the window is open.
+
+    No fee comes back: the cost basis is written off and only the wage runway
+    returns to the club's transfer balance. The same squad floor as a sale
+    applies (XI + bench depth, never the only keeper).
+    """
+    from gaming.src.stack.agentic.games.football_managers import club_store as CS
+
+    with _market_lock:
+        d = _mload()
+        win = _open_window_of(d)
+        if not win:
+            raise MarketError("transfer_window_closed")
+        roster = CS.roster_ids(agent_id)
+        if player_id not in roster:
+            raise MarketError("not_owner")
+        if len(roster) - 1 < MIN_SQUAD_SIZE:
+            raise MarketError("below_min_squad")
+        p = get_player(player_id) or {}
+        if str(p.get("slot") or "").upper() == "GK":
+            gks = [
+                pid
+                for pid in roster
+                if str((get_player(pid) or {}).get("slot") or "").upper() == "GK"
+            ]
+            if len(gks) - 1 < 1:
+                raise MarketError("would_lose_only_goalkeeper")
+        written_off = CS.release_player(agent_id, player_id)
+        # a released player is off the transfer list and out of every offer
+        d["listings"].pop(player_id, None)
+        for o in d["offers"].values():
+            if o.get("player_id") == player_id and o.get("status") == "open":
+                o["status"] = "rejected"
+                o["resolved_at"] = _now_iso()
+        d["log"].append(
+            {"at": _now_iso(), "kind": "release", "player_id": player_id, "club": agent_id, "basis_usdc": str(written_off)}
+        )
+        _msave(d)
+        return {"ok": True, "player_id": player_id, "written_off_usdc": str(written_off)}
 
 
 def execute_transfers(agent_id: str, actions: Any) -> list[dict[str, Any]]:
