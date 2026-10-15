@@ -220,3 +220,40 @@ def test_originals_never_reuse_a_real_catalog_name():
 
     real = {p["name"].lower() for p in cat.list_players() if p["origin"] in ("global_star", "real_ng")}
     assert not real & {p["name"].lower() for p in _originals()}
+
+
+def test_legends_are_listed_but_never_ownable(_world):
+    from gaming.src.stack.agentic.games.football_managers import catalog as cat
+    from gaming.src.stack.agentic.games.football_managers import market as M
+    from gaming.src.stack.agentic.games.football_managers.club_store import list_clubs
+
+    legends = [p for p in cat.list_players() if (p.get("persona") or {}).get("tier") == "legend"]
+    real = [p for p in legends if p["origin"] == "legend"]
+    ours = [p for p in legends if p["origin"] == "original"]
+    assert len(real) >= 40 and len(ours) == 12
+    assert {p["nation"] for p in real if p["player_id"].startswith("afm_lg_ng_")} == {"NG"}
+    for p in real:
+        assert p["availability"] == "upcoming" and p["availability_label"] == "Coming soon · licence pending"
+        assert isinstance(p["persona"]["passed"], int) and p["owner_agent_id"] is None
+    for p in ours:
+        assert p["availability_label"] == "Coming soon · Legends era" and p["persona"]["title"]
+    assert all(p["persona"].get("tribute") for p in real if p["nation"] == "NG")
+    # never in a squad, never a free agent, never signable
+    squad_ids = {s["player_id"] for c in list_clubs() for s in c["squad"]}
+    free_ids = {p["player_id"] for p in cat.list_players(free_only=True)}
+    for p in legends:
+        assert p["player_id"] not in squad_ids and p["player_id"] not in free_ids
+        with pytest.raises(cat.PlayerUnavailable):
+            cat.set_owner(p["player_id"], "agent_aoashi_demo")
+    M.open_window(1, "mid", closes_at="soon")
+    with pytest.raises(M.MarketError, match="player_licence_pending"):
+        M.buy_free_agent("agent_aoashi_demo", _by_name("Pelé")["player_id"])
+
+
+def test_legend_file_rows_cannot_unlock_themselves():
+    """An origin=legend row is pending whatever availability it claims."""
+    from gaming.src.stack.agentic.games.football_managers import catalog as cat
+
+    row = cat._normalize_row(0, {"player_id": "x", "name": "X", "nation": "BR", "slot": "ST",
+                                 "real_value_usd": 1, "origin": "legend", "availability": "available"})
+    assert row["availability"] == "upcoming"
