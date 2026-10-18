@@ -352,7 +352,7 @@ def sweep(profile_id: str) -> Optional[dict]:
         return None  # not visible on Base yet; the reconciler tries again
     arc = (settled[0].get("details") or {}).get("arc_address") or ""
     if not arc:
-        arc = wallets.play_wallet_sync(profile_id).get("address") or ""
+        arc = wallets.arc_destination_sync(profile_id)
     ids = sorted(o["id"] for o in settled)
     key = "sweep:" + "|".join(ids)
     br = cctp.start(idempotency_key=key, kind="onramp_sweep", profile_id=profile_id,

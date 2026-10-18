@@ -57,6 +57,12 @@ async def send_withdraw_link(message: types.Message, user: types.User, profile: 
         return False
     minutes = withdraw_links.ttl_ms() // 60000
     shown = f"@{escape(tag)}" if tag else f"<code>{escape(address)}</code>"
+    if issued.kind != "pin":  # self-custody: passkey approval (or wallet setup) on the web
+        text = escape(wd.link_message(dest, amount, issued.kind)).replace("*", "")
+        await message.answer(f"🔐 {text}", parse_mode=ParseMode.HTML,
+                             reply_markup=_keyboard(wd.link_label(issued.kind), issued.url),
+                             disable_web_page_preview=True)
+        return True
     await message.answer(
         "🔐 <b>Confirm your withdrawal</b>\n\n"
         f"Amount: <b>${amount:,.2f} USDC</b>\n"

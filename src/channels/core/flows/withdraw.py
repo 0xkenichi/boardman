@@ -90,4 +90,4 @@ async def _amount(ctx, raw: str) -> None:
         ctx.say(f"{exc}\nSend another amount, or *cancel*.")
         return
     ctx.st.clear()
-    ctx.link(wd.link_message(dest, amount), issued.url, "Confirm withdrawal")
+    ctx.link(wd.link_message(dest, amount, issued.kind), issued.url, wd.link_label(issued.kind))

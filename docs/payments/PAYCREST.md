@@ -252,6 +252,11 @@ All of these must be true, with evidence, before `--enable`. This adds to
    stakes and cash-outs only from the user-controlled wallet → retire the
    developer wallets. Also decide the Arc **mainnet** play-wallet mapping (do
    not let `ensure_user_wallet` reuse a testnet address silently).
+   **Update 2026-10-18:** the founder chose passkey self-custody (Circle
+   Modular Wallets on Arc), built behind `SELF_CUSTODY_WALLETS_ENABLED` — see
+   [SELF_CUSTODY_WALLETS.md](SELF_CUSTODY_WALLETS.md). Top-ups then mint to
+   the player's own account; the Base transit wallets remain custodial for
+   minutes and bank cash-outs from passkey wallets are not wired yet.
 2. **Escrow on Arc mainnet.** BoardmanEscrow v2 contracts are **unaudited**:
    external audit, deploy from a dedicated key, verify source, smoke tests
    (see MAINNET_GOLIVE_CHECKLIST §3).

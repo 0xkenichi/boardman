@@ -92,6 +92,11 @@ def precheck(principal: Principal, amount: Decimal) -> Optional[str]:
 
 
 def request_link(principal: Principal, dest: Destination, amount: Decimal) -> withdraw_links.IssuedLink:
+    from gaming.src.backend.services.self_custody import routing
+
+    route = routing.withdraw_route(principal.profile_id)
+    if route != routing.CUSTODIAL:
+        return _self_custody_link(principal, dest, amount, route)
     reason = precheck(principal, amount)
     if reason:
         raise WithdrawRefused(reason)
@@ -109,8 +114,42 @@ def request_link(principal: Principal, dest: Destination, amount: Decimal) -> wi
         raise WithdrawRefused(exc.message) from exc
 
 
-def link_message(dest: Destination, amount: Decimal) -> str:
+def _self_custody_link(principal: Principal, dest: Destination, amount: Decimal,
+                       route: str) -> withdraw_links.IssuedLink:
+    """Passkey players send from their own wallet: an approve link, no PIN.
+    Boardman's pause and caps do not apply to money it does not hold."""
+    from gaming.src.backend.services.self_custody import intents, setup
+    from gaming.src.backend.services.self_custody.routing import SETUP
+
+    try:
+        if route == SETUP:
+            url, expires = setup.issue_link(principal.profile_id, channel=principal.channel,
+                                            external_id=principal.external_id)
+            return withdraw_links.IssuedLink(url.rsplit("t=", 1)[-1], url, expires, kind="setup")
+        p = intents.prepare_withdraw(principal.profile_id, dest.address, amount, channel=principal.channel,
+                                     external_id=principal.external_id)
+    except intents.IntentRefused as exc:
+        raise WithdrawRefused(exc.message) from exc
+    return withdraw_links.IssuedLink(p.token, p.url, p.expires_at_ms, kind="passkey")
+
+
+def link_label(kind: str = "pin") -> str:
+    return {"passkey": "Approve with passkey", "setup": "Set up wallet"}.get(kind, "Confirm withdrawal")
+
+
+def link_message(dest: Destination, amount: Decimal, kind: str = "pin") -> str:
     minutes = withdraw_links.ttl_ms() // 60000
+    if kind == "passkey":
+        return (
+            f"*Approve your withdrawal*\n"
+            f"${amount:,.2f} USDC from your wallet to {dest.label()}\n\n"
+            f"Open the secure page and approve with your passkey. You hold the keys; Boardman can't move "
+            f"your money. The link works once and expires in {minutes} minutes. "
+            f"If the page can't use your passkey, choose *Open in browser*."
+        )
+    if kind == "setup":
+        return ("*Set up your wallet first*\nWithdrawals now come from a wallet only you control, approved "
+                "with a passkey. It takes a minute; then start the withdrawal again.")
     return (
         f"*Confirm your withdrawal*\n"
         f"${amount:,.2f} USDC to {dest.label()}\n\n"

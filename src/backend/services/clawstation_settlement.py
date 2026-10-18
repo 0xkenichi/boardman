@@ -9,6 +9,7 @@ Flow:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from datetime import datetime, timedelta, timezone
@@ -105,6 +106,16 @@ async def _load_profile_address(
     if result.data:
         return result.data.get("gaming_deposit_address")
     return None
+
+
+async def _self_custody_address(challenge_id: str, profile_id: str) -> Optional[str]:
+    try:
+        from gaming.src.backend.services.self_custody.intents import locked_address
+
+        return await asyncio.to_thread(locked_address, str(challenge_id), str(profile_id))
+    except Exception:
+        logger.warning("[Settlement] self-custody lookup failed for %s", challenge_id, exc_info=True)
+        return None
 
 
 def _determine_winner_from_scores(challenge: dict) -> Optional[str]:
@@ -547,7 +558,13 @@ async def _execute_payout(challenge: dict, winner_id: Optional[str]) -> str:
     chain_id = normalize_chain_id(
         challenge.get("settlement_chain") or default_chain_id()
     )
-    winner_address = await _load_profile_address(winner_id, chain_id=chain_id)
+    # A passkey (self-custody) player is paid to the smart account that locked
+    # the stake: the escrow only pays recorded players, and that account is
+    # theirs. Not flag-gated on purpose: a match locked while the flag was on
+    # must still settle to the right address after it is switched off.
+    winner_address = await _self_custody_address(challenge_id, winner_id)
+    if not winner_address:
+        winner_address = await _load_profile_address(winner_id, chain_id=chain_id)
     if not winner_address:
         raise SettlementError(
             f"Winner {winner_id} has no deposit address on chain={chain_id}"

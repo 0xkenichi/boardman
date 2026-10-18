@@ -100,6 +100,11 @@ def create_app() -> FastAPI:
     from gaming.src.backend.api.paycrest import router as paycrest_router
 
     app.include_router(paycrest_router)
+    # Self-custody passkey wallets: routes always mounted, each answers 404
+    # unless SELF_CUSTODY_WALLETS_ENABLED=1 (checked per request).
+    from gaming.src.backend.api.self_custody import router as self_custody_router
+
+    app.include_router(self_custody_router)
     if channels_config.whatsapp_enabled():
         from gaming.src.channels.whatsapp.webhook import router as whatsapp_router
 
@@ -309,6 +314,9 @@ async def _startup():
     from gaming.src.backend.services.paycrest.reconcile import start_worker as start_paycrest_worker
 
     app.state.paycrest_worker = start_paycrest_worker()  # None unless the naira rail is live
+    from gaming.src.backend.services.self_custody.intents import start_worker as start_self_custody_worker
+
+    app.state.self_custody_worker = start_self_custody_worker()  # None unless the flag is on
     _loop_state["started"] = 1.0
     app.state.loop_lag_monitor = asyncio.create_task(_loop_lag_monitor())
     logger.info("[Startup] ClawStation API started, expiry task scheduled")
