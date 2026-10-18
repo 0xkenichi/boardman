@@ -14,14 +14,18 @@
 
 const isProd = process.env.NODE_ENV === 'production'
 
-function csp({ agentic }) {
+function csp({ agentic, passkey = false }) {
   // Agentic arena needs chess.js CDN + remote Stockfish APIs for the recordable demo
   const scriptSrc = agentic
     ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://telegram.org https://cdnjs.cloudflare.com https://cdn.jsdelivr.net"
     : "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://telegram.org"
+  // Passkey wallet pages talk to Circle's modular-wallet RPC (passkey RP,
+  // bundler, chain reads) straight from the browser.
   const connectSrc = agentic
     ? "connect-src 'self' https://api.telegram.org https://chess-api.com https://stockfish.online https://cdnjs.cloudflare.com https://cdn.jsdelivr.net"
-    : "connect-src 'self' https://api.telegram.org"
+    : passkey
+      ? "connect-src 'self' https://api.telegram.org https://modular-sdk.circle.com"
+      : "connect-src 'self' https://api.telegram.org"
   return [
     "default-src 'self'",
     scriptSrc,
@@ -54,8 +58,31 @@ const REMATCH_KEEP =
 
 const permanent = (source, destination) => ({ source, destination, permanent: true })
 
+// Passkey wallet SDK: until `npm i @circle-fin/modular-wallets-core viem`
+// has run, alias the imports to a stub that throws, so the build passes and
+// the passkey pages say "not available yet". Installed → real packages.
+const path = require('path')
+function resolvable(name) {
+  try {
+    require.resolve(name)
+    return true
+  } catch {
+    return false
+  }
+}
+const PASSKEY_SDK = ['@circle-fin/modular-wallets-core', 'viem', 'viem/account-abstraction']
+const passkeyStubs = PASSKEY_SDK.filter((m) => !resolvable(m))
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  turbopack: {
+    resolveAlias: Object.fromEntries(passkeyStubs.map((m) => [m, './lib/selfCustody/sdkMissing.ts'])),
+  },
+  webpack(config) {
+    const stub = path.join(__dirname, 'lib/selfCustody/sdkMissing.ts')
+    for (const m of passkeyStubs) config.resolve.alias[`${m}$`] = stub
+    return config
+  },
   reactStrictMode: true,
   // Allow both loopback hosts for local dev resources (HMR, fonts, chunks).
   allowedDevOrigins: ['localhost', '127.0.0.1'],
@@ -78,6 +105,15 @@ const nextConfig = {
         source: '/api/agentic/:path*',
         headers: [{ key: 'Cache-Control', value: 'no-store' }],
       },
+      // Self-custody passkey pages: Circle RPC allowed, nothing cached or leaked.
+      ...['/app/wallet/setup', '/app/approve/:path*'].map((source) => ({
+        source,
+        headers: [
+          { key: 'Content-Security-Policy', value: csp({ agentic: false, passkey: true }) },
+          { key: 'Cache-Control', value: 'no-store' },
+          { key: 'Referrer-Policy', value: 'no-referrer' },
+        ],
+      })),
     ]
   },
   async redirects() {
