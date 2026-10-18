@@ -158,6 +158,7 @@ def advance(bridge_id: str) -> Optional[dict]:
                 # message (nonce used): the reconciler escalates after retries.
                 _fail_or_retry(row, "mint failed on chain", back_to="attested")
             else:
+                # Lower bound: Circle charges its quoted fee, never above maxFee.
                 fee = Decimal(row.get("max_fee_usdc") or "0")
                 store.update_bridge(bridge_id, expect=st, status="minted", mint_tx_hash=tx_hash,
                                     minted_usdc=str(amount - fee), error=None)

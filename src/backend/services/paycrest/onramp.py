@@ -372,8 +372,9 @@ def on_bridge_finished(br: dict) -> None:
     if br["status"] == "minted":
         for o in orders:
             store.transition(o["id"], "completed", expect="bridging", settled_at_ms=store.now_ms())
-        notices.tell(br["profile_id"], f"*${Decimal(br.get('minted_usdc') or br['amount_usdc']):,.2f} USDC is in "
-                                       "your play wallet.* Ready to play.",
+        notices.tell(br["profile_id"], f"*Your naira top-up is in your play wallet* (about "
+                                       f"${Decimal(br.get('minted_usdc') or br['amount_usdc']):,.2f} USDC after the "
+                                       "bridge fee). Ready to play.",
                      kind="naira_update")
     else:
         for o in orders:
