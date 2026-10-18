@@ -513,3 +513,20 @@ def test_hermetic_client_has_no_live_default():
     # with no override the real client exists but nothing in the test run calls it
     assert pc_client._override is None
     assert config.api_base() == "https://api.paycrest.io/v2"
+
+
+def test_polling_cadence_is_configurable_for_a_webhookless_account(monkeypatch):
+    # The Paycrest account is shared with BlinkBox (it owns the webhook URL), so
+    # production polls: the stale-order threshold and the pass interval come from env.
+    from gaming.src.backend.services.paycrest import reconcile
+
+    monkeypatch.delenv("PAYCREST_POLL_AFTER_SEC", raising=False)
+    monkeypatch.delenv("PAYCREST_RECONCILE_SEC", raising=False)
+    assert reconcile.poll_after_ms() == reconcile.POLL_AFTER_MS
+    assert reconcile.interval_sec() == reconcile.INTERVAL_SEC
+    monkeypatch.setenv("PAYCREST_POLL_AFTER_SEC", "20")
+    monkeypatch.setenv("PAYCREST_RECONCILE_SEC", "15")
+    assert reconcile.poll_after_ms() == 20_000
+    assert reconcile.interval_sec() == 15.0
+    monkeypatch.setenv("PAYCREST_POLL_AFTER_SEC", "1")
+    assert reconcile.poll_after_ms() == 5_000  # floor: never hammer the API

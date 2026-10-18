@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Any, Optional
 
 from gaming.src.backend.services.paycrest import config, events, notices, offramp, onramp, store
@@ -27,6 +28,29 @@ logger = logging.getLogger(__name__)
 POLL_AFTER_MS = 5 * 60 * 1000          # ask Paycrest if a webhook is this late
 UNKNOWN_GIVE_UP_MS = 15 * 60 * 1000    # an ambiguous submit not found after this never happened
 INTERVAL_SEC = 30.0
+
+
+def poll_after_ms() -> int:
+    """How stale an open order may get before we ask Paycrest ourselves.
+
+    The Paycrest account is shared with BlinkBox, which owns its single webhook
+    URL, so production runs Boardman on polling: set PAYCREST_POLL_AFTER_SEC
+    (e.g. 20) and PAYCREST_RECONCILE_SEC (e.g. 15). With a webhook of our own,
+    the 5-minute default only catches missed deliveries.
+    """
+    raw = os.environ.get("PAYCREST_POLL_AFTER_SEC", "").strip()
+    try:
+        return max(5, int(raw)) * 1000 if raw else POLL_AFTER_MS
+    except ValueError:
+        return POLL_AFTER_MS
+
+
+def interval_sec() -> float:
+    raw = os.environ.get("PAYCREST_RECONCILE_SEC", "").strip()
+    try:
+        return max(5.0, float(raw)) if raw else INTERVAL_SEC
+    except ValueError:
+        return INTERVAL_SEC
 
 _alerted_stuck: set[str] = set()
 
@@ -74,7 +98,7 @@ def reconcile_once(*, now_ms: Optional[int] = None) -> dict[str, Any]:
     # 3. poll orders waiting on Paycrest
     waiting = store.list_orders(statuses=("awaiting_deposit", "processing", "awaiting_settlement", "refunding"))
     for o in waiting:
-        if not o.get("paycrest_id") or now - int(o["updated_at_ms"]) < POLL_AFTER_MS:
+        if not o.get("paycrest_id") or now - int(o["updated_at_ms"]) < poll_after_ms():
             continue
         try:
             pc = client.get_order(o["paycrest_id"])
@@ -127,8 +151,8 @@ async def _loop(interval: float) -> None:
             logger.exception("[paycrest] reconcile pass failed")
 
 
-def start_worker(interval: float = INTERVAL_SEC) -> Optional[asyncio.Task]:
+def start_worker(interval: Optional[float] = None) -> Optional[asyncio.Task]:
     """Started from the API's startup hook; does nothing unless the rail is live."""
     if not config.enabled():
         return None
-    return asyncio.get_running_loop().create_task(_loop(interval))
+    return asyncio.get_running_loop().create_task(_loop(interval or interval_sec()))
