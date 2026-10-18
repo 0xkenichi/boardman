@@ -627,3 +627,28 @@ def test_http_setup_and_approve(sc, monkeypatch):
     r = c.post(f"/api/self-custody/approve/{p.token}", headers=hdr,
                json={"tx_hash": h(30), "amount": "5", "challenge_id": ch["id"]})
     assert r.status_code == 409
+
+
+def test_pause_still_gates_new_stakes_but_not_withdrawals(sc, monkeypatch):
+    from gaming.src.backend.services import safety
+
+    world = sc
+    ada, _, ch = _accepted(world)
+    monkeypatch.setattr(safety, "is_paused", lambda: True)
+    with pytest.raises(IntentRefused) as e:
+        _prepare(world, ada, ch)
+    assert e.value.kind == "gate"
+    # the player's own money is not Boardman's to freeze
+    p = intents.prepare_withdraw(ada["id"], DEST, Decimal("3"), channel="whatsapp", external_id=ADA)
+    assert p.url.startswith("https://boardman.test/app/approve/")
+
+
+def test_cctp_burn_calls_encode_mint_recipient():
+    usdc, tm, me = "0x" + "36" * 20, "0x" + "28" * 20, "0x" + "ab" * 20
+    approve, burn = C.cctp_burn_calls(usdc, tm, 7_000_000, 6, me, max_fee_raw=3_500)
+    spender, raw = decode(["address", "uint256"], bytes.fromhex(approve.data[10:]))
+    assert spender.lower() == tm and raw == 7_000_000
+    args = decode(["uint256", "uint32", "bytes32", "address", "bytes32", "uint256", "uint32"],
+                  bytes.fromhex(burn.data[10:]))
+    assert args[0] == 7_000_000 and args[1] == 6 and args[2][-20:].hex() == me[2:]
+    assert args[3].lower() == usdc and args[4] == bytes(32) and args[5] == 3_500 and args[6] == 2000

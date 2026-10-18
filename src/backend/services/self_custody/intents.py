@@ -41,7 +41,7 @@ class IntentRefused(Exception):
         "not_found": 404, "expired": 410, "used": 409, "wrong_profile": 403, "amount_mismatch": 409,
         "rate_limited": 429, "bad_request": 400, "no_wallet": 409, "funds": 402, "wrong_wallet": 409,
         "not_configured": 503, "state": 409, "taken": 409, "exists": 409, "bad_address": 400,
-        "off": 404,
+        "off": 404, "gate": 423,
     }
 
     def __init__(self, kind: str, message: str, **detail: Any) -> None:
@@ -210,6 +210,13 @@ async def prepare_lock(profile_id: str, challenge: dict, *, channel: str, extern
     who = svc.role(challenge, pid)
     if who is None:
         raise IntentRefused("wrong_profile", "Not your match.")
+    # Boardman's own rules for entering a match still apply (pause, stake
+    # limits, lock rate); they gate the escrow, not the player's wallet.
+    from gaming.src.backend.services.safety import assert_money_ops_allowed
+
+    gate = assert_money_ops_allowed(pid, action="lock", amount=Decimal(str(challenge["amount_usdc"])), kind="lock")
+    if gate:
+        raise IntentRefused("gate", svc.plain(gate))
     s = _settings()
     reader = chain.get_reader()
     cid = str(challenge["id"])
