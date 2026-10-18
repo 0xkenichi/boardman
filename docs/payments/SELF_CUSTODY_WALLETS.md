@@ -178,6 +178,22 @@ a closed tab still confirms; a client that lies confirms nothing.
 * **Withdraw.** `[USDC.transfer(dest, amount)]` from the player's account.
   No PIN (the passkey is the factor). Boardman's pause and caps are not
   applied — it is the player's money; the geo check stays at the chat.
+  Locks *do* keep Boardman's rules (pause, stake limits, lock rate): those
+  gate entry into a Boardman match, not the wallet.
+* **Approve links** reuse the withdraw-link store (`channel_tokens`, purpose
+  `sc_approve`; setup links `sc_setup`): 256-bit token, SHA-256 at rest,
+  10-minute TTL, single use (claimed on submit), a newer link supersedes the
+  open one, 5 per hour per player. The intent (`self_custody_intents`) binds
+  profile, account, action, amount, match and the exact calls; the page
+  echoes amount and match back and a mismatch burns the link.
+* **Confirmation** (`intents.confirm`): the receipt must have status 1 *and*
+  a log from the configured escrow (or USDC) contract with this match id,
+  this account and this stake. A hash without that event is ignored (the
+  watcher keeps scanning logs); a reverted one fails the intent; one tx can
+  confirm one intent (unique index). The watcher runs every 20 s inside the
+  API while the flag is on and expires prepared intents 30 min after expiry.
+* **A UserOperation that reverts inside a landed bundle** is caught on the
+  page (`success: false`): nothing is reported, the link stays open.
 * **Wallet setup** `/app/wallet/setup?t=<token>` (chat link, or a signed-in
   web session): register passkey → counterfactual address → POST
   `{address, credential_id}` → stored once in `payment_wallets` under
@@ -195,12 +211,25 @@ a closed tab still confirms; a client that lies confirms nothing.
 | `SELF_CUSTODY_CHAIN` | settlement chain | `arc` (testnet) / `arc_mainnet` |
 | `SELF_CUSTODY_SPONSOR_GAS` | `1` | `paymaster: true` (Gas Station) on UserOperations |
 | `SELF_CUSTODY_APPROVE_TTL_SEC` | `600` | Approve/setup link lifetime |
+| `SELF_CUSTODY_ESCROW_ADDRESS`, `SELF_CUSTODY_RPC_URL` | chains.yaml | Overrides for the chain read by the watcher |
+| `SELF_CUSTODY_MODULAR_PATH` | `arcTestnet` / `arc` | Circle modular transport path (mainnet name **unverified**) |
+| `BOARDMAN_ESCROW_VERSION` | on-chain probe | `2` → v2 `createMatch` with resolver permit; `1` → v1 call |
 | `NEXT_PUBLIC_CIRCLE_CLIENT_KEY`, `NEXT_PUBLIC_CIRCLE_CLIENT_URL` | unset | Frontend; without them the page says "not available yet" |
 
-Code: `src/backend/services/self_custody/`, `src/backend/api/self_custody.py`,
-`frontend/app/rematch/app/{wallet/setup,approve/[token]}`,
-`frontend/lib/selfCustody/`. Tests: `tests/test_self_custody.py` (fake
-chain, fake permit key; no network).
+Code: `src/backend/services/self_custody/` (config, store, calls, chain,
+wallets, setup, intents, routing, notices), `src/backend/api/self_custody.py`,
+`src/channels/core/flows/{match,balance}.py`, `src/channels/core/actions/withdraw.py`,
+`src/channels/telegram/passkey.py`, `frontend/app/rematch/app/{wallet/setup,approve/[token]}`,
+`frontend/app/api/rematch/app/{wallet/setup,approve/[token]}`, `frontend/lib/selfCustody/`.
+Migration: `supabase/migrations/20261018130000_self_custody_intents.sql`.
+Tests: `tests/test_self_custody.py` (fake chain, test resolver key, no
+network, no bundler) and `frontend/lib/__tests__/passkeyEnv.test.mjs`.
+
+Not built yet: ERC-1271/6492 ownership check at setup, the "Move my
+balance" button (§5), the naira cash-out intent (§4.3), a passkey-recovery
+prompt, and a WhatsApp template for the `wallet_update` notice (outside the
+24 h window the confirmation is skipped on WhatsApp; the page already showed
+it).
 
 ## 4. Paycrest (naira) with self-custody
 
@@ -252,9 +281,13 @@ chain, fake permit key; no network).
    `NEXT_PUBLIC_CIRCLE_CLIENT_KEY` (plus `NEXT_PUBLIC_CIRCLE_CLIENT_URL`).
 2. Console → Gas Station → **policy for Arc** (testnet first): only the USDC
    contract and BoardmanEscrow as targets, per-op and monthly caps.
-3. `npm i @circle-fin/modular-wallets-core viem` in `frontend/` (pinned in
-   `package.json`; delete `frontend/types/circle-modular-wallets.d.ts` after
-   install so the real types apply).
+3. `npm i @circle-fin/modular-wallets-core viem` in `frontend/` and commit
+   `package.json` + `package-lock.json` (not done here: no registry access).
+   Until then `next.config.js` aliases both to `lib/selfCustody/sdkMissing.ts`
+   so the build passes and the pages say "not available yet";
+   `frontend/types/circle-modular-wallets.d.ts` is a fallback type shim
+   (real types win once installed) — re-run `tsc` after installing, the
+   adapter (`lib/selfCustody/wallet.ts`) was typed against the shim.
 4. Deploy BoardmanEscrow **v2** (audited) on Arc mainnet; set
    `BOARDMAN_ESCROW_VERSION=2` and the resolver key (keystore) for permits.
 5. Device test matrix on testnet: iOS Safari, Android Chrome, Telegram iOS /
