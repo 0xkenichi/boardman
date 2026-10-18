@@ -195,16 +195,28 @@ class CircleWalletService:
             
         return {"success": True, "wallet_set": response.json()["data"]["walletSet"]}
 
-    def create_custodial_wallet_for_user(self, profile_id: str, phone_number: str = None) -> Dict:
+    def create_custodial_wallet_for_user(
+        self,
+        profile_id: str,
+        phone_number: str = None,
+        *,
+        account_type: str = "EOA",
+        idempotency_key: Optional[str] = None,
+    ) -> Dict:
         """
-        Create an EOA wallet for a user within the platform wallet set.
+        Create a wallet for a user within the platform wallet set.
+
+        ``account_type`` is ``EOA`` (default, every existing play wallet) or
+        ``SCA`` (ERC-4337 smart account: needed for Circle Gas Station to
+        sponsor gas on chains whose gas is not USDC, e.g. Base for Paycrest).
+        Pass a deterministic ``idempotency_key`` so a retry cannot mint two.
         """
         try:
             wallet_set_id = os.getenv("CIRCLE_WALLET_SET_ID")
             if not wallet_set_id:
                 return {"success": False, "error": "CIRCLE_WALLET_SET_ID not configured in .env"}
 
-            idempotency_key = str(uuid.uuid4())
+            idempotency_key = idempotency_key or str(uuid.uuid4())
             ciphertext = self._generate_entity_secret_ciphertext()
 
             payload = {
@@ -213,7 +225,7 @@ class CircleWalletService:
                 "walletSetId": wallet_set_id,
                 "blockchains": [self.blockchain],
                 "count": 1,
-                "accountType": "EOA",
+                "accountType": "SCA" if str(account_type).upper() == "SCA" else "EOA",
                 "metadata": [{
                     "profile_id": profile_id,
                     "phone_number": phone_number or "unknown",
@@ -568,6 +580,8 @@ class CircleWalletService:
         contract_address: str,
         function_signature: str,
         args: list,
+        *,
+        idempotency_key: Optional[str] = None,
     ) -> Dict:
         """Call a contract via Circle contractExecution (createMatch / joinMatch / approve).
 
@@ -576,6 +590,8 @@ class CircleWalletService:
             contract_address: Target contract (escrow or USDC)
             function_signature: e.g. ``createMatch(bytes32,uint256)``
             args: ABI-encoded parameter values as strings / hex
+            idempotency_key: optional deterministic UUID; Circle dedups on it
+                so a retried call (bridge burn/mint) cannot execute twice.
         """
         try:
             ciphertext = self._generate_entity_secret_ciphertext()
@@ -587,7 +603,7 @@ class CircleWalletService:
             # Arc (and current W3S API) wants top-level feeLevel, not nested fee config
             fee = _circle_fee_level()
             payload = {
-                "idempotencyKey": str(uuid.uuid4()),
+                "idempotencyKey": idempotency_key or str(uuid.uuid4()),
                 "entitySecretCiphertext": ciphertext,
                 "walletId": wallet_id,
                 "contractAddress": contract_address,
@@ -613,7 +629,10 @@ class CircleWalletService:
                 # Retry once with alternate fee if primary rejected
                 if response.status_code == 400:
                     alt = "MEDIUM" if fee == "LOW" else "LOW"
-                    payload["idempotencyKey"] = str(uuid.uuid4())
+                    payload["idempotencyKey"] = (
+                        str(uuid.uuid5(uuid.NAMESPACE_URL, f"{idempotency_key}|fee-{alt}"))
+                        if idempotency_key else str(uuid.uuid4())
+                    )
                     payload["feeLevel"] = alt
                     response = requests.post(
                         f"{self.api_url}/w3s/developer/transactions/contractExecution",

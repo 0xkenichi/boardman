@@ -92,10 +92,66 @@ rails:
     can_stake: false
     deposit_mode: fiat
 
+  # Naira on/off-ramp through Paycrest (docs/payments/PAYCREST.md).
+  # REAL MONEY, MAINNET ONLY (Paycrest has no testnet). Paycrest does not
+  # support Arc, so naira lands as USDC on Base and is bridged to the player's
+  # Arc play wallet with Circle CCTP v2; cash-outs go the other way.
+  #
+  # `enabled` stays false here: the live switch is the environment, and BOTH
+  # PAYCREST_ENABLED=1 and REAL_MONEY_ENABLED=1 (plus PAYCREST_API_KEY) are
+  # required before a player sees anything. Read every value through
+  # src/backend/services/paycrest/config.py, not directly.
+  paycrest_ngn:
+    id: paycrest_ngn
+    kind: funding
+    enabled: false
+    player_label: "Top up with naira (Paycrest)"
+    admin_label: "Paycrest NGN <-> USDC on Base, CCTP to Arc"
+    can_stake: false
+    deposit_mode: fiat
+    api_base: "https://api.paycrest.io/v2"
+    network: base              # Paycrest network id (lowercase)
+    token: USDC
+    currency: NGN
+    delivery_chain: base_mainnet   # chains.yaml id where Paycrest pays out / takes USDC
+    settlement_chain: arc_mainnet  # chains.yaml id of the player's play wallet
+    # Our optional fee on top of Paycrest's (Paycrest's own ~0.5% is inside its rate).
+    sender_fee_percent: "0"
+    # Who pays Paycrest's network fee: customer (shown to the player) | sender
+    transaction_fee_payer: customer
+    # Customer KYC on on-ramp orders (Paycrest requires source.kyc since Oct 2026).
+    # pass_through: collected on a one-time web page, forwarded to Paycrest,
+    # never stored by Boardman. See PAYCREST.md "KYC".
+    kyc_mode: pass_through
+    kyc_id_types: [BVN, nationalID]   # BVN, or NIN sent as nationalID
+    limits:
+      onramp_min_ngn: 1000
+      onramp_max_ngn: 500000        # per order
+      onramp_daily_ngn: 1000000     # per player, rolling 24h
+      offramp_min_usdc: "1"         # Paycrest minimum is $0.50; keep headroom for fees
+      offramp_max_usdc: "300"       # per cash-out
+      offramp_daily_usdc: "500"     # per player, rolling 24h
+      quote_ttl_sec: 600
+    bridge:
+      # Base -> Arc after an on-ramp; Arc -> Base before an off-ramp.
+      onramp_fast_transfer: true    # CCTP Fast Transfer from Base (fee in bps, quoted by Circle)
+      max_fee_bps: 5                # refuse to burn if Circle's fast fee is above this
+      min_sweep_usdc: "0.50"
+      max_attempts: 8
+    gas:
+      # How the player's Base wallet pays ETH gas for approve/burn/transfer:
+      #   gas_station: Circle Gas Station sponsors gas (needs SCA wallets on Base)
+      #   hot_wallet:  Boardman's funded Base wallet tops up ETH (services/gas_tank.py)
+      base_mode: gas_station
+      base_account_type: SCA
+      # Destination mints are relayed by Boardman wallets (anyone may call
+      # receiveMessage when destinationCaller is zero). Wallet ids come from env:
+      #   PAYCREST_ARC_RELAYER_WALLET_ID, PAYCREST_BASE_RELAYER_WALLET_ID
+
 bridge:
   # Auto-move funding-rail USDC → Arc play wallet
   auto_convert_to_settlement: false   # true when CCTP/ops bot is live
-  mode: manual_ops                    # manual_ops | cctp | partner
+  mode: manual_ops                    # manual_ops | cctp | partner (paycrest_ngn bridges with CCTP on its own)
   extra_fee_bps: 0                    # charge 0 for now; raise if bridge costs
   supported_sources:
     - stellar

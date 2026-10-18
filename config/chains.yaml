@@ -37,6 +37,7 @@ chains:
     # Previous flat-fee pool: 0x7Dcd347fA916bF93Ad8BF3c1c8e9D17111B5313e
     spectator_pool_address: "0xd45bE49456021B74D2712fcffD47f17f91D39664"
     fee_recipient: "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E"
+    cctp_domain: 26
     notes: "Boardman V1. Gas paid in USDC. Best UX."
 
   # Arc Mainnet — live since Sept 16 2026. Same USDC predeploy address as testnet.
@@ -60,6 +61,7 @@ chains:
     escrow_address: ""
     escrow_contract: BoardmanEscrow
     fee_recipient: "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E"
+    cctp_domain: 26
     notes: "Deploy BoardmanEscrow + confirm Circle W3S token id before enabling."
 
   avalanche:
@@ -121,7 +123,34 @@ chains:
     gas_tank_min_wei: "100000000000000"   # 0.0001 ETH
     gas_tank_topup_wei: "1000000000000000" # 0.001 ETH
     escrow_address: "0xDb76714390ccE1729558DF3c9EC4f45A1690dE78"
+    cctp_domain: 6
     notes: "Legacy testnet path. Kept for internal/ops; not in product UI."
+
+  # Base mainnet: Paycrest's delivery chain for the naira rail ONLY
+  # (config/funding_rails.yaml paycrest_ngn). Never a stake chain: USDC that
+  # lands here is bridged to the Arc play wallet with CCTP v2.
+  # circle_usdc_token_id: set CIRCLE_USDC_TOKEN_ID_BASE_MAINNET (Circle W3S
+  # token UUID for USDC on BASE) before the first transfer.
+  base_mainnet:
+    id: base_mainnet
+    label: Base
+    enabled: false
+    recommended: false
+    status: funding
+    circle_blockchain: BASE
+    chain_id: 8453
+    rpc_url: https://mainnet.base.org
+    explorer_tx: https://basescan.org/tx/
+    usdc_address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    circle_usdc_token_id: ""
+    gas_token: ETH
+    gas_mode: native_eth
+    gas_tank_required: true
+    gas_tank_min_wei: "20000000000000"     # 0.00002 ETH (hot_wallet gas mode only)
+    gas_tank_topup_wei: "100000000000000"  # 0.0001 ETH
+    escrow_address: ""
+    cctp_domain: 6
+    notes: "Paycrest delivery chain (naira on/off-ramp). Funding only; bridged to Arc."
 
   # Celo — MiniPay host / Proof-of-Ship (Research Tech Build)
   # Settlement still defaults to Arc; Celo is enabled for MiniPay UX + future USDC rail.
@@ -245,6 +274,25 @@ settlement:
   chain: arc
   force_convert_for_stake: true
   abstract_balance: true   # players see one USDC number
+
+# Circle CCTP v2 (https://developers.circle.com/cctp). Same contract addresses
+# on every EVM chain except EDGE. Domains live on each chain above
+# (cctp_domain). Arc: domain 26, no Fast Transfer as source (attests fast
+# anyway); Base: domain 6, Fast Transfer supported.
+cctp:
+  mainnet:
+    token_messenger_v2: "0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d"
+    message_transmitter_v2: "0x81D40F21F12A8F0E3252Bccb954D722d4c464B64"
+    iris_api: "https://iris-api.circle.com"
+  testnet:
+    token_messenger_v2: "0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA"
+    message_transmitter_v2: "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275"
+    iris_api: "https://iris-api-sandbox.circle.com"
+  network_of:
+    arc: testnet
+    base: testnet
+    arc_mainnet: mainnet
+    base_mainnet: mainnet
 
 # Phase C: bridge funding rails → Arc play wallet (CCTP / ops).
 bridge:
