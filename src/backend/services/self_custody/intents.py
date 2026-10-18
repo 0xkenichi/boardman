@@ -98,12 +98,13 @@ def _settings() -> dict:
     return s
 
 
-def _issue(profile_id: str, intent: dict, *, channel: str, external_id: str) -> Prepared:
+def _issue(profile_id: str, intent: dict, *, channel: str, external_id: str,
+           now_ms: Optional[int] = None) -> Prepared:
     wl = _links()
     try:
         link = wl.issue_purpose(PURPOSE, profile_id, channel=channel, external_id=str(external_id or ""),
                                 payload={"intent_id": intent["id"]}, rate_bucket=f"sc_issue:{profile_id}",
-                                path="approve")
+                                path="approve", now_ms=now_ms)
     except wl.LinkRefused as exc:
         store.transition(intent["id"], "superseded", expect=("prepared",))
         raise IntentRefused(exc.kind, exc.message) from exc
@@ -259,7 +260,7 @@ async def prepare_lock(profile_id: str, challenge: dict, *, channel: str, extern
         intent = store.create(profile_id=pid, action=action, chain=s["chain"], account=account,
                               challenge_id=cid, amount_micro=raw, to_address=s["escrow"], calls=call_list,
                               detail=detail, expires_at_ms=expires, from_block=from_block)
-        return _issue(pid, intent, channel=channel, external_id=external_id)
+        return _issue(pid, intent, channel=channel, external_id=external_id, now_ms=now_ms)
 
     return await asyncio.to_thread(_make)
 
@@ -291,7 +292,7 @@ def prepare_withdraw(profile_id: str, to_address: str, amount: Decimal, *, chann
         detail={"usdc": s["usdc"]}, expires_at_ms=(now_ms or store.now_ms()) + config.ttl_ms(),
         from_block=_from_block(reader),
     )
-    return _issue(pid, intent, channel=channel, external_id=external_id)
+    return _issue(pid, intent, channel=channel, external_id=external_id, now_ms=now_ms)
 
 
 # ── the approve page ─────────────────────────────────────────────────────────
