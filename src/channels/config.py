@@ -59,7 +59,20 @@ def enabled_flows(channel: str) -> frozenset[str]:
 def flow_enabled(channel: str, flow: str) -> bool:
     if flow == "naira":
         return naira_enabled()
+    if flow == "scw":
+        return self_custody_enabled()
     return flow in enabled_flows(channel)
+
+
+def self_custody_enabled() -> bool:
+    """Passkey wallet confirmations (flow ``scw``): on every channel with the
+    self-custody flag (``SELF_CUSTODY_WALLETS_ENABLED=1``)."""
+    try:
+        from gaming.src.backend.services.self_custody import config as sc_config
+
+        return sc_config.enabled()
+    except Exception:
+        return False
 
 
 def naira_enabled() -> bool:

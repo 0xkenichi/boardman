@@ -51,3 +51,18 @@ def withdraw_route(profile_id: str) -> str:
     if account(profile_id):
         return PASSKEY
     return SETUP if config.required() else CUSTODIAL
+
+
+def deposit_account(profile_id: Optional[str]) -> Optional[str]:
+    """Where incoming money (naira top-ups) may land on the passkey account:
+    None while the flag is off, without a wallet, or while a wallet change is
+    waiting / cooling down (then the custodial play wallet receives it)."""
+    if not config.enabled() or not profile_id:
+        return None
+    try:
+        from gaming.src.backend.services.self_custody import wallets
+
+        return wallets.deposit_address(str(profile_id))
+    except Exception:
+        logger.warning("[self_custody] deposit address lookup failed", exc_info=True)
+        return None

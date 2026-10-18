@@ -90,6 +90,7 @@ def _flows() -> dict[str, Any]:
         naira,
         onboarding,
         report,
+        scw,
         watch,
         withdraw,
     )
@@ -107,6 +108,7 @@ def _flows() -> dict[str, Any]:
         "watch": watch,
         "ap": approve,  # approval answers; the approved action checks its own flag
         "naira": naira,  # gated by the Paycrest flags, not CHANNELS_CORE_FLOWS
+        "scw": scw,  # passkey wallet confirmations; gated by SELF_CUSTODY_WALLETS_ENABLED
     }
 
 

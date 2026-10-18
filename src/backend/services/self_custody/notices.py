@@ -1,7 +1,8 @@
 """Chat messages after a passkey action is confirmed on chain (best effort).
 
 Same wording and notices as the custodial lock (``flows/match.do_lock``), so
-the other player sees nothing different.
+the other player sees nothing different. Also the "Is this your wallet?"
+prompt a proven wallet setup or change sends to every chat of the player.
 """
 from __future__ import annotations
 
@@ -72,13 +73,42 @@ async def _confirmed(intent_id: str) -> None:
             )
 
 
-async def wallet_linked(profile_id: str, address: str) -> None:
+FLOW = "scw"  # src/channels/core/flows/scw.py answers these buttons
+
+
+def confirm_options(nonce: str) -> list:
+    from gaming.src.channels.core import ids
+    from gaming.src.channels.core.messages import Option
+
+    return [Option(ids.encode(FLOW, "y", nonce), "Yes, it's mine"), Option(ids.encode(FLOW, "n", nonce), "No")]
+
+
+def confirm_text(kind: str, address: str, previous: str | None = None) -> str:
+    if kind == "change":
+        head = (f"*Change your passkey wallet?*\nFrom `{previous}`\nto `{address}`\n\n"
+                "If you say yes, the new wallet starts working in 24 hours. Until then your old wallet stays "
+                "active and new top-ups go to your Boardman play wallet.")
+    else:
+        head = f"*Is this your new wallet?*\n`{address}`"
+    return (head + "\n\nOnly tap *Yes* if you just created it on the Boardman page and this address matches "
+            "what the page shows. If it wasn't you, tap *No*: nothing changes.")
+
+
+async def confirm_prompt(profile_id: str, *, kind: str, address: str, nonce: str,
+                         previous: str | None = None) -> bool:
+    """Ask "Is this your wallet? Yes / No" on every chat the player has. True if
+    at least one chat got it (otherwise they can find it under *wallet*)."""
+    from gaming.src.channels.core import notify
+
     try:
-        await _tell(profile_id,
-                    f"🔑 Your passkey wallet is linked: <code>{address}</code>\n"
-                    "You hold the keys; Boardman can't move your money. "
-                    "If this wasn't you, contact support now.",
-                    _plain(f"Your passkey wallet is linked: `{address}`\nYou hold the keys; Boardman can't move "
-                           "your money. If this wasn't you, contact support now."))
+        sent = await notify.notify(
+            str(profile_id),
+            notify.Notice(kind="wallet_confirm", params={"address": address},
+                          text=confirm_text(kind, address, previous), options=confirm_options(nonce)),
+            all_channels=True,
+        )
     except Exception:
-        logger.warning("[self_custody] wallet-linked notice failed", exc_info=True)
+        logger.warning("[self_custody] wallet confirmation prompt failed", exc_info=True)
+        return False
+    return any(d.ok for d in sent)
+

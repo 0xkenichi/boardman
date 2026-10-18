@@ -41,7 +41,7 @@ class IntentRefused(Exception):
         "not_found": 404, "expired": 410, "used": 409, "wrong_profile": 403, "amount_mismatch": 409,
         "rate_limited": 429, "bad_request": 400, "no_wallet": 409, "funds": 402, "wrong_wallet": 409,
         "not_configured": 503, "state": 409, "taken": 409, "exists": 409, "bad_address": 400,
-        "off": 404, "gate": 423,
+        "off": 404, "gate": 423, "bad_proof": 422, "reauth": 401, "wrong_chain": 409, "no_chat": 409,
     }
 
     def __init__(self, kind: str, message: str, **detail: Any) -> None:
