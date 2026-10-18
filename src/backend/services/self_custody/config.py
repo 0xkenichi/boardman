@@ -7,7 +7,10 @@
                                   the settlement chain, ``arc``).
 ``SELF_CUSTODY_SPONSOR_GAS``      UserOperations ask Circle Gas Station to pay
                                   gas (``paymaster: true``). Default on.
-``SELF_CUSTODY_APPROVE_TTL_SEC``  approve / setup link lifetime (600).
+``SELF_CUSTODY_APPROVE_TTL_SEC``  approve / setup link and setup challenge lifetime (600).
+``SELF_CUSTODY_CONFIRM_TTL_SEC``  in-chat "Is this your wallet?" lifetime (1800).
+``SELF_CUSTODY_CHANGE_COOLDOWN_SEC`` a changed wallet is unused this long (86400).
+``SELF_CUSTODY_REAUTH_SEC``       max age of the web sign-in a change needs (900).
 """
 from __future__ import annotations
 
@@ -49,6 +52,28 @@ def ttl_ms() -> int:
         return max(60, int(os.getenv("SELF_CUSTODY_APPROVE_TTL_SEC") or 600)) * 1000
     except ValueError:
         return 600_000
+
+
+def _secs(name: str, default: int, floor: int) -> int:
+    try:
+        return max(floor, int(os.getenv(name) or default))
+    except ValueError:
+        return default
+
+
+def confirm_ttl_ms() -> int:
+    """How long a proven wallet waits for the player's "Yes" in the chat."""
+    return _secs("SELF_CUSTODY_CONFIRM_TTL_SEC", 1800, 60) * 1000
+
+
+def change_cooldown_ms() -> int:
+    """A changed wallet receives nothing (top-ups, stakes, payouts) for this long."""
+    return _secs("SELF_CUSTODY_CHANGE_COOLDOWN_SEC", 86_400, 3600) * 1000
+
+
+def reauth_max_age_ms() -> int:
+    """A wallet change needs a web sign-in at most this old."""
+    return _secs("SELF_CUSTODY_REAUTH_SEC", 900, 60) * 1000
 
 
 def chain_key() -> str:
