@@ -29,6 +29,9 @@ async def start(ctx) -> None:
     if _geo_refusal(ctx):
         return
     opts = []
+    if ctx.enabled("naira"):
+        opts.append(Option(ids.encode("naira", "start", "in"), "Naira via Paycrest",
+                           "Top up with naira (Paycrest): bank transfer, real money"))
     if dep.paystack_ready():
         opts.append(Option(ids.encode(NAME, "ngn"), "Pay with Naira", "Card, bank or USSD via Paystack"))
     opts.append(Option(ids.encode(NAME, "crypto"), "Send USDC", "To your play address on Arc"))

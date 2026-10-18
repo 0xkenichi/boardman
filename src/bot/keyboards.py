@@ -589,6 +589,19 @@ def get_money_menu() -> InlineKeyboardMarkup:
     except Exception:
         pass
     try:
+        from gaming.src.channels.config import naira_enabled
+
+        if naira_enabled():
+            # Handled by the shared core flow (src/channels/core/flows/naira.py).
+            builder.row(
+                InlineKeyboardButton(
+                    text="🇳🇬 Top up with naira (Paycrest)",
+                    callback_data="v1|naira|start|in",
+                ),
+            )
+    except Exception:
+        pass
+    try:
         from gaming.src.backend.services.paystack import paystack_configured
 
         if paystack_configured():

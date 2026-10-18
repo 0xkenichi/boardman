@@ -11,6 +11,7 @@ ENTRIES = (
     ("balance", "Wallet", "Balance and play address"),
     ("deposit", "Add money", "Naira (Paystack) or USDC"),
     ("withdraw", "Withdraw", "Confirm on the web with your PIN"),
+    ("naira", "Naira (Paycrest)", "Top up or cash out with your bank"),
     ("link", "Link account", "Use Telegram and WhatsApp together"),
 )
 

@@ -48,7 +48,20 @@ def enabled_flows(channel: str) -> frozenset[str]:
 
 
 def flow_enabled(channel: str, flow: str) -> bool:
+    if flow == "naira":
+        return naira_enabled()
     return flow in enabled_flows(channel)
+
+
+def naira_enabled() -> bool:
+    """The Paycrest naira flow: on every channel once the rail is live
+    (``PAYCREST_ENABLED=1`` + ``REAL_MONEY_ENABLED=1`` + an API key)."""
+    try:
+        from gaming.src.backend.services.paycrest import config as paycrest_config
+
+        return paycrest_config.enabled()
+    except Exception:
+        return False
 
 
 def whatsapp_enabled() -> bool:

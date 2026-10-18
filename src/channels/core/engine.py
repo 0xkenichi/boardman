@@ -79,7 +79,7 @@ class Ctx:
 
 
 def _flows() -> dict[str, Any]:
-    from gaming.src.channels.core.flows import balance, deposit, link, menu, onboarding, withdraw
+    from gaming.src.channels.core.flows import balance, deposit, link, menu, naira, onboarding, withdraw
 
     return {
         "menu": menu,
@@ -88,6 +88,7 @@ def _flows() -> dict[str, Any]:
         "deposit": deposit,
         "link": link,
         "withdraw": withdraw,
+        "naira": naira,  # gated by the Paycrest flags, not CHANNELS_CORE_FLOWS
     }
 
 
@@ -204,7 +205,7 @@ class Engine:
             ctx.st.clear()
             await self._menu(ctx, flows)
             return
-        for name in ("balance", "deposit", "withdraw"):
+        for name in ("balance", "deposit", "withdraw", "naira"):
             mod = flows[name]
             if word in mod.KEYWORDS and self._allowed(ctx, name):
                 ctx.st.clear()
