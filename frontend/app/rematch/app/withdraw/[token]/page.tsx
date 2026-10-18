@@ -14,7 +14,8 @@ type View = {
   ok: boolean
   purpose?: 'withdraw' | 'pin_reset'
   amount?: string
-  destination?: { address?: string | null; tag?: string | null }
+  destination?: { address?: string | null; tag?: string | null; bank?: string | null }
+  naira?: { payout_ngn?: string | null; rate?: string | null; account_name?: string | null }
   needs_pin_setup?: boolean
   expires_in_sec?: number
   error?: string
@@ -80,7 +81,11 @@ export default function WithdrawConfirmPage() {
     setErr(data.message || data.error || 'That did not work. Try again.')
   }
 
-  const dest = view?.destination?.tag ? `@${view.destination.tag}` : view?.destination?.address || ''
+  const dest = view?.destination?.bank
+    ? `${view.naira?.account_name || ''} · ${view.destination.bank}`
+    : view?.destination?.tag
+      ? `@${view.destination.tag}`
+      : view?.destination?.address || ''
   const title = view?.purpose === 'pin_reset' ? 'New withdrawal PIN' : 'Confirm withdrawal'
 
   return (
@@ -117,6 +122,12 @@ export default function WithdrawConfirmPage() {
               </div>
               <span className="rm-label">USDC to</span>
               <code className="rm-code" style={{ wordBreak: 'break-all' }}>{dest}</code>
+              {view.naira?.payout_ngn ? (
+                <span className="rm-muted" style={{ fontSize: '0.8rem' }}>
+                  Your bank gets about ₦{Number(view.naira.payout_ngn).toLocaleString('en-NG')} via Paycrest, less a
+                  small network fee. This is real money.
+                </span>
+              ) : null}
             </div>
           ) : null}
 
