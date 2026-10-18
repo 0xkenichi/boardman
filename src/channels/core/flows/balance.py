@@ -31,16 +31,38 @@ def render(snap: wallet.WalletSnapshot) -> str:
     return "\n".join(lines)
 
 
-def _passkey_lines(profile_id: str) -> tuple[list[str], bool]:
-    """Self-custody section (sync). ([], False) while the flag is off."""
+def _pending_lines(profile_id: str) -> tuple[list[str], list[Option]]:
+    """A wallet waiting for the player's "Yes", or a change cooling down."""
+    from gaming.src.backend.services.self_custody import wallets
+    from gaming.src.channels.core.flows import scw
+
+    try:
+        p = wallets.pending(profile_id)
+    except Exception:
+        return [], []
+    if not p:
+        return [], []
+    if p["status"] == "pending_confirm":
+        return (["", f"*Waiting for your confirmation*: `{p['address']}`",
+                 "Only confirm it if you just created this wallet on the Boardman page."],
+                [Option(ids.encode(scw.NAME, "r"), "Confirm new wallet"), scw.cancel_option(p["id"])])
+    return (["", f"*Wallet change*: `{p['address']}` from {scw.when_utc(int(p['active_at_ms']))}.",
+             "New top-ups go to your play wallet until then."], [scw.cancel_option(p["id"])])
+
+
+def _passkey_lines(profile_id: str) -> tuple[list[str], bool, list[Option]]:
+    """Self-custody section (sync). ([], False, []) while the flag is off."""
     from gaming.src.backend.services.self_custody import config, routing
 
     if not config.enabled():
-        return [], False
+        return [], False, []
     acct = routing.account(profile_id)
+    pend, pend_opts = _pending_lines(profile_id)
     if not acct:
+        if pend:
+            return ["", "*Passkey wallet*: almost set up."] + pend[1:], False, pend_opts
         return ["", "*Passkey wallet*: not set up. Hold your own money: approve every stake and "
-                    "withdrawal with Face ID or fingerprint."], True
+                    "withdrawal with Face ID or fingerprint."], True, []
     from gaming.src.backend.services.self_custody import calls, chain
 
     try:
@@ -48,14 +70,13 @@ def _passkey_lines(profile_id: str) -> tuple[list[str], bool]:
     except Exception:
         bal = "unavailable right now"
     return ["", f"*Your passkey wallet: {bal}*", "You hold the keys; Boardman can't move your money.",
-            f"`{acct}`"], False
+            f"`{acct}`"] + pend, False, pend_opts
 
 
 async def start(ctx) -> None:
     ctx.st.clear()
     snap = await wallet.snapshot(ctx.profile_id)
-    extra, offer_setup = await asyncio.to_thread(_passkey_lines, str(ctx.profile_id))
-    opts = []
+    extra, offer_setup, opts = await asyncio.to_thread(_passkey_lines, str(ctx.profile_id))
     if offer_setup:
         opts.append(Option(ids.encode(NAME, "setup"), "Set up passkey wallet"))
     if ctx.enabled("deposit"):

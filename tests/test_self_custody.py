@@ -15,7 +15,17 @@ from eth_account.messages import encode_typed_data
 from fastapi.testclient import TestClient
 
 from gaming.src.backend.services.self_custody import calls as C
-from gaming.src.backend.services.self_custody import chain, config, intents, routing, setup, store, wallets
+from gaming.src.backend.services.self_custody import (
+    chain,
+    config,
+    intents,
+    notices,
+    proof,
+    routing,
+    setup,
+    store,
+    wallets,
+)
 from gaming.src.backend.services.self_custody.intents import IntentRefused
 from gaming.src.channels.core import ids, withdraw_links
 from gaming.src.channels.fake.adapter import FakeChannel
@@ -48,6 +58,9 @@ class FakeChain:
         self.balances: dict[str, int] = {}
         self.receipts: dict[str, dict] = {}
         self.all_logs: list[dict] = []
+        self.owners: dict[str, Account] = {}  # smart account -> the key its passkey stands for
+        self.sig_checks: list[tuple] = []
+        self.rpc_down = False
 
     def block_number(self) -> int:
         return self.block
@@ -70,6 +83,20 @@ class FakeChain:
 
     def escrow_version(self, escrow):
         return self.version
+
+    def is_valid_signature(self, account, digest, signature):
+        """ERC-1271 as a smart account owned by one EOA would answer it (real
+        ECDSA: a signature by anyone else, or over other bytes, fails)."""
+        self.sig_checks.append((account, digest))
+        if self.rpc_down:
+            raise ConnectionError("rpc down")
+        owner = self.owners.get(account.lower())
+        if owner is None:
+            return False
+        try:
+            return Account._recover_hash(digest, signature=signature) == owner.address
+        except Exception:
+            return False
 
     # what the chain would emit
     def land(self, tx: str, logs: list[dict], status: int = 1) -> None:
@@ -121,10 +148,10 @@ def _accepted(world, *, ada_passkey=True, bola_passkey=False):
     ada = wa_player(world, ADA, "ada", in_window=True)
     bola = wa_player(world, BOLA, "bola", in_window=True)
     if ada_passkey:
-        wallets.register(ada["id"], ADA_SA, CRED)
+        wallets.link_unverified(ada["id"], ADA_SA, CRED)
         world.chain.balances[ADA_SA.lower()] = C.to_raw(Decimal("40"))
     if bola_passkey:
-        wallets.register(bola["id"], BOLA_SA, "cred_bola_0123456789")
+        wallets.link_unverified(bola["id"], BOLA_SA, "cred_bola_0123456789")
         world.chain.balances[BOLA_SA.lower()] = C.to_raw(Decimal("40"))
     ch = insert_challenge(creator_id=ada["id"], opponent_id=bola["id"], amount=Decimal("5"),
                           game="mobile.fc_mobile", visibility="private")
@@ -188,6 +215,8 @@ def test_routes_404_when_off(world, monkeypatch):  # noqa: F811
     c = TestClient(create_app())
     hdr = {"X-Boardman-Key": MASTER}
     assert c.get("/api/self-custody/setup", headers=hdr).status_code == 404
+    assert c.post("/api/self-custody/setup/challenge", headers=hdr,
+                  json={"address": "0x" + "5a" * 20}).status_code == 404
     assert c.get("/api/self-custody/approve/" + "a" * 43, headers=hdr).status_code == 404
     assert c.post("/api/self-custody/approve/" + "a" * 43, headers=hdr,
                   json={"tx_hash": h(1), "amount": "5"}).status_code == 404
@@ -196,54 +225,387 @@ def test_routes_404_when_off(world, monkeypatch):  # noqa: F811
 def test_migration_matches_store_module():
     path = ROOT / "supabase" / "migrations" / "20261018130000_self_custody_intents.sql"
     assert path.read_text() == store.postgres_migration_sql()
+    path = ROOT / "supabase" / "migrations" / "20261018150000_self_custody_wallet_requests.sql"
+    assert path.read_text() == store.postgres_requests_migration_sql()
 
 
-# ── wallet setup ─────────────────────────────────────────────────────────────
+# ── wallet setup: proof, chat confirmation, change cool-down ─────────────────
+
+ADA_KEY = Account.from_key("0x" + "a1" * 32)   # what Ada's passkey stands for in the fake chain
+EVE_KEY = Account.from_key("0x" + "e1" * 32)   # an attacker's own passkey
+EVE_SA = "0x" + "ee" * 20
+NEW_SA = "0x" + "5c" * 20
 
 
-def test_setup_link_registers_once_and_never_replaces(sc):
-    world = sc
+def _sig(key, message: str) -> str:
+    return "0x" + bytes(key.unsafe_sign_hash(proof.eip191_hash(message)).signature).hex()
+
+
+def _own(world, sa: str, key) -> None:
+    world.chain.owners[sa.lower()] = key
+
+
+def _prove(world, tok, sa, key, *, cred=CRED, caller=None, auth_iat_ms=None, now_ms=None):
+    """What the page does: challenge for the new address, passkey signs, post."""
+    _own(world, sa, key)
+    c = setup.challenge(tok, address=sa, caller=caller, auth_iat_ms=auth_iat_ms, now_ms=now_ms)
+    return c, setup.register(tok, address=sa, credential_id=cred, challenge_id=c["challenge_id"],
+                             signature=_sig(key, c["message"]), caller=caller, auth_iat_ms=auth_iat_ms,
+                             now_ms=now_ms)
+
+
+def _prompts(dv, who: str) -> list:
+    """Chat prompts with buttons a deliverer recorded for one chat."""
+    return [o for to, outs in dv.session if to == who for o in outs if getattr(o, "options", None)]
+
+
+def _ada_both_chats(world):
+    """Ada on WhatsApp (inside the 24 h window) and on Telegram."""
+    from tests.channels_match_fixtures import ids_svc
+
     ada = wa_player(world, ADA, "ada", in_window=True)
+    ids_svc.ensure_telegram_identity(ada["id"], 7001, chat_id=7001, username="ada")
+    return ada
+
+
+def _engine_wa():
+    from gaming.src.channels.core.engine import Engine
+
+    return FakeChannel("wa", engine=Engine())  # real notifier: the recording deliverers
+
+
+def test_proof_vectors_match_viem():
+    """Same vectors as frontend/lib/__tests__/setupProof.test.mjs (viem 2.57.7)."""
+    from eth_account.messages import _hash_eip191_message, encode_defunct
+    from eth_utils import keccak
+
+    assert "0x" + keccak(proof.VALIDATOR_BYTECODE).hex() == \
+        "0x00f03afb646c45f698b5a1f540c482aebc9f5215003e4707d362a02526753936"
+    cd = proof.validator_calldata("0x" + "5a" * 20, keccak(b"boardman"), b"\x11" * 65)
+    assert len(cd) == 1908
+    assert "0x" + keccak(cd).hex() == "0x922d78fbdbf2aa75561b64bf1b66899467a8004c22233d3d8db9b8d2b1ec1ab5"
+    msg = proof.message_for(site="https://boardman.test", profile_id="p_ada", address="0x" + "5a" * 20,
+                            evm_chain_id=5042002, kind="setup", nonce="0" * 32, issued_ms=1_760_000_000_000,
+                            expires_ms=1_760_000_600_000)
+    assert "Wallet: 0x5a5A5a5a5A5a5a5a5a5A5a5A5A5a5a5A5A5A5A5A\nAccount: p_ada\nChain ID: 5042002" in msg
+    h = "0xc81fcf8effc4b98b8f94567d2bf845e922a6d88a2959549583f338ad6bd7e173"
+    assert "0x" + proof.eip191_hash(msg).hex() == h
+    assert "0x" + _hash_eip191_message(encode_defunct(text=msg)).hex() == h
+
+
+def test_rpc_reader_verifies_with_one_deployless_call():
+    """Web3Reader: eth_call with no ``to`` and the validator init code;
+    0x01 = valid, a revert = invalid, a transport error raises."""
+    from web3 import Web3
+    from web3.providers.base import BaseProvider
+
+    seen, answer = [], {"v": {"result": "0x01"}}
+
+    class Prov(BaseProvider):
+        def make_request(self, method, params):
+            if method == "eth_chainId":
+                return {"jsonrpc": "2.0", "id": 1, "result": hex(5042002)}
+            seen.append((method, params))
+            if answer["v"] == "down":
+                raise ConnectionError("down")
+            return {"jsonrpc": "2.0", "id": 1, **answer["v"]}
+
+    r = chain.Web3Reader.__new__(chain.Web3Reader)
+    r.w3 = Web3(Prov())
+    digest = proof.eip191_hash("hi")
+    assert r.is_valid_signature(ADA_SA, digest, b"\x01" * 65) is True
+    method, (tx, _block) = seen[-1]
+    assert method == "eth_call" and "to" not in tx
+    assert tx["data"].startswith("0x" + proof.VALIDATOR_BYTECODE.hex())
+    answer["v"] = {"result": "0x00"}
+    assert r.is_valid_signature(ADA_SA, digest, b"\x01" * 65) is False
+    answer["v"] = {"error": {"code": 3, "message": "execution reverted", "data": "0x"}}
+    assert r.is_valid_signature(ADA_SA, digest, b"\x01" * 65) is False
+    answer["v"] = "down"
+    with pytest.raises(Exception):
+        r.is_valid_signature(ADA_SA, digest, b"\x01" * 65)
+
+
+def test_valid_proof_waits_for_the_chat_yes_then_links_once(sc):
+    world = sc
+    ada = _ada_both_chats(world)
     url, _ = setup.issue_link(ada["id"], channel="whatsapp", external_id=ADA)
     assert url.startswith("https://boardman.test/app/wallet/setup?t=")
     tok = _token(url)
     v = setup.view(tok)
-    assert v["ok"] and v["wallet"] is None and v["username"] == "Boardman @ada"
+    assert v["ok"] and v["wallet"] is None and v["pending"] is None and v["username"] == "Boardman @ada"
     assert v["chain"]["modular_path"] == "arcTestnet" and v["chain"]["evm_chain_id"] == 5042002
-    out = setup.register(tok, address=ADA_SA, credential_id=CRED)
-    assert out["created"] and out["address"].lower() == ADA_SA
-    # single use
+    c, out = _prove(world, tok, ADA_SA, ADA_KEY)
+    # the challenge binds profile, wallet, chain and purpose
+    for part in (f"Account: {ada['id']}", "Chain ID: 5042002", "Purpose: setup", "boardman.test wants you"):
+        assert part in c["message"]
+    assert f"Wallet: {ADA_SA}".lower() in c["message"].lower()
+    assert world.chain.sig_checks[-1][0].lower() == ADA_SA
+    assert out["status"] == "pending_confirm" and out["address"].lower() == ADA_SA
+    # proven but NOT linked yet: nothing routes to it, top-ups go to the play wallet
+    assert wallets.address(ada["id"]) is None and routing.account(ada["id"]) is None
+    from gaming.src.backend.services.paycrest import wallets as pw
+
+    assert pw.arc_destination_sync(ada["id"]) == PLAY_ADDR
+    # the link was used
     with pytest.raises(IntentRefused) as e:
-        setup.register(tok, address=ADA_SA, credential_id=CRED)
+        setup.challenge(tok, address=ADA_SA)
     assert e.value.kind == "used"
-    # a second link cannot swap the address
-    tok2 = _token(setup.issue_link(ada["id"], channel="whatsapp", external_id=ADA)[0])
-    with pytest.raises(IntentRefused) as e:
-        setup.register(tok2, address="0x" + "66" * 20, credential_id=CRED)
-    assert e.value.kind == "exists"
+    # every chat is asked: WhatsApp and Telegram
+    assert run(notices.confirm_prompt(ada["id"], kind="setup", address=out["address"], nonce=out["confirm_nonce"]))
+    wa_prompt, tg_prompt = _prompts(world.wa_dv, ADA)[-1], _prompts(world.tg_dv, "7001")[-1]
+    for p in (wa_prompt, tg_prompt):
+        assert "Is this your new wallet?" in p.body and out["address"] in p.body
+        assert [o.label for o in p.options] == ["Yes, it's mine", "No"]
+    yes = wa_prompt.options[0].id
+    assert len(yes.encode()) <= 64
+    wa = _engine_wa()
+    run(wa.tap_id(ADA, yes))
+    assert "Your passkey wallet is linked" in wa.last_text(ADA)
     assert wallets.address(ada["id"]).lower() == ADA_SA
+    assert pw.arc_destination_sync(ada["id"]).lower() == ADA_SA
+    # the other chat is told
+    assert any("passkey wallet is linked" in o.body for to, outs in world.tg_dv.session if to == "7001" for o in outs)
+    # a prompt works once
+    run(wa.tap_id(ADA, yes))
+    assert "already answered" in wa.last_text(ADA)
     # stored in the existing per-player wallet table, no key material
     from gaming.src.backend.services.paycrest import store as pstore
 
     row = pstore.get_wallet(ada["id"], "arc/passkey")
     assert row["wallet_id"] == f"passkey:{CRED}" and row["account_type"] == "circle_msca_passkey"
+    # a second link cannot swap the address without a fresh web sign-in
+    tok2 = _token(setup.issue_link(ada["id"], channel="whatsapp", external_id=ADA)[0])
+    with pytest.raises(IntentRefused) as e:
+        setup.challenge(tok2, address=NEW_SA)
+    assert e.value.kind == "reauth"
+    assert wallets.address(ada["id"]).lower() == ADA_SA
+
+
+def test_missing_forged_replayed_expired_and_mismatched_proofs_are_refused(sc, monkeypatch):
+    """Each case refuses before anything is queued; a challenge is single use."""
+    world = sc
+    ada = wa_player(world, ADA, "ada", in_window=True)
+    bola = wa_player(world, BOLA, "bola", in_window=True)
+    _own(world, ADA_SA, ADA_KEY)
+
+    def fresh():
+        return _token(setup.issue_link(ada["id"], channel="whatsapp", external_id=ADA)[0])
+
+    def reg(tok, c, sig, *, addr=ADA_SA, now_ms=None):
+        return setup.register(tok, address=addr, credential_id=CRED, challenge_id=c["challenge_id"] if c else "",
+                              signature=sig, now_ms=now_ms)
+
+    def refused(kind, fn):
+        with pytest.raises(IntentRefused) as e:
+            fn()
+        assert e.value.kind == kind, (e.value.kind, e.value.message)
+
+    # missing proof: no challenge id / no signature
+    tok = fresh()
+    c = setup.challenge(tok, address=ADA_SA)
+    refused("bad_proof", lambda: reg(tok, None, _sig(ADA_KEY, c["message"])))
+    refused("bad_proof", lambda: reg(tok, c, ""))  # malformed signature: refused, challenge spent
+    refused("used", lambda: reg(tok, c, _sig(ADA_KEY, c["message"])))
+    # forged: signed by a key that does not own the account → link burned
+    tok = fresh()
+    c = setup.challenge(tok, address=ADA_SA)
+    refused("bad_proof", lambda: reg(tok, c, _sig(EVE_KEY, c["message"])))
+    refused("used", lambda: setup.challenge(tok, address=ADA_SA))
+    # signed over a different text (another challenge's message)
+    tok = fresh()
+    c1 = setup.challenge(tok, address=ADA_SA)
+    c2 = setup.challenge(tok, address=ADA_SA)  # supersedes c1
+    refused("used", lambda: reg(tok, c1, _sig(ADA_KEY, c1["message"])))
+    refused("bad_proof", lambda: reg(tok, c2, _sig(ADA_KEY, c1["message"])))
+    # expired (signed-in web session, so only the challenge has run out)
+    c = setup.challenge(None, address=ADA_SA, caller=ada["id"])
+    refused("expired", lambda: setup.register(None, address=ADA_SA, credential_id=CRED,
+                                              challenge_id=c["challenge_id"], signature=_sig(ADA_KEY, c["message"]),
+                                              caller=ada["id"], now_ms=c["expires_at_ms"] + 1))
+    refused("used", lambda: setup.register(None, address=ADA_SA, credential_id=CRED,
+                                           challenge_id=c["challenge_id"], signature=_sig(ADA_KEY, c["message"]),
+                                           caller=ada["id"]))
+    # wrong profile: Bola's challenge with Ada's link, Ada's challenge from Bola's session
+    tok = fresh()
+    tok_b = _token(setup.issue_link(bola["id"], channel="whatsapp", external_id=BOLA)[0])
+    cb = setup.challenge(tok_b, address=ADA_SA)
+    refused("bad_proof", lambda: reg(tok, cb, _sig(ADA_KEY, cb["message"])))
+    c = setup.challenge(tok, address=ADA_SA)
+    refused("wrong_profile", lambda: setup.register(tok, address=ADA_SA, credential_id=CRED,
+                                                    challenge_id=c["challenge_id"],
+                                                    signature=_sig(ADA_KEY, c["message"]), caller=bola["id"]))
+    # wrong link: a challenge made through the web session cannot be redeemed with a chat link
+    cs = setup.challenge(None, address=ADA_SA, caller=ada["id"])
+    refused("bad_proof", lambda: reg(tok, cs, _sig(ADA_KEY, cs["message"])))
+    # wrong wallet: the challenge names another address
+    c = setup.challenge(tok, address=ADA_SA)
+    _own(world, NEW_SA, ADA_KEY)
+    refused("bad_proof", lambda: reg(tok, c, _sig(ADA_KEY, c["message"]), addr=NEW_SA))
+    # wrong chain: the network changed between challenge and proof
+    c = setup.challenge(tok, address=ADA_SA)
+    real = config.chain_settings
+    monkeypatch.setattr(config, "chain_settings", lambda chain=None: {**real(chain), "evm_chain_id": 1})
+    refused("wrong_chain", lambda: reg(tok, c, _sig(ADA_KEY, c["message"])))
+    monkeypatch.setattr(config, "chain_settings", real)
+    # RPC down: "try again", the link survives, the challenge does not
+    c = setup.challenge(tok, address=ADA_SA)
+    world.chain.rpc_down = True
+    refused("not_configured", lambda: reg(tok, c, _sig(ADA_KEY, c["message"])))
+    world.chain.rpc_down = False
+    refused("used", lambda: reg(tok, c, _sig(ADA_KEY, c["message"])))
+    # nothing of the above linked or even queued anything
+    assert wallets.address(ada["id"]) is None and wallets.pending(ada["id"]) is None
+    # and the same link still works with a real proof
+    _, out = _prove(world, tok, ADA_SA, ADA_KEY)
+    assert out["status"] == "pending_confirm"
+    # no token and no session: refused
+    refused("not_found", lambda: setup.view(None))
+
+
+def test_stolen_link_gives_the_attacker_nothing(sc):
+    """Eve gets Ada's setup link (forwarded, shoulder-surfed) and completes
+    setup with her OWN passkey. Her proof is valid — for her wallet — but the
+    wallet only becomes Ada's after Ada says yes in Ada's chat."""
+    world = sc
+    ada = _ada_both_chats(world)
+    eve = wa_player(world, BOLA, "eve", in_window=True)
+    tok = _token(setup.issue_link(ada["id"], channel="whatsapp", external_id=ADA)[0])
+    _, out = _prove(world, tok, EVE_SA, EVE_KEY)
+    assert out["status"] == "pending_confirm"
+    run(notices.confirm_prompt(ada["id"], kind="setup", address=out["address"], nonce=out["confirm_nonce"]))
+    # nothing is routed to Eve's wallet while it waits
+    from gaming.src.backend.services.paycrest import wallets as pw
+
+    assert wallets.address(ada["id"]) is None and routing.account(ada["id"]) is None
+    assert pw.arc_destination_sync(ada["id"]) == PLAY_ADDR
+    # Ada's chat shows Eve's address, so Ada can tell it is not hers
+    prompt = _prompts(world.wa_dv, ADA)[-1]
+    assert out["address"] in prompt.body
+    yes, no = (o.id for o in prompt.options)
+    # Eve cannot answer it from her own chat (a forwarded button is someone else's tap)
+    wa = _engine_wa()
+    run(wa.tap_id(BOLA, yes))
+    assert "isn't yours" in wa.last_text(BOLA)
+    assert wallets.address(ada["id"]) is None and wallets.address(eve["id"]) is None
+    # Ada taps No: declined, nothing linked; the Yes button is dead
+    run(wa.tap_id(ADA, no))
+    assert "was NOT linked" in wa.last_text(ADA)
+    run(wa.tap_id(ADA, yes))
+    assert "already answered" in wa.last_text(ADA)
+    assert wallets.address(ada["id"]) is None and wallets.pending(ada["id"]) is None
+    # Ada's other chat hears about it too
+    assert any("declined" in o.body for to, outs in world.tg_dv.session if to == "7001" for o in outs)
+    # and if Ada never answers, it simply expires
+    tok = _token(setup.issue_link(ada["id"], channel="whatsapp", external_id=ADA)[0])
+    _, out = _prove(world, tok, EVE_SA, EVE_KEY)
+    later = store.now_ms() + config.confirm_ttl_ms() + 1
+    res = setup.answer(ada["id"], out["confirm_nonce"], approve=True, now_ms=later)
+    assert res["result"] == "refused" and "expired" in res["message"]
+    assert wallets.address(ada["id"]) is None
+
+
+def test_wallet_screen_reoffers_a_missed_confirmation(sc):
+    world = sc
+    ada = wa_player(world, ADA, "ada", in_window=True)
+    tok = _token(setup.issue_link(ada["id"], channel="whatsapp", external_id=ADA)[0])
+    _, out = _prove(world, tok, ADA_SA, ADA_KEY)
+    wa = _engine_wa()
+    run(wa.text(ADA, "balance"))
+    assert "Waiting for your confirmation" in wa.last_text(ADA) and out["address"] in wa.last_text(ADA)
+    run(wa.tap(ADA, "Confirm new wallet"))
+    assert "Is this your new wallet?" in wa.last_text(ADA)
+    run(wa.tap(ADA, "Yes, it's mine"))
+    assert "Your passkey wallet is linked" in wa.last_text(ADA)
+    assert wallets.address(ada["id"]).lower() == ADA_SA
+    # the first prompt's nonce was replaced
+    assert setup.answer(ada["id"], out["confirm_nonce"], approve=True)["result"] == "refused"
+
+
+def test_wallet_change_needs_signin_proof_chat_and_a_cooldown(sc, monkeypatch):
+    world = sc
+    ada = _ada_both_chats(world)
+    wallets.link_unverified(ada["id"], ADA_SA, CRED)
+    now = store.now_ms()
+    stale = now - config.reauth_max_age_ms() - 1
+    tok = _token(setup.issue_link(ada["id"], channel="whatsapp", external_id=ADA)[0])
+    _own(world, NEW_SA, ADA_KEY)
+    # chat link alone, a session without sign-in time, an old sign-in, another profile: refused
+    for kw in ({"caller": None}, {"caller": ada["id"]}, {"caller": ada["id"], "auth_iat_ms": stale}):
+        with pytest.raises(IntentRefused) as e:
+            setup.challenge(tok if kw["caller"] is None else None, address=NEW_SA, **kw)
+        assert e.value.kind == "reauth"
+    v = setup.view(None, caller=ada["id"], auth_iat_ms=stale)
+    assert v["change_needs_signin"] and not v["can_change"]
+    assert setup.view(None, caller=ada["id"], auth_iat_ms=now)["can_change"]
+    # fresh sign-in + proof → waits for the chat
+    c, out = _prove(world, None, NEW_SA, ADA_KEY, cred="cred_ada_new_0123", caller=ada["id"], auth_iat_ms=now)
+    assert c["kind"] == "change" and "Purpose: change" in c["message"]
+    assert out["kind"] == "change" and out["status"] == "pending_confirm"
+    from gaming.src.backend.services.paycrest import wallets as pw
+
+    # old wallet still active for stakes; new money is held back from both passkey accounts
+    assert routing.account(ada["id"]).lower() == ADA_SA
+    assert pw.arc_destination_sync(ada["id"]) == PLAY_ADDR
+    run(notices.confirm_prompt(ada["id"], kind="change", address=out["address"], nonce=out["confirm_nonce"],
+                               previous=wallets.address(ada["id"])))
+    for dv, who in ((world.wa_dv, ADA), (world.tg_dv, "7001")):
+        p = _prompts(dv, who)[-1]
+        assert "Change your passkey wallet?" in p.body and "24 hours" in p.body
+    wa = _engine_wa()
+    run(wa.tap_id(ADA, _prompts(world.wa_dv, ADA)[-1].options[0].id))
+    assert "Wallet change scheduled" in wa.last_text(ADA)
+    assert ("v1|scw|c|" in "".join(i for i, _ in wa.offered(ADA)))
+    # every other chat is told, with a way to cancel
+    tg_note = _prompts(world.tg_dv, "7001")[-1]
+    assert "Wallet change scheduled" in tg_note.body and tg_note.options[0].label == "Cancel the change"
+    # during the cool-down: old account active, deposits to the play wallet
+    assert wallets.address(ada["id"]).lower() == ADA_SA
+    assert pw.arc_destination_sync(ada["id"]) == PLAY_ADDR
+    v = setup.view(None, caller=ada["id"], auth_iat_ms=now)
+    assert v["pending"]["status"] == "cooling" and v["pending"]["active_at_ms"] > now
+    # 24 h later the new account takes over (one transaction, on the next read)
+    later = store.now_ms() + config.change_cooldown_ms() + 1_000
+    monkeypatch.setattr(store, "now_ms", lambda: later)
+    assert wallets.address(ada["id"]).lower() == NEW_SA
+    assert wallets.get(ada["id"])["credential_id"] == "cred_ada_new_0123"
+    assert pw.arc_destination_sync(ada["id"]).lower() == NEW_SA
+    assert wallets.pending(ada["id"]) is None
+
+
+def test_a_wallet_change_can_be_cancelled_from_any_chat(sc, monkeypatch):
+    world = sc
+    ada = _ada_both_chats(world)
+    wallets.link_unverified(ada["id"], ADA_SA, CRED)
+    now = store.now_ms()
+    _, out = _prove(world, None, NEW_SA, ADA_KEY, caller=ada["id"], auth_iat_ms=now)
+    assert setup.answer(ada["id"], out["confirm_nonce"], approve=True)["result"] == "cooling"
+    from gaming.src.channels.core.engine import Engine
+
+    tg = FakeChannel("tg", engine=Engine())
+    run(tg.text("7001", "balance"))
+    assert "Wallet change" in tg.last_text("7001")
+    run(tg.tap("7001", "Cancel the change"))
+    assert "Wallet change cancelled" in tg.last_text("7001")
+    later = store.now_ms() + config.change_cooldown_ms() + 1_000
+    monkeypatch.setattr(store, "now_ms", lambda: later)
+    assert wallets.address(ada["id"]).lower() == ADA_SA
+    # someone else's cancel button does nothing
+    assert setup.cancel("someone-else", out["request_id"]) is None
 
 
 def test_setup_refuses_someone_elses_address_and_wrong_session(sc):
     world = sc
     ada = wa_player(world, ADA, "ada", in_window=True)
     bola = wa_player(world, BOLA, "bola")
-    wallets.register(bola["id"], BOLA_SA, "cred_bola_0123456789")
+    wallets.link_unverified(bola["id"], BOLA_SA, "cred_bola_0123456789")
     tok = _token(setup.issue_link(ada["id"], channel="whatsapp", external_id=ADA)[0])
     with pytest.raises(IntentRefused) as e:
         setup.view(tok, caller=bola["id"])
     assert e.value.kind == "wrong_profile"
     with pytest.raises(IntentRefused) as e:
-        setup.register(tok, address=BOLA_SA, credential_id=CRED)
+        setup.challenge(tok, address=BOLA_SA)
     assert e.value.kind == "taken"
-    # no token and no session: refused
-    with pytest.raises(IntentRefused):
-        setup.view(None)
 
 
 # ── lock: prepare → approve → confirm on chain ───────────────────────────────
@@ -459,7 +821,7 @@ def test_opponent_with_a_custodial_binding_stays_custodial(sc):
     world = sc
     ada, bola, ch = _creator_locked(world, bola_passkey=False)
     # bola sets up a passkey after the creator's permit bound their Circle wallet
-    wallets.register(bola["id"], BOLA_SA, "cred_bola_0123456789")
+    wallets.link_unverified(bola["id"], BOLA_SA, "cred_bola_0123456789")
     assert routing.lock_route(bola["id"], ch) == routing.CUSTODIAL
     with pytest.raises(IntentRefused) as e:
         run(intents.prepare_lock(bola["id"], ch, channel="whatsapp", external_id=BOLA))
@@ -504,7 +866,7 @@ def test_custodial_players_keep_the_yes_prompt_when_not_required(sc):
 def test_withdraw_sends_passkey_link_no_pin_and_confirms_on_transfer(sc):
     world = sc
     ada = wa_player(world, ADA, "ada", in_window=True)
-    wallets.register(ada["id"], ADA_SA, CRED)
+    wallets.link_unverified(ada["id"], ADA_SA, CRED)
     world.chain.balances[ADA_SA.lower()] = C.to_raw(Decimal("40"))
     wa = FakeChannel("wa")
     run(wa.text(ADA, "withdraw"))
@@ -532,7 +894,7 @@ def test_legacy_telegram_lock_button_sends_passkey_link(sc, monkeypatch):
     world = sc
     tobi = tg_player(world, 5001, "tobi")
     bola = wa_player(world, BOLA, "bola")
-    wallets.register(tobi["id"], ADA_SA, CRED)
+    wallets.link_unverified(tobi["id"], ADA_SA, CRED)
     world.chain.balances[ADA_SA.lower()] = C.to_raw(Decimal("40"))
 
     async def profile(user):
@@ -573,7 +935,7 @@ def test_naira_mints_to_the_passkey_account_and_cash_out_is_refused(sc):
 
     ada = wa_player(world, ADA, "ada", in_window=True)
     assert pw.arc_destination_sync(ada["id"]) == PLAY_ADDR
-    wallets.register(ada["id"], ADA_SA, CRED)
+    wallets.link_unverified(ada["id"], ADA_SA, CRED)
     assert pw.arc_destination_sync(ada["id"]).lower() == ADA_SA
     principal = SimpleNamespace(profile_id=ada["id"], channel="whatsapp", external_id=ADA)
     from gaming.src.backend.services.paycrest import config as pconfig
@@ -606,13 +968,38 @@ def test_http_setup_and_approve(sc, monkeypatch):
     assert c.get("/api/self-custody/setup", params={"t": tok}).status_code == 401  # platform only
     r = c.get("/api/self-custody/setup", params={"t": tok}, headers=hdr)
     assert r.status_code == 200 and r.json()["wallet"] is None
+    _own(world, ADA_SA, ADA_KEY)
+    r = c.post("/api/self-custody/setup/challenge", params={"t": tok}, headers=hdr, json={"address": ADA_SA})
+    assert r.status_code == 200
+    chal = r.json()
+    body = {"address": ADA_SA, "credential_id": CRED, "challenge_id": chal["challenge_id"]}
+    # a forged signature: 422, nothing queued, the link is burned
     r = c.post("/api/self-custody/setup", params={"t": tok}, headers=hdr,
-               json={"address": ADA_SA, "credential_id": CRED})
-    assert r.status_code == 200 and r.json()["address"].lower() == ADA_SA
-    assert any("passkey wallet is linked" in o.body for to, outs in world.wa_dv.session if to == ADA for o in outs)
+               json={**body, "signature": _sig(EVE_KEY, chal["message"])})
+    assert r.status_code == 422 and r.json()["error"] == "bad_proof"
+    tok = _token(setup.issue_link(ada["id"], channel="whatsapp", external_id=ADA)[0])
+    chal = c.post("/api/self-custody/setup/challenge", params={"t": tok}, headers=hdr,
+                  json={"address": ADA_SA}).json()
+    r = c.post("/api/self-custody/setup", params={"t": tok}, headers=hdr,
+               json={**body, "challenge_id": chal["challenge_id"], "signature": _sig(ADA_KEY, chal["message"])})
+    out = r.json()
+    assert r.status_code == 200 and out["address"].lower() == ADA_SA and out["status"] == "pending_confirm"
+    assert out["confirm_sent"] is True
+    # the confirmation nonce never reaches the page
+    assert not {"confirm_nonce", "profile_id", "request_id"} & set(out)
+    prompt = _prompts(world.wa_dv, ADA)[-1]
+    assert "Is this your new wallet?" in prompt.body
+    assert c.get("/api/self-custody/setup", headers={**hdr, "X-Boardman-Caller": ada["id"]}).json()["wallet"] is None
+    run(_engine_wa().tap_id(ADA, prompt.options[0].id))
     # session caller without a token
     r = c.get("/api/self-custody/setup", headers={**hdr, "X-Boardman-Caller": ada["id"]})
-    assert r.json()["wallet"]["address"].lower() == ADA_SA
+    assert r.json()["wallet"]["address"].lower() == ADA_SA and r.json()["change_needs_signin"]
+    iat = str(store.now_ms() // 1000)
+    r = c.get("/api/self-custody/setup", headers={**hdr, "X-Boardman-Caller": ada["id"], "X-Boardman-Auth-Iat": iat})
+    assert r.json()["can_change"]
+    r = c.post("/api/self-custody/setup/challenge", headers={**hdr, "X-Boardman-Caller": ada["id"]},
+               json={"address": NEW_SA})
+    assert r.status_code == 401 and r.json()["error"] == "reauth"
 
     from gaming.src.channels.core.actions import matches as svc
 

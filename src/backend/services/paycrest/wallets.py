@@ -64,11 +64,22 @@ def passkey_account(profile_id: str) -> str:
         return ""
 
 
+def passkey_deposit_account(profile_id: str) -> str:
+    """The passkey account new money may be minted to, or ''. Empty while a
+    wallet change is waiting for the chat or cooling down (24 h)."""
+    try:
+        from gaming.src.backend.services.self_custody import routing
+
+        return routing.deposit_account(profile_id) or ""
+    except Exception:
+        return ""
+
+
 async def arc_destination(profile_id: str) -> str:
     """Where naira USDC lands on Arc: the player's own passkey account when
     they have one (CCTP mints straight to it), else their play wallet."""
-    return passkey_account(profile_id) or (await play_wallet(profile_id)).get("address") or ""
+    return passkey_deposit_account(profile_id) or (await play_wallet(profile_id)).get("address") or ""
 
 
 def arc_destination_sync(profile_id: str) -> str:
-    return passkey_account(profile_id) or play_wallet_sync(profile_id).get("address") or ""
+    return passkey_deposit_account(profile_id) or play_wallet_sync(profile_id).get("address") or ""

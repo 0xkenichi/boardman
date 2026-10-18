@@ -2,7 +2,8 @@
 
 Called only by the Vercel BFF with the master key, like the withdraw page;
 ``X-Boardman-Caller`` is the signed-in web session's profile when there is
-one. Every route answers 404 while ``SELF_CUSTODY_WALLETS_ENABLED`` is off.
+one, ``X-Boardman-Auth-Iat`` its sign-in time (a wallet change needs a recent
+one). Every route answers 404 while ``SELF_CUSTODY_WALLETS_ENABLED`` is off.
 
 The approve POST does not move money (the player's passkey already did): it
 records the hashes and asks the chain. A match advances only on the escrow's
@@ -13,7 +14,7 @@ from __future__ import annotations
 import asyncio
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -34,9 +35,26 @@ def _refused(exc: IntentRefused) -> JSONResponse:
     return JSONResponse(exc.body(), status_code=exc.status_code, headers=NO_STORE)
 
 
+class ChallengeBody(BaseModel):
+    address: str = Field(min_length=42, max_length=42)
+
+
 class RegisterBody(BaseModel):
     address: str = Field(min_length=42, max_length=42)
     credential_id: str = Field(min_length=8, max_length=512)
+    challenge_id: str = Field(min_length=8, max_length=64)
+    # A 6492-wrapped WebAuthn signature: factory call + P-256 assertion, a few KB of hex.
+    signature: str = Field(min_length=132, max_length=16_386)
+
+
+def _auth_iat_ms(raw: Optional[str]) -> Optional[int]:
+    """The web session's sign-in time (epoch seconds, from the BFF's signed
+    session cookie). Only meaningful together with ``X-Boardman-Caller``."""
+    try:
+        v = int((raw or "").strip())
+    except ValueError:
+        return None
+    return v * 1000 if v > 0 else None
 
 
 class SubmitBody(BaseModel):
@@ -48,13 +66,31 @@ class SubmitBody(BaseModel):
 
 @router.get("/setup")
 async def setup_view(t: Optional[str] = Query(default=None, max_length=128),
-                     caller: Optional[str] = Depends(require_platform)):
+                     caller: Optional[str] = Depends(require_platform),
+                     auth_iat: Optional[str] = Header(default=None, alias="X-Boardman-Auth-Iat")):
     if not config.enabled():
         return _off()
     from gaming.src.backend.services.self_custody import setup
 
     try:
-        out = await asyncio.to_thread(setup.view, t, caller=caller)
+        out = await asyncio.to_thread(setup.view, t, caller=caller, auth_iat_ms=_auth_iat_ms(auth_iat))
+    except IntentRefused as exc:
+        return _refused(exc)
+    return JSONResponse(out, headers=NO_STORE)
+
+
+@router.post("/setup/challenge")
+async def setup_challenge(body: ChallengeBody, t: Optional[str] = Query(default=None, max_length=128),
+                          caller: Optional[str] = Depends(require_platform),
+                          auth_iat: Optional[str] = Header(default=None, alias="X-Boardman-Auth-Iat")):
+    """The one-time message the new passkey account signs (setup proof)."""
+    if not config.enabled():
+        return _off()
+    from gaming.src.backend.services.self_custody import setup
+
+    try:
+        out = await asyncio.to_thread(setup.challenge, t, address=body.address, caller=caller,
+                                      auth_iat_ms=_auth_iat_ms(auth_iat))
     except IntentRefused as exc:
         return _refused(exc)
     return JSONResponse(out, headers=NO_STORE)
@@ -62,19 +98,28 @@ async def setup_view(t: Optional[str] = Query(default=None, max_length=128),
 
 @router.post("/setup")
 async def setup_register(body: RegisterBody, t: Optional[str] = Query(default=None, max_length=128),
-                         caller: Optional[str] = Depends(require_platform)):
+                         caller: Optional[str] = Depends(require_platform),
+                         auth_iat: Optional[str] = Header(default=None, alias="X-Boardman-Auth-Iat")):
+    """Verify the signed challenge (ERC-1271/6492 on chain), then ask the
+    player in every chat. Nothing is linked until they tap Yes there."""
     if not config.enabled():
         return _off()
     from gaming.src.backend.services.self_custody import notices, setup
 
     try:
-        out = await asyncio.to_thread(setup.register, t, address=body.address,
-                                      credential_id=body.credential_id, caller=caller)
+        out = await asyncio.to_thread(setup.register, t, address=body.address, credential_id=body.credential_id,
+                                      challenge_id=body.challenge_id, signature=body.signature, caller=caller,
+                                      auth_iat_ms=_auth_iat_ms(auth_iat))
     except IntentRefused as exc:
         return _refused(exc)
-    if out.pop("created", False):
-        await notices.wallet_linked(out["profile_id"], out["address"])
-    out.pop("profile_id", None)
+    pid, nonce, rid = out.pop("profile_id"), out.pop("confirm_nonce"), out.pop("request_id")
+    previous = None
+    if out["kind"] == "change":
+        from gaming.src.backend.services.self_custody import store
+
+        previous = ((await asyncio.to_thread(store.get_request, rid)) or {}).get("previous_address")
+    out["confirm_sent"] = await notices.confirm_prompt(pid, kind=out["kind"], address=out["address"], nonce=nonce,
+                                                       previous=previous)
     return JSONResponse(out, headers=NO_STORE)
 
 

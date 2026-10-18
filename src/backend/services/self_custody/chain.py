@@ -1,6 +1,6 @@
 """Read-only chain access for confirmations. Never signs, never sends.
 
-``ChainReader`` is what ``intents.confirm`` needs; ``Web3Reader`` talks JSON-RPC
+``ChainReader`` is what ``intents.confirm`` and the setup proof need; ``Web3Reader`` talks JSON-RPC
 to the configured Arc RPC, tests install a fake with ``set_reader``.
 Logs and receipts are returned as plain dicts with hex strings:
 ``{"address", "topics": [...], "data", "transactionHash", "blockNumber"}``.
@@ -23,6 +23,8 @@ class ChainReader(Protocol):
     def usdc_balance(self, usdc: str, account: str) -> int: ...
 
     def escrow_version(self, escrow: str) -> int: ...
+
+    def is_valid_signature(self, account: str, digest: bytes, signature: bytes) -> bool: ...
 
 
 def _hex(v: Any) -> str:
@@ -94,6 +96,21 @@ class Web3Reader:
             return int(c.functions.ESCROW_VERSION().call())
         except Exception:
             return 1
+
+    def is_valid_signature(self, account: str, digest: bytes, signature: bytes) -> bool:
+        """ERC-1271 / ERC-6492 check through the deployless universal
+        validator (``proof.py``). A revert means "not valid"; transport errors
+        raise so the caller can say "try again" instead of "forged"."""
+        from web3.exceptions import ContractLogicError
+
+        from gaming.src.backend.services.self_custody import proof
+
+        data = proof.validator_calldata(account, digest, signature)
+        try:
+            out = self.w3.eth.call({"data": "0x" + data.hex()})
+        except ContractLogicError:
+            return False
+        return bytes(out)[-1:] == proof.MAGIC_OK and int.from_bytes(bytes(out), "big") == 1
 
 
 _reader: Optional[ChainReader] = None

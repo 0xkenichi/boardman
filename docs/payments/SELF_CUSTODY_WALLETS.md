@@ -195,12 +195,114 @@ a closed tab still confirms; a client that lies confirms nothing.
 * **A UserOperation that reverts inside a landed bundle** is caught on the
   page (`success: false`): nothing is reported, the link stays open.
 * **Wallet setup** `/app/wallet/setup?t=<token>` (chat link, or a signed-in
-  web session): register passkey → counterfactual address → POST
-  `{address, credential_id}` → stored once in `payment_wallets` under
-  `<chain>/passkey` (an existing address always wins: never silently
-  replaced). The player is told in chat which address was linked.
-  Ownership is *proven* by the first confirmed on-chain action from that
-  account; until then it only receives deposits.
+  web session): signed proof of control, then the player's "Yes" in chat,
+  then stored in `payment_wallets` under `<chain>/passkey`. Changing it
+  also needs a fresh web sign-in and a 24 h cool-down. Details and threat
+  model: §3.1.
+
+### 3.1 Setup proof, chat confirmation and wallet changes
+
+```
+page: create passkey (prompt 1) → counterfactual address A
+  POST /setup/challenge {A}            ← one-time EIP-191 text, 10 min, single use
+page: check the text names A and this chain id, then
+  smart.signMessage(text) (prompt 2)   ← Circle MSCA: ERC-1271 over a replay-safe
+                                          hash; viem wraps it in ERC-6492 while A is
+                                          not deployed
+  POST /setup {A, credential_id, challenge_id, signature}
+backend: challenge belongs to this profile + this link (or this session),
+  is open, unexpired, same chain + chain id, same A → claim it (once) →
+  eth_call(ERC-6492 universal validator init code ‖ abi(A, hash, sig)) == 0x01
+  → request "pending_confirm" (30 min); the link is spent
+every chat of the player (Telegram + WhatsApp, notify all_channels):
+  "Is this your new wallet? 0xA…  [Yes, it's mine] [No]"
+Yes (from a chat of THIS profile) → active: payment_wallets row inserted
+No / no answer → declined / expired: nothing linked
+```
+
+**The challenge** (`proof.message_for`) is plain text, so the stored copy is
+exactly what is verified:
+
+```
+boardman.playingsidequest.fun wants you to prove you own this wallet.
+
+Link this wallet to my Boardman account.
+
+Wallet: 0x…            (checksummed A)
+Account: <profile id>
+Chain ID: 5042002
+Purpose: setup | change
+Nonce: <128-bit hex>
+Issued At / Expiration Time: <UTC>
+```
+
+It is stored with the profile, the SHA-256 of the setup link (or none for
+a web session), the chain key and EVM chain id, and expires with the link
+TTL (`SELF_CUSTODY_APPROVE_TTL_SEC`). A newer challenge supersedes older
+unsigned ones; 20 per player per hour.
+
+**Verification is in Python** (`self_custody/proof.py`,
+`chain.Web3Reader.is_valid_signature`): one read-only `eth_call` with no
+`to`, whose data is viem 2.57.7's `erc6492SignatureValidatorByteCode`
+followed by `abi.encode(address, bytes32, bytes)` — exactly what viem's
+`verifyMessage` sends. The validator deploys a counterfactual account from
+the ERC-6492 factory data in the call's scratch state, then asks its
+ERC-1271 `isValidSignature`; for a deployed account it asks directly. A
+revert or `0x00` = invalid; a transport error = "try again" (the challenge
+is spent, the link is not). Chosen over verifying in the Next BFF and
+passing an attestation: one place decides, it is next to the store it
+guards, and pytest covers it; nothing from the browser is trusted but the
+signature. `frontend/lib/__tests__/setupProof.test.mjs` pins the bytecode,
+the calldata and the EIP-191 hash to viem's; the Python tests assert the
+same vectors.
+
+**Refused** (tests in `tests/test_self_custody.py`): no/unknown challenge,
+malformed or forged signature (link burned), a signature over another
+challenge, a reused challenge (any outcome, including RPC failure), an
+expired one, another profile's challenge or link, a session challenge used
+with a link (and vice versa), another address than the challenge names, a
+changed chain id, an address linked to another profile.
+
+**In-chat confirmation** (`channels/core/flows/scw.py`, buttons
+`v1|scw|y|<nonce>` / `v1|scw|n|<nonce>`): the nonce is 128 bits, only its
+SHA-256 is stored, it expires (`SELF_CUSTODY_CONFIRM_TTL_SEC`, 30 min),
+works once, and is accepted only from a chat whose principal is the
+request's profile — a forwarded prompt tapped by anyone else is refused
+("That request isn't yours"). Any of the player's chats may answer, so no
+per-chat binding (unlike the lock approvals). A newer proven request
+supersedes older waiting ones. If the prompt did not arrive (WhatsApp
+outside the 24 h window has no `wallet_confirm` template), *wallet* in the
+chat shows "Waiting for your confirmation" with **Confirm new wallet**
+(fresh nonce; old buttons die) and **Cancel**.
+
+**Changing a linked wallet** (lost passkey): the page offers it only to a
+signed-in web session whose sign-in (`iat` of the session cookie, kept
+across sliding renewals, sent as `X-Boardman-Auth-Iat`) is at most
+`SELF_CUSTODY_REAUTH_SEC` (15 min) old; a chat link alone is not enough.
+Then the same proof (`Purpose: change`), the same chat prompt (showing old
+and new address) on all chats, and after *Yes* a cool-down of
+`SELF_CUSTODY_CHANGE_COOLDOWN_SEC` (24 h): the old account stays the active
+one (stakes, withdrawals, the escrow's player address), new naira top-ups
+mint to the custodial play wallet instead of either passkey account
+(`routing.deposit_account`), and every chat gets "Wallet change scheduled"
+with **Cancel the change**. When the time has passed the next read swaps
+`payment_wallets` in one transaction, only if the active address is still
+the one the change was made against. Payouts follow the escrow's recorded
+player, so the new account receives winnings only for matches it locked
+itself after it became active.
+
+**Threat model**
+
+| Threat | Result |
+|---|---|
+| Setup link stolen / forwarded; attacker completes setup with *their* passkey | Valid proof for the attacker's address only; it waits in `pending_confirm`; the player's chat shows that address and the player taps No (or it expires). The attacker cannot answer from their own chat. Nothing is routed to it meanwhile. |
+| Page or BFF submits an address the passkey does not control | Signature check fails on chain; link burned. |
+| Replay of an old signature / challenge | Challenges are single use, expire in 10 min and name profile, link, chain and nonce. |
+| Signature from another chain or a forked deployment | Chain id is in the text and the MSCA's replay-safe hash binds `block.chainid` and the account address; a changed chain id is refused before the RPC call. |
+| Attacker holds the player's web session and wants to swap the wallet | Needs a sign-in < 15 min old, a passkey proof, the player's *Yes* in chat; then 24 h in which every chat can cancel and no new money reaches the new address. |
+| Attacker holds the player's chat (SIM swap, unlocked phone) | **Residual.** For a player with no passkey wallet yet, they can link *their own* wallet (a first setup needs no web sign-in and no cool-down); later naira top-ups would mint to it. Every other chat of the player is told. A change of an existing wallet additionally needs the web sign-in and the 24 h window. Consider requiring the web sign-in for first setup too once most players have one. |
+| RPC down or lying | Down: "try again", nothing linked. A lying RPC could accept a forged proof, but the player's chat Yes is still required. |
+| Player taps Yes on someone else's address | Mitigated by copy ("only if it matches the page"), the full address in the prompt, and the page showing the same address. Residual social-engineering risk. |
 
 ### Flags
 
@@ -210,26 +312,37 @@ a closed tab still confirms; a client that lies confirms nothing.
 | `SELF_CUSTODY_REQUIRED` | `0` | `1`: players without a passkey wallet get a setup link instead of the custodial lock |
 | `SELF_CUSTODY_CHAIN` | settlement chain | `arc` (testnet) / `arc_mainnet` |
 | `SELF_CUSTODY_SPONSOR_GAS` | `1` | `paymaster: true` (Gas Station) on UserOperations |
-| `SELF_CUSTODY_APPROVE_TTL_SEC` | `600` | Approve/setup link lifetime |
+| `SELF_CUSTODY_APPROVE_TTL_SEC` | `600` | Approve/setup link and setup challenge lifetime |
+| `SELF_CUSTODY_CONFIRM_TTL_SEC` | `1800` | How long a proven wallet waits for the chat "Yes" |
+| `SELF_CUSTODY_CHANGE_COOLDOWN_SEC` | `86400` | A changed wallet is unused (old one active, top-ups to the play wallet) this long |
+| `SELF_CUSTODY_REAUTH_SEC` | `900` | Max age of the web sign-in a wallet change needs |
 | `SELF_CUSTODY_ESCROW_ADDRESS`, `SELF_CUSTODY_RPC_URL` | chains.yaml | Overrides for the chain read by the watcher |
 | `SELF_CUSTODY_MODULAR_PATH` | `arcTestnet` / `arc` | Circle modular transport path (mainnet name **unverified**) |
 | `BOARDMAN_ESCROW_VERSION` | on-chain probe | `2` → v2 `createMatch` with resolver permit; `1` → v1 call |
 | `NEXT_PUBLIC_CIRCLE_CLIENT_KEY`, `NEXT_PUBLIC_CIRCLE_CLIENT_URL` | unset | Frontend; without them the page says "not available yet" |
 
 Code: `src/backend/services/self_custody/` (config, store, calls, chain,
-wallets, setup, intents, routing, notices), `src/backend/api/self_custody.py`,
-`src/channels/core/flows/{match,balance}.py`, `src/channels/core/actions/withdraw.py`,
+proof, wallets, setup, intents, routing, notices), `src/backend/api/self_custody.py`,
+`src/channels/core/flows/{match,balance,scw}.py`, `src/channels/core/actions/withdraw.py`,
 `src/channels/telegram/passkey.py`, `frontend/app/rematch/app/{wallet/setup,approve/[token]}`,
-`frontend/app/api/rematch/app/{wallet/setup,approve/[token]}`, `frontend/lib/selfCustody/`.
-Migration: `supabase/migrations/20261018130000_self_custody_intents.sql`.
-Tests: `tests/test_self_custody.py` (fake chain, test resolver key, no
-network, no bundler) and `frontend/lib/__tests__/passkeyEnv.test.mjs`.
+`frontend/app/api/rematch/app/{wallet/setup,wallet/setup/challenge,approve/[token]}`,
+`frontend/lib/selfCustody/` (`proof.ts`, `setupBff.ts`).
+Migrations: `supabase/migrations/20261018130000_self_custody_intents.sql`,
+`supabase/migrations/20261018150000_self_custody_wallet_requests.sql`.
+Tests: `tests/test_self_custody.py` (fake chain whose ERC-1271 answer is a
+real ECDSA check, test resolver key, no network, no bundler) and
+`frontend/lib/__tests__/{passkeyEnv,setupProof}.test.mjs`.
 
-Not built yet: ERC-1271/6492 ownership check at setup, the "Move my
-balance" button (§5), the naira cash-out intent (§4.3), a passkey-recovery
-prompt, and a WhatsApp template for the `wallet_update` notice (outside the
-24 h window the confirmation is skipped on WhatsApp; the page already showed
-it).
+Support can still link an address by hand with `wallets.link_unverified`
+(no proof, no chat step): only after an out-of-band check, never from a
+player path.
+
+Not built yet: the "Move my balance" button (§5), the naira cash-out
+intent (§4.3), a passkey-recovery prompt, a chat notice when a changed
+wallet becomes active (it happens on the first read after the cool-down;
+the "scheduled" notice already gave the time), and WhatsApp templates for
+`wallet_confirm` / `wallet_update` (outside the 24 h window those are
+skipped on WhatsApp; the player finds the prompt under *wallet*).
 
 ## 4. Paycrest (naira) with self-custody
 
@@ -292,7 +405,10 @@ it).
    `BOARDMAN_ESCROW_VERSION=2` and the resolver key (keystore) for permits.
 5. Device test matrix on testnet: iOS Safari, Android Chrome, Telegram iOS /
    Android / Desktop, WhatsApp iOS / Android (open link → "Open in browser" →
-   passkey → lock → back to chat). Record results here.
+   create passkey → sign the setup proof → "Yes" in chat → lock → back to
+   chat). Also confirm on Arc testnet that a real counterfactual account's
+   signature passes `proof.verify` (only exercised against viem's bytes and
+   a fake chain here). Record results here.
 6. Recovery: decide whether to prompt every player to save a recovery phrase
    (Circle recovery module) after their first deposit.
 
@@ -302,11 +418,12 @@ it).
   fall back to Circle user-controlled wallets (PIN) for those clients.
 * **Recovery**: a player who loses every synced passkey and skipped the
   recovery phrase loses the wallet. Boardman cannot help — by design.
-* **Ownership of the registered address** is only proven by the first
-  on-chain action; a stolen setup link could register an attacker's address
-  for deposits. Mitigations: single-use 10-minute links, chat notice on
-  registration, address never replaced silently, stakes/payouts bound to the
-  on-chain player. TODO: verify an ERC-1271/ERC-6492 signature at setup.
+* **Wallet linking** (§3.1): proven at setup with an ERC-1271/ERC-6492
+  signature over a one-time challenge and confirmed by the player in chat;
+  a stolen setup link alone links nothing. Residual: whoever controls the
+  player's chat can link their own wallet as a *first* wallet; changes need
+  a fresh web sign-in and wait 24 h. Two passkey prompts at setup (create,
+  then sign) are untested on the device matrix (§6.5).
 * **Circle dependency**: the bundler, passkey RP service and smart-account
   implementation are Circle's; an outage blocks locks and withdrawals (funds
   stay safe and are reachable through any ERC-4337 tooling with the passkey).
