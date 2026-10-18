@@ -1081,6 +1081,11 @@ async def ui_lock(callback: types.CallbackQuery) -> None:
 
     profile = await get_or_create_profile(user)
 
+    from gaming.src.channels.telegram.passkey import maybe_send_lock_link
+
+    if await maybe_send_lock_link(callback.message, user, profile, cid):
+        return  # self-custody: the player approves with a passkey on the web
+
     async def _progress(amount: Decimal) -> None:
         await callback.message.answer(
             f"⏳ Locking <b>${amount:,.2f}</b> USDC…",

@@ -61,6 +61,7 @@ class IssuedLink:
     token: str
     url: str
     expires_at_ms: int
+    kind: str = "pin"  # pin: the PIN page; passkey / setup: self-custody pages
 
 
 def ttl_ms() -> int:

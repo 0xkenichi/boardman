@@ -168,6 +168,12 @@ async def lock(ctx, ref: str) -> None:
         return
     if mk.geo_refused(ctx, "lock"):
         return
+    from gaming.src.backend.services.self_custody import routing
+
+    route = await asyncio.to_thread(routing.lock_route, pid, ch)
+    if route != routing.CUSTODIAL:
+        await _lock_with_passkey(ctx, ch, route)
+        return
     amount = Decimal(str(ch["amount_usdc"]))
     nonce = await asyncio.to_thread(
         approvals.issue, ctx.principal, "lock", {"challenge_id": str(ch["id"]), "amount": str(amount)}
@@ -179,6 +185,44 @@ async def lock(ctx, ref: str) -> None:
         [Option(ids.encode("ap", "y", nonce), "Yes, lock it"), Option(ids.encode("ap", "n", nonce), "No")],
         bind=nonce,
     ))
+
+
+async def _lock_with_passkey(ctx, ch: dict, route: str) -> None:
+    """Self-custody: an "Approve with passkey" link instead of the in-chat Yes.
+    The chat only prepares; the player signs on the web; the chain confirms."""
+    from gaming.src.backend.services.self_custody import intents, setup
+    from gaming.src.backend.services.self_custody.routing import SETUP
+
+    if route == SETUP:
+        try:
+            url, _ = await asyncio.to_thread(setup.issue_link, str(ctx.profile_id), channel=ctx.channel,
+                                             external_id=ctx.principal.external_id)
+        except intents.IntentRefused as exc:
+            ctx.choose(exc.message, [ctx.menu_option()])
+            return
+        ctx.link("*Set up your wallet first*\nStakes now lock from a wallet only you control, approved with "
+                 "a passkey (Face ID or fingerprint). It takes a minute. Then tap *Lock my stake* again.",
+                 url, "Set up wallet")
+        return
+    try:
+        prepared = await intents.prepare_lock(str(ctx.profile_id), ch, channel=ctx.channel,
+                                              external_id=ctx.principal.external_id)
+    except intents.IntentRefused as exc:
+        opts = [ctx.menu_option()]
+        if exc.kind == "funds" and ctx.enabled("deposit"):
+            opts.insert(0, Option(ids.encode("deposit", "start"), "Add money"))
+        ctx.choose(exc.message, opts)
+        return
+    ctx.link(passkey_lock_text(ch, prepared), prepared.url, "Approve with passkey")
+
+
+def passkey_lock_text(ch: dict, prepared) -> str:
+    amount = Decimal(str(ch["amount_usdc"]))
+    minutes = max(1, (prepared.expires_at_ms - prepared.intent["created_at_ms"]) // 60000)
+    return (f"*Lock ${amount:,.2f} USDC?*\nOpen the secure page and approve with your passkey. Your stake "
+            f"goes from your own wallet into escrow for match `{svc.code_of(ch)}`. You hold the keys; Boardman "
+            f"can't move your money. The link works once and expires in {minutes} minutes.\n"
+            "If the page can't use your passkey, choose *Open in browser*.")
 
 
 async def do_lock(ctx, payload: dict) -> None:
