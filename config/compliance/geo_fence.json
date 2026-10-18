@@ -26,6 +26,7 @@
     {"kind": "spectator_lp", "methods": ["POST"], "pattern": "/api/rematch/web/spectator/lp"},
     {"kind": "withdraw", "methods": ["POST"], "pattern": "/api/rematch/web/spectator/lp/withdraw"},
     {"kind": "withdraw", "methods": ["POST"], "pattern": "/api/channels/withdraw/*"},
+    {"kind": "deposit", "methods": ["POST"], "pattern": "/api/channels/naira/*"},
     {"kind": "spectator_payout", "methods": ["POST"], "pattern": "/api/rematch/web/spectator/payout"},
 
     {"kind": "stake_create", "methods": ["POST"], "pattern": "/api/stack/v1/matches"},
