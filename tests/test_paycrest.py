@@ -489,6 +489,26 @@ def test_worker_not_started_when_off():
     assert run(go()) is None
 
 
+def test_report_script_is_read_only(world, rail, capsys):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("reconcile_paycrest", ROOT / "scripts" / "reconcile_paycrest.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    store.create_order(idempotency_key="r1", direction="offramp", profile_id="p" * 36, status="on_base",
+                       details={"bank": {"account_identifier": "0123456789"}})
+    assert mod.main(["--report"], bootstrap=False) == 0
+    out = capsys.readouterr().out
+    assert '"on_base"' in out and "0123456789" not in out and "pk-test" not in out
+
+
+def test_env_script_keeps_the_rail_off_by_default():
+    sh = (ROOT / "scripts" / "set_paycrest_env.sh").read_text()
+    assert "read -rs -p \"Paycrest API key" in sh and "read -rs -p \"Paycrest API secret" in sh
+    assert "FLAG=0" in sh and "Type REAL MONEY to confirm" in sh
+    assert "/webhooks/paycrest" in sh
+
+
 def test_hermetic_client_has_no_live_default():
     # with no override the real client exists but nothing in the test run calls it
     assert pc_client._override is None
