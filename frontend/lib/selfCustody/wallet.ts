@@ -5,7 +5,8 @@
  * create-a-modular-wallet): passkey transport → WebAuthn credential →
  * modular transport for the chain → Circle smart account → bundler client.
  * The private key never leaves the player's authenticator; Boardman's server
- * never sees a signature it could replay, only the resulting tx hash.
+ * never sees a signature it could replay: the tx hash after an approval, and
+ * at setup one signature over a single-use challenge (the setup proof).
  *
  * The SDK is loaded on demand. Until `npm i @circle-fin/modular-wallets-core
  * viem` has run, next.config.js aliases both to ./sdkMissing.ts and every
@@ -92,11 +93,30 @@ async function account(info: ChainInfo, mode: 'register' | 'login', username: st
   return { credential, smart, chain, transport, aa }
 }
 
+export type NewWallet = {
+  address: string
+  credentialId: string
+  /** Sign the server's one-time setup challenge with this passkey account
+   *  (EIP-191 via the smart account: ERC-1271, wrapped in ERC-6492 while the
+   *  account is not deployed). A second passkey prompt. */
+  signProof: (message: string) => Promise<string>
+}
+
 /** Create a passkey and read the (counterfactual) smart-account address. */
-export async function createWallet(info: ChainInfo, username: string): Promise<{ address: string; credentialId: string }> {
+export async function createWallet(info: ChainInfo, username: string): Promise<NewWallet> {
   try {
     const { credential, smart } = await account(info, 'register', username)
-    return { address: smart.address, credentialId: credential.id }
+    return {
+      address: smart.address,
+      credentialId: credential.id,
+      signProof: async (message: string) => {
+        try {
+          return await smart.signMessage({ message })
+        } catch (e) {
+          throw friendly(e)
+        }
+      },
+    }
   } catch (e) {
     throw friendly(e)
   }
