@@ -109,6 +109,11 @@ def prepare(principal: Any, amount: Decimal, bank: dict, *, now_ms: Optional[int
 
     if not config.enabled():
         raise NairaError("Naira cash-outs are not switched on.", "off")
+    if wallets.passkey_account(principal.profile_id):
+        # TODO(self-custody): build calls.cctp_burn_calls() as a passkey intent
+        # and continue this order from the bridge's ``burned`` state.
+        raise NairaError("Cash out to bank isn't available for passkey wallets yet. Withdraw USDC to an "
+                         "exchange that supports Arc instead.", "self_custody")
     now = now_ms if now_ms is not None else store.now_ms()
     reason = precheck(principal, amount) or limit_problem(principal.profile_id, amount, now_ms=now)
     if reason:
@@ -329,6 +334,8 @@ def refund_home(order_id: str) -> None:
     bal = get_chain_ops().usdc_balance(config.delivery_chain(), w["address"])
     if bal < config.bridge().min_sweep_usdc:
         return  # refund not visible yet; the reconciler retries
+    # A refund goes back to the wallet the cash-out came from: the play wallet
+    # (passkey players cannot start a cash-out yet, see offramp.prepare).
     play = wallets.play_wallet_sync(o["profile_id"])
     b = config.bridge()
     br = cctp.start(idempotency_key=f"{order_id}:refund", kind="offramp_refund", profile_id=o["profile_id"],

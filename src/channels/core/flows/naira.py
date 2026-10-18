@@ -142,9 +142,9 @@ async def _in_go(ctx) -> None:
         return
     arc = ""
     try:
-        from gaming.src.backend.services.paycrest.wallets import play_wallet
+        from gaming.src.backend.services.paycrest.wallets import arc_destination
 
-        arc = (await play_wallet(ctx.profile_id)).get("address") or ""
+        arc = await arc_destination(ctx.profile_id)
     except Exception:
         pass
     if not arc:
