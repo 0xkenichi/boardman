@@ -141,6 +141,8 @@ def _institutions_cached(_day: int) -> tuple:
 
 def institutions() -> list[dict[str, str]]:
     rows = _institutions_cached(store.now_ms() // DAY_MS)
+    if not rows:
+        _institutions_cached.cache_clear()  # never cache an outage for a day
     return [{"code": c, "name": n, "type": t} for c, n, t in rows]
 
 
