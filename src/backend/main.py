@@ -95,6 +95,11 @@ def create_app() -> FastAPI:
     from gaming.src.channels import config as channels_config
 
     app.include_router(channels_web_router)
+    # Naira rail (Paycrest): routes always mounted, each answers 404 unless
+    # PAYCREST_ENABLED=1 and REAL_MONEY_ENABLED=1 (checked per request).
+    from gaming.src.backend.api.paycrest import router as paycrest_router
+
+    app.include_router(paycrest_router)
     if channels_config.whatsapp_enabled():
         from gaming.src.channels.whatsapp.webhook import router as whatsapp_router
 
@@ -301,6 +306,9 @@ app = create_app()
 async def _startup():
     """Start background jobs on server startup."""
     start_deposit_expiry_task(interval_seconds=3600.0)
+    from gaming.src.backend.services.paycrest.reconcile import start_worker as start_paycrest_worker
+
+    app.state.paycrest_worker = start_paycrest_worker()  # None unless the naira rail is live
     _loop_state["started"] = 1.0
     app.state.loop_lag_monitor = asyncio.create_task(_loop_lag_monitor())
     logger.info("[Startup] ClawStation API started, expiry task scheduled")

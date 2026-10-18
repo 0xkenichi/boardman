@@ -75,16 +75,17 @@ def to_micro(amount: Decimal) -> int:
     return int((amount * MICRO).to_integral_value(rounding=ROUND_DOWN))
 
 
-def link_url(token: str) -> str:
-    return f"{config.site_url()}/app/withdraw/{token}"
+def link_url(token: str, path: str = "withdraw") -> str:
+    return f"{config.site_url()}/app/{path}/{token}"
 
 
 def _issue(purpose: str, profile_id: str, channel: str, external_id: str, *,
-           amount_micro: Optional[int], payload: dict, now_ms: Optional[int]) -> IssuedLink:
-    if not ratelimit.hit(f"wd_issue:{profile_id}",
+           amount_micro: Optional[int], payload: dict, now_ms: Optional[int],
+           rate_bucket: Optional[str] = None, path: str = "withdraw") -> IssuedLink:
+    if not ratelimit.hit(rate_bucket or f"wd_issue:{profile_id}",
                          limit=config.int_env("CHANNELS_WITHDRAW_LINKS_PER_HOUR", 5), window_sec=3600,
                          now_ms=now_ms):
-        raise LinkRefused("rate_limited", "Too many withdrawal links. Try again in an hour.")
+        raise LinkRefused("rate_limited", "Too many links. Try again in an hour.")
     now = now_ms if now_ms is not None else store.now_ms()
     token = secrets.token_urlsafe(32)
     expires = now + ttl_ms()
@@ -102,7 +103,7 @@ def _issue(purpose: str, profile_id: str, channel: str, external_id: str, *,
             (token_hash(token), purpose, profile_id, channel, str(external_id), amount_micro,
              tx.json(payload), now, expires),
         )
-    return IssuedLink(token, link_url(token), expires)
+    return IssuedLink(token, link_url(token, path), expires)
 
 
 def issue(profile_id: str, *, channel: str, external_id: str, amount: Decimal, address: str,
@@ -111,6 +112,28 @@ def issue(profile_id: str, *, channel: str, external_id: str, amount: Decimal, a
     payload = {"address": address, "recipient_id": recipient_id, "tag": tag}
     return _issue("withdraw", profile_id, channel, external_id,
                   amount_micro=to_micro(amount), payload=payload, now_ms=now_ms)
+
+
+def issue_naira(profile_id: str, *, channel: str, external_id: str, amount: Decimal, bank: dict,
+                quote: dict, now_ms: Optional[int] = None) -> IssuedLink:
+    """A withdraw link for a cash-out to a Nigerian bank (Paycrest rail).
+
+    Same page, same PIN, same single-use claim as any withdrawal; the payload
+    carries the verified bank account instead of a wallet address."""
+    payload = {"rail": "paycrest_ngn", "bank": bank, "bank_label": bank.get("label") or "", "quote": quote,
+               "address": None, "recipient_id": None, "tag": None}
+    return _issue("withdraw", profile_id, channel, external_id,
+                  amount_micro=to_micro(amount), payload=payload, now_ms=now_ms)
+
+
+def issue_purpose(purpose: str, profile_id: str, *, channel: str, external_id: str, payload: dict,
+                  now_ms: Optional[int] = None, rate_bucket: Optional[str] = None,
+                  path: str = "withdraw") -> IssuedLink:
+    """A one-time link for another web step (e.g. the naira KYC page)."""
+    if purpose in ("withdraw", "pin_reset"):
+        raise ValueError("use issue() / issue_pin_reset()")
+    return _issue(purpose, profile_id, channel, external_id, amount_micro=None, payload=payload,
+                  now_ms=now_ms, rate_bucket=rate_bucket, path=path)
 
 
 def issue_pin_reset(profile_id: str, *, channel: str, external_id: str,
@@ -132,8 +155,12 @@ def _load(token: str) -> Optional[dict]:
     return row
 
 
-def _check_open(row: Optional[dict], now: int, session_profile_id: Optional[str]) -> dict:
-    if row is None:
+PAGE_PURPOSES = ("withdraw", "pin_reset")
+
+
+def _check_open(row: Optional[dict], now: int, session_profile_id: Optional[str],
+                purposes: tuple[str, ...] = PAGE_PURPOSES) -> dict:
+    if row is None or row.get("purpose") not in purposes:
         raise LinkRefused("not_found", "This link is not valid.")
     if row["status"] != "open":
         raise LinkRefused("used", "This link was already used or replaced. Start again in the chat.")
@@ -163,6 +190,11 @@ def view(token: str, *, session_profile_id: Optional[str] = None, now_ms: Option
     if row["purpose"] == "withdraw":
         out["amount"] = str(Decimal(int(row["amount_micro"])) / MICRO)
         out["destination"] = {"address": p.get("address"), "tag": p.get("tag")}
+        if p.get("rail") == "paycrest_ngn":
+            q = p.get("quote") or {}
+            out["destination"] = {"bank": p.get("bank_label"), "address": None, "tag": None}
+            out["naira"] = {"payout_ngn": q.get("payout_ngn"), "rate": q.get("rate"),
+                            "account_name": (p.get("bank") or {}).get("account_name")}
     return out
 
 
@@ -193,6 +225,19 @@ def _set_status(th: str, status: str, result: Optional[dict] = None, *, only_if:
             sql += " AND status = ?"
             params.append(only_if)
         return tx.rowcount(sql, params) == 1
+
+
+def load(token: str) -> Optional[dict]:
+    return _load(token)
+
+
+def check_open(row: Optional[dict], now: int, session_profile_id: Optional[str],
+               *, purposes: tuple[str, ...]) -> dict:
+    return _check_open(row, now, session_profile_id, purposes)
+
+
+def set_status(th: str, status: str, result: Optional[dict] = None, *, only_if: Optional[str] = "open") -> bool:
+    return _set_status(th, status, result, only_if=only_if)
 
 
 def _claim(th: str, now: int) -> bool:
@@ -268,17 +313,23 @@ async def confirm(
         await asyncio.to_thread(_set_status, th, "done", {"pin": "set"})
         return {"ok": True, "status": "pin_set", "message": "Your withdrawal PIN is set."}
 
-    if perform is None:
-        from gaming.src.backend.services.withdrawals import perform_withdrawal as perform
     p = row["payload"]
     amt = Decimal(int(row["amount_micro"])) / MICRO
     try:
-        outcome = await perform(
-            row["profile_id"],
-            recipient_address=p["address"],
-            amount=amt,
-            recipient_id=p.get("recipient_id"),
-        )
+        if p.get("rail") == "paycrest_ngn":
+            # Cash-out to a Nigerian bank: Arc → Base (CCTP) → Paycrest.
+            from gaming.src.backend.services.paycrest import offramp
+
+            outcome = await offramp.perform(row["profile_id"], amount=amt, payload=p, link_hash=th)
+        else:
+            if perform is None:
+                from gaming.src.backend.services.withdrawals import perform_withdrawal as perform
+            outcome = await perform(
+                row["profile_id"],
+                recipient_address=p["address"],
+                amount=amt,
+                recipient_id=p.get("recipient_id"),
+            )
     except Exception:
         logger.exception("[channels] withdrawal crashed after claim")
         await asyncio.to_thread(_set_status, th, "failed", {"code": "error"})
@@ -302,11 +353,12 @@ def _notify_done(row: dict, outcome: Any) -> None:
         from gaming.src.channels.core.notify import Notice, notify
 
         p = row["payload"]
-        dest = f"@{p['tag']}" if p.get("tag") else (p.get("address") or "")
+        dest = f"@{p['tag']}" if p.get("tag") else (p.get("bank_label") or p.get("address") or "")
         notice = Notice(
             kind="withdrawal_update",
             params={"amount": f"{outcome.amount:,.2f}", "destination": dest, "status": "submitted"},
-            text=f"Withdrawal of ${outcome.amount:,.2f} USDC to {dest} submitted.",
+            text=(outcome.message if p.get("rail") == "paycrest_ngn"
+                  else f"Withdrawal of ${outcome.amount:,.2f} USDC to {dest} submitted."),
         )
         task = asyncio.get_running_loop().create_task(notify(row["profile_id"], notice))
         _TASKS.add(task)

@@ -14,6 +14,8 @@ Taken over per flow:
   match     ui:match                          ``all`` excludes them on Telegram)
   report    a photo while the core report interview waits for one (stored
             in our evidence store, not as a Telegram file_id)
+  naira     /naira and the "Top up with naira (Paycrest)" button, only while the
+            Paycrest rail is live (PAYCREST_ENABLED + REAL_MONEY_ENABLED)
 plus core buttons (``v1|…``) and text while a core conversation is active
 (only when no legacy wizard holds the chat).
 """
@@ -50,7 +52,9 @@ class ActiveCoreConversation(Filter):
     """Text belongs to the core only mid-flow, and never over a legacy wizard."""
 
     async def __call__(self, message: types.Message, state: Optional[FSMContext] = None) -> bool:
-        if not config.enabled_flows("telegram") or message.from_user is None:
+        if message.from_user is None:
+            return False
+        if not config.enabled_flows("telegram") and not config.naira_enabled():
             return False
         if state is not None and await state.get_state() is not None:
             return False
@@ -140,6 +144,11 @@ async def core_deposit(message: types.Message, state: FSMContext) -> None:
 @router.callback_query(F.data == "ui:get_money", CoreFlow("deposit"))
 async def core_deposit_cb(callback: types.CallbackQuery, state: FSMContext) -> None:
     await _cb(callback, state, text="deposit")
+
+
+@router.message(Command("naira"), CoreFlow("naira"))
+async def core_naira(message: types.Message, state: FSMContext) -> None:
+    await _cmd(message, state, "naira")
 
 
 @router.message(Command("withdraw", "send"), CoreFlow("withdraw"))

@@ -87,6 +87,7 @@ def _flows() -> dict[str, Any]:
         link,
         match,
         menu,
+        naira,
         onboarding,
         report,
         watch,
@@ -105,11 +106,12 @@ def _flows() -> dict[str, Any]:
         "report": report,
         "watch": watch,
         "ap": approve,  # approval answers; the approved action checks its own flag
+        "naira": naira,  # gated by the Paycrest flags, not CHANNELS_CORE_FLOWS
     }
 
 
 ALWAYS = {"menu", "onboarding", "ap"}
-KEYWORD_FLOWS = ("balance", "deposit", "withdraw", "challenge", "match", "report", "watch")
+KEYWORD_FLOWS = ("balance", "deposit", "withdraw", "naira", "challenge", "match", "report", "watch")
 
 
 class Engine:

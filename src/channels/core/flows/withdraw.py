@@ -36,17 +36,22 @@ async def start(ctx) -> None:
     from gaming.src.backend.services.safety import MAX_WITHDRAW_USDC, MIN_WITHDRAW_USDC
 
     ctx.st.set(NAME, "dest")
+    opts = [ctx.menu_option("Cancel")]
+    bank_hint = "To cash out to your bank, send to your exchange's USDC address on Arc."
+    if ctx.enabled("naira"):
+        opts.insert(0, Option(ids.encode("naira", "start", "out"), "Cash out to bank",
+                              "Naira to your Nigerian bank (Paycrest)"))
+        bank_hint = "To cash out naira to your Nigerian bank, tap *Cash out to bank*."
     ctx.choose(
         "*Withdraw USDC*\n"
         f"Per transfer: ${MIN_WITHDRAW_USDC:,.0f} to ${MAX_WITHDRAW_USDC:,.0f}.\n\n"
-        "Where to? Send a wallet address (0x…) or a player tag (@name). "
-        "To cash out to your bank, send to your exchange's USDC address on Arc.",
-        [ctx.menu_option("Cancel")],
+        f"Where to? Send a wallet address (0x…) or a player tag (@name). {bank_hint}",
+        opts,
     )
 
 
 async def on_button(ctx, act: str, arg: str) -> None:
-    await start(ctx)
+    await start(ctx)  # the bank cash-out button belongs to the naira flow
 
 
 async def on_text(ctx, text: str) -> None:

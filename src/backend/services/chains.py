@@ -111,6 +111,7 @@ _ESCROW_ENV = {
     "arc": "CLAW_ESCROW_ADDRESS_ARC",
     "arc_mainnet": "BOARDMAN_ESCROW_ADDRESS_ARC_MAINNET",
     "base": "CLAW_ESCROW_ADDRESS_BASE_SEPOLIA",
+    "base_mainnet": "BOARDMAN_ESCROW_ADDRESS_BASE_MAINNET",
     "avalanche": "CLAW_ESCROW_ADDRESS_AVALANCHE",
 }
 
@@ -118,6 +119,7 @@ _TOKEN_ENV = {
     "arc": "CIRCLE_USDC_TOKEN_ID_ARC",
     "arc_mainnet": "CIRCLE_USDC_TOKEN_ID_ARC_MAINNET",
     "base": "CIRCLE_USDC_TOKEN_ID",
+    "base_mainnet": "CIRCLE_USDC_TOKEN_ID_BASE_MAINNET",
     "avalanche": "CIRCLE_USDC_TOKEN_ID_AVALANCHE",
 }
 
@@ -126,6 +128,7 @@ CIRCLE_TO_CHAIN = {
     "ARC-TESTNET": "arc",
     "ARC": "arc_mainnet",
     "BASE-SEPOLIA": "base",
+    "BASE": "base_mainnet",
     "AVAX-FUJI": "avalanche",
 }
 
@@ -173,6 +176,7 @@ def load_chains_config() -> dict[str, Any]:
             "arc": "ARC_TESTNET_RPC_URL",
             "arc_mainnet": "ARC_MAINNET_RPC_URL",
             "base": "BASE_SEPOLIA_RPC_URL",
+            "base_mainnet": "BASE_MAINNET_RPC_URL",
             "avalanche": "AVALANCHE_FUJI_RPC_URL",
         }.get(chain_id)
         if rpc_env and os.getenv(rpc_env):
@@ -320,6 +324,7 @@ def get_circle_usdc_token_id(chain_id: str) -> str:
         "arc": "CIRCLE_USDC_TOKEN_ID_ARC",
         "arc_mainnet": "CIRCLE_USDC_TOKEN_ID_ARC_MAINNET",
         "base": "CIRCLE_USDC_TOKEN_ID",
+        "base_mainnet": "CIRCLE_USDC_TOKEN_ID_BASE_MAINNET",
         "avalanche": "CIRCLE_USDC_TOKEN_ID_AVALANCHE",
     }.get(normalize_chain_id(chain_id))
     if env_key and os.getenv(env_key):
@@ -370,3 +375,21 @@ def format_chain_help() -> str:
     lines.append(f"Default / only live chain: {default_chain_id()}")
     lines.append("Example: /challenge @rival 5 EAFC private arc")
     return "\n".join(lines)
+
+
+def cctp_domain(chain_id: str) -> int:
+    """Circle CCTP domain id for a chain (Arc 26, Base 6). Raises if unknown."""
+    c = get_chain(chain_id)
+    if c.get("cctp_domain") is None:
+        raise ValueError(f"No CCTP domain configured for chain '{c['id']}'")
+    return int(c["cctp_domain"])
+
+
+def cctp_contracts(chain_id: str) -> dict[str, Any]:
+    """TokenMessengerV2 / MessageTransmitterV2 / Iris host for the chain's network."""
+    cfg = load_chains_config().get("cctp") or {}
+    cid = normalize_chain_id(chain_id)
+    net = (cfg.get("network_of") or {}).get(cid) or ("mainnet" if cid.endswith("_mainnet") else "testnet")
+    row = dict(cfg.get(net) or {})
+    row["network"] = net
+    return row
