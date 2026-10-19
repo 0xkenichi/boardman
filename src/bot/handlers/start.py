@@ -78,10 +78,15 @@ async def cmd_start(message: types.Message) -> None:
         await message.answer(f"❌ Could not create your profile: {exc}")
         return
 
-    try:
-        await update_telegram_chat_id(profile["id"], message.chat.id)
-    except Exception as exc:
-        logger.warning("[Start] chat id update failed: %s", exc)
+    # Only a private chat may become the player's notification chat: a group's
+    # id here would send approval prompts, balances and links to the group.
+    from gaming.src.bot.middleware.private_chat import is_private
+
+    if is_private(message.chat):
+        try:
+            await update_telegram_chat_id(profile["id"], message.chat.id)
+        except Exception as exc:
+            logger.warning("[Start] chat id update failed: %s", exc)
 
     # Deep links: ctr_IKEJA01 (onile) · cup_ABC123 · m_XXXX (public match)
     payload = _start_payload(message)

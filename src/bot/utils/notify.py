@@ -116,6 +116,26 @@ async def get_balance_snapshot(user_id: str) -> str:
     return f"💵 Balance: <b>{usdc_s}</b>{note}\n🎮 $PLAY: <b>{play_s}</b>{streak_s}"
 
 
+def _positive_int(v) -> Optional[int]:
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+
+def private_chat_id(row: Optional[dict]) -> Optional[int]:
+    """The player's private chat with the bot, never a group.
+
+    Telegram group and channel ids are negative; a private chat's id is the
+    user's own (positive) id. A group id stored by an old ``/start`` in a group
+    is skipped in favour of ``telegram_id``, so private notices (approval
+    prompts, balances, links) never land in front of other members.
+    """
+    row = row or {}
+    return _positive_int(row.get("gaming_telegram_chat_id")) or _positive_int(row.get("telegram_id"))
+
+
 async def notify_user(
     user_id: str,
     text: str,
@@ -169,7 +189,7 @@ async def notify_user(
     row = None
     if result is not None and result.data:
         row = result.data[0] if isinstance(result.data, list) else result.data
-    chat_id = (row or {}).get("gaming_telegram_chat_id") or (row or {}).get("telegram_id")
+    chat_id = private_chat_id(row)
     if not chat_id:
         logger.warning("[Notify] No Telegram chat id for user %s", user_id)
         _log_notification_failure(user_id, text, "missing_telegram_chat_id")
