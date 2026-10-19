@@ -388,6 +388,51 @@ def listing_onchain_payable(a: dict[str, Any]) -> bool:
     return True
 
 
+
+class MarketBusy(ValueError):
+    """Another market action on this manager is still settling."""
+
+
+def _market_serialized(fn):
+    """One market action per manager at a time — across threads, requests and
+    processes. A sale moves money first and persists ownership after; without
+    this two buyers (or a buy and an accepted offer, or a buy and a delist)
+    could both load the same listing and both be charged for one manager."""
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        from gaming.src.stack.agentic.db import leases
+
+        agent_id = str(kwargs.get("agent_id") or "")
+        lock = leases.exclusive(f"afm-market:{agent_id}")
+        try:
+            lock.__enter__()
+        except leases.LeaseBusy as exc:
+            raise MarketBusy(
+                f"{agent_id} has another sale or listing change in progress — try again in a moment"
+            ) from exc
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            lock.__exit__(None, None, None)
+
+    return wrapper
+
+
+def _persist_agent(agent_id: str, a: dict[str, Any]) -> None:
+    """Write back ONE agent record under the store's cross-process file lock,
+    so a market action never overwrites other agents changed meanwhile."""
+    from gaming.src.stack.agentic.store import update_json
+
+    def _apply(cur: Any) -> Any:
+        cur = cur if isinstance(cur, dict) else {"agents": {}}
+        cur.setdefault("agents", {})[agent_id] = a
+        return cur
+
+    update_json("agents.json", _apply, {"agents": {}})
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -740,6 +785,7 @@ def _log_market_event(a: dict[str, Any], kind: str, **fields: Any) -> None:
     del events[:-MARKET_EVENT_CAP]
 
 
+@_market_serialized
 def list_manager_for_sale(
     *,
     agent_id: str,
@@ -808,10 +854,11 @@ def list_manager_for_sale(
         by=listed_by,
     )
     a["updated_at"] = _now()
-    save_json("agents.json", data)
+    _persist_agent(agent_id, a)
     return {"agent": _market_row(a)}
 
 
+@_market_serialized
 def delist_manager_agent(*, agent_id: str, listed_by: Optional[str] = None) -> dict[str, Any]:
     """The current owner pulls a manager off the marketplace (no more sales)."""
     from gaming.src.stack.agentic.registry import get_registry
@@ -835,7 +882,7 @@ def delist_manager_agent(*, agent_id: str, listed_by: Optional[str] = None) -> d
     a.pop("listing", None)
     _log_market_event(a, "delisted", by=listed_by)
     a["updated_at"] = _now()
-    save_json("agents.json", data)
+    _persist_agent(agent_id, a)
     return {"agent": _market_row(a)}
 
 
@@ -1212,6 +1259,7 @@ def _execute_sale(
     }
 
 
+@_market_serialized
 def purchase_manager_agent(
     *,
     agent_id: str,
@@ -1253,10 +1301,11 @@ def purchase_manager_agent(
         settlement=settlement,
     )
     _cancel_offers(a, note="sold via buy-now")
-    save_json("agents.json", data)
+    _persist_agent(agent_id, a)
     return {"agent": _market_row(a), "sale": sale}
 
 
+@_market_serialized
 def make_manager_offer(*, agent_id: str, offer_usdc: str | Decimal | float, buyer_id: Optional[str] = None) -> dict[str, Any]:
     """A buyer names their price on a listed manager.
 
@@ -1310,7 +1359,7 @@ def make_manager_offer(*, agent_id: str, offer_usdc: str | Decimal | float, buye
     }
     a.setdefault("offers", []).append(offer)
     a["updated_at"] = _now()
-    save_json("agents.json", data)
+    _persist_agent(agent_id, a)
     return {"agent": _market_row(a), "offer": offer, "auto_declined": bool(below_reserve)}
 
 
@@ -1340,6 +1389,7 @@ def _offer_in(
     return data, a, offer
 
 
+@_market_serialized
 def accept_manager_offer(
     *,
     agent_id: str,
@@ -1373,10 +1423,11 @@ def accept_manager_offer(
             o["status"] = "cancelled"
             o["cancelled_at"] = _now()
             o["note"] = "another offer was accepted"
-    save_json("agents.json", data)
+    _persist_agent(agent_id, a)
     return {"agent": _market_row(a), "sale": sale}
 
 
+@_market_serialized
 def reject_manager_offer(*, agent_id: str, offer_id: str, reject_by: Optional[str] = None) -> dict[str, Any]:
     """The owner turns an offer down — the listing stays up for other buyers."""
     reject_by = (reject_by or "").strip() or DEMO_OWNER_ID
@@ -1385,7 +1436,7 @@ def reject_manager_offer(*, agent_id: str, offer_id: str, reject_by: Optional[st
     offer["decided_at"] = _now()
     offer["note"] = "rejected by the owner"
     a["updated_at"] = _now()
-    save_json("agents.json", data)
+    _persist_agent(agent_id, a)
     return {"agent": _market_row(a), "offer": offer}
 
 
