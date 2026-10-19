@@ -54,18 +54,22 @@ def is_mainnet() -> bool:
             return True
         if (os.getenv("CLAW_DEFAULT_CHAIN") or "").strip().lower() == "arc_mainnet":
             return True
-        raw = (
-            os.getenv("SPECTATOR_CHAIN")
-            or os.getenv("BOARDMAN_SETTLEMENT_RAIL")
-            or ""
-        ).strip().lower()
         from gaming.src.backend.services.chains import default_chain_id, get_chain, normalize_chain_id
 
-        cid = normalize_chain_id(raw) if raw else default_chain_id()
-        if cid == "arc_mainnet":
-            return True
-        cfg = get_chain(cid) or {}
-        return str(cfg.get("chain_id") or "") == "5042"
+        # EVERY chain signal counts: a testnet SPECTATOR_CHAIN override must
+        # not hide a mainnet settlement chain (it used to replace it).
+        cids = [default_chain_id()]
+        for name in ("SPECTATOR_CHAIN", "BOARDMAN_SETTLEMENT_RAIL"):
+            raw = (os.getenv(name) or "").strip().lower()
+            if raw:
+                cids.append(normalize_chain_id(raw))
+        for cid in cids:
+            if cid == "arc_mainnet":
+                return True
+            cfg = get_chain(cid) or {}
+            if str(cfg.get("chain_id") or "") == "5042":
+                return True
+        return False
     except Exception:
         logger.warning("[spectator_policy] chain resolution failed — treating as mainnet", exc_info=True)
         return True

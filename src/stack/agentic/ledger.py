@@ -164,6 +164,9 @@ def _escrow_write(tx: Tx, esc: dict[str, Any]) -> None:
 def credit(wallet: str, amount: Decimal, *, reason: str, ref: str = "") -> dict[str, Any]:
     key = wallet.lower()
     micro = to_micro(amount)
+    if micro < 0:
+        # A negative "credit" is a silent debit booked as a credit row.
+        raise ValueError("credit amount must not be negative")
     sc = places(amount)
     with transaction() as tx:
         bal = _apply_delta(tx, key, micro, scale=sc, need_msg="credit would overdraw: have {have}, need {need}")
@@ -307,6 +310,9 @@ def open_escrow(
     chain_id: str = "arc",
 ) -> dict[str, Any]:
     stake_micro = to_micro(stake_usdc)
+    if stake_micro <= 0:
+        # lock() debits -stake: a negative stake would MINT on every lock.
+        raise ValueError("escrow stake must be positive")
     stake_text = fmt_places(stake_micro, places(stake_usdc))
     with transaction() as tx:
         existing = _escrow_locked(tx, match_id)
