@@ -39,7 +39,14 @@ betting window is `SPECTATOR_BOOK_WINDOW_SECONDS` (default 900).
 and must run from a throwaway deployer key. Defaults: `openTimeout` 24h,
 `lockTimeout` 7d, `refundGrace` 7d, `claimWindow` 180d. It writes
 `deployments/boardman_v2_<network>.json` and offers ownership to the
-multisig. The multisig must call `acceptOwnership()` on both contracts.
+multisig. The multisig must call `acceptOwnership()` on every contract deployed.
+
+Before deploying, `scripts/lib/v2_preflight.js` checks that `arcMainnet` really
+is chain 5042, that the USDC address is a contract with `decimals() == 6`, that
+the owner Safe already has code on this chain, and that the resolver is an EOA
+(permits are plain ECDSA). On mainnets the SpectatorPool is skipped unless
+`V2_DEPLOY_POOL=1`, because spectator betting stays off on mainnet until counsel
+signs off and the pool's `deposit()` is permissionless once a book is open.
 Smoke-test locally with `npx hardhat run scripts/deploy_v2.js --network localhost`.
 
 ### Migration plan v1 → v2
@@ -61,16 +68,21 @@ Smoke-test locally with `npx hardhat run scripts/deploy_v2.js --network localhos
    `createMatch(bytes32,uint256)`. They must get a resolver permit (see
    `sign_create_permit` in `onchain.py`) and pass `player2`, so the opponent
    must be known at create. Keep that path on v1 until they are updated.
-5. Wire `close_book_onchain()` into the ply-N book freeze in
-   `src/stack/agentic/matches.py` and `house.py`. Until that is done, the
-   `closeAt` deadline plus the close-before-resolve in `resolve_book` still
-   enforce the rule.
+5. `close_book_onchain()` runs (async) at the ply-N book freeze
+   (`matches.freeze_book`) and, since the October 2026 audit (H-01), as the
+   first settlement step. `deposit_for` also refuses once the match or its
+   off-chain book is frozen. A direct `deposit()` is still possible until
+   `close()` lands or `closeAt` passes, so keep `SPECTATOR_BOOK_WINDOW_SECONDS` short.
 6. Run an ops job that calls `withdrawFees()` on both contracts and `withdraw()` for
    agent creator wallets on the pool, then update `chains.yaml` and this file with the addresses.
 
 ### Audit readiness
 
-**Invariants** (each has a test in `contracts/test/*v2.js`, and the random property runs cover them too):
+Internal audit, October 2026: `docs/security/AUDIT_2026-10_contracts.md`
+(PoCs in `contracts/test/Audit.2026-10.js`, `contracts/test/DeployPreflight.js`
+and `tests/test_audit_contracts_backend.py`).
+
+**Invariants** (each has a test in `contracts/test/*v2.js`, and the random property runs cover them too). On-chain monitors should check `>=` instead of `==`: USDC sent straight to a contract, or native USDC forced in on Arc, is outside the accounting.
 - Escrow: `usdc.balanceOf(escrow) == totalLocked + accruedFees + totalOwed`. A match only moves forward: OPEN → LOCKED/DISPUTED → RESOLVED/CANCELLED. A match id is created once. `payout + fee == 2*stake`, `fee ≤ pot/4`, and the fee is the value frozen at create.
 - Pool: `usdc.balanceOf(pool) == protocolFees + totalOwed + Σ live pots + Σ settled.remaining`. Per book, Σ claims ≤ `distributable`, the dust left is less than the number of winners, and refund books repay exactly the pot. `remaining` never underflows. A sweep touches only one book.
 - No deposit lands at or after `closeAt`, and no resolve happens while a book is Open before `closeAt`, or at or after `closeAt + refundGrace`.
