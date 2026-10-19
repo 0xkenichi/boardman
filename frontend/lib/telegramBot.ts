@@ -6,6 +6,19 @@
 export const DEFAULT_BOT_USERNAME = 'myboardmanOfficialBot'
 export const DEFAULT_BOT_URL = `https://t.me/${DEFAULT_BOT_USERNAME}`
 
+/**
+ * Escape text for Telegram parse_mode=HTML. Anything a visitor or a payer
+ * typed (waitlist fields, Paystack metadata) must go through this, or it can
+ * inject links and formatting into the admins' chat.
+ */
+export function escapeTelegramHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
 /** Public @username without @ — safe for client components. */
 export function telegramBotUsername(): string {
   const raw =

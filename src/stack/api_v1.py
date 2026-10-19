@@ -17,6 +17,7 @@ existing escrow helpers (caller supplies profile UUIDs).
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -57,6 +58,56 @@ def _require_stack_key(
     if not principal:
         raise HTTPException(status_code=401, detail="invalid or missing Rematch API key")
     return principal.builder_id
+
+
+# ---------------------------------------------------------------- acting player
+#
+# Every write below names a player (creator_id, opponent_id, profile_id) and
+# moves that player's custodial USDC (lock), records their result (report,
+# proof) or settles their stake. A builder key has no players of its own, so
+# it may never name one: these routes are platform only (the master key, i.e.
+# the Vercel BFF, which fills the id from the signed-in session). When the
+# BFF also sends X-Boardman-Caller, the body id must repeat it.
+
+CALLER_HEADER = "X-Boardman-Caller"
+
+
+def _require_platform_actor(
+    x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
+    x_boardman_key: Optional[str] = Header(default=None, alias="X-Boardman-Key"),
+    x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
+    authorization: Optional[str] = Header(default=None),
+    x_boardman_caller: Optional[str] = Header(default=None, alias=CALLER_HEADER),
+) -> Optional[str]:
+    """Master key only. Returns the BFF-vouched caller (None = the platform)."""
+    _require_stack_key(x_rematch_key, x_boardman_key, x_stack_key, authorization)
+    principal = resolve_api_key(
+        extract_api_key(
+            x_rematch_key=x_rematch_key,
+            x_boardman_key=x_boardman_key,
+            x_stack_key=x_stack_key,
+            authorization=authorization,
+        )
+    )
+    if principal is None or not principal.is_master:
+        raise HTTPException(
+            status_code=403,
+            detail="this route acts for a player; builder keys cannot name players",
+        )
+    return (x_boardman_caller or "").strip() or None
+
+
+def _same_player(caller: Optional[str], body_id: Optional[str], field: str) -> None:
+    if caller and (body_id or "").strip() != caller:
+        raise HTTPException(status_code=403, detail=f"{field} must be the signed-in caller")
+
+
+def _escape_like(value: str) -> str:
+    """Exact (case-insensitive) match for PostgREST ilike: no wildcards."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+_TAG_RE = re.compile(r"^[a-z0-9_.]{2,32}$")
 
 
 class CreateMatchBody(BaseModel):
@@ -160,12 +211,13 @@ class CreateMatchByTagBody(BaseModel):
 
 
 @router.post("/matches")
-def v1_create_match(body: CreateMatchBody, _: str = Depends(_require_stack_key)):
+def v1_create_match(body: CreateMatchBody, caller: Optional[str] = Depends(_require_platform_actor)):
     from gaming.src.backend.services.challenge_compat import denormalize_challenge
     from gaming.src.backend.services.game_catalog import get_game, display_name
     from gaming.src.backend.services.play_points import assert_can_start_or_accept
     from gaming.src.backend.services.safety import assert_money_ops_allowed, validate_stake
 
+    _same_player(caller, body.creator_id, "creator_id")
     if not get_game(body.game_id) and not body.game_id.startswith("imessage.") and not body.game_id.startswith("mobile."):
         if body.game_id not in ("EAFC", "NBA2K", "Other"):
             raise HTTPException(status_code=400, detail=f"unknown game_id: {body.game_id}")
@@ -248,24 +300,28 @@ def v1_create_match(body: CreateMatchBody, _: str = Depends(_require_stack_key))
 
 @router.post("/matches/by-tag")
 async def v1_create_match_by_tag(
-    body: CreateMatchByTagBody, _: str = Depends(_require_stack_key)
+    body: CreateMatchByTagBody, caller: Optional[str] = Depends(_require_platform_actor)
 ):
     """Create private challenge using opponent gaming_tag (web-friendly)."""
+    _same_player(caller, body.creator_id, "creator_id")
     clean = body.opponent_tag.strip().lstrip("@").lower()
     if not clean:
         raise HTTPException(status_code=400, detail="opponent_tag required")
+    if not _TAG_RE.match(clean):
+        raise HTTPException(status_code=400, detail="opponent_tag is not a valid tag")
     try:
         r = (
             _sb()
             .table("profiles")
             .select("id, gaming_tag")
-            .ilike("gaming_tag", clean)
+            .ilike("gaming_tag", _escape_like(clean))
             .limit(1)
             .execute()
         )
         row = (r.data or [None])[0]
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.exception("[StackV1] opponent lookup failed")
+        raise HTTPException(status_code=500, detail="opponent lookup failed") from exc
     if not row:
         raise HTTPException(
             status_code=404,
@@ -284,7 +340,7 @@ async def v1_create_match_by_tag(
             visibility="private",
             message=body.message or f"vs @{row.get('gaming_tag') or clean}",
         ),
-        _,
+        caller,
     )
 
 
@@ -315,11 +371,12 @@ def v1_get_match(match_ref: str, _: str = Depends(_require_stack_key)):
 
 @router.post("/matches/{match_ref}/accept")
 def v1_accept_match(
-    match_ref: str, body: AcceptMatchBody, _: str = Depends(_require_stack_key)
+    match_ref: str, body: AcceptMatchBody, caller: Optional[str] = Depends(_require_platform_actor)
 ):
     from gaming.src.backend.services.challenge_compat import denormalize_challenge
     from gaming.src.backend.services.play_points import assert_can_start_or_accept
 
+    _same_player(caller, body.opponent_id, "opponent_id")
     ch = _load_challenge(match_ref)
     if not ch:
         raise HTTPException(status_code=404, detail="match not found")
@@ -345,7 +402,7 @@ def v1_accept_match(
 
 @router.post("/matches/{match_ref}/lock")
 async def v1_lock_match(
-    match_ref: str, body: LockMatchBody, _: str = Depends(_require_stack_key)
+    match_ref: str, body: LockMatchBody, caller: Optional[str] = Depends(_require_platform_actor)
 ):
     """On-chain dual lock via existing escrow helpers."""
     from gaming.src.backend.services.clawstation_circle import (
@@ -360,6 +417,7 @@ async def v1_lock_match(
     )
     from gaming.src.backend.services.safety import assert_money_ops_allowed
 
+    _same_player(caller, body.profile_id, "profile_id")
     ch = _load_challenge(match_ref)
     if not ch:
         raise HTTPException(status_code=404, detail="match not found")
@@ -419,12 +477,13 @@ async def v1_lock_match(
 
 @router.post("/matches/{match_ref}/report")
 async def v1_report_score(
-    match_ref: str, body: ReportBody, _: str = Depends(_require_stack_key)
+    match_ref: str, body: ReportBody, caller: Optional[str] = Depends(_require_platform_actor)
 ):
     """Text score report (screenshot via /proof). Uses same DB fields as bot."""
     from gaming.src.backend.services.challenge_compat import denormalize_challenge
     from gaming.src.backend.services.game_catalog import outcome_type
 
+    _same_player(caller, body.profile_id, "profile_id")
     ch = _load_challenge(match_ref)
     if not ch:
         raise HTTPException(status_code=404, detail="match not found")
@@ -513,11 +572,12 @@ async def v1_submit_proof(
     profile_id: str = Form(...),
     score: str = Form(""),
     file: UploadFile = File(...),
-    _: str = Depends(_require_stack_key),
+    caller: Optional[str] = Depends(_require_platform_actor),
 ):
     """Upload final screenshot (+ optional score caption). Runs AI when possible."""
     import base64
 
+    _same_player(caller, profile_id, "profile_id")
     ch = _load_challenge(match_ref)
     if not ch:
         raise HTTPException(status_code=404, detail="match not found")
@@ -583,7 +643,7 @@ async def v1_submit_proof(
         await v1_report_score(
             match_ref,
             ReportBody(profile_id=pid, score=score),
-            _,
+            caller,
         )
 
     settle_result = None
@@ -608,7 +668,7 @@ async def v1_submit_proof(
 
 
 @router.post("/matches/{match_ref}/settle")
-async def v1_settle(match_ref: str, _: str = Depends(_require_stack_key)):
+async def v1_settle(match_ref: str, _: Optional[str] = Depends(_require_platform_actor)):
     ch = _load_challenge(match_ref)
     if not ch:
         raise HTTPException(status_code=404, detail="match not found")

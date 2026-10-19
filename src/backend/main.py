@@ -35,12 +35,26 @@ from gaming.src.backend.services.clawstation_circle import start_deposit_expiry_
 logger = logging.getLogger(__name__)
 
 
+def api_docs_enabled() -> bool:
+    """Swagger / ReDoc / openapi.json only when BOARDMAN_API_DOCS=1.
+
+    The public API host is reachable by anyone; a full route map (every admin
+    and money route, every body field) is a gift to an attacker. Builders get
+    docs/developers/06-api-reference.md instead.
+    """
+    return (os.getenv("BOARDMAN_API_DOCS") or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def create_app() -> FastAPI:
     """Build the ClawStation / Rematch Stack FastAPI application."""
+    docs = api_docs_enabled()
     app = FastAPI(
         title="Boardman API",
         version="0.1.0",
         description="Boardman product API + builder platform surface",
+        docs_url="/docs" if docs else None,
+        redoc_url="/redoc" if docs else None,
+        openapi_url="/openapi.json" if docs else None,
     )
 
     @app.middleware("http")
@@ -79,7 +93,7 @@ def create_app() -> FastAPI:
             "status": "ok",
             "product": "rematch",
             "stack": "/api/stack/v0",
-            "docs": "/docs",
+            **({"docs": "/docs"} if docs else {}),
         }
 
     app.include_router(deposit_router, prefix="/api")

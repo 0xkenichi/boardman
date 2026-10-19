@@ -61,5 +61,5 @@ def stack_public_board():
             "leaderboard": [],
             "open_challenges": [],
             "metrics": {},
-            "error": str(exc),
+            "error": "board_unavailable",
         }

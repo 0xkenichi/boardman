@@ -75,11 +75,18 @@ async function forward(
   return respond(out, opts)
 }
 
-/** Signed-in write (or private read) acting as the session's profile. */
-export async function proxyAuthed(req: Request, path: string, opts: ProxyOpts = {}): Promise<NextResponse> {
+/** Signed-in write (or private read) acting as the session's profile.
+ *  `path` may be built from the caller (e.g. `?party_id=<session profile>`),
+ *  so a private read never takes the party from the browser. */
+export async function proxyAuthed(
+  req: Request,
+  path: string | ((caller: string) => string),
+  opts: ProxyOpts = {}
+): Promise<NextResponse> {
   const auth = requireSession(req, { limit: opts.limit ?? 30 })
   if ('error' in auth) return auth.error
   const caller = auth.session.profileId
+  if (typeof path === 'function') path = path(caller)
   let body = opts.body ? { ...opts.body } : opts.body
   if (body) {
     for (const f of opts.identityFields ?? []) body[f] = caller

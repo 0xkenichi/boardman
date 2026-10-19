@@ -863,8 +863,11 @@ class ScoreVerifier:
                     resp.raise_for_status()
                     return base64.b64encode(resp.content).decode("utf-8")
             except Exception as e:
-                logger.error(f"Failed to download image from URL: {e}")
-                raise FileNotFoundError(f"Failed to download image from {image_path}: {e}")
+                # Telegram file URLs embed the bot token: never log or raise them.
+                safe = re.sub(r"/bot[^/]+/", "/bot<redacted>/", image_path)
+                err = re.sub(r"/bot[^/\s]+/", "/bot<redacted>/", str(e))
+                logger.error("Failed to download image from URL: %s", err)
+                raise FileNotFoundError(f"Failed to download image from {safe}: {err}")
 
         if image_path.startswith("data:image"):
             return image_path.split(",", 1)[1]

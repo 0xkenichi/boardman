@@ -101,10 +101,20 @@ const nextConfig = {
         source: '/agentic/:path*',
         headers: [{ key: 'Content-Security-Policy', value: csp({ agentic: true }) }],
       },
-      {
-        source: '/api/agentic/:path*',
+      // BFF answers are per-session (or carry one-time tokens): never stored
+      // by a browser or shared cache. Was `public, max-age=0` on /api/rematch.
+      ...['/api/agentic/:path*', '/api/rematch/:path*'].map((source) => ({
+        source,
         headers: [{ key: 'Cache-Control', value: 'no-store' }],
-      },
+      })),
+      // One-time withdraw / naira link pages: the token is in the path.
+      ...['/app/withdraw/:path*', '/app/naira/:path*'].map((source) => ({
+        source,
+        headers: [
+          { key: 'Cache-Control', value: 'no-store' },
+          { key: 'Referrer-Policy', value: 'no-referrer' },
+        ],
+      })),
       // Self-custody passkey pages: Circle RPC allowed, nothing cached or leaked.
       ...['/app/wallet/setup', '/app/approve/:path*'].map((source) => ({
         source,

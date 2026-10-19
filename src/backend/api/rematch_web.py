@@ -611,15 +611,20 @@ def web_profile_by_tag(
     authorization: Optional[str] = Header(default=None),
 ):
     _require_key(x_rematch_key, x_stack_key, authorization)
+    from gaming.src.stack.api_v1 import _TAG_RE, _escape_like
+
     clean = tag.strip().lstrip("@").lower()
     if not clean:
         raise HTTPException(status_code=400, detail="tag required")
+    if not _TAG_RE.match(clean):
+        # ilike would treat % / _ / * as wildcards and return someone else
+        return {"success": True, "found": False, "tag": clean}
     try:
         r = (
             _sb()
             .table("profiles")
             .select("id, gaming_tag, display_name, telegram_id")
-            .ilike("gaming_tag", clean)
+            .ilike("gaming_tag", _escape_like(clean))
             .limit(1)
             .execute()
         )

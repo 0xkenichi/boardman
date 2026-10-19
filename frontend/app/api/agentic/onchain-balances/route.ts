@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { usdcBalanceOf, arcRpcUrl, arcUsdcAddress } from '@/lib/arcUsdc'
 import { rematchApiFetch } from '@/lib/stackServer'
+import { rateLimitRequest } from '@/lib/bff'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -17,7 +18,13 @@ const DEMO = {
   nero: '0xe430C73cF2beD38aBE83DF8309763191624373E1',
 }
 
+/** Public and unauthenticated: every address is one RPC call on our key. */
+const MAX_ADDRESSES = 8
+const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/
+
 export async function GET(req: NextRequest) {
+  const limited = rateLimitRequest(req, 'onchain-balances', 30)
+  if (limited) return limited
   const sp = req.nextUrl.searchParams
   const list: { key: string; address: string }[] = []
 
@@ -31,6 +38,12 @@ export async function GET(req: NextRequest) {
   for (const key of ['raja', 'nero', 'agent_a', 'agent_b']) {
     const a = sp.get(key)
     if (a) list.push({ key, address: a.trim() })
+  }
+  if (list.length > MAX_ADDRESSES || list.some((x) => !ADDRESS_RE.test(x.address))) {
+    return NextResponse.json(
+      { ok: false, error: `up to ${MAX_ADDRESSES} 0x addresses` },
+      { status: 400 }
+    )
   }
   if (!list.length) {
     list.push({ key: 'raja', address: DEMO.raja })
@@ -54,7 +67,8 @@ export async function GET(req: NextRequest) {
   )
 
   // Volume is extra — never block the bankroll response on the laptop API.
-  const days = Number(sp.get('days') || 30)
+  const daysRaw = Math.floor(Number(sp.get('days') || 30))
+  const days = Number.isFinite(daysRaw) ? Math.min(90, Math.max(1, daysRaw)) : 30
   const volume = await (async () => {
     try {
       // Chain-scan is best-effort: keep a hard abort so the route never hangs.
