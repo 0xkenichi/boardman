@@ -414,7 +414,7 @@ def test_migrations_match_the_modules():
     from gaming.src.backend.services.paycrest import store
 
     mig = ROOT / "supabase" / "migrations"
-    assert (mig / "20261020120000_realm_stakes.sql").read_text() == stake_caps.postgres_migration_sql()
+    assert (mig / "20261020120200_realm_stakes.sql").read_text() == stake_caps.postgres_migration_sql()
     assert (mig / "20261020120100_paycrest_order_chain.sql").read_text() == store.postgres_upgrade_migration_sql()
 
 
