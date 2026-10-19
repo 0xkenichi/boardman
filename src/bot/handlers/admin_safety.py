@@ -86,17 +86,13 @@ async def cmd_link_community(message: types.Message) -> None:
         )
         return
 
+    # Boardman operators only (numeric id). Being an admin of *a* group is not
+    # enough: anyone can create a group, add the bot and become its creator,
+    # which would redirect every public challenge post to that group.
     if not is_admin(user.id):
-        # Non-admins: only group admins of this chat
-        try:
-            member = await message.bot.get_chat_member(chat.id, user.id)
-            status = getattr(member, "status", None)
-            if status not in ("creator", "administrator"):
-                await message.answer("Group admin or Boardman admin only.")
-                return
-        except Exception:
-            await message.answer("Could not verify group admin status.")
-            return
+        await message.answer("Boardman admin only.")
+        logger.warning("[Admin] link_community refused for %s in chat %s", user.id, chat.id)
+        return
 
     from gaming.src.bot.utils.community import rematch_group_chat_ref, save_linked_chat_id
 
