@@ -395,6 +395,13 @@ def record_event(event_key: str, *, paycrest_id: str, event: str, status: str) -
         return True
 
 
+def forget_event(event_key: str) -> None:
+    """Un-see a delivery whose processing failed, so Paycrest's retry of the
+    same body is processed instead of answered 'duplicate'."""
+    with db().transaction() as tx:
+        tx.execute("DELETE FROM paycrest_webhook_events WHERE event_key = ? AND outcome = 'received'", (event_key,))
+
+
 def set_event_outcome(event_key: str, outcome: str) -> None:
     with db().transaction() as tx:
         tx.execute("UPDATE paycrest_webhook_events SET outcome = ? WHERE event_key = ?", (outcome[:200], event_key))

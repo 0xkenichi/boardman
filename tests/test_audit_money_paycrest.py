@@ -76,6 +76,43 @@ def test_cashout_sends_only_the_order_amount(world, live_balance):
     assert sent <= Decimal("20")
 
 
+def test_a_webhook_that_failed_to_apply_is_processed_on_retry(world, rail, monkeypatch):  # noqa: F811
+    """M-12: the delivery was marked seen (and the status echoed) before the
+    transition ran; one DB blip on 'settled' left the on-ramp stuck: the
+    retry was a 'duplicate' and the poller saw matching statuses."""
+    from fastapi.testclient import TestClient
+
+    from gaming.src.backend.main import create_app
+    from gaming.src.backend.services.paycrest import onramp
+    from tests.paycrest_fakes import signed, webhook_body
+    from tests.test_paycrest import KYC, MASTER, REFUND, _onramp_link
+
+    for name in ("REMATCH_API_KEY", "STACK_API_KEY", "BOARDMAN_STACK_API_KEYS_FILE", "BOARDMAN_STACK_API_KEYS"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("BOARDMAN_API_KEY", MASTER)
+    api = TestClient(create_app(), raise_server_exceptions=False)
+    _prof, _wa, _q, url = _onramp_link(world, rail)
+    onramp.submit(_token(url), kyc=KYC, refund=REFUND)
+    order = store.get_order_by_paycrest_id("pc-1")
+    rail.ops.credit(BASE, rail.pc.created[-1]["destination"]["recipient"]["address"], Decimal("12.50"))
+
+    real = store.transition
+    blips = {"n": 0}
+
+    def _blip(order_id, to, **kw):
+        if to == "settled" and blips["n"] == 0:
+            blips["n"] += 1
+            raise RuntimeError("database is locked")
+        return real(order_id, to, **kw)
+
+    monkeypatch.setattr(store, "transition", _blip)
+    body = webhook_body("pc-1", "settled", txHash="0xpaid")
+    assert api.post("/webhooks/paycrest", content=body, headers=signed(body)).status_code == 500
+    retry = api.post("/webhooks/paycrest", content=body, headers=signed(body))
+    assert retry.json().get("outcome") == "settled", retry.text
+    assert store.get_order(order["id"])["status"] in ("settled", "bridging")
+
+
 def test_failed_bridge_start_gives_the_hold_and_cap_back(world, live_balance, monkeypatch):
     from gaming.src.backend.services import safety
 

@@ -83,6 +83,15 @@ def _handle(raw_body: bytes) -> dict[str, Any]:
     if not store.record_event(key, paycrest_id=str(data.get("id") or ""), event=event,
                               status=str(data.get("status") or "")):
         return {"ok": True, "outcome": "duplicate"}
+    try:
+        return _apply_event(key, event, data)
+    except Exception:
+        # Nothing of it may count as seen: the retry (same body) must run.
+        store.forget_event(key)
+        raise
+
+
+def _apply_event(key: str, event: str, data: dict) -> dict[str, Any]:
     order = _find(data)
     if order is None:
         logger.warning("[paycrest] webhook for unknown order event=%s", event)
@@ -114,10 +123,12 @@ def apply_status(order_id: str, pc_status: str, data: Optional[dict] = None) -> 
     if o is None:
         return "unknown_order"
     st = pc_status.lower()
+    # Echo Paycrest's status only AFTER the transition it implies went
+    # through: the poller skips orders whose echo already matches, so an
+    # echo written before a failed transition left the order stuck forever.
+    outcome = _onramp(o, st, data) if o["direction"] == "onramp" else _offramp(o, st, data)
     store.update_order(order_id, paycrest_status=st)
-    if o["direction"] == "onramp":
-        return _onramp(o, st, data)
-    return _offramp(o, st, data)
+    return outcome
 
 
 def _onramp(o: dict, st: str, data: dict) -> str:
