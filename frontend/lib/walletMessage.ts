@@ -230,3 +230,20 @@ export function walletMessageProblem(
   }
   return null
 }
+
+/** The only profile column wallet sign-in trusts (written after a signed link). */
+export const WALLET_LOGIN_COLUMN = 'linked_wallet'
+
+/**
+ * PostgREST query for the profile(s) a proven wallet signs in to. limit=2 so
+ * the caller can refuse a wallet that two profiles claim.
+ */
+export function walletLoginQuery(address: string): string {
+  const addr = (address || '').trim().toLowerCase()
+  if (!/^0x[0-9a-f]{40}$/.test(addr)) throw new Error('bad wallet address')
+  const q = new URLSearchParams()
+  q.set('select', 'id,telegram_id,gaming_tag,display_name')
+  q.set(WALLET_LOGIN_COLUMN, `eq.${addr}`)
+  q.set('limit', '2')
+  return q.toString()
+}

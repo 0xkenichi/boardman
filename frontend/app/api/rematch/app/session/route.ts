@@ -11,7 +11,7 @@ import {
   isProductionRuntime,
 } from '@/lib/session'
 import { verifyTelegramLogin, verifyTelegramWebAppInitData } from '@/lib/telegramAuth'
-import { parseWalletMessage, walletMessageProblem } from '@/lib/walletMessage'
+import { parseWalletMessage, walletLoginQuery, walletMessageProblem } from '@/lib/walletMessage'
 import { recoverPersonalSignAddress } from '@/lib/walletVerify'
 import { telegramBotUrl } from '@/lib/telegramBot'
 import { rateLimitRequest } from '@/lib/bff'
@@ -209,7 +209,18 @@ async function login(req: Request, body: any, mode: string): Promise<NextRespons
           { status: 401 }
         )
       }
-      const upd = await supabaseRest(`profiles?id=eq.${existing.profileId}`, {
+      // One wallet signs in to one profile: refuse a wallet another profile holds.
+      const taken = await supabaseRest<WalletProfileRow[]>(`profiles?${walletLoginQuery(wallet)}`)
+      if (!taken.ok || !Array.isArray(taken.data)) {
+        return NextResponse.json({ ok: false, error: 'wallet_link_failed' }, { status: 502 })
+      }
+      if (taken.data.some((r) => r?.id && r.id !== existing.profileId)) {
+        return NextResponse.json(
+          { ok: false, error: 'wallet_linked_elsewhere', message: 'This wallet is already linked to another Boardman profile.' },
+          { status: 409 }
+        )
+      }
+      const upd = await supabaseRest(`profiles?id=eq.${encodeURIComponent(existing.profileId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Prefer: 'return=representation' },
         body: JSON.stringify({ linked_wallet: wallet }),
@@ -328,41 +339,27 @@ type WalletProfileRow = {
 }
 
 /**
- * Find the profile a wallet is linked to (link-first model). Checks
- * linked_wallet first (what this route writes), then wallet_address and
- * withdrawal_wallet for wallets linked elsewhere in the app.
+ * Find the profile a wallet signs in to. Only linked_wallet counts: this
+ * route writes it after a personal_sign proof (intent=link). wallet_address
+ * (the custodial play address, or a legacy /link_wallet value typed with no
+ * proof) and withdrawal_wallet (a payout address — maybe a friend's or a P2P
+ * merchant's) must never open the account to whoever holds that key. Two
+ * profiles claiming the same wallet is ambiguous and refused.
  */
 async function findProfileByWallet(wallet: string): Promise<WalletProfileRow | null> {
-  const addr = wallet.toLowerCase()
-  for (const col of ['linked_wallet', 'wallet_address', 'withdrawal_wallet']) {
-    try {
-      const q = new URLSearchParams()
-      q.set('select', 'id,telegram_id,gaming_tag,display_name')
-      q.set(col, `eq.${addr}`)
-      q.set('limit', '1')
-      const res = await supabaseRest<WalletProfileRow[]>(`profiles?${q.toString()}`)
-      if (res.ok && Array.isArray(res.data) && res.data[0]?.id) {
-        console.info('[session] wallet login hit profile=%s col=%s', res.data[0].id, col)
-        return res.data[0]
-      }
-      // Column match is case-sensitive in PostgREST — retry checksummed form
-      const checksummed = wallet
-      if (checksummed !== addr) {
-        const q2 = new URLSearchParams()
-        q2.set('select', 'id,telegram_id,gaming_tag,display_name')
-        q2.set(col, `eq.${checksummed}`)
-        q2.set('limit', '1')
-        const res2 = await supabaseRest<WalletProfileRow[]>(`profiles?${q2.toString()}`)
-        if (res2.ok && Array.isArray(res2.data) && res2.data[0]?.id) {
-          console.info('[session] wallet login hit profile=%s col=%s (checksummed)', res2.data[0].id, col)
-          return res2.data[0]
-        }
-      }
-    } catch (e) {
-      console.error('[session] wallet lookup error col=%s', col, e)
+  try {
+    const res = await supabaseRest<WalletProfileRow[]>(`profiles?${walletLoginQuery(wallet)}`)
+    if (!res.ok || !Array.isArray(res.data)) return null
+    if (res.data.length !== 1 || !res.data[0]?.id) {
+      if (res.data.length > 1) console.warn('[session] wallet login refused: wallet linked to several profiles')
+      return null
     }
+    console.info('[session] wallet login hit profile=%s', res.data[0].id)
+    return res.data[0]
+  } catch (e) {
+    console.error('[session] wallet lookup error', e)
+    return null
   }
-  return null
 }
 
 type ResolveResult = {
