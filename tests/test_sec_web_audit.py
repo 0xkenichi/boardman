@@ -352,6 +352,24 @@ def test_long_base64_with_slashes_becomes_a_data_url():
     assert out.startswith("data:image/jpeg;base64,")
 
 
+@pytest.mark.parametrize("route", ["wallet", "sales"])
+def test_party_wallet_and_sales_are_the_callers_own(route):
+    """WEB-11: a party's bound wallet address and earnings were readable by id."""
+    from gaming.src.stack.agentic import api as A
+
+    app = FastAPI()
+    app.include_router(A.router)
+    client = TestClient(app)
+    path = f"/api/stack/agentic/football/agents/{route}"
+    # a builder key reads only itself
+    assert client.get(path, params={"party_id": VICTIM}, headers={"X-Boardman-Key": BUILDER}).status_code == 403
+    # a signed-in player (BFF) reads only themself
+    h = {"X-Rematch-Key": MASTER, "X-Boardman-Caller": ATTACKER}
+    assert client.get(path, params={"party_id": VICTIM}, headers=h).status_code == 403
+    r = client.get(path, headers=h)
+    assert r.status_code == 200 and r.json()[route]["party_id"] == ATTACKER
+
+
 def test_telegram_file_url_is_kept():
     from gaming.src.backend.services.clawstation_settlement import _resolve_screenshot_source
 

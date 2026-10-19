@@ -2272,18 +2272,20 @@ async def football_agents_purchase(body: FootballAgentPurchaseBody, caller: Stac
 
 
 @router.get("/football/agents/wallet")
-def football_agents_wallet(party_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def football_agents_wallet(party_id: str = "", caller: StackCaller = Depends(require_stack_caller)):
     """Wallet status for a marketplace party: what they pay with and get paid
-    to — demo ledger wallet vs a bound real (Circle) wallet on Arc."""
+    to — demo ledger wallet vs a bound real (Circle) wallet on Arc. The
+    party is the caller's own (the platform may name any)."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
         wallet_status,
     )
 
-    return {"success": True, "wallet": wallet_status(party_id)}
+    party = _acting_party(caller, party_id, field="party_id") or ""
+    return {"success": True, "wallet": wallet_status(party)}
 
 
 @router.get("/football/agents/sales")
-def football_agents_sales(party_id: str = "", _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def football_agents_sales(party_id: str = "", caller: StackCaller = Depends(require_stack_caller)):
     """Owner dashboard desk: money a party has earned from manager sales and
     the listing history — earnings (seller proceeds + developer creator cuts),
     the managers they own with their live listing state, and the timeline of
@@ -2292,7 +2294,8 @@ def football_agents_sales(party_id: str = "", _: ApiKeyPrincipal = Depends(requi
         party_sales_view,
     )
 
-    return {"success": True, "sales": party_sales_view(party_id)}
+    party = _acting_party(caller, party_id, field="party_id") or ""
+    return {"success": True, "sales": party_sales_view(party)}
 
 
 @router.post("/football/agents/wallet/bind")
