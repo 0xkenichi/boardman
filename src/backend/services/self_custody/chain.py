@@ -89,12 +89,16 @@ class Web3Reader:
         return int(c.functions.balanceOf(self.w3.to_checksum_address(account)).call())
 
     def escrow_version(self, escrow: str) -> int:
-        from gaming.src.stack.agentic.onchain import ESCROW_ABI
+        from gaming.src.stack.agentic.onchain import ESCROW_ABI, is_missing_function_error
 
         try:
             c = self.w3.eth.contract(address=self.w3.to_checksum_address(escrow), abi=ESCROW_ABI)
             return int(c.functions.ESCROW_VERSION().call())
-        except Exception:
+        except Exception as exc:
+            # Only "no ESCROW_VERSION()" means v1; a transport error must not
+            # make the player sign v1 calldata against a v2 escrow (audit L-02).
+            if not is_missing_function_error(exc):
+                raise
             return 1
 
     def is_valid_signature(self, account: str, digest: bytes, signature: bytes) -> bool:

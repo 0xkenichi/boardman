@@ -141,8 +141,10 @@ def _version(reader, escrow: str) -> int:
         return v
     try:
         return int(reader.escrow_version(escrow))
-    except Exception:
-        return 1
+    except Exception as exc:
+        # The reader already maps "no ESCROW_VERSION()" to 1; anything that
+        # still raises is a read failure, not a v1 escrow (audit L-02).
+        raise IntentRefused("not_configured", "Could not read the escrow. Try again shortly.") from exc
 
 
 # ── which address is a player on the escrow ─────────────────────────────────

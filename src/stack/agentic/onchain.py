@@ -187,9 +187,22 @@ def escrow_version(w3, cfg: dict[str, Any]) -> int:
         try:
             probe = w3.eth.contract(address=w3.to_checksum_address(cfg["escrow"]), abi=ESCROW_ABI)
             _ESCROW_VERSION_CACHE[key] = int(probe.functions.ESCROW_VERSION().call())
-        except Exception:
+        except Exception as exc:
+            # Only a contract without ESCROW_VERSION() is v1. An RPC hiccup
+            # must not pin the v1 ABI for the life of the process (audit L-02).
+            if not is_missing_function_error(exc):
+                raise
             _ESCROW_VERSION_CACHE[key] = 1
     return _ESCROW_VERSION_CACHE[key]
+
+
+def is_missing_function_error(exc: BaseException) -> bool:
+    """The probed view does not exist: the call reverted or returned no data."""
+    try:
+        from web3.exceptions import BadFunctionCallOutput, ContractLogicError
+    except Exception:  # pragma: no cover - web3 always installed with onchain
+        return False
+    return isinstance(exc, (ContractLogicError, BadFunctionCallOutput))
 
 
 def sign_create_permit(
@@ -870,11 +883,22 @@ def dual_lock_onchain(
     # Existing match?
     try:
         existing = escrow.functions.matches(mid).call()
+    except Exception:
+        existing = None
+    if existing is not None:
         p1_ex = existing[0]
         zero = "0x0000000000000000000000000000000000000000"
         if str(p1_ex).lower() not in {zero, "0x0", ""}:
             status = int(existing[3])
-            if status >= 1:  # LOCKED or beyond
+            if status in ONCHAIN_FINAL:
+                # Audit L-03: a RESOLVED/CANCELLED escrow holds no stakes.
+                # Reporting it as "already locked" would let the match run
+                # (and settle) with nothing escrowed.
+                raise RuntimeError(
+                    f"on-chain match {match_id} is already {ONCHAIN_STATUS.get(status, status)} — "
+                    "refusing to treat it as locked"
+                )
+            if status >= 1:  # LOCKED / DISPUTED
                 return {
                     "success": True,
                     "mode": "onchain",
@@ -888,8 +912,6 @@ def dual_lock_onchain(
                     "player2": existing[1],
                     "stake_usdc": str(stake_usdc),
                 }
-    except Exception:
-        pass
 
     txs: list[dict[str, str]] = []
 
