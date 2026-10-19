@@ -54,27 +54,44 @@ class CircleWalletService:
         rpc_url: Optional[str] = None,
     ):
         self.api_url = "https://api.circle.com/v1"
-        self.api_key = os.getenv("CIRCLE_API_KEY")
         self.client_key = os.getenv("CIRCLE_CLIENT_KEY")
+
+        # Default Base Sepolia; multi-chain callers pass blockchain/usdc/rpc overrides
+        self.blockchain = blockchain or os.getenv("CIRCLE_BLOCKCHAIN", "BASE-SEPOLIA")
+
+        # Money realms: credentials follow the blockchain. A mainnet blockchain
+        # (ARC, BASE…) uses ONLY the LIVE entity (CIRCLE_API_KEY_LIVE,
+        # CIRCLE_ENTITY_SECRET_LIVE, CIRCLE_WALLET_SET_ID_LIVE); a testnet one
+        # ONLY the TEST entity. A key from the other environment raises
+        # RealmViolation here, before any request is made.
+        from gaming.src.backend.services.realms import circle_credentials
+
+        creds = circle_credentials(self.blockchain)
+        self.realm = creds.realm
+        self.api_key = creds.api_key or None
+        self.wallet_set_id = creds.wallet_set_id or None
+        self._wallet_set_env = creds.wallet_set_env
 
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
-        
-        # Security for Developer-Controlled Wallets
-        self.entity_secret = os.getenv("CIRCLE_ENTITY_SECRET")
-        if not self.entity_secret:
-            logger.warning("[Circle] CIRCLE_ENTITY_SECRET not found in .env")
 
-        # Default Base Sepolia; multi-chain callers pass blockchain/usdc/rpc overrides
-        self.blockchain = blockchain or os.getenv("CIRCLE_BLOCKCHAIN", "BASE-SEPOLIA")
+        # Security for Developer-Controlled Wallets
+        self.entity_secret = creds.entity_secret or None
+        if not self.entity_secret:
+            logger.warning("[Circle] %s not set", creds.entity_secret_env)
+
         self.usdc_address = usdc_address or os.getenv(
             "USDC_ADDRESS", "0x036CbD53842c5426634E7929541eC2318f3dCF7e"
         )
         # Circle W3S token UUID (NOT the on-chain contract address).
         # /transactions/approve and /transfer require tokenId = UUID.
-        self.usdc_token_id = usdc_token_id or os.getenv("CIRCLE_USDC_TOKEN_ID")
+        # The legacy CIRCLE_USDC_TOKEN_ID (a testnet token) never applies to a
+        # real-money blockchain.
+        self.usdc_token_id = usdc_token_id or (
+            None if self.realm == "humans" else os.getenv("CIRCLE_USDC_TOKEN_ID")
+        )
         self.rpc_url = rpc_url or os.getenv("RPC_URL")
 
     def _resolve_usdc_token_id(self, wallet_id: Optional[str] = None) -> Optional[str]:
@@ -212,9 +229,9 @@ class CircleWalletService:
         Pass a deterministic ``idempotency_key`` so a retry cannot mint two.
         """
         try:
-            wallet_set_id = os.getenv("CIRCLE_WALLET_SET_ID")
+            wallet_set_id = self.wallet_set_id
             if not wallet_set_id:
-                return {"success": False, "error": "CIRCLE_WALLET_SET_ID not configured in .env"}
+                return {"success": False, "error": f"{self._wallet_set_env} not configured in .env"}
 
             idempotency_key = idempotency_key or str(uuid.uuid4())
             ciphertext = self._generate_entity_secret_ciphertext()
@@ -929,9 +946,12 @@ class CircleWalletService:
         to group users in platform-wide wallet sets.
         """
         # 1. Check for global wallet set in .env
-        global_set = os.getenv("CIRCLE_WALLET_SET_ID")
+        global_set = self.wallet_set_id
         if global_set:
             return global_set
+        if self.realm == "humans":
+            # Never put a real-money wallet into a guessed / testnet set.
+            raise ValueError(f"{self._wallet_set_env} not configured")
 
         # 2. Default platform-wide ID (stable UUID)
         # generated once: 550e8400-e29b-41d4-a716-446655440000
