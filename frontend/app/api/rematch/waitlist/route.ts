@@ -6,6 +6,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { promises as fs } from 'fs'
 import path from 'path'
 import { randomInt } from 'crypto'
+import { rateLimitRequest } from '@/lib/bff'
+import { escapeTelegramHtml as esc } from '@/lib/telegramBot'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -156,11 +158,11 @@ async function notifyTelegram(entry: Entry, duplicate: boolean) {
   const ids = raw.split(/[,;]/).map((s) => s.trim()).filter(Boolean)
   const text =
     `📋 <b>Boardman waitlist</b>${duplicate ? ' (already listed)' : ''}\n` +
-    `Email: <code>${entry.email}</code>\n` +
-    (entry.name ? `Name: ${entry.name}\n` : '') +
-    (entry.telegram ? `TG: ${entry.telegram}\n` : '') +
-    (entry.note ? `Note: ${entry.note}\n` : '') +
-    `Source: ${entry.source || 'web'}`
+    `Email: <code>${esc(entry.email)}</code>\n` +
+    (entry.name ? `Name: ${esc(entry.name)}\n` : '') +
+    (entry.telegram ? `TG: ${esc(entry.telegram)}\n` : '') +
+    (entry.note ? `Note: ${esc(entry.note)}\n` : '') +
+    `Source: ${esc(entry.source || 'web')}`
   await Promise.all(
     ids.map(async (chatId) => {
       try {
@@ -182,6 +184,9 @@ async function notifyTelegram(entry: Entry, duplicate: boolean) {
 }
 
 export async function POST(req: NextRequest) {
+  // Unauthenticated, and every call pings the admins on Telegram.
+  const limited = rateLimitRequest(req, 'waitlist', 5)
+  if (limited) return limited
   let body: { email?: string; name?: string; telegram?: string; source?: string; note?: string }
   try {
     body = await req.json()
@@ -190,7 +195,7 @@ export async function POST(req: NextRequest) {
   }
 
   const email = normalizeEmail(body.email || '')
-  if (!isValidEmail(email)) {
+  if (!isValidEmail(email) || email.length > 254) {
     return NextResponse.json({ error: 'Enter a valid email' }, { status: 400 })
   }
 
@@ -201,7 +206,7 @@ export async function POST(req: NextRequest) {
     source: (body.source || 'web').slice(0, 40),
     note: (body.note || '').trim().slice(0, 400) || undefined,
     created_at: new Date().toISOString(),
-    ip: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || undefined,
+    ip: undefined, // never stored: the first X-Forwarded-For hop is client-typed
   }
 
   // Prefer Supabase if table exists; always try local/tmp backup

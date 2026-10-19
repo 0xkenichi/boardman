@@ -13,6 +13,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
+import { escapeTelegramHtml as esc } from '@/lib/telegramBot'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -100,21 +101,23 @@ export async function POST(req: NextRequest) {
   const play = meta.play_address || '—'
   const tg = meta.telegram_id || '—'
 
+  // metadata is whatever the payer's checkout sent: escape it, and say so —
+  // the naira amount is the only figure Paystack vouches for.
   await notifyTelegram(
     `⚡ <b>Paystack charge.success</b>\n` +
-      `Ref: <code>${boardmanRef}</code>\n` +
-      `Paystack: <code>${ref}</code>\n` +
-      `₦${amountNgn.toLocaleString()}\n` +
-      `Credit due: <b>$${credit}</b> USDC\n` +
-      `Play: <code>${play}</code>\n` +
-      `TG: ${tg}\n` +
-      `Channel: ${data.channel || '—'}\n\n` +
-      `1) Send USDC from float\n` +
-      `2) In bot: /credit_topup ${boardmanRef}`
+      `Ref: <code>${esc(boardmanRef)}</code>\n` +
+      `Paystack: <code>${esc(ref)}</code>\n` +
+      `₦${amountNgn.toLocaleString()} (verified)\n` +
+      `Credit claimed by checkout: <b>$${esc(credit)}</b> USDC (check against ₦)\n` +
+      `Play: <code>${esc(play)}</code>\n` +
+      `TG: ${esc(tg)}\n` +
+      `Channel: ${esc(data.channel || '—')}\n\n` +
+      `1) Check the credit matches the naira paid, then send USDC from float\n` +
+      `2) In bot: /credit_topup ${esc(boardmanRef)}`
   )
 
   // Optional: notify the player that payment was seen
-  const playerTg = meta.telegram_id
+  const playerTg = /^[1-9]\d{0,15}$/.test(String(meta.telegram_id || '')) ? meta.telegram_id : ''
   const token =
     process.env.TELEGRAM_BOT_TOKEN_BOARDMAN ||
     process.env.TELEGRAM_BOT_TOKEN_CLAWSTATION ||
@@ -130,8 +133,8 @@ export async function POST(req: NextRequest) {
           chat_id: playerTg,
           text:
             `✅ <b>Paystack payment received</b>\n\n` +
-            `Ref <code>${boardmanRef}</code>\n` +
-            `We're crediting <b>$${credit} USDC</b> to your play wallet shortly.\n` +
+            `Ref <code>${esc(boardmanRef)}</code>\n` +
+            `We're crediting <b>$${esc(credit)} USDC</b> to your play wallet shortly.\n` +
             `In the bot you can also tap <b>I've paid — check status</b>.`,
           parse_mode: 'HTML',
         }),
