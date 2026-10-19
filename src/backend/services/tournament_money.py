@@ -170,8 +170,14 @@ async def refund_entry(
     *,
     cup_code: str,
     entry_tx_hash: Optional[str] = None,
+    entry_id: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Return entry if player leaves while cup open."""
+    """Return entry if player leaves while cup open (or the cup is cancelled).
+
+    The Circle transfer carries a key derived from the ENTRY (not a random
+    one): a double /tleave, a cancel racing a leave, or a retried cancel all
+    present the same key, so Circle sends the refund once.
+    """
     amount = Decimal(str(amount)).quantize(Decimal("0.01"))
     if amount <= 0:
         return {"tx_hash": "free-refund", "mode": "free"}
@@ -202,11 +208,18 @@ async def refund_entry(
         raise TournamentMoneyError("Player has no address for refund")
 
     circle, _ = _circle_for_arc()
-    result = await asyncio.to_thread(circle.transfer_usdc, pot_wid, addr, float(amount))
+    key = refund_idempotency_key(cup_code, entry_id or entry_tx_hash or "", profile_id, amount)
+    result = await asyncio.to_thread(_transfer_with_key, circle, pot_wid, addr, amount, key)
     if not result.get("success"):
         raise TournamentMoneyError(f"Refund failed: {result.get('error')}")
     tx = result.get("tx_hash") or result.get("transaction_id")
     return {"tx_hash": tx, "mode": "transfer", "amount_usdc": float(amount)}
+
+
+def refund_idempotency_key(cup_code: str, entry_ref: str, profile_id: str, amount: Decimal) -> str:
+    """Deterministic Circle idempotencyKey for one entry's refund."""
+    ident = f"tournament:{cup_code}:refund:{entry_ref}:{profile_id}:{Decimal(amount):.6f}"
+    return str(uuid.uuid5(_PAYOUT_NS, ident))
 
 
 def payout_idempotency_key(tournament_key: str, place: Any, profile_id: str, amount: Decimal) -> str:
