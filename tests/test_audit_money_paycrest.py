@@ -1,0 +1,92 @@
+"""Money audit 2026-10 — naira cash-out (Paycrest offramp).
+
+PoCs for AUDIT_2026-10_money.md:
+
+* M-10  A confirmed cash-out only *checked* the play balance; the Arc burn
+        lands 15-30 s later, and in between the same USDC could be spent
+        again through the play overlay (a bet, the wallet bridge): naira paid
+        AND an unbacked position.
+* M-11  The Base "out" wallet sent its whole balance to Paycrest, not the
+        order's amount: USDC sent to that (public) address, or a sibling
+        order's refund, went to the bank above the per-order and daily caps.
+"""
+from __future__ import annotations
+
+import asyncio
+from decimal import Decimal
+
+import pytest
+
+from gaming.src.backend.services import play_adjust
+from gaming.src.backend.services.bridge import cctp
+from gaming.src.backend.services.paycrest import store
+from gaming.src.channels.core import withdraw_links
+from tests.channels_fixtures import PLAY_ADDR, world  # noqa: F401
+from tests.paycrest_fakes import rail  # noqa: F401
+from tests.test_paycrest import ARC, BASE, _cashout_link, _token
+
+
+@pytest.fixture()
+def live_balance(world, rail, monkeypatch):  # noqa: F811
+    """The play balance as the services see it: chain USDC + the overlay."""
+    c = "gaming.src.backend.services.clawstation_circle"
+
+    async def _bal(user_id, chain_id=None):
+        return max(Decimal("0"), rail.ops.bal(ARC, PLAY_ADDR) + play_adjust.get_adjust(user_id))
+
+    async def _strict(user_id, chain_id=None):
+        return rail.ops.bal(ARC, PLAY_ADDR), None
+
+    monkeypatch.setattr(f"{c}.get_usdc_balance", _bal)
+    monkeypatch.setattr(f"{c}.get_usdc_balance_strict", _strict)
+    return rail
+
+
+def _drain():
+    for _ in range(6):
+        cctp.reconcile()
+
+
+def test_cashout_holds_the_balance_until_the_burn(world, live_balance):
+    rail = live_balance
+    prof, _wa, _q, url = _cashout_link(world, rail)
+    pid = prof["id"]
+    out = asyncio.run(withdraw_links.confirm(_token(url), pin="246810", pin_confirm="246810", amount="20"))
+    assert out["ok"], out
+    # Burn not landed yet: the chain still shows 40. Spending 39 of it through
+    # the overlay (a bet, the wallet bridge) must be refused now.
+    assert rail.ops.bal(ARC, PLAY_ADDR) == Decimal("40")
+    with pytest.raises(play_adjust.InsufficientPlayBalance):
+        play_adjust.apply_once(pid, Decimal("-39"), key="bet:x", chain_usdc=rail.ops.bal(ARC, PLAY_ADDR))
+    _drain()
+    # After the burn the hold is gone and the books agree with the chain.
+    assert rail.ops.bal(ARC, PLAY_ADDR) == Decimal("20")
+    assert play_adjust.get_adjust(pid) == Decimal("0")
+
+
+def test_cashout_sends_only_the_order_amount(world, live_balance):
+    rail = live_balance
+    _prof, _wa, _q, url = _cashout_link(world, rail)
+    asyncio.run(withdraw_links.confirm(_token(url), pin="246810", pin_confirm="246810", amount="20"))
+    out_addr = store.list_orders(direction="offramp")[-1]["details"]["out_address"]
+    rail.ops.credit(BASE, out_addr, Decimal("400"))  # anyone can send USDC to it
+    _drain()
+    assert Decimal(rail.pc.created[-1]["amount"]) <= Decimal("20")
+    sent = sum((t["amount"] for t in rail.ops.txs.values() if t["op"] == "transfer"), Decimal("0"))
+    assert sent <= Decimal("20")
+
+
+def test_failed_bridge_start_gives_the_hold_and_cap_back(world, live_balance, monkeypatch):
+    from gaming.src.backend.services import safety
+
+    rail = live_balance
+    prof, _wa, _q, url = _cashout_link(world, rail)
+
+    def _boom(**_k):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(cctp, "start", _boom)
+    out = asyncio.run(withdraw_links.confirm(_token(url), pin="246810", pin_confirm="246810", amount="20"))
+    assert not out["ok"]
+    assert play_adjust.get_adjust(prof["id"]) == Decimal("0")
+    assert safety._daily_total(prof["id"]) == Decimal("0")

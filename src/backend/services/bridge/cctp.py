@@ -56,6 +56,16 @@ def _emit(row: dict) -> None:
             logger.exception("[cctp] finish listener failed bridge=%s", row.get("id"))
 
 
+def _emit_burned(row: dict) -> None:
+    """The source-chain burn confirmed (the USDC has left the sender)."""
+    from gaming.src.backend.services.paycrest import events
+
+    try:
+        events.bridge_burned(row)
+    except Exception:
+        logger.exception("[cctp] burned listener failed bridge=%s", row.get("id"))
+
+
 def _backoff(attempts: int) -> int:
     return RETRY_MS[min(attempts, len(RETRY_MS) - 1)]
 
@@ -135,7 +145,8 @@ def advance(bridge_id: str) -> Optional[dict]:
                 # The allowance is still there: just burn again.
                 _fail_or_retry(row, "burn failed on chain", back_to="approve_submitted")
             else:
-                store.update_bridge(bridge_id, expect=st, status="burned", burn_tx_hash=tx_hash, error=None)
+                if store.update_bridge(bridge_id, expect=st, status="burned", burn_tx_hash=tx_hash, error=None):
+                    _emit_burned(store.get_bridge(bridge_id) or row)
         elif st == "burned":
             m = ops.fetch_message(row["src_chain"], row["burn_tx_hash"])
             if m.get("status") != "complete":

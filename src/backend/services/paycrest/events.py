@@ -189,6 +189,12 @@ def _offramp(o: dict, st: str, data: dict) -> str:
     return "noop"
 
 
+def bridge_burned(br: dict) -> None:
+    from gaming.src.backend.services.paycrest import offramp
+
+    offramp.on_bridge_burned(br)
+
+
 def bridge_finished(br: dict) -> None:
     from gaming.src.backend.services.paycrest import offramp, onramp
 

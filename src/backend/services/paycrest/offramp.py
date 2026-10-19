@@ -134,11 +134,47 @@ def prepare(principal: Any, amount: Decimal, bank: dict, *, now_ms: Optional[int
 # ── after the PIN ───────────────────────────────────────────────────────────
 
 
+def _hold_key(order_id: str) -> str:
+    return f"cashout-hold:{order_id}"
+
+
+def release_hold(order_id: str, profile_id: str, amount: Decimal) -> None:
+    """Give back the play-balance reservation of a cash-out (exactly once):
+    the burn has taken the USDC off the chain, or the cash-out never moved."""
+    from gaming.src.backend.services.play_adjust import apply_once, was_applied
+
+    if not was_applied(profile_id, _hold_key(order_id)):
+        return
+    apply_once(profile_id, Decimal(str(amount)), key=f"cashout-release:{order_id}")
+
+
 async def perform(profile_id: str, *, amount: Decimal, payload: dict, link_hash: str) -> Any:
-    """Called once by ``withdraw_links.confirm`` after the PIN and the claim."""
+    """Called once by ``withdraw_links.confirm`` after the PIN and the claim.
+
+    Runs under the per-profile play-spend lock: balance check, daily-cap
+    reservation and the play-balance hold happen before the bridge starts,
+    so nothing else (a bet, a second cash-out, a USDC withdrawal) can spend
+    the same USDC in the minutes before the Arc burn lands.
+    """
+    from gaming.src.backend.services.play_adjust import PlaySpendBusy, spend_lock
+    from gaming.src.backend.services.withdrawals import WithdrawOutcome
+
+    try:
+        with spend_lock(profile_id):
+            return await _perform_locked(profile_id, amount=amount, payload=payload, link_hash=link_hash)
+    except PlaySpendBusy as exc:
+        return WithdrawOutcome(False, "busy", str(exc), amount)
+
+
+async def _perform_locked(profile_id: str, *, amount: Decimal, payload: dict, link_hash: str) -> Any:
     from gaming.src.backend.services import clawstation_circle as circle
     from gaming.src.backend.services.bridge import cctp
-    from gaming.src.backend.services.safety import assert_money_ops_allowed, commit_daily_withdraw
+    from gaming.src.backend.services.play_adjust import InsufficientPlayBalance, apply_once
+    from gaming.src.backend.services.safety import (
+        assert_money_ops_allowed,
+        release_daily_withdraw,
+        reserve_daily_withdraw,
+    )
     from gaming.src.backend.services.withdrawals import WithdrawOutcome, _plain
 
     settle = config.settlement_chain()
@@ -168,6 +204,9 @@ async def perform(profile_id: str, *, amount: Decimal, payload: dict, link_hash:
         return WithdrawOutcome(False, "no_wallet", "Your wallet is not set up yet.", amount, settle)
 
     q = payload.get("quote") or {}
+    cap = reserve_daily_withdraw(profile_id, amount)
+    if cap:
+        return WithdrawOutcome(False, "gate", _plain(cap), amount)
     order, created = await asyncio.to_thread(
         store.create_order, idempotency_key=f"bm-off-{link_hash[:24]}", direction="offramp",
         profile_id=profile_id, status="confirmed", amount_usdc=str(amount), rate=str(q.get("rate") or ""),
@@ -175,8 +214,23 @@ async def perform(profile_id: str, *, amount: Decimal, payload: dict, link_hash:
         details={"bank": bank, "bank_label": bank.get("label"), "out_address": out_w["address"]},
     )
     if not created:
+        release_daily_withdraw(profile_id, amount)  # counted when the order was first made
         return WithdrawOutcome(True, "ok", _started_text(amount, q, bank), amount, settle,
                                transaction_id=order["id"])
+    # Hold the amount on the play overlay until the Arc burn takes it off the
+    # chain (released in on_bridge_burned / on_bridge_finished): until then
+    # the chain still shows it, and a bet or a second withdrawal could spend it.
+    try:
+        chain, err = await circle.get_usdc_balance_strict(profile_id, chain_id=settle)
+        if err or chain is None:
+            raise InsufficientPlayBalance(f"balance unavailable: {err}")
+        apply_once(profile_id, -amount, key=_hold_key(order["id"]),
+                   chain_usdc=Decimal(str(chain)) - ARC_GAS_RESERVE)
+    except InsufficientPlayBalance as exc:
+        release_daily_withdraw(profile_id, amount)
+        await asyncio.to_thread(store.transition, order["id"], "failed", expect="confirmed", error="balance")
+        return WithdrawOutcome(False, "insufficient", f"Not enough balance for this cash-out ({exc}).", amount,
+                               settle)
     try:
         br = await asyncio.to_thread(
             cctp.start, idempotency_key=f"{order['id']}:out", kind="offramp_out", profile_id=profile_id,
@@ -185,10 +239,11 @@ async def perform(profile_id: str, *, amount: Decimal, payload: dict, link_hash:
         )
     except Exception:
         logger.exception("[paycrest] cash-out bridge did not start for %s", order["id"])
+        release_hold(order["id"], profile_id, amount)
+        release_daily_withdraw(profile_id, amount)
         await asyncio.to_thread(store.transition, order["id"], "failed", expect="confirmed", error="bridge_start")
         return WithdrawOutcome(False, "failed", "Cash-out failed before any money moved. Try again later.", amount)
     await asyncio.to_thread(store.transition, order["id"], "bridging_out", expect="confirmed", bridge_id=br["id"])
-    commit_daily_withdraw(profile_id, amount)
     notices.alert_admins(f"Naira cash-out {order['id']} ${amount} → {bank.get('label')} started")
     return WithdrawOutcome(True, "ok", _started_text(amount, q, bank), amount, settle, transaction_id=order["id"])
 
@@ -229,6 +284,10 @@ def submit(order_id: str) -> None:
             notices.alert_admins(f"Cash-out {order_id}: bridged USDC not visible on Base after {n} tries")
         return
     bank = (o.get("details") or {}).get("bank") or {}
+    # Never more than THIS order: the "out" wallet can also hold another
+    # order's refund or USDC anyone sent to it (it is a public CCTP mint
+    # recipient), and the caps were checked against the order amount only.
+    bal = min(bal, Decimal(str(o["amount_usdc"])))
     amount = bal.quantize(CENT, rounding=ROUND_DOWN)
     ref = f"{o['idempotency_key']}-{n}"
     client = get_client()
@@ -332,6 +391,11 @@ def refund_home(order_id: str) -> None:
         store.transition(order_id, "needs_review", expect="refunded_on_base", error="no_out_wallet")
         return
     bal = get_chain_ops().usdc_balance(config.delivery_chain(), w["address"])
+    # Bring home at most what THIS order put on Base (what it sent to
+    # Paycrest, or its whole amount when nothing was sent): a sibling order
+    # waiting on_base in the same wallet must not be swept home with it.
+    owed = Decimal(str(((o.get("details") or {}).get("sent_usdc")) or o["amount_usdc"]))
+    bal = min(bal, owed)
     if bal < config.bridge().min_sweep_usdc:
         return  # refund not visible yet; the reconciler retries
     # A refund goes back to the wallet the cash-out came from: the play wallet
@@ -350,11 +414,23 @@ def _orders_for_bridge(br: dict, status: str) -> list[dict]:
             if o.get("bridge_id") == br["id"]]
 
 
+def on_bridge_burned(br: dict) -> None:
+    """The Arc burn confirmed: the USDC is off the play wallet, so the
+    overlay hold that stood in for it until now is released."""
+    if br.get("kind") != "offramp_out":
+        return
+    for o in _orders_for_bridge(br, "bridging_out"):
+        release_hold(o["id"], o["profile_id"], Decimal(o["amount_usdc"]))
+
+
 def on_bridge_finished(br: dict) -> None:
     kind = br.get("kind")
     ok = br["status"] == "minted"
     if kind == "offramp_out":
         for o in _orders_for_bridge(br, "bridging_out"):
+            # Minted or failed, the chain now tells the truth about the play
+            # wallet (burned, or never burned): drop the overlay hold.
+            release_hold(o["id"], o["profile_id"], Decimal(o["amount_usdc"]))
             if ok:
                 if store.transition(o["id"], "on_base", expect="bridging_out"):
                     submit(o["id"])
