@@ -258,19 +258,16 @@ class _play_spend_lock:
     """One spend at a time per profile, across requests, threads and replicas."""
 
     def __init__(self, profile_id: str) -> None:
-        from gaming.src.stack.agentic.db import leases
+        from gaming.src.backend.services.play_adjust import PlaySpendBusy, spend_lock
 
-        self._cm = leases.exclusive(f"play-spend:{profile_id}")
-        self._busy = leases.LeaseBusy
+        self._cm = spend_lock(profile_id)
+        self._busy = PlaySpendBusy
 
     def __enter__(self) -> None:
         try:
             self._cm.__enter__()
         except self._busy as exc:
-            raise _SpendRefused(
-                "spend_in_progress",
-                "Another payment from this wallet is still going through. Try again in a moment.",
-            ) from exc
+            raise _SpendRefused("spend_in_progress", str(exc)) from exc
 
     def __exit__(self, *exc) -> bool:
         return bool(self._cm.__exit__(*exc))

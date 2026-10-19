@@ -143,30 +143,80 @@ def _today_key() -> str:
     return time.strftime("%Y-%m-%d", time.gmtime())
 
 
-def _daily_total(user_id: str) -> Decimal:
-    day = _today_key()
-    prev_day, total = _daily_withdraw.get(user_id, (day, Decimal("0")))
-    if prev_day != day:
+# Daily withdraw totals live in the shared store (cross-process file lock),
+# not in this process's memory: a restart or a second worker used to start
+# every player's cap from zero again.
+_DAILY_FILE = "daily_withdrawals.json"
+
+
+def _day_total(data: dict, user_id: str, day: str) -> Decimal:
+    rec = (data.get("users") or {}).get(user_id) or {}
+    if rec.get("day") != day:
         return Decimal("0")
-    return total
+    try:
+        return Decimal(str(rec.get("total") or "0"))
+    except Exception:
+        return Decimal("0")
+
+
+def _daily_total(user_id: str) -> Decimal:
+    from gaming.src.stack.agentic.store import load_json
+
+    return _day_total(load_json(_DAILY_FILE, {"users": {}}), user_id, _today_key())
+
+
+def _cap_message(total: Decimal) -> str:
+    return (
+        f"❌ Daily withdraw limit is <b>${DAILY_WITHDRAW_CAP_USDC:,.0f}</b> USDC.\n"
+        f"You've used <b>${total:,.2f}</b> today."
+    )
 
 
 def check_daily_withdraw(user_id: str, amount: Decimal) -> Optional[str]:
-    """Peek only — does not commit. Call commit_daily_withdraw after success."""
+    """Peek only. Money paths reserve with reserve_daily_withdraw instead."""
     total = _daily_total(user_id)
     if total + amount > DAILY_WITHDRAW_CAP_USDC:
-        return (
-            f"❌ Daily withdraw limit is <b>${DAILY_WITHDRAW_CAP_USDC:,.0f}</b> USDC.\n"
-            f"You've used <b>${total:,.2f}</b> today."
-        )
+        return _cap_message(total)
     return None
 
 
-def commit_daily_withdraw(user_id: str, amount: Decimal) -> None:
+def _add_daily(user_id: str, delta: Decimal, *, cap: Optional[Decimal]) -> Optional[str]:
+    from gaming.src.stack.agentic.store import update_json
+
     day = _today_key()
+    refused: dict[str, Decimal] = {}
+
+    def _fn(data: dict) -> dict:
+        data = data if isinstance(data, dict) else {"users": {}}
+        users = data.setdefault("users", {})
+        total = _day_total(data, user_id, day)
+        if cap is not None and delta > 0 and total + delta > cap:
+            refused["total"] = total
+            return data
+        users[user_id] = {"day": day, "total": str(max(Decimal("0"), total + delta))}
+        return data
+
     with _daily_lock:
-        total = _daily_total(user_id)
-        _daily_withdraw[user_id] = (day, total + amount)
+        update_json(_DAILY_FILE, _fn, {"users": {}})
+    if refused:
+        return _cap_message(refused["total"])
+    return None
+
+
+def reserve_daily_withdraw(user_id: str, amount: Decimal) -> Optional[str]:
+    """Check AND count ``amount`` against today's cap in one locked write,
+    BEFORE the transfer. Returns the refusal text, or None when reserved.
+    Give it back with release_daily_withdraw only when nothing was sent."""
+    return _add_daily(user_id, Decimal(str(amount)), cap=DAILY_WITHDRAW_CAP_USDC)
+
+
+def release_daily_withdraw(user_id: str, amount: Decimal) -> None:
+    _add_daily(user_id, -Decimal(str(amount)), cap=None)
+
+
+def commit_daily_withdraw(user_id: str, amount: Decimal) -> None:
+    """Count a withdrawal already sent (legacy callers that did not reserve)."""
+    _add_daily(user_id, Decimal(str(amount)), cap=None)
 
 
 def validate_stake(amount: Decimal) -> Optional[str]:

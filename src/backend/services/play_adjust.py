@@ -14,9 +14,10 @@ the change already landed.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_DOWN
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 from gaming.src.stack.agentic.store import load_json, update_json
 
@@ -120,6 +121,32 @@ def apply_once(
 
     update_json(FILE, _fn, _fresh())
     return out["applied"]
+
+
+class PlaySpendBusy(ValueError):
+    """Another spend of this play balance is still going through."""
+
+
+@contextmanager
+def spend_lock(profile_id: str) -> Iterator[None]:
+    """One spend of a play balance at a time — bets, LP, withdrawals and
+    cash-outs alike, across requests, threads and processes. Each of them
+    reads the chain, checks chain + overlay, then moves money; two of them
+    interleaving can each pass the check and together overdraw."""
+    from gaming.src.stack.agentic.db import leases
+
+    pid = (profile_id or "").strip()
+    cm = leases.exclusive(f"play-spend:{pid}")
+    try:
+        cm.__enter__()
+    except leases.LeaseBusy as exc:
+        raise PlaySpendBusy(
+            "Another payment from this wallet is still going through. Try again in a moment."
+        ) from exc
+    try:
+        yield
+    finally:
+        cm.__exit__(None, None, None)
 
 
 def was_applied(profile_id: str, key: str) -> bool:
