@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import uuid
 import logging
 import os
 from decimal import Decimal
@@ -163,8 +164,12 @@ def _house_pull_dest() -> str:
     raise ValueError("no House USDC address configured (BOARDMAN_OPS_USDC_ADDRESS)")
 
 
-async def _pull_play_usdc(profile_id: str, amount: float) -> dict:
-    """Move USDC from the user's Circle play wallet (what Telegram shows)."""
+async def _pull_play_usdc(profile_id: str, amount: float, *, held: Decimal = Decimal("0")) -> dict:
+    """Move USDC from the user's Circle play wallet (what Telegram shows).
+
+    ``held`` is a stake already reserved on the play overlay for this very
+    pull (``_reserve_play_stake``); it counts back toward the pre-check.
+    """
     import asyncio
 
     from backend.circle_wallet_service import CircleWalletService
@@ -179,7 +184,7 @@ async def _pull_play_usdc(profile_id: str, amount: float) -> dict:
         get_usdc_balance,
     )
 
-    spendable = await get_usdc_balance(profile_id)
+    spendable = await get_usdc_balance(profile_id) + held
     if spendable + Decimal("0.000001") < Decimal(str(amount)):
         raise ValueError(f"Play wallet has ${spendable}, need ${amount}")
     wallet = await ensure_user_wallet(profile_id)
@@ -198,6 +203,158 @@ async def _pull_play_usdc(profile_id: str, amount: float) -> dict:
     if not result.get("success"):
         raise ValueError(result.get("error") or "play wallet transfer failed")
     return result
+
+
+class _SpendRefused(Exception):
+    """Nothing was booked and nothing was charged."""
+
+    def __init__(self, error: str, message: str) -> None:
+        super().__init__(message)
+        self.error = error
+        self.message = message
+
+
+def _finite_amount(raw) -> float:
+    """Body amount as a finite float (NaN/inf would pass every `<` check)."""
+    import math
+
+    try:
+        amount = float(raw or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return amount if math.isfinite(amount) else 0.0
+
+
+async def _reserve_play_stake(profile_id: str, amount: Decimal, key: str) -> None:
+    """Take ``amount`` off the play balance (chain + overlay) BEFORE anything
+    is booked: one conditional overlay debit, checked against a fresh chain
+    read under the play_adjust lock. Raises _SpendRefused when it does not fit.
+
+    Call it only under ``_play_spend_lock`` so no other spend of this profile
+    moves the chain or the overlay between the read and the debit.
+    """
+    from gaming.src.backend.services.clawstation_circle import get_usdc_balance_strict
+    from gaming.src.backend.services.play_adjust import InsufficientPlayBalance, apply_once
+
+    chain, err = await get_usdc_balance_strict(profile_id)
+    if err or chain is None:
+        raise _SpendRefused("balance_unavailable", "Could not read your Boardman wallet. Nothing was charged.")
+    try:
+        apply_once(profile_id, -amount, key=f"hold:{key}", chain_usdc=Decimal(str(chain)))
+    except InsufficientPlayBalance as exc:
+        raise _SpendRefused(
+            "insufficient_balance",
+            f"Not enough USDC on your Boardman wallet ({exc}). Nothing was charged.",
+        ) from exc
+
+
+def _unreserve_play_stake(profile_id: str, amount: Decimal, key: str, why: str) -> None:
+    from gaming.src.backend.services.play_adjust import apply_once
+
+    apply_once(profile_id, amount, key=f"hold-{why}:{key}")
+
+
+class _play_spend_lock:
+    """One spend at a time per profile, across requests, threads and replicas."""
+
+    def __init__(self, profile_id: str) -> None:
+        from gaming.src.stack.agentic.db import leases
+
+        self._cm = leases.exclusive(f"play-spend:{profile_id}")
+        self._busy = leases.LeaseBusy
+
+    def __enter__(self) -> None:
+        try:
+            self._cm.__enter__()
+        except self._busy as exc:
+            raise _SpendRefused(
+                "spend_in_progress",
+                "Another payment from this wallet is still going through. Try again in a moment.",
+            ) from exc
+
+    def __exit__(self, *exc) -> bool:
+        return bool(self._cm.__exit__(*exc))
+
+
+async def _book_profile_bet(
+    *, profile_id: str, match_id: str, side: str, amount: float, spend_key: str, summary: dict
+) -> dict:
+    """Book a play-balance spectator bet and take its stake, exactly once.
+
+    Demo book: reserve the stake on the overlay, book the ticket, then pull
+    the USDC to the House (on success the reservation is released, since the
+    chain now carries the debit; on failure the reservation IS the debit).
+    On-chain book: pull -> pool deposit (the chain itself cannot overdraw).
+    Returns {book, chain_tx, pulled, pull_err}; raises _SpendRefused when
+    nothing was booked or charged.
+    """
+    from gaming.src.stack.agentic.house import get_house
+    from gaming.src.stack.agentic.spectator_onchain import spectator_onchain_enabled
+
+    out: dict = {"book": None, "chain_tx": {}, "pulled": False, "pull_err": ""}
+    amt = Decimal(str(amount))
+    with _play_spend_lock(profile_id):
+        if spectator_onchain_enabled():
+            try:
+                # Chain is the book: pull to the House float, deposit into the
+                # SpectatorPool, then project the confirmed tx. No take_bet —
+                # place_bet refuses demo book entries on on-chain books.
+                await _pull_play_usdc(profile_id, amount)
+                out["pulled"] = True
+                out["chain_tx"] = await _deposit_spectator_onchain(
+                    profile_id=profile_id,
+                    match_id=match_id,
+                    side=side,
+                    amount=amount,
+                    user_address=str(summary.get("address") or ""),
+                )
+                if out["chain_tx"].get("book"):
+                    out["book"] = out["chain_tx"].get("book")
+            except Exception as exc:
+                logger.exception("[RematchWeb] spectator pull/deposit failed match=%s", match_id)
+                out["pull_err"] = str(exc)
+                if out["pulled"]:
+                    # Money safety: the pull landed but the pool deposit didn't
+                    # — push the USDC back to the user's wallet, never strand it.
+                    refund_h = ""
+                    try:
+                        from gaming.src.stack.agentic.spectator_onchain import refund_float_to_user
+
+                        refund = await asyncio.to_thread(
+                            refund_float_to_user, str(summary.get("address") or ""), amt
+                        )
+                        refund_h = str(refund.get("tx_hash") or "")
+                    except Exception:
+                        logger.exception("[RematchWeb] refund of pulled bet failed")
+                    out["pull_err"] = f"on-chain deposit failed — {exc}"
+                    if refund_h:
+                        out["pull_err"] += f" · ${amount} refunded to your wallet (tx {refund_h[:12]})"
+            return out
+
+        await _reserve_play_stake(profile_id, amt, spend_key)
+        try:
+            out["book"] = get_house().take_bet(
+                match_id,
+                bettor_id=profile_id,
+                side=side,
+                amount_usdc=amt,
+                # Play-balance stake; paid back to the play balance.
+                funding="profile",
+            )
+        except Exception as exc:
+            logger.warning("[RematchWeb] take_bet refused match=%s: %s", match_id, exc)
+            _unreserve_play_stake(profile_id, amt, spend_key, "unbooked")
+            raise _SpendRefused("spectator_book_failed", f"{exc}. Nothing was charged.") from exc
+        try:
+            await _pull_play_usdc(profile_id, amount, held=amt)
+        except Exception as exc:
+            # The reservation stays: the stake is carried by the overlay.
+            logger.warning("[RematchWeb] play pull failed, stake held on the overlay: %s", exc)
+            out["pull_err"] = str(exc)
+        else:
+            out["pulled"] = True
+            _unreserve_play_stake(profile_id, amt, spend_key, "pulled")
+    return out
 
 
 def _gate_new_spectator_money(*, path: str, profile_id: str, match_id: str = "") -> None:
@@ -266,87 +423,19 @@ async def _apply_approved_spectator_bet(
         store_apply_result(approval_id, refused)
         return refused
 
-    pull_err = ""
-    chain_tx: dict = {}
-    book = None
     try:
-        from gaming.src.stack.agentic.house import get_house
-
-        pulled = False
-        try:
-            if spectator_onchain_enabled():
-                # Chain is the book: pull to the House float, deposit into the
-                # SpectatorPool, then project the confirmed tx. No take_bet —
-                # place_bet refuses demo book entries on on-chain books.
-                await _pull_play_usdc(profile_id, amount)
-                pulled = True
-                chain_tx = await _deposit_spectator_onchain(
-                    profile_id=profile_id,
-                    match_id=match_id,
-                    side=side,
-                    amount=amount,
-                    user_address=str(summary.get("address") or ""),
-                )
-                if chain_tx.get("book"):
-                    book = chain_tx.get("book")
-            else:
-                book = get_house().take_bet(
-                    match_id,
-                    bettor_id=profile_id,
-                    side=side,
-                    amount_usdc=Decimal(str(amount)),
-                    # The stake comes off the play balance (pull or
-                    # play_adjust below); the payout goes back there.
-                    funding="profile",
-                )
-                await _pull_play_usdc(profile_id, amount)
-                pulled = True
-        except Exception as exc:
-            logger.exception("[RematchWeb] spectator pull/deposit failed")
-            if pulled and spectator_onchain_enabled():
-                # Money safety: the pull landed but the pool deposit didn't —
-                # push the USDC back to the user's wallet, never strand it.
-                refund_h = ""
-                try:
-                    from gaming.src.stack.agentic.spectator_onchain import (
-                        refund_float_to_user,
-                    )
-
-                    refund = await asyncio.to_thread(
-                        refund_float_to_user,
-                        str(summary.get("address") or ""),
-                        Decimal(str(amount)),
-                    )
-                    refund_h = str(refund.get("tx_hash") or "")
-                except Exception:
-                    logger.exception("[RematchWeb] refund of pulled bet failed")
-                pull_err = f"on-chain deposit failed — {exc}"
-                if refund_h:
-                    pull_err += f" · ${amount} refunded to your wallet (tx {refund_h[:12]})"
-            else:
-                pull_err = str(exc)
-        booked = book is not None or bool(chain_tx.get("tx_hash"))
-        if not booked and not spectator_onchain_enabled():
-            # take_bet refused (closed/full book, kill switch): no ticket, so
-            # nothing may be charged.
-            failed = {
-                "success": False,
-                "pending": False,
-                "error": "spectator_book_failed",
-                "message": pull_err or "Could not book the bet. Nothing was charged.",
-            }
-            store_apply_result(approval_id, failed)
-            return failed
-        if not pulled and not chain_tx and booked:
-            from gaming.src.backend.services.play_adjust import add_adjust
-
-            add_adjust(profile_id, -amount, reason=f"bet:{match_id}:{side}")
-        try:
-            ledger = float((summary or {}).get("ledger_usdc") or 0)
-            if booked and ledger + 1e-9 >= amount:
-                await debit_wallet(profile_id, amount)
-        except Exception:
-            logger.warning("[RematchWeb] ledger sync after book failed", exc_info=True)
+        spent = await _book_profile_bet(
+            profile_id=profile_id,
+            match_id=match_id,
+            side=side,
+            amount=amount,
+            spend_key=f"approval:{approval_id}",
+            summary=summary or {},
+        )
+    except _SpendRefused as exc:
+        failed = {"success": False, "pending": False, "error": exc.error, "message": exc.message}
+        store_apply_result(approval_id, failed)
+        return failed
     except Exception as exc:
         logger.exception("[RematchWeb] spectator book/deposit failed")
         return {
@@ -355,6 +444,14 @@ async def _apply_approved_spectator_bet(
             "error": "spectator_book_failed",
             "message": str(exc),
         }
+    book, chain_tx, pull_err = spent["book"], spent["chain_tx"], spent["pull_err"]
+    booked = book is not None or bool(chain_tx.get("tx_hash"))
+    try:
+        ledger = float((summary or {}).get("ledger_usdc") or 0)
+        if booked and ledger + 1e-9 >= amount:
+            await debit_wallet(profile_id, amount)
+    except Exception:
+        logger.warning("[RematchWeb] ledger sync after book failed", exc_info=True)
 
     if spectator_onchain_enabled() and pull_err and not chain_tx.get("tx_hash"):
         # On-chain bet: no pool deposit tx means the bet did NOT land.
@@ -445,37 +542,36 @@ async def _apply_approved_lp(
     try:
         from gaming.src.stack.agentic.economy.lp import AgentLPPool
 
-        pull_err = ""
+        amt = Decimal(str(amount))
+        spend_key = f"lp:{approval_id or uuid.uuid4().hex}"
+        # Same discipline as a bet: reserve on the play balance (checked
+        # against a fresh chain read, one spend per profile at a time), credit
+        # the pool, then pull; the reservation is released once the chain
+        # carries the debit. The stale request-time summary decides nothing.
+        with _play_spend_lock(profile_id):
+            await _reserve_play_stake(profile_id, amt, spend_key)
+            try:
+                pool = AgentLPPool().deposit(agent_id, lp_id=profile_id, amount_usdc=amt)
+            except Exception:
+                _unreserve_play_stake(profile_id, amt, spend_key, "unbooked")
+                raise
+            try:
+                pull_res = await _pull_play_usdc(profile_id, amount, held=amt)
+            except Exception as exc:
+                logger.warning("[RematchWeb] LP Circle pull failed; stake held on the overlay: %s", exc)
+            else:
+                _unreserve_play_stake(profile_id, amt, spend_key, "pulled")
+                logger.info(
+                    "[RematchWeb] LP pull tx=%s", pull_res.get("tx_hash") or pull_res.get("transaction_id") or ""
+                )
         ledger = float((summary or {}).get("ledger_usdc") or 0)
-        spendable = float((summary or {}).get("spendable_usdc") or 0)
-        if max(ledger, spendable) + 1e-9 < amount:
-            return {
-                "success": False,
-                "pending": False,
-                "error": "insufficient_balance",
-                "message": "Not enough USDC on your Boardman wallet.",
-            }
-        pulled = False
-        pull_tx = ""
-        try:
-            pull_res = await _pull_play_usdc(profile_id, amount)
-            pulled = True
-            pull_tx = str(pull_res.get("tx_hash") or pull_res.get("transaction_id") or "")
-        except Exception as exc:
-            logger.exception("[RematchWeb] LP Circle pull failed; locking on the book")
-            pull_err = str(exc)
-        if not pulled:
-            from gaming.src.backend.services.play_adjust import add_adjust
-
-            add_adjust(profile_id, -amount, reason=f"lp:{agent_id}")
         if ledger + 1e-9 >= amount:
             await debit_wallet(profile_id, amount)
-        pool = AgentLPPool().deposit(
-            agent_id,
-            lp_id=profile_id,
-            amount_usdc=Decimal(str(amount)),
-            pull_tx_hash=pull_tx,
-        )
+    except _SpendRefused as exc:
+        failed = {"success": False, "pending": False, "error": exc.error, "message": exc.message}
+        if approval_id:
+            store_apply_result(approval_id, failed)
+        return failed
     except Exception as exc:
         logger.exception("[RematchWeb] LP apply failed")
         return {
@@ -694,10 +790,7 @@ async def web_spectator_bet(
     """
     _require_key(x_rematch_key, x_stack_key, authorization)
     profile_id = str(body.get("profile_id") or "").strip()
-    try:
-        amount = float(body.get("amount") or 0)
-    except (TypeError, ValueError):
-        amount = 0.0
+    amount = _finite_amount(body.get("amount"))
     side = str(body.get("side") or "").strip().lower()
     match_id = str(body.get("match_id") or "").strip()[:64]
 
@@ -830,68 +923,24 @@ async def web_spectator_bet(
         if decision.get("mode") == "always":
             logger.info("[RematchWeb] spectator bet auto-approved (always) profile=%s", profile_id)
 
-        # Book first so Telegram Yes is visible immediately. Circle/on-chain
-        # pull only runs when SPECTATOR_ONCHAIN=1 — otherwise it just stalls.
-        pull_err = ""
-        chain_tx: dict = {}
-        book = None
+        # Reserve the stake, book the ticket, then pull (see _book_profile_bet).
         try:
-            from gaming.src.stack.agentic.house import get_house
-
-            pulled = False
-            try:
-                if spectator_onchain_enabled():
-                    # Chain is the book — no take_bet (place_bet refuses demo
-                    # entries on on-chain books). Pull → deposit → project.
-                    await _pull_play_usdc(profile_id, amount)
-                    pulled = True
-                    chain_tx = await _deposit_spectator_onchain(
-                        profile_id=profile_id,
-                        match_id=match_id,
-                        side=side,
-                        amount=amount,
-                        user_address=str(summary.get("address") or ""),
-                    )
-                    if chain_tx.get("book"):
-                        book = chain_tx.get("book")
-                else:
-                    book = get_house().take_bet(
-                        match_id,
-                        bettor_id=profile_id,
-                        side=side,
-                        amount_usdc=Decimal(str(amount)),
-                        # Play-balance stake (pull or play_adjust below);
-                        # paid back to the play balance.
-                        funding="profile",
-                    )
-                    await _pull_play_usdc(profile_id, amount)
-                    pulled = True
-            except Exception as exc:
-                logger.exception("[RematchWeb] spectator pull/deposit failed match=%s", match_id)
-                if pulled and spectator_onchain_enabled():
-                    # Money safety: the pull landed but the pool deposit didn't
-                    # — push the USDC back to the user's wallet.
-                    refund_h = ""
-                    try:
-                        import asyncio
-
-                        from gaming.src.stack.agentic.spectator_onchain import (
-                            refund_float_to_user,
-                        )
-
-                        refund = await asyncio.to_thread(
-                            refund_float_to_user,
-                            str(summary.get("address") or ""),
-                            Decimal(str(amount)),
-                        )
-                        refund_h = str(refund.get("tx_hash") or "")
-                    except Exception:
-                        logger.exception("[RematchWeb] refund of pulled bet failed")
-                    pull_err = f"on-chain deposit failed — {exc}"
-                    if refund_h:
-                        pull_err += f" · ${amount} refunded to your wallet (tx {refund_h[:12]})"
-                else:
-                    pull_err = str(exc)
+            spent = await _book_profile_bet(
+                profile_id=profile_id,
+                match_id=match_id,
+                side=side,
+                amount=amount,
+                spend_key=f"direct:{uuid.uuid4().hex}",
+                summary=summary,
+            )
+        except _SpendRefused as exc:
+            return {
+                "success": False,
+                "error": exc.error,
+                "message": exc.message,
+                "match_id": match_id,
+                "address": summary.get("address") or "",
+            }
         except Exception:
             logger.exception("[RematchWeb] house take_bet failed match=%s", match_id)
             return {
@@ -901,21 +950,8 @@ async def web_spectator_bet(
                 "match_id": match_id,
                 "address": summary.get("address") or "",
             }
+        book, chain_tx, pull_err = spent["book"], spent["chain_tx"], spent["pull_err"]
         booked = book is not None or bool(chain_tx.get("tx_hash"))
-        if not booked and not spectator_onchain_enabled():
-            # take_bet refused (closed/full book, kill switch): no ticket, so
-            # nothing may be charged.
-            return {
-                "success": False,
-                "error": "spectator_book_failed",
-                "message": pull_err or "Could not book the bet. Nothing was charged.",
-                "match_id": match_id,
-                "address": summary.get("address") or "",
-            }
-        if not pulled and not chain_tx and booked:
-            from gaming.src.backend.services.play_adjust import add_adjust
-
-            add_adjust(profile_id, -amount, reason=f"bet:{match_id}:{side}")
         try:
             ledger = float(summary.get("ledger_usdc") or 0)
             if not booked:
@@ -1047,10 +1083,7 @@ async def web_spectator_lp(
     """
     _require_key(x_rematch_key, x_stack_key, authorization)
     profile_id = str(body.get("profile_id") or "").strip()
-    try:
-        amount = float(body.get("amount") or 0)
-    except (TypeError, ValueError):
-        amount = 0.0
+    amount = _finite_amount(body.get("amount"))
     agent_id = str(body.get("agent_id") or "").strip().lower()
     agent_name = str(body.get("agent_name") or "").strip()
     agent_id = _AGENT_ID_ALIASES.get(agent_id, agent_id)
@@ -1152,10 +1185,7 @@ async def web_spectator_lp_withdraw(
     """
     _require_key(x_rematch_key, x_stack_key, authorization)
     profile_id = str(body.get("profile_id") or "").strip()
-    try:
-        amount = float(body.get("amount") or 0)
-    except (TypeError, ValueError):
-        amount = 0.0
+    amount = _finite_amount(body.get("amount"))
     agent_id = str(body.get("agent_id") or "").strip().lower()
     agent_id = _AGENT_ID_ALIASES.get(agent_id, agent_id)
 
@@ -1222,37 +1252,52 @@ async def web_spectator_lp_withdraw(
         "lp_withdraw",
         {"amount": amount, "agent_id": agent_id},
     )
-    if decision.get("status") in ("denied", "expired", "telegram_unreachable"):
+    if decision.get("status") != "approved":
+        # Only an explicit Yes (or 'always') sends money. A pending prompt is
+        # NOT a Yes: nothing leaves the House float until the LP approves.
+        st = str(decision.get("status") or "unknown")
         return {
             "success": False,
-            "error": f"approval_{decision['status']}",
+            "pending": st == "pending",
+            "approval_id": decision.get("approval_id"),
+            "error": f"approval_{st}",
             "message": decision.get("message") or "Approval failed. Nothing was sent.",
         }
 
-    try:
-        from gaming.src.stack.agentic.spectator_onchain import refund_float_to_user
+    from gaming.src.stack.agentic.spectator_onchain import SpectatorOnchainError, refund_float_to_user
 
-        user_wallet = str(summary.get("address") or "").strip()
-        if not user_wallet.startswith("0x") or len(user_wallet) != 42:
-            raise HTTPException(status_code=400, detail="no on-chain wallet on this profile")
-        tx = await asyncio.to_thread(
-            refund_float_to_user,
-            user_wallet,
-            Decimal(str(amount)),
-        )
+    user_wallet = str(summary.get("address") or "").strip()
+    if not user_wallet.startswith("0x") or len(user_wallet) != 42:
+        raise HTTPException(status_code=400, detail="no on-chain wallet on this profile")
+    amt = Decimal(str(amount))
+    # Book first, send second: the pool row lock re-checks the cap and takes
+    # the claim, so two concurrent withdrawals can never both send.
+    try:
         pool.withdraw(
             agent_id,
             lp_id=profile_id,
-            amount_usdc=Decimal(str(amount)),
+            amount_usdc=amt,
             agent_bankroll=bankroll,
             reserve_bps=reserve_bps,
             locked_usdc=locked_usdc,
-            withdraw_tx_hash=str(tx.get("tx_hash") or ""),
-            withdraw_tx_explorer=str(tx.get("explorer") or ""),
         )
+    except ValueError as exc:
+        return {"success": False, "error": "withdrawable_cap", "message": str(exc)}
+    try:
+        tx = await asyncio.to_thread(refund_float_to_user, user_wallet, amt)
+    except SpectatorOnchainError as exc:
+        # Refused before any transfer was broadcast: give the claim back.
+        AgentLPPool().deposit(agent_id, lp_id=profile_id, amount_usdc=amt)
+        logger.warning("[RematchWeb] LP withdraw not sent, claim restored: %s", exc)
+        raise HTTPException(status_code=502, detail=f"withdraw not sent: {exc}") from exc
     except Exception as exc:
-        logger.exception("[RematchWeb] LP withdraw failed")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        # The transfer may have been broadcast: keep the claim debited (never
+        # risk paying twice) and leave it to ops to reconcile against chain.
+        logger.critical(
+            "[RematchWeb] LP withdraw %s for %s on %s in an unknown state — reconcile: %s",
+            amt, profile_id, agent_id, exc,
+        )
+        raise HTTPException(status_code=500, detail="withdraw state unknown — support will reconcile") from exc
 
     return {
         "success": True,

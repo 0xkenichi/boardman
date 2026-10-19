@@ -166,6 +166,29 @@ def hold(match_id: str) -> Iterator[dict[str, Any]]:
         release(match_id)
 
 
+@contextmanager
+def exclusive(key: str) -> Iterator[str]:
+    """A lock with exactly one holder: across processes AND across threads or
+    requests of this process (``hold`` shares one lease per process).
+
+    For short money critical sections keyed by a person (``play-spend:<id>``):
+    the balance check, the debit and the external transfer all run under it.
+    Never blocks — a second caller gets LeaseBusy at once. Not renewed: a
+    holder that outlives the TTL (crash) frees the key on its own.
+    """
+    owner = f"{process_owner()}#{uuid.uuid4().hex[:12]}"
+    if try_acquire(key, owner=owner) is None:
+        raise LeaseBusy(f"{key} is busy")
+    try:
+        yield owner
+    finally:
+        try:
+            with transaction() as tx:
+                tx.execute("DELETE FROM match_leases WHERE match_id = ? AND owner = ?", (key, owner))
+        except Exception:
+            logger.warning("[lease] release %s failed (expires on its own)", key, exc_info=True)
+
+
 def held_here(match_id: str) -> bool:
     try:
         k = (get_db().key, match_id)
