@@ -253,7 +253,12 @@ async def _prepare_wallet(user_id: str, chain_id: str) -> tuple[str, str]:
             "Refusing to lock — open Wallet to re-provision this chain."
         )
     # Sanity: mapped id for this chain must match what ensure returned
+    # (practice chains only: real-money wallets are not in the profile row).
+    from gaming.src.backend.services.realms import is_real_chain
+
     try:
+        if is_real_chain(chain_id):
+            raise EscrowError("real-money wallet: no profile mapping")
         mapped_id, _ = _load_profile_wallet(user_id, chain_id)
         if mapped_id and mapped_id != wallet_id:
             logger.warning(
@@ -355,9 +360,14 @@ async def _v2_create_args(challenge: dict, chain_id: str, escrow_address: str, p
     p2 = to_checksum_address(await _v2_player2(challenge, chain_id))
     deadline = int(_time.time()) + CREATE_PERMIT_TTL_SECONDS
     match_b32 = bytes.fromhex(_challenge_id_to_bytes32(challenge["id"])[2:])
+    try:
+        resolver_pk = resolver_private_key(chain_id)
+    except Exception as exc:
+        logger.error("[Escrow] no resolver key for %s: %s", chain_id, type(exc).__name__)
+        raise EscrowError("Locks on this network aren't ready yet. Nothing was charged.") from exc
     sig = await asyncio.to_thread(
         sign_create_permit,
-        resolver_private_key(chain_id),
+        resolver_pk,
         chain_id=int(get_chain(chain_id).get("chain_id") or 0),
         escrow=to_checksum_address(escrow_address),
         match_id_b32=match_b32,

@@ -125,6 +125,10 @@ def is_production() -> bool:
     for name in ("CLAW_DEFAULT_CHAIN", "BOARDMAN_SETTLEMENT_RAIL"):
         if (os.getenv(name) or "").strip().lower() == "arc_mainnet":
             return True
+    # Money realms: once real money is switched on, money routes fail closed
+    # (the arena keeps running on practice chips in the same process).
+    if _env_flag("REAL_MONEY_ENABLED"):
+        return True
     return False
 
 
