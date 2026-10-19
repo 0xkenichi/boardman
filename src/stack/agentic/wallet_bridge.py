@@ -350,6 +350,10 @@ def withdraw(party_id: str, amount: Any, idempotency_key: str) -> dict[str, Any]
     party = (party_id or "").strip()
     if not party:
         raise BridgeError("party is required")
+    if ledger._money_chain_is_mainnet():
+        # Book-entry USDC must never become real play balance (the overlay
+        # counts toward bets, withdraw links and cash-outs on mainnet).
+        raise BridgeError("the football wallet is book-entry and testnet-only; it cannot pay out on mainnet")
     micro = parse_amount(amount)
     wallet = party_ledger_wallet(party)
     tkey = transfer_key(party, idempotency_key)
