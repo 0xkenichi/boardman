@@ -27,7 +27,8 @@ def _check_supabase() -> str:
         logger.exception("[Health] Supabase check failed")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={"supabase": "unhealthy", "error": str(exc)},
+            # class name only: Supabase errors carry hosts / schema details
+            detail={"supabase": "unhealthy", "error": exc.__class__.__name__},
         ) from exc
 
 

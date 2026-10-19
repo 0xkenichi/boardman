@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional
@@ -216,14 +217,32 @@ def _dispute_window_elapsed(challenge: dict) -> bool:
     return (_utcnow() - updated) >= timedelta(minutes=DEFAULT_DISPUTE_WINDOW_MINUTES)
 
 
+_B64_RE = re.compile(r"[A-Za-z0-9+/=\s]+")
+
+
 async def _resolve_screenshot_source(ref: str) -> str:
     """Turn a Telegram file_id into a downloadable HTTPS URL when needed."""
     if not ref:
         return ref
-    if ref.startswith("http://") or ref.startswith("https://") or ref.startswith("data:"):
+    if ref.startswith("http://") or ref.startswith("https://"):
+        # Only Telegram's own file host. Any other URL in a challenge row would
+        # make settlement fetch an attacker-chosen target (SSRF) with redirects on.
+        from urllib.parse import urlsplit
+
+        if urlsplit(ref).hostname == "api.telegram.org" and ref.startswith("https://"):
+            return ref
+        logger.warning("[Settlement] refusing screenshot URL on an untrusted host")
+        return ""
+    if ref.startswith("data:"):
         return ref
-    if len(ref) > 200 and "/" not in ref:
-        return ref  # already base64
+    if len(ref) > 200 and _B64_RE.fullmatch(ref):
+        # Raw base64 from the bot. Hand it on as a data URL so the verifier
+        # never mistakes it for a file path ("////etc/passwd" is base64-clean).
+        return f"data:image/jpeg;base64,{ref}"
+    if not ref.startswith("evidence://") and ("/" in ref or "\\" in ref or ref.startswith(".")):
+        # Never a filesystem path: score_verifier would open() it.
+        logger.warning("[Settlement] refusing path-like screenshot ref")
+        return ""
     if ref.startswith("evidence://"):
         # Chat screenshots copied to our storage (WhatsApp media, CHANNELS_DESIGN §4.4)
         try:
