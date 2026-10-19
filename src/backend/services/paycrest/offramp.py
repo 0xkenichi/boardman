@@ -170,7 +170,7 @@ async def perform(profile_id: str, *, amount: Decimal, payload: dict, link_hash:
     q = payload.get("quote") or {}
     order, created = await asyncio.to_thread(
         store.create_order, idempotency_key=f"bm-off-{link_hash[:24]}", direction="offramp",
-        profile_id=profile_id, status="confirmed", amount_usdc=str(amount), rate=str(q.get("rate") or ""),
+        profile_id=profile_id, status="confirmed", chain=settle, amount_usdc=str(amount), rate=str(q.get("rate") or ""),
         amount_ngn=str(q.get("payout_ngn") or ""), quote=q,
         details={"bank": bank, "bank_label": bank.get("label"), "out_address": out_w["address"]},
     )
