@@ -98,6 +98,13 @@ def _safe_row(result) -> Optional[dict]:
     return None
 
 
+def _is_participant(ch: Optional[dict], profile_id: Optional[str]) -> bool:
+    """Callback data is client-supplied: a match id in a button proves nothing."""
+    if not ch or not profile_id:
+        return False
+    return str(profile_id) in {str(ch.get("creator_id") or ""), str(ch.get("opponent_id") or "")}
+
+
 async def _load_challenge(cid: str) -> Optional[dict]:
     """Load by UUID (callbacks) or public short code (user input).
 
@@ -402,11 +409,10 @@ async def ui_public_board(callback: types.CallbackQuery) -> None:
     from aiogram.types import InlineKeyboardButton, WebAppInfo
     from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-    # Full ops metrics only for operator (@stillkenichi / CLAW_ADMIN_TELEGRAM_IDS)
-    show_ops = False
+    # Full ops metrics only for operators, by numeric id (CLAW_ADMIN_TELEGRAM_IDS);
+    # never by @username, which anyone can claim once it is released.
     u = callback.from_user
-    if u and (is_admin(u.id) or (u.username or "").strip().lower() == "stillkenichi"):
-        show_ops = True
+    show_ops = bool(u and is_admin(u.id))
 
     try:
         if show_ops:
@@ -648,7 +654,7 @@ async def ui_info(callback: types.CallbackQuery) -> None:
         return
     profile = await get_or_create_profile(user)
     ch = await _load_challenge(cid)
-    if not ch:
+    if not ch or not _is_participant(ch, profile.get("id")):
         await callback.message.answer("Match not found.", reply_markup=main_menu())
         return
     await callback.message.answer(
@@ -1767,6 +1773,13 @@ async def ui_report_finalize(callback: types.CallbackQuery, state: FSMContext) -
 async def ui_settle(callback: types.CallbackQuery) -> None:
     await callback.answer("Checking…")
     cid = callback.data.split(":", 2)[2]
+    user = callback.from_user
+    if not user:
+        return
+    profile = await get_or_create_profile(user)
+    if not _is_participant(await _load_challenge(cid), profile.get("id")):
+        await callback.message.answer("Match not found.", reply_markup=main_menu())
+        return
     try:
         from gaming.src.backend.services.clawstation_settlement import settle_challenge
 
@@ -1775,8 +1788,6 @@ async def ui_settle(callback: types.CallbackQuery) -> None:
         await callback.message.answer(f"Settle check: {h(exc)}", parse_mode=ParseMode.HTML)
         return
     ch = await _load_challenge(cid)
-    user = callback.from_user
-    profile = await get_or_create_profile(user) if user else None
     text = f"Result: <b>{h(result.get('action'))}</b>"
     if result.get("reason"):
         text += f"\n{h(result.get('reason'))}"

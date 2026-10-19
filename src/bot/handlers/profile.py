@@ -134,18 +134,15 @@ async def cmd_playbook(message: types.Message) -> None:
 
 
 def _can_view_ops_metrics(user: types.User | None) -> bool:
-    """Full ops metrics are owner-only (@stillkenichi / admin Telegram IDs)."""
+    """Full ops metrics are operator-only (numeric ids in CLAW_ADMIN_TELEGRAM_IDS).
+
+    Never by @username: usernames can be released and re-registered by anyone.
+    """
     if not user:
         return False
     from gaming.src.backend.services.safety import is_admin
 
-    if is_admin(user.id):
-        return True
-    # Hard-allow owner handle even if CLAW_ADMIN_TELEGRAM_IDS is unset
-    uname = (user.username or "").strip().lower()
-    if uname == "stillkenichi":
-        return True
-    return False
+    return is_admin(user.id)
 
 
 @router.message(Command("leaderboard"))

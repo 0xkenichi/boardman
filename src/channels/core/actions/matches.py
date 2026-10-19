@@ -272,14 +272,22 @@ async def accept_challenge(ref: str, accepter: dict) -> dict:
 
     cid = ch["id"]
 
-    def _write() -> None:
+    def _write() -> Optional[dict]:
+        # Conditional on still being open: two people tapping Accept on the
+        # same public card at once must not both "win" (the second would
+        # silently replace the first opponent and both would get a bet row).
         _challenges().update(
             denormalize_challenge({"status": "accepted", "opponent_id": aid})
-        ).eq("id", cid).execute()
+        ).eq("id", cid).eq("status", "open").execute()
+        fresh = load(cid)
+        if not fresh or str(fresh.get("opponent_id") or "") != aid or fresh.get("status") != "accepted":
+            return None
         create_bet(ch, aid)
+        return fresh
 
-    await asyncio.to_thread(_write)
-    fresh = await asyncio.to_thread(load, cid) or ch
+    fresh = await asyncio.to_thread(_write)
+    if fresh is None:
+        raise MatchRefused("gone", "Challenge is no longer available.")
     return {**fresh, "status": "accepted", "opponent_id": aid}
 
 
@@ -288,10 +296,12 @@ async def decline_challenge(ref: str, decliner: dict) -> dict:
     if not ch or ch.get("status") != "open":
         raise MatchRefused("gone", "Challenge is no longer available.")
     did = str(decliner["id"])
-    if ch.get("visibility") == "private" and str(ch.get("opponent_id") or "") != did:
+    # Only the invited opponent can decline. A public card has no invitee, so
+    # without this anyone could "decline" (kill) every open public challenge.
+    if str(ch.get("opponent_id") or "") != did:
         raise MatchRefused("not_yours", "This challenge is not for you.")
     await asyncio.to_thread(
-        lambda: _challenges().update({"status": "declined"}).eq("id", ch["id"]).execute()
+        lambda: _challenges().update({"status": "declined"}).eq("id", ch["id"]).eq("status", "open").execute()
     )
     return {**ch, "status": "declined"}
 

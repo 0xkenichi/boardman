@@ -160,12 +160,19 @@ def format_public_challenge_post(
     game_label: str,
     game: str = "",
 ) -> str:
+    from html import escape
+
     room = room_label_for_game(game or game_label)
     try:
         amt = f"${float(amount):,.2f}"
     except Exception:
-        amt = f"${amount}"
-    tag = (creator_tag or "player").lstrip("@")
+        amt = "$?"
+    # Everything a player typed is text, never markup: this card is posted by
+    # the bot into the official group, so an unescaped game name would let a
+    # player publish links or formatting under Boardman's name.
+    tag = escape((creator_tag or "player").lstrip("@")[:32])
+    public_code = escape(str(public_code or "")[:32])
+    game_label = escape(" ".join(str(game_label or "").split())[:40])
     return (
         f"📣 <b>Open public challenge</b>\n"
         f"{room}\n\n"

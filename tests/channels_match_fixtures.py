@@ -164,7 +164,7 @@ class FakeVerifier:
         self.confidence = 0.95
         self.resolved = True
 
-    async def verify_dispute(self, screenshot_p1, screenshot_p2, reported_p1, reported_p2):
+    async def verify_dispute(self, screenshot_p1, screenshot_p2, reported_p1, reported_p2, **kw):
         self.calls.append({"p1": screenshot_p1, "p2": screenshot_p2})
         conf = SimpleNamespace(confidence=self.confidence)
         return {"resolved": self.resolved, "winner": self.winner, "verified_score": "2-1",
