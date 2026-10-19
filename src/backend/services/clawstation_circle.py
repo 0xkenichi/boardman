@@ -95,6 +95,10 @@ class _SupabaseProfileStore:
     async def set_chain_wallet(
         user_id: str, chain_id: str, wallet_id: str, address: str
     ) -> None:
+        from gaming.src.backend.services.realms import assert_practice
+
+        # The profile columns hold the PRACTICE play wallet only.
+        assert_practice(chain_id, path="profile play wallet")
         sb = await _SupabaseProfileStore._get_supabase()
         profile = await _SupabaseProfileStore.get_profile(user_id) or {}
         wallets = dict(profile.get("gaming_circle_wallets") or {})
@@ -129,20 +133,90 @@ class _SupabaseProfileStore:
 
 
 async def get_preferred_chain(user_id: str) -> str:
+    """The profile's PRACTICE play chain (every path that does not name a
+    chain). Never a real-money chain: real money is always reached by naming
+    the humans-realm chain explicitly (services/realms.py)."""
+    from gaming.src.backend.services.realms import is_practice_chain
+
     profile = await _SupabaseProfileStore.get_profile(user_id)
     pref = (profile or {}).get("gaming_preferred_chain")
     if pref:
         try:
-            return normalize_chain_id(pref)
+            cid = normalize_chain_id(pref)
+            if is_practice_chain(cid):
+                return cid
+            logger.error("[Circle] preferred chain %s is real money; using the practice chain", cid)
         except ValueError:
             pass
     return default_chain_id()
 
 
 async def set_preferred_chain(user_id: str, chain_id: str) -> str:
-    cid = normalize_chain_id(chain_id)
+    from gaming.src.backend.services.realms import assert_practice
+
+    cid = assert_practice(normalize_chain_id(chain_id), path="preferred play chain")
     await _SupabaseProfileStore.set_preferred_chain(user_id, cid)
     return cid
+
+
+# ── real-money play wallets (humans realm) ───────────────────────────────────
+#
+# Real-money wallets are created with the LIVE Circle entity and recorded in
+# ``payment_wallets`` under ``<chain>/play``. They never touch the profile's
+# ``gaming_deposit_address`` / ``gaming_circle_wallets`` (the practice play
+# wallet), so a practice address can never be shown, read or signed as a
+# real-money one and vice versa.
+
+REAL_PLAY_PURPOSE = "play"
+
+
+def real_wallet_key(chain_id: str) -> str:
+    return f"{normalize_chain_id(chain_id)}/{REAL_PLAY_PURPOSE}"
+
+
+def real_wallet_account_type() -> str:
+    """SCA by default so Circle Gas Station can sponsor gas on the real chain."""
+    import os
+
+    v = (os.getenv("BOARDMAN_HUMANS_WALLET_ACCOUNT_TYPE") or "SCA").strip().upper()
+    return v if v in ("SCA", "EOA") else "SCA"
+
+
+def get_real_play_wallet(user_id: str, chain_id: str) -> Optional[dict]:
+    """The stored real-money play wallet, or None (sync, no Circle call)."""
+    from gaming.src.backend.services.paycrest import store
+    from gaming.src.backend.services.realms import assert_real
+
+    cid = assert_real(normalize_chain_id(chain_id), path="real play wallet")
+    return store.get_wallet(str(user_id), real_wallet_key(cid))
+
+
+def ensure_real_play_wallet(user_id: str, chain_id: str) -> dict:
+    """Get or create (once, idempotently) the player's real-money play wallet."""
+    from gaming.src.backend.services.bridge.chain_ops import idem_uuid
+    from gaming.src.backend.services.paycrest import store
+    from gaming.src.backend.services.realms import assert_real
+
+    cid = assert_real(normalize_chain_id(chain_id), path="real play wallet")
+    key = real_wallet_key(cid)
+    row = store.get_wallet(str(user_id), key)
+    if row is None:
+        acct = real_wallet_account_type()
+        res = _circle_for_chain(cid).create_custodial_wallet_for_user(
+            str(user_id), None, account_type=acct, idempotency_key=idem_uuid(f"real-play|{user_id}|{key}"),
+        )
+        if not res.get("success"):
+            raise CircleWalletError(f"Real-money wallet creation failed on {cid}: {res.get('error')}")
+        row = store.put_wallet(str(user_id), key, str(res["wallet_id"]), str(res["wallet_address"]), acct)
+        logger.info("[Circle] NEW real-money wallet chain=%s user=%s", cid, str(user_id)[:8])
+    return {
+        "wallet_id": row["wallet_id"],
+        "address": str(row["address"]).lower(),
+        "blockchain": get_circle_blockchain(cid),
+        "chain_id": cid,
+        "account_type": row.get("account_type"),
+        "realm": "humans",
+    }
 
 
 def _on_chain_usdc(address: str, chain_id: str) -> tuple[Optional[Decimal], Optional[str]]:
@@ -181,6 +255,11 @@ async def ensure_user_wallet(user_id: str, chain_id: Optional[str] = None) -> di
         raise CircleWalletError(f"Invalid user_id: {user_id}") from exc
 
     cid = normalize_chain_id(chain_id or await get_preferred_chain(user_id) or "arc")
+    from gaming.src.backend.services.realms import is_real_chain
+
+    if is_real_chain(cid):
+        # Humans realm: a separate LIVE-entity wallet, never the practice one.
+        return await asyncio.to_thread(ensure_real_play_wallet, user_id, cid)
     blockchain = get_circle_blockchain(cid)
 
     profile = await _SupabaseProfileStore.get_profile(user_id)
@@ -321,12 +400,19 @@ async def get_usdc_balance(user_id: str, chain_id: Optional[str] = None) -> Deci
     RPC failure returns 0 only after logging — prefer get_usdc_balance_strict
     for deposit detection.
     """
-    bal, err = await get_usdc_balance_strict(user_id, chain_id=chain_id)
+    from gaming.src.backend.services.realms import is_practice_chain
+
+    cid = normalize_chain_id(chain_id or await get_preferred_chain(user_id))
+    bal, err = await get_usdc_balance_strict(user_id, chain_id=cid)
     if err:
         logger.warning("[Circle] balance fail user=%s: %s", user_id[:8], err)
         chain = Decimal("0")
     else:
         chain = bal or Decimal("0")
+    if not is_practice_chain(cid):
+        # Real money is exactly the on-chain balance: the play_adjust overlay
+        # (spectator payouts, bridge credits…) is practice money only.
+        return chain
     try:
         from gaming.src.backend.services.play_adjust import get_adjust
 
@@ -339,7 +425,18 @@ async def get_usdc_balance_strict(
     user_id: str, chain_id: Optional[str] = None
 ) -> tuple[Optional[Decimal], Optional[str]]:
     """Strict balance for play wallet. (balance, error) — never invent $0 on error."""
+    from gaming.src.backend.services.realms import is_real_chain
+
     cid = normalize_chain_id(chain_id or await get_preferred_chain(user_id))
+    if is_real_chain(cid):
+        # Reading a real balance never creates a wallet: no wallet yet = $0.
+        try:
+            row = await asyncio.to_thread(get_real_play_wallet, user_id, cid)
+        except Exception as exc:
+            return None, str(exc)
+        if not row:
+            return Decimal("0"), None
+        return await _on_chain_usdc_async(str(row["address"]), cid)
     try:
         address = await get_deposit_address(user_id, chain_id=cid)
     except Exception as exc:
@@ -427,7 +524,11 @@ async def get_balance_summary(
       chain_id
       balance_error    — if play wallet RPC failed
     """
+    from gaming.src.backend.services.realms import is_practice_chain, money_kind
+
     cid = normalize_chain_id(chain_id or await get_preferred_chain(user_id))
+    if not is_practice_chain(cid):
+        return await _real_balance_summary(user_id, cid)
     address = ""
     spendable = Decimal("0")
     balance_error = None
@@ -478,6 +579,42 @@ async def get_balance_summary(
         "ledger_usdc": ledger,
         "address": address,
         "chain_id": cid,
+        "realm": "arena",
+        "money": money_kind(cid),
+        "balance_error": balance_error,
+    }
+
+
+async def _real_balance_summary(user_id: str, cid: str) -> dict[str, Any]:
+    """Real-money snapshot: on-chain USDC at the real play wallet, nothing
+    else. No overlay, no legacy ledger, no scan of practice-era addresses,
+    and no wallet is created just to show a balance."""
+    address = ""
+    spendable = Decimal("0")
+    balance_error = None
+    try:
+        row = await asyncio.to_thread(get_real_play_wallet, user_id, cid)
+        if row:
+            address = str(row["address"]).lower()
+            bal, err = await _on_chain_usdc_async(address, cid)
+            if err:
+                balance_error = err
+            else:
+                spendable = bal or Decimal("0")
+    except Exception as exc:
+        balance_error = str(exc)
+        logger.warning("[Circle] real summary failed %s", user_id, exc_info=True)
+    return {
+        "spendable_usdc": spendable,
+        "chain_usdc": spendable,
+        "adjust_usdc": Decimal("0"),
+        "other_usdc": Decimal("0"),
+        "other_address": "",
+        "ledger_usdc": Decimal("0"),
+        "address": address,
+        "chain_id": cid,
+        "realm": "humans",
+        "money": "real",
         "balance_error": balance_error,
     }
 

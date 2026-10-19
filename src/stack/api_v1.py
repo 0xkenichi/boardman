@@ -191,6 +191,14 @@ def v1_create_match(body: CreateMatchBody, _: str = Depends(_require_stack_key))
             raise HTTPException(status_code=409, detail=f"opponent: {blocked2}")
 
     from gaming.src.backend.services.match_codes import display_code
+    from gaming.src.backend.services.realms import RealmViolation, assert_practice
+
+    # The Stack API creates practice matches only: real-money challenges are
+    # first-party (WhatsApp, Telegram, web) with caps and confirmations.
+    try:
+        chain = assert_practice(body.chain_id or "arc", path="stack v1 create match")
+    except RealmViolation as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     challenge_id = str(uuid.uuid4())
     expires = datetime.now(timezone.utc) + timedelta(hours=24)
@@ -207,7 +215,7 @@ def v1_create_match(body: CreateMatchBody, _: str = Depends(_require_stack_key))
             "status": "open",
             "expires_at": expires.isoformat(),
             "message": body.message or f"Stack: {display_name(body.game_id)}",
-            "settlement_chain": body.chain_id or "arc",
+            "settlement_chain": chain,
         }
     )
     try:
@@ -234,7 +242,7 @@ def v1_create_match(body: CreateMatchBody, _: str = Depends(_require_stack_key))
         "game_label": display_name(body.game_id),
         "status": "open",
         "amount_usdc": float(amount),
-        "chain_id": body.chain_id or "arc",
+        "chain_id": chain,
     }
 
 
@@ -364,6 +372,10 @@ async def v1_lock_match(
 
     amount = Decimal(str(ch["amount_usdc"]))
     chain = ch.get("settlement_chain") or "arc"
+    from gaming.src.backend.services.realms import is_real_chain
+
+    if is_real_chain(chain):
+        raise HTTPException(status_code=409, detail="real-money matches are locked in the Boardman apps only")
     gate = assert_money_ops_allowed(pid, action="lock", amount=amount, kind="lock")
     if gate:
         raise HTTPException(status_code=403, detail=gate)

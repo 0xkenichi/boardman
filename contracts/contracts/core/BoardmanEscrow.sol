@@ -87,6 +87,11 @@ contract BoardmanEscrow is Ownable2Step, ReentrancyGuard, Pausable {
     /// @notice Active mid-tier boundary.
     uint256 public TIER_BPS_MAX_OVERRIDE = 500e6;
 
+    /// @notice Owner-settable stake cap per player, within [MIN_STAKE, MAX_STAKE].
+    ///         Launch posture: low (e.g. $25) until an external audit, then raised
+    ///         by the owner (Safe). Checked at create; join uses the creator's stake.
+    uint256 public maxStakePerPlayer = MAX_STAKE;
+
     // ─── Immutable config ─────────────────────────────────────────────────────
 
     IERC20 public immutable usdc;
@@ -156,6 +161,7 @@ contract BoardmanEscrow is Ownable2Step, ReentrancyGuard, Pausable {
     event FeesWithdrawn(address indexed to, uint256 amount);
     event ResolverUpdated(address indexed oldResolver, address indexed newResolver);
     event FeeRecipientUpdated(address indexed oldRecipient, address indexed newRecipient);
+    event MaxStakeUpdated(uint256 oldMax, uint256 newMax);
     event FeeTiersUpdated(
         uint256 flatFeePerPlayer,
         uint256 feeBps,
@@ -174,6 +180,7 @@ contract BoardmanEscrow is Ownable2Step, ReentrancyGuard, Pausable {
     error InvalidWinner(address winner);
     error StakeExceedsMax(uint256 stake);
     error StakeBelowMin(uint256 stake);
+    error InvalidStakeCap(uint256 cap);
     error InvalidFeeTiers();
     error InvalidTimeout();
     error ZeroStake();
@@ -257,7 +264,7 @@ contract BoardmanEscrow is Ownable2Step, ReentrancyGuard, Pausable {
     ) external nonReentrant whenNotPaused {
         if (stake == 0) revert ZeroStake();
         if (stake < MIN_STAKE) revert StakeBelowMin(stake);
-        if (stake > MAX_STAKE) revert StakeExceedsMax(stake);
+        if (stake > maxStakePerPlayer) revert StakeExceedsMax(stake);
         if (player2 == address(0)) revert ZeroAddress();
         if (player2 == msg.sender) revert NotPlayer(player2);
         if (block.timestamp > deadline) revert PermitExpired(deadline);
@@ -451,6 +458,16 @@ contract BoardmanEscrow is Ownable2Step, ReentrancyGuard, Pausable {
     }
 
     /// @notice Stop new stakes (create/join). Settlement and refunds keep working.
+    /**
+     * @notice Set the per-player stake cap (applies to matches created after).
+     * @dev MIN_STAKE ≤ newMax ≤ MAX_STAKE. Existing matches are unaffected.
+     */
+    function setMaxStake(uint256 newMax) external onlyOwner {
+        if (newMax < MIN_STAKE || newMax > MAX_STAKE) revert InvalidStakeCap(newMax);
+        emit MaxStakeUpdated(maxStakePerPlayer, newMax);
+        maxStakePerPlayer = newMax;
+    }
+
     function pause() external onlyOwner { _pause(); }
     function unpause() external onlyOwner { _unpause(); }
 

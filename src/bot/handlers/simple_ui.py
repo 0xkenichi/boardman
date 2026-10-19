@@ -923,7 +923,13 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
     profile = await get_or_create_profile(user)
     data = await state.get_data()
     amount = Decimal(str(data.get("amount", 1)))
-    chain = "arc"  # product surface is Arc-only for now
+    # Money realms: real money on the humans chain once it is live, practice
+    # chips on the arena chain until then (services/realms.py).
+    from gaming.src.backend.services import stake_caps
+    from gaming.src.backend.services.realms import is_real_chain, new_challenge_chain
+
+    chain = new_challenge_chain()
+    real = is_real_chain(chain)
     game = data.get("game") or "EAFC"
     game_label = game_display_name(game)
     opponent_id = data.get("opponent_id")
@@ -944,6 +950,12 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
         await callback.message.answer(f"❌ {blocked}", reply_markup=main_menu())
         return
 
+    capped = stake_caps.check(profile["id"], chain, amount)
+    if capped:
+        await state.clear()
+        await callback.message.answer(f"❌ {capped}", reply_markup=main_menu())
+        return
+
     await callback.message.answer("⏳ Creating challenge…")
 
     try:
@@ -955,8 +967,9 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
         from gaming.src.bot.keyboards import get_usdc_menu
 
         await callback.message.answer(
-            f"❌ Not enough USDC. You have <b>${bal:,.2f}</b>.\n"
-            f"Tap <b>Get money</b> to fund your wallet, then try again.",
+            f"❌ Not enough {'real-money' if real else 'practice'} USDC. You have <b>${bal:,.2f}</b>.\n"
+            + ("Top up with naira, then try again. Practice chips can't be used for real-money matches."
+               if real else "Tap <b>Get money</b> to fund your wallet, then try again."),
             reply_markup=get_usdc_menu(),
             parse_mode=ParseMode.HTML,
         )

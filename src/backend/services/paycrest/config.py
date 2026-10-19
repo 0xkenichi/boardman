@@ -48,8 +48,22 @@ def paycrest_flag() -> bool:
 
 
 def enabled() -> bool:
-    """The rail is live: both flags on and an API key present."""
-    return paycrest_flag() and real_money_enabled() and bool(api_key())
+    """The rail is live: both flags on, an API key present, and both chains
+    real-money chains (services/realms.py)."""
+    return paycrest_flag() and real_money_enabled() and bool(api_key()) and chains_are_real()
+
+
+def chains_are_real() -> bool:
+    """Practice (testnet) USDC can never be paid out to a bank or credited
+    from naira: the delivery and settlement chains must both be mainnet."""
+    from gaming.src.backend.services import realms
+
+    try:
+        realms.assert_real(delivery_chain(), path="paycrest delivery chain")
+        realms.assert_real(settlement_chain(), path="paycrest settlement chain")
+    except realms.RealmViolation:
+        return False
+    return True
 
 
 def rail() -> dict[str, Any]:

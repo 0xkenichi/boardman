@@ -18,6 +18,7 @@ from backend.circle_wallet_service import CircleWalletService
 from backend.supabase_client import get_supabase
 from gaming.src.backend.services.chains import (
     default_chain_id,
+    escrow_version,
     get_circle_blockchain,
     get_circle_usdc_token_id,
     get_escrow_address,
@@ -252,7 +253,12 @@ async def _prepare_wallet(user_id: str, chain_id: str) -> tuple[str, str]:
             "Refusing to lock — open Wallet to re-provision this chain."
         )
     # Sanity: mapped id for this chain must match what ensure returned
+    # (practice chains only: real-money wallets are not in the profile row).
+    from gaming.src.backend.services.realms import is_real_chain
+
     try:
+        if is_real_chain(chain_id):
+            raise EscrowError("real-money wallet: no profile mapping")
         mapped_id, _ = _load_profile_wallet(user_id, chain_id)
         if mapped_id and mapped_id != wallet_id:
             logger.warning(
@@ -281,12 +287,114 @@ async def _prepare_wallet(user_id: str, chain_id: str) -> tuple[str, str]:
     return wallet_id, address
 
 
+async def _with_stake_cap(user_id: str, challenge_id: str, stake_usd: Decimal, path: str, impl) -> dict:
+    """Real-money caps at the lock chokepoint (services/stake_caps.py).
+
+    Reserve before any money moves; give the reservation back only when the
+    lock failed before the escrow call was submitted (after that the tx may
+    still land, so the stake keeps counting)."""
+    from gaming.src.backend.services import stake_caps
+
+    stage: dict = {"submitted": False, "reserved": False}
+
+    async def _reserve(chain_id: str) -> None:
+        """Called by the lock once it knows the challenge's chain, before any tx."""
+        if not stake_caps.applies(chain_id):
+            return
+        try:
+            stage["reserved"] = await asyncio.to_thread(
+                stake_caps.reserve, user_id, chain_id, challenge_id, Decimal(str(stake_usd)), path=path,
+            )
+        except stake_caps.StakeCapExceeded as exc:
+            raise EscrowError(str(exc)) from exc
+
+    stage["reserve"] = _reserve
+    try:
+        return await impl(user_id, challenge_id, stake_usd, stage)
+    except BaseException:
+        if stage["reserved"] and not stage["submitted"]:
+            try:
+                await asyncio.to_thread(stake_caps.release, user_id, challenge_id, reason=f"{path} failed")
+            except Exception:
+                logger.exception("[Escrow] stake cap release failed %s", challenge_id)
+        raise
+
+
+async def _v2_player2(challenge: dict, chain_id: str) -> str:
+    """The only address the v2 escrow lets join: the opponent's passkey
+    account on this chain if they have one, else their Circle wallet here."""
+    opp = str(challenge.get("opponent_id") or "")
+    if not opp:
+        raise EscrowError("Wait until your opponent accepts, then lock.")
+    try:
+        from gaming.src.backend.services.self_custody import config as sc_config
+        from gaming.src.backend.services.self_custody import routing as sc_routing
+
+        if sc_config.enabled() and normalize_chain_id(sc_config.chain_key()) == chain_id:
+            acct = await asyncio.to_thread(sc_routing.account, opp)
+            if acct:
+                return acct
+    except Exception:
+        logger.warning("[Escrow] passkey lookup for player2 failed; using Circle wallet", exc_info=True)
+    w = await ensure_user_wallet(opp, chain_id=chain_id)
+    addr = str((w or {}).get("address") or "")
+    if not (addr.startswith("0x") and len(addr) == 42):
+        raise EscrowError("Your opponent's wallet is not ready yet. Try again shortly.")
+    return addr
+
+
+async def _v2_create_args(challenge: dict, chain_id: str, escrow_address: str, player1: str,
+                          stake_wei: int) -> list:
+    """createMatch(bytes32,address,uint256,uint256,bytes) arguments with a
+    resolver permit signed by THIS chain's realm resolver key."""
+    import time as _time
+
+    from eth_utils import to_checksum_address
+
+    from gaming.src.backend.services.chains import get_chain
+    from gaming.src.backend.services.realms import resolver_private_key
+    from gaming.src.stack.agentic.onchain import CREATE_PERMIT_TTL_SECONDS, sign_create_permit
+
+    if not (player1 or "").startswith("0x"):
+        raise EscrowError("Your wallet address is not ready yet. Try again shortly.")
+    p2 = to_checksum_address(await _v2_player2(challenge, chain_id))
+    deadline = int(_time.time()) + CREATE_PERMIT_TTL_SECONDS
+    match_b32 = bytes.fromhex(_challenge_id_to_bytes32(challenge["id"])[2:])
+    try:
+        resolver_pk = resolver_private_key(chain_id)
+    except Exception as exc:
+        logger.error("[Escrow] no resolver key for %s: %s", chain_id, type(exc).__name__)
+        raise EscrowError("Locks on this network aren't ready yet. Nothing was charged.") from exc
+    sig = await asyncio.to_thread(
+        sign_create_permit,
+        resolver_pk,
+        chain_id=int(get_chain(chain_id).get("chain_id") or 0),
+        escrow=to_checksum_address(escrow_address),
+        match_id_b32=match_b32,
+        player1=to_checksum_address(player1),
+        player2=p2,
+        stake_raw=int(stake_wei),
+        deadline=deadline,
+    )
+    return ["0x" + match_b32.hex(), p2, str(int(stake_wei)), str(deadline), "0x" + sig.hex()]
+
+
 async def approve_and_create_match(
     user_id: str,
     challenge_id: str,
     stake_usd: Decimal,
 ) -> dict:
     """Challenger: approve USDC + createMatch on the challenge settlement chain."""
+    return await _with_stake_cap(user_id, challenge_id, stake_usd, "custodial lock_create",
+                                 _approve_and_create_match)
+
+
+async def _approve_and_create_match(
+    user_id: str,
+    challenge_id: str,
+    stake_usd: Decimal,
+    stage: dict,
+) -> dict:
     import time as _time
 
     t0 = _time.monotonic()
@@ -299,7 +407,8 @@ async def approve_and_create_match(
     if challenge.get("creator_lock_tx_id"):
         raise EscrowError("Creator stake already locked")
 
-    wallet_id, _ = await _prepare_wallet(user_id, chain_id)
+    await stage["reserve"](chain_id)
+    wallet_id, creator_address = await _prepare_wallet(user_id, chain_id)
     stake_wei = _usdc_to_wei(stake_usd)
     match_id = _challenge_id_to_bytes32(challenge_id)
 
@@ -319,6 +428,17 @@ async def approve_and_create_match(
         }
 
     circle = _circle(chain_id)
+
+    # v2 escrow (every real-money chain): createMatch binds player2 and needs
+    # a resolver permit from this chain's realm resolver. Built before any
+    # transaction so a missing key fails with nothing submitted.
+    version = escrow_version(chain_id)
+    if version >= 2:
+        create_sig = "createMatch(bytes32,address,uint256,uint256,bytes)"
+        create_args = await _v2_create_args(challenge, chain_id, escrow_address, creator_address, stake_wei)
+    else:
+        create_sig = "createMatch(bytes32,uint256)"
+        create_args = [match_id, str(stake_wei)]
 
     # All Circle HTTP + wait polling runs off the event loop so Telegram stays responsive
     logger.info("[Escrow] Approving USDC user=%s chain=%s match=%s", user_id, chain_id, challenge_id)
@@ -341,13 +461,14 @@ async def approve_and_create_match(
             raise EscrowError(f"USDC approve not confirmed: {approve_wait.get('error')}")
         approve_waited = int(approve_wait.get("time_waited") or 0)
 
-    logger.info("[Escrow] createMatch user=%s chain=%s match=%s", user_id, chain_id, challenge_id)
+    logger.info("[Escrow] createMatch user=%s chain=%s match=%s v%s", user_id, chain_id, challenge_id, version)
+    stage["submitted"] = True
     create_result = await asyncio.to_thread(
         circle.execute_contract_function,
         wallet_id,
         escrow_address,
-        "createMatch(bytes32,uint256)",
-        [match_id, str(stake_wei)],
+        create_sig,
+        create_args,
     )
     create_tx_id = create_result.get("transaction_id")
     tx_hash = create_result.get("tx_hash") or ""
@@ -437,6 +558,16 @@ async def approve_and_join_match(
     stake_usd: Decimal,
 ) -> dict:
     """Opponent: approve USDC + joinMatch on the challenge settlement chain."""
+    return await _with_stake_cap(user_id, challenge_id, stake_usd, "custodial lock_join",
+                                 _approve_and_join_match)
+
+
+async def _approve_and_join_match(
+    user_id: str,
+    challenge_id: str,
+    stake_usd: Decimal,
+    stage: dict,
+) -> dict:
     import time as _time
 
     t0 = _time.monotonic()
@@ -457,6 +588,7 @@ async def approve_and_join_match(
     ):
         raise EscrowError("Creator must lock stake before opponent can join")
 
+    await stage["reserve"](chain_id)
     wallet_id, _ = await _prepare_wallet(user_id, chain_id)
     stake_wei = _usdc_to_wei(stake_usd)
     match_id = _challenge_id_to_bytes32(challenge_id)
@@ -499,6 +631,7 @@ async def approve_and_join_match(
         approve_waited = int(approve_wait.get("time_waited") or 0)
 
     logger.info("[Escrow] joinMatch user=%s chain=%s", user_id, chain_id)
+    stage["submitted"] = True
     join_result = await asyncio.to_thread(
         circle.execute_contract_function,
         wallet_id,

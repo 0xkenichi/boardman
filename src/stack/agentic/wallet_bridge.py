@@ -75,12 +75,21 @@ class BalanceUnavailable(RuntimeError):
     """The on-chain play balance could not be read; nothing moved (503)."""
 
 
+def bridge_chain() -> str:
+    """The only chain the wallet bridge touches: the arena's practice chain."""
+    from gaming.src.backend.services.realms import arena_chain, assert_practice
+
+    return assert_practice(arena_chain(), path="wallet bridge")
+
+
 async def read_play_chain_usdc(party_id: str) -> Decimal:
     """On-chain USDC at the party's Circle play address. Never guesses $0 on
     an RPC error (that would let a deposit check pass on stale numbers)."""
     from gaming.src.backend.services.clawstation_circle import get_usdc_balance_strict
 
-    bal, err = await get_usdc_balance_strict(party_id)
+    # The football ledger is arena money: only the PRACTICE play balance may
+    # ever be read for (or debited by) the bridge. A real-money balance can't.
+    bal, err = await get_usdc_balance_strict(party_id, chain_id=bridge_chain())
     if err or bal is None:
         raise BalanceUnavailable(f"could not read the play balance: {err or 'no balance'}")
     return Decimal(str(bal))
@@ -311,6 +320,7 @@ def deposit(party_id: str, amount: Any, idempotency_key: str, *, chain_usdc: Dec
     party = (party_id or "").strip()
     if not party:
         raise BridgeError("party is required")
+    bridge_chain()  # practice money only (realms.py); raises if misconfigured
     if ledger._money_chain_is_mainnet():
         raise BridgeError("the football wallet is book-entry and testnet-only; bind a Circle wallet on mainnet")
     micro = parse_amount(amount)
@@ -350,6 +360,7 @@ def withdraw(party_id: str, amount: Any, idempotency_key: str) -> dict[str, Any]
     party = (party_id or "").strip()
     if not party:
         raise BridgeError("party is required")
+    bridge_chain()  # practice money only (realms.py); raises if misconfigured
     micro = parse_amount(amount)
     wallet = party_ledger_wallet(party)
     tkey = transfer_key(party, idempotency_key)

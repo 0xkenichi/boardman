@@ -122,6 +122,15 @@ async def reconcile_escrow(
             for c in list_chains(include_disabled=True)
             if is_chain_enabled(c["id"]) and chain_has_escrow(c["id"])
         ]
+        # Money realms: the real-money chain is not in the legacy "enabled"
+        # list (that list is practice chains); reconcile it on its own.
+        try:
+            from gaming.src.backend.services.realms import humans_chain, humans_live
+
+            if humans_live() and humans_chain() not in targets:
+                targets.append(humans_chain())
+        except Exception:
+            logger.error("[Recon] humans realm chain unavailable", exc_info=True)
 
     from backend.blockchain_layer import get_blockchain_layer_for_chain
 
@@ -133,7 +142,10 @@ async def reconcile_escrow(
         db_total = sum(
             (_expected_locked_from_row(r) for r in chain_rows), Decimal("0")
         )
+        from gaming.src.backend.services.realms import realm_of_chain
+
         entry: dict[str, Any] = {
+            "realm": realm_of_chain(cid),
             "db_expected_usdc": float(db_total),
             "challenges_checked": len(chain_rows),
             "drift": [],

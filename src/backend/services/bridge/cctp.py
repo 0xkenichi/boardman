@@ -64,6 +64,14 @@ def start(*, idempotency_key: str, kind: str, profile_id: str, src_chain: str, d
           amount: Decimal, from_wallet_id: str, mint_recipient: str, fast: bool = False,
           max_fee_bps: Decimal = Decimal("0")) -> dict:
     """Record a transfer (once per key) and try its first leg."""
+    from gaming.src.backend.services import realms
+
+    # Money realms: a CCTP leg never crosses real and practice money, and the
+    # naira rail (Paycrest) moves real money only.
+    realms.assert_same_network(src_chain, dst_chain, path=f"cctp {kind}")
+    if kind.startswith(("onramp", "offramp")):
+        realms.assert_real(src_chain, path=f"cctp {kind}")
+        realms.assert_real(dst_chain, path=f"cctp {kind}")
     ops = get_chain_ops()
     use_fast = False
     max_fee = Decimal("0")
