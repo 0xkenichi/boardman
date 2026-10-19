@@ -27,6 +27,13 @@ x-boardman: &boardman
     options:
       max-size: "10m"
       max-file: "3"
+  # Container hardening (infra audit 2026-10, INF-13). The app runs as the
+  # unprivileged `rematch` user and needs no Linux capabilities.
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  pids_limit: 1024
 
 services:
   boardman-api:
@@ -39,8 +46,12 @@ services:
       # First boot on a brand-new volume only:
       #   BOARDMAN_DATA_INIT=1 docker compose up -d boardman-api
       BOARDMAN_DATA_INIT: "${BOARDMAN_DATA_INIT:-0}"
+    # Loopback only: the Cloudflare tunnel (or a local browser) reaches the
+    # API on 127.0.0.1. Docker-published ports bypass the host firewall's
+    # INPUT chain, so "8000:8000" would expose the API on every interface.
+    # Set BOARDMAN_API_BIND=0.0.0.0 only behind a firewall you control.
     ports:
-      - "8000:8000"
+      - "${BOARDMAN_API_BIND:-127.0.0.1}:8000:8000"
 
   boardman-bot:
     <<: *boardman
