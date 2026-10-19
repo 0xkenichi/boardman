@@ -132,6 +132,18 @@ async def _got_photo(ctx, ref: str, caption: str = "") -> None:
         ctx.st.clear()
         ctx.say("Match not found.")
         return
+    from gaming.src.channels.core.evidence import note_use
+
+    try:
+        earlier = await asyncio.to_thread(note_use, ref, str(ch["id"]), str(ctx.profile_id))
+    except Exception:
+        logger.warning("[report] evidence reuse check failed", exc_info=True)
+        earlier = None
+    if earlier is not None:
+        logger.warning("[report] screenshot reused from another match")
+        ctx.say("That screenshot was already sent as evidence for a different match. "
+                "Send a screenshot of *this* match's final screen.")
+        return
     from gaming.src.backend.services.game_catalog import parse_result_caption
 
     ri = _ri()
