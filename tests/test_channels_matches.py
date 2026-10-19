@@ -318,7 +318,7 @@ def test_insufficient_balance_offers_add_money(mworld):
     wa_player(world, ADA, "ada", in_window=True)
     wa_player(world, BOLA, "bola")
     create_challenge(wa, world)
-    assert "Not enough USDC" in wa.last_text(ADA)
+    assert "Not enough practice USDC" in wa.last_text(ADA)
     assert labels(wa, ADA) == ["Add money", "Menu"]
     assert not world.sb.challenges()
 

@@ -1,6 +1,7 @@
 """Challenge creation and accept/decline callbacks (multi-chain MVP)."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import shlex
 import uuid
@@ -46,6 +47,22 @@ _USAGE = (
 )
 
 
+def _is_real(chain_id: str) -> bool:
+    from gaming.src.backend.services.realms import is_real_chain
+
+    return is_real_chain(chain_id)
+
+
+def _new_challenge_chain() -> str:
+    try:
+        from gaming.src.backend.services.realms import new_challenge_chain
+
+        return new_challenge_chain()
+    except Exception:
+        logger.error("[Challenge] realm resolution failed; practice chain", exc_info=True)
+        return default_chain_id()
+
+
 def _parse_challenge_args(
     text: str,
 ) -> tuple[Optional[str], Decimal, str, str, str, str | None]:
@@ -66,7 +83,8 @@ def _parse_challenge_args(
         return None, Decimal("0"), "", "", default_chain_id(), _USAGE
 
     # Optional trailing chain: arc | base | avalanche
-    chain_id = default_chain_id()
+    # No chain typed: real money when the humans realm is live, else practice.
+    chain_id = _new_challenge_chain()
     known_chains = {"arc", "base", "avalanche", "avax", "fuji", "base_sepolia"}
     if parts[-1].lower() in known_chains:
         try:
@@ -205,6 +223,13 @@ async def cmd_challenge(message: types.Message) -> None:
         await message.answer(gate, parse_mode=ParseMode.HTML)
         return
 
+    from gaming.src.backend.services import stake_caps
+
+    capped = await asyncio.to_thread(stake_caps.check, profile["id"], chain_id, amount)
+    if capped:
+        await message.answer(f"❌ {capped}", parse_mode=None)
+        return
+
     blocked = assert_can_start_or_accept(profile["id"])
     if blocked:
         await message.answer(f"❌ {blocked}", parse_mode=None)
@@ -220,7 +245,8 @@ async def cmd_challenge(message: types.Message) -> None:
     if balance < amount:
         await message.answer(
             f"❌ Insufficient balance. You have {bold(f'${balance:,.2f}')} but need {bold(f'${amount:,.2f}')}.\n"
-            f"Deposit Base Sepolia USDC to the address from /start.",
+            + ("Top up with naira (Add money). Practice chips can't be used for real-money matches."
+               if _is_real(chain_id) else "Tap Get money to add practice USDC."),
             parse_mode=ParseMode.HTML,
         )
         return

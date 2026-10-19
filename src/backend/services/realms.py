@@ -233,7 +233,7 @@ def resolve_challenge_chain(requested: Optional[str] = None) -> str:
 
     * nothing requested -> ``new_challenge_chain()``
     * a real chain      -> only the humans chain, only while humans are live
-    * a practice chain  -> only the arena chain (practice chips)
+    * a practice chain  -> allowed as asked (practice chips, never real)
     """
     if not (requested or "").strip():
         return new_challenge_chain()
@@ -244,8 +244,6 @@ def resolve_challenge_chain(requested: Optional[str] = None) -> str:
         if cid != humans_chain():
             raise RealmViolation(f"Real-money challenges run on {humans_chain()} only.", path="challenge", chain=cid)
         return cid
-    if cid != arena_chain():
-        raise RealmViolation(f"Practice challenges run on {arena_chain()} only.", path="challenge", chain=cid)
     return cid
 
 

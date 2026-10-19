@@ -131,15 +131,22 @@ def insert_challenge(
     amount: Decimal,
     game: str,
     visibility: str,
-    settlement_chain: str = "arc",
+    settlement_chain: Optional[str] = None,
     message: str = "Boardman challenge",
     expires_hours: int = 24,
 ) -> dict:
     """Insert one ``open`` challenge; retries once without ``settlement_chain``
-    (older live schemas lack the column). Never writes ``public_code``."""
+    (older live schemas lack the column). Never writes ``public_code``.
+
+    Money realms: the chain comes from ``realms.resolve_challenge_chain``
+    (real money when the humans realm is live, practice otherwise; a real
+    chain can't be asked for before it is live). A real-money challenge is
+    never written without its chain: no retry without the column."""
     from gaming.src.backend.services.challenge_compat import denormalize_challenge, normalize_challenge
     from gaming.src.backend.services.match_codes import display_code
+    from gaming.src.backend.services.realms import is_real_chain, resolve_challenge_chain
 
+    settlement_chain = resolve_challenge_chain(settlement_chain)
     challenge_id = str(uuid.uuid4())
     expires = datetime.now(timezone.utc) + timedelta(hours=expires_hours)
     record = denormalize_challenge({
@@ -157,6 +164,8 @@ def insert_challenge(
     try:
         result = _challenges().insert(record).execute()
     except Exception:
+        if is_real_chain(settlement_chain):
+            raise
         logger.warning("[matches] challenge insert failed; retrying without settlement_chain", exc_info=True)
         record.pop("settlement_chain", None)
         result = _challenges().insert(record).execute()
@@ -177,14 +186,20 @@ class Draft:
 
 async def create_challenge(d: Draft) -> dict:
     """Gates, balance, insert. Raises ``MatchRefused``."""
+    from gaming.src.backend.services import stake_caps
     from gaming.src.backend.services.clawstation_circle import get_usdc_balance
     from gaming.src.backend.services.play_points import assert_can_start_or_accept
+    from gaming.src.backend.services.realms import new_challenge_chain
     from gaming.src.backend.services.safety import assert_money_ops_allowed
 
     pid = str(d.creator["id"])
     gate = assert_money_ops_allowed(pid, action="challenge", amount=d.amount, kind="stake")
     if gate:
         raise MatchRefused("gate", plain(gate))
+    chain = new_challenge_chain()
+    capped = await asyncio.to_thread(stake_caps.check, pid, chain, d.amount)
+    if capped:
+        raise MatchRefused("cap", capped)
     blocked = await asyncio.to_thread(assert_can_start_or_accept, pid)
     if blocked:
         raise MatchRefused("busy", "You already have an open match. Finish it first (My matches).")
@@ -195,12 +210,12 @@ async def create_challenge(d: Draft) -> dict:
             tag = d.opponent.get("gaming_tag") or "They"
             raise MatchRefused("opponent_busy", f"@{tag} already has an open match.")
     try:
-        bal = Decimal(str(await get_usdc_balance(pid, chain_id="arc")))
+        bal = Decimal(str(await get_usdc_balance(pid, chain_id=chain)))
     except Exception as exc:
         raise MatchRefused("balance_error", "Could not check your balance. Try again in a minute.") from exc
     if bal < d.amount:
-        raise MatchRefused("funds", f"Not enough USDC. You have ${bal:,.2f}; this stake needs ${d.amount:,.2f}.",
-                           balance=bal)
+        raise MatchRefused("funds", f"Not enough {money_word(chain)} USDC. You have ${bal:,.2f}; "
+                           f"this stake needs ${d.amount:,.2f}.", balance=bal)
     return await asyncio.to_thread(
         insert_challenge,
         creator_id=pid,
@@ -208,7 +223,23 @@ async def create_challenge(d: Draft) -> dict:
         amount=d.amount,
         game=d.game,
         visibility="private",
+        settlement_chain=chain,
     )
+
+
+def challenge_chain(ch: dict) -> str:
+    """The chain this challenge's money lives on (its own row, never a default
+    that could have changed since it was created)."""
+    from gaming.src.backend.services.chains import default_chain_id, normalize_chain_id
+
+    return normalize_chain_id(ch.get("settlement_chain") or default_chain_id())
+
+
+def money_word(chain: str) -> str:
+    """``real`` or ``practice`` for player copy."""
+    from gaming.src.backend.services.realms import money_kind
+
+    return money_kind(chain)
 
 
 # ── accept / decline ─────────────────────────────────────────────────────────
@@ -260,11 +291,17 @@ async def accept_challenge(ref: str, accepter: dict) -> dict:
             raise MatchRefused("busy", "You already have an open match. Finish it first.", active=active)
 
     amount = Decimal(str(ch["amount_usdc"]))
+    chain = challenge_chain(ch)
+    from gaming.src.backend.services import stake_caps
+
+    capped = await asyncio.to_thread(stake_caps.check, aid, chain, amount, challenge_id=str(ch["id"]))
+    if capped:
+        raise MatchRefused("cap", capped)
     try:
-        bal = Decimal(str(await get_usdc_balance(aid)))
+        bal = Decimal(str(await get_usdc_balance(aid, chain_id=chain)))
         if bal < amount:
-            raise MatchRefused("funds", f"You need ${amount:,.2f} USDC to accept. You have ${bal:,.2f}.",
-                               amount=amount, balance=bal)
+            raise MatchRefused("funds", f"You need ${amount:,.2f} {money_word(chain)} USDC to accept. "
+                               f"You have ${bal:,.2f}.", amount=amount, balance=bal)
     except MatchRefused:
         raise
     except Exception as exc:
@@ -324,7 +361,7 @@ async def lock_stake(ref: str, profile: dict, *, progress=None) -> LockResult:
         approve_and_create_match,
         approve_and_join_match,
     )
-    from gaming.src.backend.services.funding_rails import ensure_stake_ready, settlement_rail_id
+    from gaming.src.backend.services.funding_rails import ensure_stake_ready
     from gaming.src.backend.services.safety import (
         assert_money_ops_allowed,
         check_idempotent,
@@ -340,11 +377,18 @@ async def lock_stake(ref: str, profile: dict, *, progress=None) -> LockResult:
         raise MatchRefused("not_yours", "Not your match.")
     cid = ch["id"]
     amount = Decimal(str(ch["amount_usdc"]))
-    chain = settlement_rail_id()
+    # The challenge's own chain: a real-money match locks real money, a
+    # practice match practice chips (never the process default).
+    chain = challenge_chain(ch)
 
     gate = assert_money_ops_allowed(pid, action="lock", amount=amount, kind="lock")
     if gate:
         raise MatchRefused("gate", plain(gate), html=gate, challenge=ch)
+    from gaming.src.backend.services import stake_caps
+
+    capped = await asyncio.to_thread(stake_caps.check, pid, chain, amount, challenge_id=str(cid))
+    if capped:
+        raise MatchRefused("cap", capped, challenge=ch)
 
     idem_key = f"lock:{cid}:{pid}"
     dup = check_idempotent(idem_key)
@@ -352,7 +396,7 @@ async def lock_stake(ref: str, profile: dict, *, progress=None) -> LockResult:
         raise MatchRefused("busy", plain(dup), challenge=ch)
 
     try:
-        ready = await ensure_stake_ready(pid, amount)
+        ready = await ensure_stake_ready(pid, amount, chain_id=chain)
         if not ready.ok:
             clear_idempotent(idem_key)
             raise MatchRefused("funds", plain(ready.message_html), html=ready.message_html, challenge=ch)
