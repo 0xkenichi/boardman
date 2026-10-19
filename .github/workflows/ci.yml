@@ -34,13 +34,17 @@ jobs:
       SPECTATOR_ONCHAIN: "0"
       STOCKFISH_PATH: /usr/games/stockfish
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-          cache-dependency-path: src/backend/requirements.txt
+          cache-dependency-path: |
+            src/backend/requirements.txt
+            src/backend/requirements-lock.txt
 
       - name: Install Stockfish (same engine the images ship)
         run: |
@@ -50,7 +54,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r src/backend/requirements.txt
+          pip install -r src/backend/requirements.txt -c src/backend/requirements-lock.txt
           pip install pytest pytest-asyncio pytest-timeout
 
       - name: Materialize gaming/ and backend/ import shims
@@ -94,19 +98,23 @@ jobs:
       SPECTATOR_ONCHAIN: "0"
       BOARDMAN_TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/boardman_test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-          cache-dependency-path: src/backend/requirements.txt
+          cache-dependency-path: |
+            src/backend/requirements.txt
+            src/backend/requirements-lock.txt
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r src/backend/requirements.txt
-          pip install "psycopg[binary]>=3.2" pytest pytest-asyncio pytest-timeout
+          pip install -r src/backend/requirements.txt -c src/backend/requirements-lock.txt
+          pip install "psycopg[binary]>=3.2" pytest pytest-asyncio pytest-timeout -c src/backend/requirements-lock.txt
 
       - name: Materialize gaming/ and backend/ import shims
         run: |
@@ -140,8 +148,10 @@ jobs:
     env:
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -160,14 +170,16 @@ jobs:
       run:
         working-directory: contracts
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: contracts/package-lock.json
       - name: Cache solc compilers
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cache/hardhat-nodejs
           key: hardhat-${{ runner.os }}-${{ hashFiles('contracts/hardhat.config.js', 'contracts/package-lock.json') }}
@@ -183,8 +195,10 @@ jobs:
       matrix:
         package: [match-contracts, engine-adapter]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -206,3 +220,52 @@ jobs:
       - name: Test
         working-directory: engines/afm/${{ matrix.package }}
         run: npx vitest run
+
+  docker:
+    # Build the production image on every PR (no push, no secrets) so a
+    # Dockerfile or dependency change is proven before it reaches main and the
+    # VM. amd64 only: the VM is arm64, but the build logic and the lock are the
+    # same; akash-image.yml re-checks the pushed image on main.
+    name: docker (build Dockerfile.akash + smoke import)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build
+        run: docker build -f Dockerfile.akash -t boardman:ci .
+      - name: Smoke (runs as non-root, no compiler, API imports)
+        run: |
+          docker run --rm --entrypoint sh boardman:ci -c '
+            test "$(id -u)" != 0 || { echo "image runs as root"; exit 1; }
+            ! command -v gcc || { echo "compiler in runtime image"; exit 1; }
+            cd /app && python -c "import gaming.src.backend.main; print(\"SMOKE_OK\")"'
+
+  supply-chain:
+    # Known-vulnerability scan of the pinned Python set and the frontend
+    # lockfile. Informational until the first green run (then drop
+    # continue-on-error). PYSEC-2026-1325 (ecdsa via python-jose) has no fix
+    # upstream; see the note in src/backend/requirements.txt.
+    name: supply-chain (pip-audit + npm audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: pip-audit (requirements-lock.txt)
+        run: |
+          python -m pip install pip-audit
+          pip-audit --strict --no-deps --disable-pip -r src/backend/requirements-lock.txt \
+            --ignore-vuln PYSEC-2026-1325
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: npm audit (frontend, production deps)
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high
