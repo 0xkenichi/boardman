@@ -50,6 +50,15 @@ def _sb():
     return get_supabase()
 
 
+def _practice_chain() -> str:
+    """The arena (practice-money) chain. Spectator bets, LP deposits and their
+    balances always use it; a real-money balance can never fund them
+    (services/realms.py)."""
+    from gaming.src.backend.services.realms import arena_chain
+
+    return arena_chain()
+
+
 def _resolve_live_match_id(match_id: str) -> str:
     """Map arena/live/empty onto the current House table. Never return 'arena'."""
     from gaming.src.stack.agentic.house import LIVE_STATUSES
@@ -179,15 +188,20 @@ async def _pull_play_usdc(profile_id: str, amount: float) -> dict:
         get_usdc_balance,
     )
 
-    spendable = await get_usdc_balance(profile_id)
+    from gaming.src.backend.services.realms import assert_practice
+
+    # Spectator bets and LP deposits are arena money: they come off the
+    # PRACTICE play wallet only, never a real-money balance.
+    cid = _practice_chain()
+    spendable = await get_usdc_balance(profile_id, chain_id=cid)
     if spendable + Decimal("0.000001") < Decimal(str(amount)):
-        raise ValueError(f"Play wallet has ${spendable}, need ${amount}")
-    wallet = await ensure_user_wallet(profile_id)
+        raise ValueError(f"Practice balance is ${spendable}, need ${amount}")
+    wallet = await ensure_user_wallet(profile_id, chain_id=cid)
     wallet_id = wallet.get("wallet_id")
     if not wallet_id:
         raise ValueError("No Circle play wallet on this profile")
     dest = _house_pull_dest()
-    cid = wallet.get("chain_id") or "arc"
+    cid = assert_practice(wallet.get("chain_id") or cid, path="spectator/LP pull")
     circle = CircleWalletService(
         blockchain=get_circle_blockchain(cid),
         usdc_address=get_usdc_address(cid),
@@ -369,7 +383,7 @@ async def _apply_approved_spectator_bet(
 
     from gaming.src.backend.services.clawstation_circle import get_usdc_balance
 
-    new_bal = float(await get_usdc_balance(profile_id))
+    new_bal = float(await get_usdc_balance(profile_id, chain_id=_practice_chain()))
     try:
         from gaming.src.backend.services.wallet_activity import log_debit
 
@@ -453,7 +467,7 @@ async def _apply_approved_lp(
                 "success": False,
                 "pending": False,
                 "error": "insufficient_balance",
-                "message": "Not enough USDC on your Boardman wallet.",
+                "message": "Not enough practice USDC. Spectator pools use practice chips only, never real money.",
             }
         pulled = False
         pull_tx = ""
@@ -487,7 +501,7 @@ async def _apply_approved_lp(
 
     from gaming.src.backend.services.clawstation_circle import get_usdc_balance
 
-    new_bal = float(await get_usdc_balance(profile_id))
+    new_bal = float(await get_usdc_balance(profile_id, chain_id=_practice_chain()))
     result = {
         "success": True,
         "pending": False,
@@ -626,17 +640,26 @@ def web_profile_by_tag(
 @router.get("/wallet")
 async def web_wallet_snapshot(
     profile_id: str = Query(...),
+    realm: str = Query("arena", pattern="^(arena|humans)$"),
     x_rematch_key: Optional[str] = Header(default=None, alias="X-Rematch-Key"),
     x_stack_key: Optional[str] = Header(default=None, alias="X-Stack-Key"),
     authorization: Optional[str] = Header(default=None),
 ):
-    """Play-wallet balance summary (spendable + other addresses)."""
+    """Play-wallet balance summary (spendable + other addresses).
+
+    ``realm=arena`` (default): practice chips, what spectator bets spend.
+    ``realm=humans``: the real-money balance (404 until real money is live).
+    The two numbers are never added together."""
     _require_key(x_rematch_key, x_stack_key, authorization)
+    from gaming.src.backend.services import realms
+
+    if realm == "humans" and not realms.humans_live():
+        raise HTTPException(status_code=404, detail="real_money_not_live")
     try:
         from gaming.src.backend.services.clawstation_circle import get_balance_summary
         from gaming.src.backend.services.safety import is_paused
 
-        summary = await get_balance_summary(profile_id)
+        summary = await get_balance_summary(profile_id, chain_id=realms.realm_chain(realm))
         play_points = 0
         tag = name = None
         try:
@@ -668,6 +691,8 @@ async def web_wallet_snapshot(
             "other_address": summary.get("other_address") or "",
             "address": summary.get("address") or "",
             "chain_id": summary.get("chain_id") or "arc",
+            "realm": realm,
+            "money": "real" if realm == "humans" else "practice",
             "ledger_usdc": float(summary.get("ledger_usdc") or 0),
             "play_points": play_points,
             "paused": bool(is_paused()),
@@ -771,7 +796,7 @@ async def web_spectator_bet(
         if is_paused():
             raise HTTPException(status_code=503, detail="platform_paused")
 
-        summary = await get_balance_summary(profile_id)
+        summary = await get_balance_summary(profile_id, chain_id=_practice_chain())
         # Same number the bot shows: on-chain USDC on the play address.
         spendable = float(summary.get("spendable_usdc") or 0)
         if spendable + 1e-9 < amount:
@@ -780,7 +805,7 @@ async def web_spectator_bet(
                 "error": "insufficient_balance",
                 "balance": spendable,
                 "address": summary.get("address") or "",
-                "message": "Not enough USDC on your Boardman wallet. Fund via Telegram bot → Get money.",
+                "message": "Not enough practice USDC. Spectator bets use practice chips only, never your real-money balance.",
             }
 
         # Telegram-mediated approval: ask the user to approve the spend (unless
@@ -937,7 +962,7 @@ async def web_spectator_bet(
 
         from gaming.src.backend.services.clawstation_circle import get_usdc_balance
 
-        new_bal = float(await get_usdc_balance(profile_id))
+        new_bal = float(await get_usdc_balance(profile_id, chain_id=_practice_chain()))
         try:
             from gaming.src.backend.services.wallet_activity import log_debit
 
@@ -1073,7 +1098,7 @@ async def web_spectator_lp(
         if is_paused():
             raise HTTPException(status_code=503, detail="platform_paused")
 
-        summary = await get_balance_summary(profile_id)
+        summary = await get_balance_summary(profile_id, chain_id=_practice_chain())
         ledger = float(summary.get("ledger_usdc") or 0)
         spendable = float(summary.get("spendable_usdc") or 0)
         available = max(ledger, spendable)
@@ -1083,7 +1108,7 @@ async def web_spectator_lp(
                 "error": "insufficient_balance",
                 "balance": available,
                 "address": summary.get("address") or "",
-                "message": "Not enough USDC on your Boardman wallet.",
+                "message": "Not enough practice USDC. Spectator pools use practice chips only, never real money.",
             }
 
         from gaming.src.backend.services.spectator_policy import request_country
@@ -1179,7 +1204,7 @@ async def web_spectator_lp_withdraw(
     from gaming.src.stack.agentic.economy.lp import AgentLPPool
     from gaming.src.stack.agentic.registry import AgentRegistry
 
-    summary = await get_balance_summary(profile_id)
+    summary = await get_balance_summary(profile_id, chain_id=_practice_chain())
     agent = AgentRegistry().get_agent(agent_id) or {}
     agent_wallet = str(agent.get("wallet_address") or "").strip()
     if not agent_wallet:
