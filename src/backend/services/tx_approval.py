@@ -416,7 +416,10 @@ async def apply_approved_spend(approval_id: str) -> dict:
 
     profile_id = str(row.get("profile_id") or "")
     try:
-        summary = await get_balance_summary(profile_id)
+        from gaming.src.backend.services.realms import arena_chain
+
+        # Spectator bets and LP deposits spend PRACTICE money only.
+        summary = await get_balance_summary(profile_id, chain_id=arena_chain())
     except Exception:
         summary = {}
 
