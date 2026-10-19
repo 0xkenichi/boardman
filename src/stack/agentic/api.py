@@ -2330,10 +2330,17 @@ async def football_wallet_deposit(body: FootballBridgeBody, caller: StackCaller 
 
     from gaming.src.stack.agentic import wallet_bridge as wb
 
+    from gaming.src.backend.services.play_adjust import PlaySpendBusy, spend_lock
+
     party = _bridge_party(caller, body.party_id)
     try:
-        chain = await wb.read_play_chain_usdc(party)
-        out = await asyncio.to_thread(wb.deposit, party, body.amount, body.idempotency_key, chain_usdc=chain)
+        # The chain read and the overlay debit under the play-spend lock: a
+        # withdrawal or cash-out in between could otherwise spend the same USDC.
+        with spend_lock(party):
+            chain = await wb.read_play_chain_usdc(party)
+            out = await asyncio.to_thread(wb.deposit, party, body.amount, body.idempotency_key, chain_usdc=chain)
+    except PlaySpendBusy as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except (wb.BridgeError, wb.BalanceUnavailable) as e:
         raise _bridge_errors(e) from e
     return _bridge_reply(out)
