@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import shlex
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -28,6 +29,10 @@ from gaming.src.bot.utils.notify import notify_user
 from gaming.src.bot.utils.text import bold, code, h
 
 logger = logging.getLogger(__name__)
+
+# Free-text game names end up in the public group card, the opponent's DM,
+# WhatsApp template parameters and the AI verifier's prompt.
+_GAME_RE = re.compile(r"^[A-Za-z0-9 .:'+&\-]{1,40}$")
 
 router = Router()
 
@@ -122,6 +127,17 @@ def _parse_challenge_args(
             "",
             chain_id,
             f"Amount must be between ${_MIN_STAKE} and ${_MAX_STAKE}.",
+        )
+
+    game = " ".join((game or "").split())
+    if game and not _GAME_RE.match(game):
+        return (
+            None,
+            Decimal("0"),
+            "",
+            "",
+            chain_id,
+            "Game name: up to 40 letters, digits, spaces and . : ' + & - only.",
         )
 
     return opponent_tag, amount, game or "EAFC", visibility, chain_id, None
@@ -332,14 +348,30 @@ async def cb_accept(callback: types.CallbackQuery) -> None:
 
     challenge_id = callback.data.split(":", 2)[2]
     accepter = await get_or_create_profile(callback.from_user)
+
+    from gaming.src.bot.middleware.private_chat import is_private
+
+    in_group = not is_private(getattr(callback.message, "chat", None))
+
+    async def reply(text: str, **kw):
+        """Answers go to the accepter's private chat when the tap came from a
+        group post: balances, match buttons and lock links are not for the group."""
+        if not in_group:
+            return await callback.message.answer(text, **kw)
+        try:
+            return await callback.bot.send_message(callback.from_user.id, text, **kw)
+        except Exception:
+            logger.info("[challenge] accepter has no private chat with the bot yet")
+            return None
+
     try:
         ch_full = await accept_challenge(challenge_id, accepter)
     except MatchRefused as exc:
         if exc.kind == "paused":
-            await callback.message.answer(exc.detail["html"], parse_mode=ParseMode.HTML)
+            await reply(exc.detail["html"], parse_mode=ParseMode.HTML)
         elif exc.kind == "busy":
             active = exc.detail.get("active") or {}
-            await callback.message.answer(
+            await reply(
                 f"❌ You already have an open match.\n"
                 f"Finish <code>{active.get('id')}</code> first.\n"
                 f"/match_info {active.get('id')}",
@@ -347,18 +379,18 @@ async def cb_accept(callback: types.CallbackQuery) -> None:
             )
         elif exc.kind == "funds":
             amount, bal = exc.detail["amount"], exc.detail["balance"]
-            await callback.message.answer(
+            await reply(
                 f"❌ Need {bold(f'${amount:,.2f}')} USDC to accept. You have {bold(f'${bal:,.2f}')}.",
                 parse_mode=ParseMode.HTML,
             )
         else:
-            await callback.message.answer(f"❌ {exc.message}", parse_mode=None)
+            await reply(f"❌ {exc.message}", parse_mode=None)
         return
 
     chain = ch_full.get("settlement_chain") or default_chain_id()
     from gaming.src.bot.keyboards import match_actions_menu
 
-    await callback.message.answer(
+    await reply(
         f"✅ Challenge accepted.\n\n"
         f"Network: {bold(chain)}\n"
         f"Tap <b>Lock my stake</b> below.\n"
