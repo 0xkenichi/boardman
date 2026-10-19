@@ -291,6 +291,21 @@ async def _deep_health() -> tuple[dict[str, Any], bool]:
                     degraded = True
         checks["processes"] = procs
 
+    # 5. money realms (no secrets: chains and switches only)
+    try:
+        from gaming.src.backend.services import realms
+
+        checks["money_realms"] = {
+            "ok": True,
+            "arena_chain": realms.arena_chain(),
+            "humans_chain": realms.humans_chain(),
+            "real_money_enabled": realms.real_money_enabled(),
+            "humans_live": realms.humans_live(),
+        }
+    except Exception as exc:
+        checks["money_realms"] = {"ok": False, "error": exc.__class__.__name__}
+        degraded = True
+
     status = "ok" if ok and not degraded else ("degraded" if ok else "fail")
     return (
         {
