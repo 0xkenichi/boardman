@@ -193,6 +193,10 @@ def test_link_telegram_to_new_whatsapp_number(world):
 
     wa = FakeChannel("wa", engine=engine)
     run(wa.text(U, f"link {code.lower()}", name="Tobi"))
+    # the code alone links nothing: the chat names the account and asks first
+    assert "to the Boardman account *@tobi*?" in wa.last_text(U)
+    assert world.repo.get("whatsapp", U) is None
+    run(wa.tap(U, "Yes, link it"))
     assert "Linked to *@tobi*" in wa.all_text(U)
     ident = world.repo.get("whatsapp", U)
     assert ident.profile_id == tg_prof["id"] and ident.country_hint == "NG"
@@ -212,7 +216,8 @@ def test_link_refuses_funded_profile(world, monkeypatch):
     run(tg.text("5001", "link"))
     code = re.search(r"<b>([A-Z0-9]{4}-[A-Z0-9]{4})</b>", tg.last_text("5001")).group(1)
     wa = FakeChannel("wa")
-    run(wa.text(U, f"LINK {code}"))  # balance is $40 → not empty
+    run(wa.text(U, f"LINK {code}"))
+    run(wa.tap(U, "Yes, link it"))  # balance is $40 → not empty
     assert "can't merge it automatically" in wa.last_text(U)
 
 
@@ -325,9 +330,9 @@ def test_stop_opts_out(world):
 def test_media_is_copied_to_our_storage(world):
     wa_user(world.repo)
     wa = FakeChannel("wa")
-    run(wa.image(U, b"\x89PNG fake screenshot"))
+    run(wa.image(U, b"\x89PNG\r\n\x1a\n fake screenshot"))
     assert "match reports" in wa.last_text(U)
     from gaming.src.stack.agentic.store import data_dir
 
     stored = list((data_dir() / "channels" / "evidence").rglob("*.png"))
-    assert len(stored) == 1 and stored[0].read_bytes() == b"\x89PNG fake screenshot"
+    assert len(stored) == 1 and stored[0].read_bytes() == b"\x89PNG\r\n\x1a\n fake screenshot"

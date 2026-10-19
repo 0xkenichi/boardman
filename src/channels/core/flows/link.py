@@ -6,8 +6,10 @@ import asyncio
 from urllib.parse import quote
 
 from gaming.src.channels import config
+from gaming.src.channels.core import ids
 from gaming.src.channels.core.identity import service as identity
 from gaming.src.channels.core.identity.emptiness import profile_is_empty
+from gaming.src.channels.core.messages import Option
 from gaming.src.channels.core.notify import Notice
 
 NAME = "link"
@@ -59,18 +61,61 @@ async def start(ctx) -> None:
 async def keyword(ctx, rest: str) -> None:
     code = identity.normalize_code(rest)
     if code:
-        await redeem(ctx, code)
+        await ask_confirm(ctx, code)
     else:
         await start(ctx)
 
 
 async def on_button(ctx, act: str, arg: str) -> None:
+    if act == "yes":
+        h = str(ctx.st.data.get("code_hash") or "") if ctx.st.flow == NAME else ""
+        if not h:
+            ctx.say("That link request expired. Send the code again.")
+            return
+        await redeem(ctx, code_hash=h)
+        return
+    if act == "no":
+        ctx.st.clear()
+        ctx.choose("Cancelled. Nothing was linked.", [ctx.menu_option()])
+        return
     await start(ctx)
 
 
-async def redeem(ctx, code: str) -> None:
+def _this_chat(channel: str) -> str:
+    return {"whatsapp": "this WhatsApp number", "telegram": "this Telegram account"}.get(
+        channel, "this chat")
+
+
+async def ask_confirm(ctx, code: str) -> None:
+    """Show which account the code links to; link only after an explicit Yes."""
+    pv = await asyncio.to_thread(identity.preview_link_code, ctx.channel, ctx.principal.external_id, code)
+    if pv.status == "rate_limited":
+        ctx.say("Too many tries. Wait 10 minutes and ask for a new code.")
+        return
+    if pv.status == "invalid":
+        ctx.say("That code is wrong, used or expired. Ask for a new one with *link* in your other app.")
+        return
+    if pv.status == "already_linked":
+        ctx.say("This chat is already linked to that account.")
+        return
+    if pv.status == "conflict":
+        ctx.say("That account already has a different number on this app. Contact support to change it.")
+        return
+    ctx.st.set(NAME, "confirm", code_hash=pv.code_hash)
+    tag = pv.target_tag or "that account"
+    ctx.choose(
+        f"Link {_this_chat(ctx.channel)} to the Boardman account *@{tag}*?\n\n"
+        f"Only say yes if *@{tag}* is YOUR account and you asked for this code yourself. "
+        "If someone sent you this code or link, tap *Cancel*: the money in that account "
+        "would be theirs, not yours.",
+        [Option(ids.encode(NAME, "yes"), "Yes, link it"), Option(ids.encode(NAME, "no"), "Cancel")],
+    )
+
+
+async def redeem(ctx, code: str = "", *, code_hash: str = "") -> None:
     ev = ctx.event
     phone = ev.phone if ev else None
+    ctx.st.clear()
     res = await identity.redeem_link_code(
         ctx.channel,
         ctx.principal.external_id,
@@ -79,6 +124,7 @@ async def redeem(ctx, code: str) -> None:
         phone=phone,
         address=(ev.address or phone) if ev else None,
         handle=(ev.profile_name or None) if ev else None,
+        code_hash=code_hash or None,
     )
     if res.status == "rate_limited":
         ctx.say("Too many tries. Wait 10 minutes and ask for a new code.")
