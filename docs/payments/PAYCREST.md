@@ -164,9 +164,12 @@ wallets; Base and Arc mainnet listed; billed to the developer's card at
    BASE and ARC (set `CIRCLE_USDC_TOKEN_ID_BASE_MAINNET`,
    `CIRCLE_USDC_TOKEN_ID_ARC_MAINNET`), and whether SCA and EOA wallets can
    share our existing wallet set.
-8. Mainnet Circle wallets reuse the testnet address? `ensure_user_wallet`
-   fast-paths to `gaming_deposit_address`; confirm the Arc mainnet play
-   wallet mapping before the first mint (go-live gate item 1).
+8. ~~Mainnet Circle wallets reuse the testnet address?~~ Resolved
+   (2026-10-19, money realms): a real chain gets its own LIVE-entity wallet
+   in `payment_wallets` under `arc_mainnet/play`, never the practice
+   `gaming_deposit_address`; real balances exclude the practice overlay; and
+   the rail is off unless both of its chains are mainnet. See
+   [MAINNET_HUMANS_CUTOVER.md](../MAINNET_HUMANS_CUTOVER.md).
 
 ## Flags and config
 

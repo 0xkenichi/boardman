@@ -59,9 +59,14 @@ chains:
     cctp_domain: 26
     notes: "Boardman V1. Gas paid in USDC. Best UX."
 
-  # Arc Mainnet — live since Sept 16 2026. Same USDC predeploy address as testnet.
-  # circle_usdc_token_id: mainnet Circle W3S token id NOT yet known — set via env
-  # CIRCLE_USDC_TOKEN_ID_ARC_MAINNET before wallet fan-out. Escrow TBD at deploy.
+  # Arc Mainnet — live since 2026-09-16. REAL MONEY: the humans realm only.
+  # Chain id 5042, RPC rpc.mainnet.arc.io, explorer explorer.arc.io, USDC
+  # 0x3600…0000 (6-dec ERC-20 facade), CCTP domain 26 — sources in
+  # docs/MAINNET_HUMANS_CUTOVER.md §2. enabled stays false: "enabled" is the
+  # legacy practice-chain list (wallet fan-out, chain help); the humans realm
+  # reaches this chain explicitly. circle_usdc_token_id: set
+  # CIRCLE_USDC_TOKEN_ID_ARC_MAINNET. Escrow: BOARDMAN_ESCROW_ADDRESS_ARC_MAINNET.
+  # Fee recipient = the treasury passed to deploy_v2.js (on-chain), not this file.
   arc_mainnet:
     id: arc_mainnet
     label: Arc Mainnet
@@ -84,7 +89,7 @@ chains:
     # v2 safety escrow (Ownable2Step, resolver createMatch permits). Override:
     # BOARDMAN_ESCROW_ADDRESS_ARC_MAINNET. Owner = Safe (or founder wallet fallback).
     escrow_version: 2
-    fee_recipient: "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E"
+    fee_recipient: ""   # the treasury Safe, set on-chain at deploy
     cctp_domain: 26
     notes: "Deploy BoardmanEscrow + confirm Circle W3S token id before enabling."
 
