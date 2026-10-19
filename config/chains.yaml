@@ -12,6 +12,22 @@
 
 default_settlement_chain: arc
 
+# Money realms (src/backend/services/realms.py). Real money never mixes with
+# practice money: every chain below carries `network: mainnet|testnet`, and a
+# realm may only use chains of its own network.
+#   humans  friend challenges between people with REAL USDC (naira top-up and
+#           cash-out via Paycrest, Circle wallets, passkey wallets). Live only
+#           when REAL_MONEY_ENABLED=1 and the chain's escrow is configured.
+#   arena   AI arena, spectator betting, AFM football, the football-ledger
+#           wallet bridge, faucet: practice chips only (testnet USDC).
+# default_settlement_chain / CLAW_DEFAULT_CHAIN stay on the arena chain: they
+# are the legacy "default" for every older code path and must never be real.
+realms:
+  humans:
+    chain: arc_mainnet   # override: BOARDMAN_HUMANS_CHAIN (must be network: mainnet)
+  arena:
+    chain: arc           # override: BOARDMAN_ARENA_CHAIN (must be network: testnet)
+
 chains:
   arc:
     id: arc
@@ -19,6 +35,8 @@ chains:
     enabled: true
     recommended: true
     status: live
+    # Money realm: mainnet = real money (humans only); testnet = practice chips.
+    network: testnet
     circle_blockchain: ARC-TESTNET
     chain_id: 5042002
     rpc_url: https://rpc.testnet.arc.network
@@ -33,6 +51,7 @@ chains:
     # Previous flat-fee V1: 0xD8984396f12Cd0BD3C3e120858dd7eCdEeEF66Fc · V0 archive: 0xFC44a06295d4fC58420027932A6FcB3C13D83859
     escrow_address: "0xD382f627fB565eb96D9EFFb66B9119DD4a555847"
     escrow_contract: BoardmanEscrow
+    escrow_version: 1
     # SpectatorPool tiered (2026-09). Override: SPECTATOR_ESCROW_ADDRESS
     # Previous flat-fee pool: 0x7Dcd347fA916bF93Ad8BF3c1c8e9D17111B5313e
     spectator_pool_address: "0xd45bE49456021B74D2712fcffD47f17f91D39664"
@@ -49,6 +68,8 @@ chains:
     enabled: false
     recommended: false
     status: prep
+    # Money realm: mainnet = real money (humans only); testnet = practice chips.
+    network: mainnet
     circle_blockchain: ARC
     chain_id: 5042
     rpc_url: https://rpc.mainnet.arc.io
@@ -60,6 +81,9 @@ chains:
     gas_tank_required: false
     escrow_address: ""
     escrow_contract: BoardmanEscrow
+    # v2 safety escrow (Ownable2Step, resolver createMatch permits). Override:
+    # BOARDMAN_ESCROW_ADDRESS_ARC_MAINNET. Owner = Safe (or founder wallet fallback).
+    escrow_version: 2
     fee_recipient: "0xFA931C535C9d10A324Ea7417a63ed22dD9b0cb2E"
     cctp_domain: 26
     notes: "Deploy BoardmanEscrow + confirm Circle W3S token id before enabling."
@@ -71,6 +95,8 @@ chains:
     enabled: false
     recommended: false
     status: funding
+    # Money realm: mainnet = real money (humans only); testnet = practice chips.
+    network: testnet
     circle_blockchain: AVAX-FUJI
     chain_id: 43113
     rpc_url: https://api.avax-test.network/ext/bc/C/rpc
@@ -93,6 +119,8 @@ chains:
     enabled: false
     recommended: false
     status: funding
+    # Money realm: mainnet = real money (humans only); testnet = practice chips.
+    network: mainnet
     circle_blockchain: ""
     chain_id: 0
     rpc_url: ""
@@ -111,6 +139,8 @@ chains:
     enabled: false
     recommended: false
     status: legacy
+    # Money realm: mainnet = real money (humans only); testnet = practice chips.
+    network: testnet
     circle_blockchain: BASE-SEPOLIA
     chain_id: 84532
     rpc_url: https://sepolia.base.org
@@ -137,6 +167,8 @@ chains:
     enabled: false
     recommended: false
     status: funding
+    # Money realm: mainnet = real money (humans only); testnet = practice chips.
+    network: mainnet
     circle_blockchain: BASE
     chain_id: 8453
     rpc_url: https://mainnet.base.org
@@ -160,6 +192,8 @@ chains:
     enabled: true
     recommended: false
     status: minipay
+    # Money realm: mainnet = real money (humans only); testnet = practice chips.
+    network: mainnet
     circle_blockchain: ""   # not via Circle W3S yet — MiniPay provider path
     chain_id: 42220
     rpc_url: https://forno.celo.org
@@ -181,6 +215,8 @@ chains:
     enabled: false
     recommended: false
     status: planned
+    # Money realm: mainnet = real money (humans only); testnet = practice chips.
+    network: mainnet
     circle_blockchain: ""
     chain_id: 2345
     rpc_url: https://rpc.goat.network
@@ -201,6 +237,8 @@ chains:
     enabled: false
     recommended: false
     status: planned
+    # Money realm: mainnet = real money (humans only); testnet = practice chips.
+    network: mainnet
     circle_blockchain: ""
     chain_id: 16661
     rpc_url: https://evmrpc.0g.ai
@@ -219,6 +257,8 @@ chains:
     enabled: false
     recommended: false
     status: planned
+    # Money realm: mainnet = real money (humans only); testnet = practice chips.
+    network: testnet
     circle_blockchain: ""
     chain_id: 16602
     rpc_url: https://evmrpc-testnet.0g.ai
@@ -237,6 +277,8 @@ chains:
     enabled: false
     recommended: false
     status: planned
+    # Money realm: mainnet = real money (humans only); testnet = practice chips.
+    network: testnet
     circle_blockchain: ""
     chain_id: 48816
     rpc_url: https://rpc.testnet3.goat.network
@@ -255,6 +297,8 @@ chains:
     enabled: false
     recommended: false
     status: testnet
+    # Money realm: mainnet = real money (humans only); testnet = practice chips.
+    network: testnet
     circle_blockchain: ""
     chain_id: 44787
     rpc_url: https://alfajores-forno.celo-testnet.org
