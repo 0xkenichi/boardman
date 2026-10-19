@@ -43,6 +43,7 @@ import hre from "hardhat";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { preflight } from "./lib/v2_preflight.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -94,30 +95,40 @@ async function main() {
   }
   if (!usdc) throw new Error(`no USDC address for ${network.name}; set USDC_ADDRESS`);
 
-  console.log(`Deploying v2 to ${network.name} (chainId ${network.config.chainId})`);
-  console.log({ deployer: deployer.address, usdc, treasury, resolver, multisig });
+  // Audit 2026-10 L-04: chain id, token decimals, Safe present, EOA resolver.
+  const { chainId, deployPool, warnings } = await preflight(ethers, {
+    networkName: network.name, local, usdc, multisig, treasury, resolver,
+  });
+  for (const w of warnings) console.warn(`WARNING: ${w}`);
+
+  console.log(`Deploying v2 to ${network.name} (chainId ${chainId})`);
+  console.log({ deployer: deployer.address, usdc, treasury, resolver, multisig, deployPool });
   console.log({ openTimeout, lockTimeout, refundGrace, claimWindow });
 
   const escrow = await (await ethers.getContractFactory("BoardmanEscrow")).deploy(
     usdc, treasury, resolver, openTimeout, lockTimeout
   );
   await escrow.waitForDeployment();
-  const pool = await (await ethers.getContractFactory("SpectatorPool")).deploy(
-    usdc, treasury, resolver, refundGrace, claimWindow
-  );
-  await pool.waitForDeployment();
   const escrowAddr = await escrow.getAddress();
-  const poolAddr = await pool.getAddress();
+  let pool = null;
+  let poolAddr = null;
+  if (deployPool) {
+    pool = await (await ethers.getContractFactory("SpectatorPool")).deploy(
+      usdc, treasury, resolver, refundGrace, claimWindow
+    );
+    await pool.waitForDeployment();
+    poolAddr = await pool.getAddress();
+  }
 
-  // Offer ownership to the multisig; it must acceptOwnership() on both.
+  // Offer ownership to the multisig; it must acceptOwnership() on each.
   await (await escrow.transferOwnership(multisig)).wait();
-  await (await pool.transferOwnership(multisig)).wait();
+  if (pool) await (await pool.transferOwnership(multisig)).wait();
 
   const info = {
     product: "Boardman by sideQuest",
     version: "v2-safety",
     network: network.name,
-    chainId: network.config.chainId,
+    chainId: Number(chainId),
     contracts: { BoardmanEscrow: escrowAddr, SpectatorPool: poolAddr },
     config: {
       usdc,
@@ -125,11 +136,11 @@ async function main() {
       resolver,
       pendingOwner: multisig,
       escrow: { openTimeout: openTimeout.toString(), lockTimeout: lockTimeout.toString(), eip712: { name: "BoardmanEscrow", version: "2" } },
-      spectatorPool: { refundGrace: refundGrace.toString(), claimWindow: claimWindow.toString(), maxBettingWindow: String(7 * DAY) },
+      spectatorPool: deployPool && { refundGrace: refundGrace.toString(), claimWindow: claimWindow.toString(), maxBettingWindow: String(7 * DAY) },
     },
     deployedAt: new Date().toISOString(),
     deployer: deployer.address,
-    todo: "multisig must call acceptOwnership() on both contracts",
+    todo: "multisig must call acceptOwnership() on every contract above",
   };
   console.log(JSON.stringify(info, null, 2));
 
@@ -141,7 +152,7 @@ async function main() {
 
   console.log("\nBackend env (switch only after acceptOwnership on both):");
   console.log(`BOARDMAN_ESCROW_ADDRESS_ARC=${escrowAddr}`);
-  console.log(`SPECTATOR_ESCROW_ADDRESS=${poolAddr}`);
+  if (poolAddr) console.log(`SPECTATOR_ESCROW_ADDRESS=${poolAddr}`);
   console.log("BOARDMAN_RESOLVER_KEY=<private key of the resolver above>");
 }
 
