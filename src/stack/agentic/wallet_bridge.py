@@ -360,7 +360,11 @@ def withdraw(party_id: str, amount: Any, idempotency_key: str) -> dict[str, Any]
     party = (party_id or "").strip()
     if not party:
         raise BridgeError("party is required")
-    bridge_chain()  # practice money only (realms.py); raises if misconfigured
+    # The single realm gate (realms.py): the football wallet is book-entry
+    # practice money and only ever pays out to the PRACTICE play overlay,
+    # which never counts toward a real-money balance, withdraw link or
+    # cash-out. Raises if the arena chain is misconfigured as real money.
+    bridge_chain()
     micro = parse_amount(amount)
     wallet = party_ledger_wallet(party)
     tkey = transfer_key(party, idempotency_key)

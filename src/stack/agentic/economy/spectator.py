@@ -534,6 +534,10 @@ class SpectatorBook:
         the lock really debited (see ``funded_seeds_from_ledger``); default:
         the book's own seeds. ``wallets`` are the agents' ledger wallets."""
         def _apply(book: dict[str, Any]) -> None:
+            if book.get("status") == "void":
+                # A void book already refunded every ticket and seed: settling
+                # it would pay the same pot a second time as winnings.
+                raise ValueError(f"book {match_id} was voided (refunded); it cannot be settled")
             if book["status"] == "settled":
                 # Idempotent no-op ONLY for the same winner. A conflicting re-settle
                 # must raise so the caller cannot preserve a wrong book result.

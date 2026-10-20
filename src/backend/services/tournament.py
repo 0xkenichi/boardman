@@ -18,7 +18,7 @@ import threading
 import uuid
 from copy import deepcopy
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 from pathlib import Path
 from typing import Any, Optional
 
@@ -149,11 +149,19 @@ def compute_payouts(
     fee = (pot * Decimal(fee_bps) / Decimal(10000)).quantize(Decimal("0.01"))
     distributable = pot - fee
     out: list[dict[str, Any]] = []
+    cent = Decimal("0.01")
+    exact_total = Decimal("0")
+    amounts: list[Decimal] = []
     for place_str, share in card.items():
         pid = places.get(str(place_str))
         if not pid:
             continue
-        amt = (distributable * Decimal(str(share))).quantize(Decimal("0.01"))
+        exact = distributable * Decimal(str(share))
+        exact_total += exact
+        # Round every share DOWN: half-up/half-even shares could sum to more
+        # than the pot holds (e.g. $1.09 at 10% pays 0.99 of 0.98).
+        amt = exact.quantize(cent, rounding=ROUND_DOWN)
+        amounts.append(amt)
         out.append(
             {
                 "profile_id": pid,
@@ -162,6 +170,12 @@ def compute_payouts(
                 "share": float(share),
             }
         )
+    if out:
+        # The rounding dust (whole cents only) goes to the best place paid.
+        dust = exact_total.quantize(cent, rounding=ROUND_DOWN) - sum(amounts, Decimal("0"))
+        if dust > 0:
+            top = min(range(len(out)), key=lambda i: out[i]["place"])
+            out[top]["amount_usdc"] = float(amounts[top] + dust)
     return [
         {
             "platform_fee_usdc": float(fee),
@@ -510,6 +524,7 @@ async def leave_tournament(ref: str, profile_id: str) -> dict[str, Any]:
                 Decimal(str(mine.get("amount_usdc") or t.get("entry_usdc") or 0)),
                 cup_code=str(t.get("code") or ""),
                 entry_tx_hash=mine.get("entry_tx_hash"),
+                entry_id=mine.get("id"),
             )
         except Exception as exc:
             from gaming.src.backend.services.tournament_money import TournamentMoneyError
@@ -721,10 +736,24 @@ def report_match_winner(
             }
             if third and third.get("winner_id"):
                 places["3"] = third.get("winner_id")
-            pot = Decimal(str(t.get("pot_usdc") or 0))
-            # If pot 0 but entry set, recompute
-            if pot <= 0:
-                pot = Decimal(str(t.get("entry_usdc") or 0)) * Decimal(int(t["preset"]))
+            if money_live():
+                # Real money: the pot is what the locked entries actually put
+                # in. The stored pot_usdc is a running count that a racing
+                # join/leave can leave stale, and "entry x preset" pays as if
+                # every seat had been filled and paid.
+                pot = sum(
+                    (
+                        Decimal(str(e.get("amount_usdc") or 0))
+                        for e in (t.get("entries") or [])
+                        if e.get("seat_status") == "locked"
+                    ),
+                    Decimal("0"),
+                )
+            else:
+                pot = Decimal(str(t.get("pot_usdc") or 0))
+                # If pot 0 but entry set, recompute
+                if pot <= 0:
+                    pot = Decimal(str(t.get("entry_usdc") or 0)) * Decimal(int(t["preset"]))
             payouts = compute_payouts(
                 pot,
                 int(t.get("fee_bps") or DEFAULT_FEE_BPS),
@@ -791,6 +820,7 @@ async def cancel_tournament(ref: str, reason: str = "") -> dict[str, Any]:
         from gaming.src.backend.services.tournament_money import refund_entry
         from decimal import Decimal
 
+        failed: list[str] = []
         for e in t.get("entries") or []:
             amt = float(e.get("amount_usdc") or t.get("entry_usdc") or 0)
             if amt <= 0:
@@ -801,11 +831,20 @@ async def cancel_tournament(ref: str, reason: str = "") -> dict[str, Any]:
                     Decimal(str(amt)),
                     cup_code=str(t.get("code") or ""),
                     entry_tx_hash=e.get("entry_tx_hash"),
+                    entry_id=e.get("id"),
                 )
             except Exception:
                 logger.exception(
                     "[Tournament] cancel refund failed for %s", e.get("profile_id")
                 )
+                failed.append(str(e.get("profile_id") or "?"))
+        if failed:
+            # Do not mark the cup cancelled with entries still unrefunded: a
+            # re-run retries them, and the per-entry Circle key makes every
+            # refund that already went out a no-op.
+            raise TournamentError(
+                f"Cancel incomplete: {len(failed)} refund(s) failed — run cancel again"
+            )
 
     extra = {
         "status": "cancelled",

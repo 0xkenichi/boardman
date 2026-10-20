@@ -74,6 +74,20 @@ def _save(data: dict[str, Any]) -> None:
     save_json(_BETS_FILE, data)
 
 
+def _update(fn) -> dict[str, Any]:
+    """Read-modify-write the books under the store's cross-process file lock
+    (the API and the season keeper both write them; a plain load/save pair
+    could drop a stake the ledger already moved into the pot)."""
+    from gaming.src.stack.agentic.store import update_json
+
+    def _apply(cur: Any) -> Any:
+        cur = cur if isinstance(cur, dict) else {"fixtures": {}}
+        cur.setdefault("fixtures", {})
+        return fn(cur)
+
+    return update_json(_BETS_FILE, _apply, {"fixtures": {}})
+
+
 def _fixture_key(season_no: int, matchday: int, home: str, away: str) -> str:
     return f"s{int(season_no)}:md{int(matchday)}:{home}:{away}"
 
@@ -106,19 +120,36 @@ def place_bet(
     if side not in _SIDES:
         raise ValueError(f"side must be one of {', '.join(_SIDES)}")
     amt = _d(amount)
+    if not amt.is_finite():
+        raise ValueError("amount must be a number")
+    # Book exactly what the ledger debits (integer micro-USDC). A stake with
+    # sub-micro digits used to be debited rounded but recorded raw, so the
+    # book claimed more than the pot held and the whole fixture failed to settle.
+    from gaming.src.stack.agentic.db.money import from_micro, to_micro
+
+    amt = from_micro(to_micro(amt))
     if amt < MIN_BET_USDC:
         raise ValueError(f"minimum bet is {MIN_BET_USDC} USDC")
     if amt > MAX_BET_USDC:
         raise ValueError(f"maximum bet is {MAX_BET_USDC} USDC")
     # Spectator-betting kill switch / allowlist, before anything is debited
     # (403/451, never a ValueError the route would turn into a 422).
-    from gaming.src.backend.services.spectator_policy import assert_spectator_betting_allowed
+    from gaming.src.backend.services.spectator_policy import (
+        SpectatorBettingUnavailable,
+        assert_spectator_betting_allowed,
+    )
 
     assert_spectator_betting_allowed(
         path="football.betting.place_bet",
         match_id=f"s{season_no}:md{matchday}:{home}:{away}",
         profile_id=better,
     )
+    from gaming.src.stack.agentic import ledger as L
+
+    if L._money_chain_is_mainnet():
+        # AFM betting is book-entry USDC: policy is ON on testnet, OFF on
+        # mainnet — the shared spectator switch alone must not open it.
+        raise SpectatorBettingUnavailable("disabled")
 
     from gaming.src.stack.agentic.games.football_managers.season import (
         _deadline,
@@ -166,31 +197,38 @@ def place_bet(
             L.debit(football_wallet(better), amt, reason="afm_spectator_bet", ref=pot)
             L.credit(pot, amt, reason="afm_spectator_bet", ref=pot)
 
-        data = _load()
         fx = _fixture_key(season_no, matchday, home, away)
-        book = data["fixtures"].setdefault(
-            fx,
-            {
-                "season_no": int(season_no),
-                "matchday": int(matchday),
-                "home": home,
-                "away": away,
-                "stakes": {},
-                "bets": [],
-                "status": "open",
-            },
-        )
-        stakes = book["stakes"].setdefault(side, {})
-        stakes[better] = _d(stakes.get(better) or 0) + amt
-        book["bets"].append(
-            {
-                "better": better,
-                "side": side,
-                "amount": str(amt),
-                "at": _iso(now),
-            }
-        )
-        _save(data)
+        deadline_at = _iso(_deadline(s, matchday))
+
+        def _record(data: dict[str, Any]) -> dict[str, Any]:
+            book = data.setdefault("fixtures", {}).setdefault(
+                fx,
+                {
+                    "season_no": int(season_no),
+                    "matchday": int(matchday),
+                    "home": home,
+                    "away": away,
+                    "stakes": {},
+                    "bets": [],
+                    "status": "open",
+                },
+            )
+            # Lets close_stale_books (ops) refund a book whose matchday never
+            # resolves — without it the guard skipped every book.
+            book.setdefault("deadline_at", deadline_at)
+            stakes = book["stakes"].setdefault(side, {})
+            stakes[better] = str(_d(stakes.get(better) or 0) + amt)
+            book["bets"].append(
+                {
+                    "better": better,
+                    "side": side,
+                    "amount": str(amt),
+                    "at": _iso(now),
+                }
+            )
+            return data
+
+        _update(_record)
         odds = current_odds(season_no, matchday, home, away)
         return {
             "ok": True,
@@ -286,71 +324,73 @@ def settle_matchday(season_no: int, matchday: int, results: list[dict[str, Any]]
 
     settled: list[dict[str, Any]] = []
     with _lock:
-        data = _load()
-        for fx, book in data["fixtures"].items():
-            if book.get("status") != "open":
-                continue
-            if int(book.get("season_no") or 0) != int(season_no) or int(book.get("matchday") or 0) != int(matchday):
-                continue
-            res = next(
-                (
-                    r
-                    for r in results
-                    if r.get("home_agent_id") == book.get("home")
-                    and r.get("away_agent_id") == book.get("away")
-                ),
-                None,
-            )
-            if res is None:
-                continue  # fixture not resolved yet — stays open
-            hg, ag = int(res.get("home_goals") or 0), int(res.get("away_goals") or 0)
-            winning = "home" if hg > ag else "away" if ag > hg else "draw"
-            stakes: dict[str, Decimal] = {side: _side_total(book, side) for side in _SIDES}
-            pot = f"afm_fixture_s{int(season_no)}_md{int(matchday)}_{book.get('home')}_{book.get('away')}"
-            pot_total = sum(stakes.values())
-            paid = Decimal("0")
-            payouts: dict[str, str] = {}
-
-            if pot_total > 0:
-                fee = (pot_total * Decimal(PLATFORM_FEE_BPS) / Decimal(10000)).quantize(Decimal("0.000001"))
-                distributable = pot_total - fee
-                try:
-                    # Pay out only what the pot actually holds: the pot debit
-                    # comes first, in the same transaction as every credit.
-                    with transaction():
-                        L.debit(pot, pot_total, reason="afm_bet_settle", ref=fx)
-                        if stakes[winning] > 0:
-                            for better, st in (book.get("stakes", {}).get(winning) or {}).items():
-                                share = (distributable * _d(st) / stakes[winning]).quantize(Decimal("0.000001"))
-                                if share > 0:
-                                    L.credit(_payee(better), share, reason="afm_bet_payout", ref=fx)
-                                    payouts[better] = str(share)
-                                    paid += share
-                        # only rounding dust can remain — the winners' shares sum to
-                        # distributable, and losing stakes fund the pool by design
-                        dust = pot_total - paid
-                        if dust > 0:
-                            L.credit(
-                                f"afm_season_{int(season_no)}_pot",
-                                dust,
-                                reason="afm_bet_unbacked",
-                                ref=fx,
-                            )
-                except L.InsufficientFunds as exc:
-                    # Pot short = ledger drift. Never mint the payouts; park the
-                    # book for ops and keep the season moving.
-                    logger.error("[afm_betting] pot %s short, book %s not paid: %s", pot, fx, exc)
-                    book["status"] = "settle_failed"
-                    book["error"] = str(exc)
-                    book["settled_at"] = _iso(_now())
+        def _settle_all(data: dict[str, Any]) -> dict[str, Any]:
+            for fx, book in data["fixtures"].items():
+                if book.get("status") != "open":
                     continue
+                if int(book.get("season_no") or 0) != int(season_no) or int(book.get("matchday") or 0) != int(matchday):
+                    continue
+                res = next(
+                    (
+                        r
+                        for r in results
+                        if r.get("home_agent_id") == book.get("home")
+                        and r.get("away_agent_id") == book.get("away")
+                    ),
+                    None,
+                )
+                if res is None:
+                    continue  # fixture not resolved yet — stays open
+                hg, ag = int(res.get("home_goals") or 0), int(res.get("away_goals") or 0)
+                winning = "home" if hg > ag else "away" if ag > hg else "draw"
+                stakes: dict[str, Decimal] = {side: _side_total(book, side) for side in _SIDES}
+                pot = f"afm_fixture_s{int(season_no)}_md{int(matchday)}_{book.get('home')}_{book.get('away')}"
+                pot_total = sum(stakes.values())
+                paid = Decimal("0")
+                payouts: dict[str, str] = {}
 
-            book["status"] = "settled"
-            book["result"] = {"home_goals": hg, "away_goals": ag, "winning_side": winning}
-            book["payouts"] = payouts
-            book["settled_at"] = _iso(_now())
-            settled.append({"fixture": fx, "winning_side": winning, "payouts": payouts})
-        _save(data)
+                if pot_total > 0:
+                    fee = (pot_total * Decimal(PLATFORM_FEE_BPS) / Decimal(10000)).quantize(Decimal("0.000001"))
+                    distributable = pot_total - fee
+                    try:
+                        # Pay out only what the pot actually holds: the pot debit
+                        # comes first, in the same transaction as every credit.
+                        with transaction():
+                            L.debit(pot, pot_total, reason="afm_bet_settle", ref=fx)
+                            if stakes[winning] > 0:
+                                for better, st in (book.get("stakes", {}).get(winning) or {}).items():
+                                    share = (distributable * _d(st) / stakes[winning]).quantize(Decimal("0.000001"))
+                                    if share > 0:
+                                        L.credit(_payee(better), share, reason="afm_bet_payout", ref=fx)
+                                        payouts[better] = str(share)
+                                        paid += share
+                            # only rounding dust can remain — the winners' shares sum to
+                            # distributable, and losing stakes fund the pool by design
+                            dust = pot_total - paid
+                            if dust > 0:
+                                L.credit(
+                                    f"afm_season_{int(season_no)}_pot",
+                                    dust,
+                                    reason="afm_bet_unbacked",
+                                    ref=fx,
+                                )
+                    except L.InsufficientFunds as exc:
+                        # Pot short = ledger drift. Never mint the payouts; park the
+                        # book for ops and keep the season moving.
+                        logger.error("[afm_betting] pot %s short, book %s not paid: %s", pot, fx, exc)
+                        book["status"] = "settle_failed"
+                        book["error"] = str(exc)
+                        book["settled_at"] = _iso(_now())
+                        continue
+
+                book["status"] = "settled"
+                book["result"] = {"home_goals": hg, "away_goals": ag, "winning_side": winning}
+                book["payouts"] = payouts
+                book["settled_at"] = _iso(_now())
+                settled.append({"fixture": fx, "winning_side": winning, "payouts": payouts})
+            return data
+
+        _update(_settle_all)
     return settled
 
 
@@ -392,38 +432,41 @@ def close_stale_books(max_hours: float = 6.0) -> int:
 
     n = 0
     with _lock:
-        data = _load()
-        cutoff = _now() - timedelta(hours=max_hours)
-        for fx, book in data["fixtures"].items():
-            if book.get("status") != "open":
-                continue
-            deadline = book.get("deadline_at")
-            if not deadline:
-                continue
-            try:
-                if datetime.fromisoformat(str(deadline).replace("Z", "+00:00")) > cutoff:
+        def _close_stale(data: dict[str, Any]) -> dict[str, Any]:
+            nonlocal n
+            cutoff = _now() - timedelta(hours=max_hours)
+            for fx, book in data["fixtures"].items():
+                if book.get("status") != "open":
                     continue
-            except Exception:
-                continue
-            # refund everything on the book — out of the pot, never from nothing
-            pot_total = sum(_d(v) for stakers in (book.get("stakes") or {}).values() for v in (stakers or {}).values())
-            pot = f"afm_fixture_s{int(book.get('season_no') or 0)}_md{int(book.get('matchday') or 0)}_{book.get('home')}_{book.get('away')}"
-            if pot_total > 0:
+                deadline = book.get("deadline_at")
+                if not deadline:
+                    continue
                 try:
-                    with transaction():
-                        L.debit(pot, pot_total, reason="afm_bet_close", ref=fx)
-                        for side, stakers in (book.get("stakes") or {}).items():
-                            for better, st in (stakers or {}).items():
-                                if _d(st) > 0:
-                                    L.credit(_payee(better), _d(st), reason="afm_bet_refund", ref=fx)
-                except L.InsufficientFunds as exc:
-                    logger.error("[afm_betting] pot %s short, book %s not refunded: %s", pot, fx, exc)
-                    book["status"] = "settle_failed"
-                    book["error"] = str(exc)
-                    book["settled_at"] = _iso(_now())
+                    if datetime.fromisoformat(str(deadline).replace("Z", "+00:00")) > cutoff:
+                        continue
+                except Exception:
                     continue
-            book["status"] = "closed"
-            book["settled_at"] = _iso(_now())
-            n += 1
-        _save(data)
+                # refund everything on the book — out of the pot, never from nothing
+                pot_total = sum(_d(v) for stakers in (book.get("stakes") or {}).values() for v in (stakers or {}).values())
+                pot = f"afm_fixture_s{int(book.get('season_no') or 0)}_md{int(book.get('matchday') or 0)}_{book.get('home')}_{book.get('away')}"
+                if pot_total > 0:
+                    try:
+                        with transaction():
+                            L.debit(pot, pot_total, reason="afm_bet_close", ref=fx)
+                            for side, stakers in (book.get("stakes") or {}).items():
+                                for better, st in (stakers or {}).items():
+                                    if _d(st) > 0:
+                                        L.credit(_payee(better), _d(st), reason="afm_bet_refund", ref=fx)
+                    except L.InsufficientFunds as exc:
+                        logger.error("[afm_betting] pot %s short, book %s not refunded: %s", pot, fx, exc)
+                        book["status"] = "settle_failed"
+                        book["error"] = str(exc)
+                        book["settled_at"] = _iso(_now())
+                        continue
+                book["status"] = "closed"
+                book["settled_at"] = _iso(_now())
+                n += 1
+            return data
+
+        _update(_close_stale)
     return n

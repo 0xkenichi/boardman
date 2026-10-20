@@ -45,7 +45,6 @@ def execute_transfer_sync(
     circle = _circle_for_chain(chain_id)
     result = circle.transfer_usdc(sender_wallet_id, recipient_address, float(amount))
 
-    sb = get_supabase()
     audit = {
         "sender_id": sender_id,
         "recipient_id": recipient_id,
@@ -57,6 +56,9 @@ def execute_transfer_sync(
         "settlement_chain": chain_id,
     }
     try:
+        # The transfer above already happened: an audit failure (Supabase
+        # down, client misconfigured) must never turn it into "nothing sent".
+        sb = get_supabase()
         sb.schema("gaming").table("wallet_debit_audit").insert(audit).execute()
     except Exception as exc:
         # Retry without optional chain column if schema is older
@@ -88,15 +90,31 @@ async def perform_withdrawal(
     amount: Decimal,
     recipient_id: Optional[str] = None,
 ) -> WithdrawOutcome:
-    from gaming.src.backend.services import clawstation_circle as circle
-    from gaming.src.backend.services.chains import get_chain
-    from gaming.src.backend.services.safety import assert_money_ops_allowed, commit_daily_withdraw
+    from gaming.src.backend.services.play_adjust import PlaySpendBusy, spend_lock
+    from gaming.src.backend.services.safety import assert_money_ops_allowed
 
     gate = assert_money_ops_allowed(profile_id, action="withdraw", amount=amount, kind="withdraw")
     if gate:
         return WithdrawOutcome(False, "gate", _plain(gate), amount)
     if amount < MIN_SEND or amount > MAX_SEND:
         return WithdrawOutcome(False, "bounds", f"Amount must be between ${MIN_SEND} and ${MAX_SEND}.", amount)
+    # Balance check -> daily-cap reservation -> transfer, one spend of this
+    # play balance at a time: two withdrawals (web link + Telegram), or a
+    # withdrawal and a bet, can no longer both pass the same checks.
+    try:
+        with spend_lock(profile_id):
+            return await _perform_locked(profile_id, recipient_address, amount, recipient_id)
+    except PlaySpendBusy as exc:
+        return WithdrawOutcome(False, "busy", str(exc), amount)
+
+
+async def _perform_locked(
+    profile_id: str, recipient_address: str, amount: Decimal, recipient_id: Optional[str]
+) -> WithdrawOutcome:
+    from gaming.src.backend.services import clawstation_circle as circle
+    from gaming.src.backend.services.chains import get_chain
+    from gaming.src.backend.services.safety import release_daily_withdraw, reserve_daily_withdraw
+
     try:
         pref = await circle.get_preferred_chain(profile_id)
         balance = await circle.get_usdc_balance(profile_id, chain_id=pref)
@@ -118,13 +136,16 @@ async def perform_withdrawal(
     if recipient_id == profile_id or (own and recipient_address.lower() == own):
         return WithdrawOutcome(False, "self", "You cannot withdraw to yourself.", amount, pref)
 
+    cap = reserve_daily_withdraw(profile_id, amount)
+    if cap:
+        return WithdrawOutcome(False, "gate", _plain(cap), amount, pref)
     result = await asyncio.to_thread(
         execute_transfer_sync, profile_id, wallet_id, recipient_address, amount, recipient_id, pref
     )
     if not result.get("success"):
+        release_daily_withdraw(profile_id, amount)
         return WithdrawOutcome(False, "failed", f"Withdrawal failed: {result.get('error') or 'unknown error'}",
                                amount, pref)
-    commit_daily_withdraw(profile_id, amount)
     try:
         new_bal = await circle.get_usdc_balance(profile_id, chain_id=pref)
     except Exception:

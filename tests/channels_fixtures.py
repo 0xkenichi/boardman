@@ -57,11 +57,15 @@ def world(monkeypatch):
     async def pref(user_id):
         return "arc"
 
+    async def strict(user_id, chain_id=None):
+        return state.balance, None
+
     c = "gaming.src.backend.services.clawstation_circle"
     monkeypatch.setattr(f"{c}.get_balance_summary", summary)
     monkeypatch.setattr(f"{c}.ensure_user_wallet", ensure_wallet)
     monkeypatch.setattr(f"{c}.get_usdc_balance", balance)
     monkeypatch.setattr(f"{c}.get_preferred_chain", pref)
+    monkeypatch.setattr(f"{c}.get_usdc_balance_strict", strict)
 
     p = "gaming.src.backend.services.paystack"
     monkeypatch.setattr(f"{p}.paystack_configured", lambda: True)

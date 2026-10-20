@@ -135,10 +135,32 @@ def prepare(principal: Any, amount: Decimal, bank: dict, *, now_ms: Optional[int
 
 
 async def perform(profile_id: str, *, amount: Decimal, payload: dict, link_hash: str) -> Any:
-    """Called once by ``withdraw_links.confirm`` after the PIN and the claim."""
+    """Called once by ``withdraw_links.confirm`` after the PIN and the claim.
+
+    Runs under the per-profile spend lock, and the daily cap is reserved
+    before the bridge starts: a second cash-out or withdrawal of the same
+    profile cannot pass the same balance and cap checks concurrently. (The
+    practice play overlay never counts toward this real-money balance, see
+    realms.py, so no overlay hold is needed until the burn lands.)
+    """
+    from gaming.src.backend.services.play_adjust import PlaySpendBusy, spend_lock
+    from gaming.src.backend.services.withdrawals import WithdrawOutcome
+
+    try:
+        with spend_lock(profile_id):
+            return await _perform_locked(profile_id, amount=amount, payload=payload, link_hash=link_hash)
+    except PlaySpendBusy as exc:
+        return WithdrawOutcome(False, "busy", str(exc), amount)
+
+
+async def _perform_locked(profile_id: str, *, amount: Decimal, payload: dict, link_hash: str) -> Any:
     from gaming.src.backend.services import clawstation_circle as circle
     from gaming.src.backend.services.bridge import cctp
-    from gaming.src.backend.services.safety import assert_money_ops_allowed, commit_daily_withdraw
+    from gaming.src.backend.services.safety import (
+        assert_money_ops_allowed,
+        release_daily_withdraw,
+        reserve_daily_withdraw,
+    )
     from gaming.src.backend.services.withdrawals import WithdrawOutcome, _plain
 
     settle = config.settlement_chain()
@@ -168,6 +190,9 @@ async def perform(profile_id: str, *, amount: Decimal, payload: dict, link_hash:
         return WithdrawOutcome(False, "no_wallet", "Your wallet is not set up yet.", amount, settle)
 
     q = payload.get("quote") or {}
+    cap = reserve_daily_withdraw(profile_id, amount)
+    if cap:
+        return WithdrawOutcome(False, "gate", _plain(cap), amount)
     order, created = await asyncio.to_thread(
         store.create_order, idempotency_key=f"bm-off-{link_hash[:24]}", direction="offramp",
         profile_id=profile_id, status="confirmed", chain=settle, amount_usdc=str(amount), rate=str(q.get("rate") or ""),
@@ -175,6 +200,7 @@ async def perform(profile_id: str, *, amount: Decimal, payload: dict, link_hash:
         details={"bank": bank, "bank_label": bank.get("label"), "out_address": out_w["address"]},
     )
     if not created:
+        release_daily_withdraw(profile_id, amount)  # counted when the order was first made
         return WithdrawOutcome(True, "ok", _started_text(amount, q, bank), amount, settle,
                                transaction_id=order["id"])
     try:
@@ -185,10 +211,10 @@ async def perform(profile_id: str, *, amount: Decimal, payload: dict, link_hash:
         )
     except Exception:
         logger.exception("[paycrest] cash-out bridge did not start for %s", order["id"])
+        release_daily_withdraw(profile_id, amount)
         await asyncio.to_thread(store.transition, order["id"], "failed", expect="confirmed", error="bridge_start")
         return WithdrawOutcome(False, "failed", "Cash-out failed before any money moved. Try again later.", amount)
     await asyncio.to_thread(store.transition, order["id"], "bridging_out", expect="confirmed", bridge_id=br["id"])
-    commit_daily_withdraw(profile_id, amount)
     notices.alert_admins(f"Naira cash-out {order['id']} ${amount} → {bank.get('label')} started")
     return WithdrawOutcome(True, "ok", _started_text(amount, q, bank), amount, settle, transaction_id=order["id"])
 
@@ -229,6 +255,10 @@ def submit(order_id: str) -> None:
             notices.alert_admins(f"Cash-out {order_id}: bridged USDC not visible on Base after {n} tries")
         return
     bank = (o.get("details") or {}).get("bank") or {}
+    # Never more than THIS order: the "out" wallet can also hold another
+    # order's refund or USDC anyone sent to it (it is a public CCTP mint
+    # recipient), and the caps were checked against the order amount only.
+    bal = min(bal, Decimal(str(o["amount_usdc"])))
     amount = bal.quantize(CENT, rounding=ROUND_DOWN)
     ref = f"{o['idempotency_key']}-{n}"
     client = get_client()
@@ -332,6 +362,11 @@ def refund_home(order_id: str) -> None:
         store.transition(order_id, "needs_review", expect="refunded_on_base", error="no_out_wallet")
         return
     bal = get_chain_ops().usdc_balance(config.delivery_chain(), w["address"])
+    # Bring home at most what THIS order put on Base (what it sent to
+    # Paycrest, or its whole amount when nothing was sent): a sibling order
+    # waiting on_base in the same wallet must not be swept home with it.
+    owed = Decimal(str(((o.get("details") or {}).get("sent_usdc")) or o["amount_usdc"]))
+    bal = min(bal, owed)
     if bal < config.bridge().min_sweep_usdc:
         return  # refund not visible yet; the reconciler retries
     # A refund goes back to the wallet the cash-out came from: the play wallet
