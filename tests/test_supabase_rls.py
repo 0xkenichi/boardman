@@ -118,3 +118,16 @@ def test_new_migrations_enable_rls_and_never_grant_to_anon():
         for m in _GRANT.finditer(text):
             roles = {r.strip().lower() for r in m.group(2).split(",")}
             assert not roles & _PUBLIC_ROLES, f"{f.name}: grant to {roles} on {m.group(1)}"
+
+
+def test_open_policies_and_definer_rpcs_are_closed():
+    """Found live on 2026-10-20: "service role" policies scoped to PUBLIC,
+    two tables without RLS, and anon-callable SECURITY DEFINER money RPCs."""
+    text = _sql(MIGRATIONS / "20261020120400_close_open_policies.sql")
+    assert re.search(r"policyname\s+ILIKE\s+'%service%role%'", text, re.I)
+    assert "TO service_role USING (true)" in text
+    for table in ("public.bot_fsm_state", "public.partner_venues"):
+        assert re.search(rf"ALTER TABLE {re.escape(table)} ENABLE ROW LEVEL SECURITY", text)
+    for fn in ("credit_wallet", "debit_wallet", "increment_play_points", "fn_gdpr_delete_user", "fn_award_questcoins"):
+        assert f"'public.{fn}(" in text, fn
+    assert "REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon, authenticated" in text
