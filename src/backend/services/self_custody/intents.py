@@ -190,7 +190,14 @@ def join_allowed(challenge_id: str, account: str, reader=None) -> bool:
         return bool(p2) and p2.lower() == account.lower()
     s = config.chain_settings()
     try:
-        return _version(reader or chain.get_reader(), s["escrow"]) < 2
+        r = reader or chain.get_reader()
+        if _version(r, s["escrow"]) < 2:
+            return True
+        # Audit 2026-10 D-01: a custodial creator leaves no passkey binding
+        # row, but its permit may have bound this passkey account. The
+        # escrow's own record is the authority on who may join.
+        p2 = r.escrow_player2(s["escrow"], C.match_id_bytes32(challenge_id))
+        return bool(p2) and str(p2).lower() == account.lower()
     except Exception:
         return False
 

@@ -24,6 +24,8 @@ class ChainReader(Protocol):
 
     def escrow_version(self, escrow: str) -> int: ...
 
+    def escrow_player2(self, escrow: str, match_id_b32: bytes) -> Optional[str]: ...
+
     def is_valid_signature(self, account: str, digest: bytes, signature: bytes) -> bool: ...
 
 
@@ -100,6 +102,17 @@ class Web3Reader:
             if not is_missing_function_error(exc):
                 raise
             return 1
+
+    def escrow_player2(self, escrow: str, match_id_b32: bytes) -> Optional[str]:
+        """The player2 a v2 match bound at create, or None if there is no match."""
+        from gaming.src.stack.agentic.onchain import ESCROW_ABI
+
+        c = self.w3.eth.contract(address=self.w3.to_checksum_address(escrow), abi=ESCROW_ABI)
+        p1, p2, *_ = c.functions.matches(bytes(match_id_b32)).call()
+        zero = "0x" + "00" * 20
+        if str(p1).lower() == zero:
+            return None
+        return str(p2)
 
     def is_valid_signature(self, account: str, digest: bytes, signature: bytes) -> bool:
         """ERC-1271 / ERC-6492 check through the deployless universal
