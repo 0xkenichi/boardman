@@ -6,9 +6,13 @@
  *   EXPECT_MAX_STAKE_USDC=25 npx hardhat run scripts/check_v2_roles.js --network arcMainnet
  *
  * Exits non-zero on any mismatch. Run it after deploy (pendingOwner = Safe)
- * and again after the Safe's acceptOwnership (owner = Safe, pendingOwner = 0).
+ * and again after the Safe's acceptOwnership with EXPECT_ACCEPTED=1 (owner =
+ * Safe, pendingOwner = 0). On a mainnet EXPECT_OWNER, EXPECT_RESOLVER and
+ * EXPECT_TREASURY are required and usdc() must be the known USDC
+ * (EXPECT_USDC overrides). A paused escrow fails unless EXPECT_PAUSED=1.
  */
 import hre from "hardhat";
+import { checkRoles } from "./lib/v2_roles.js";
 
 const ABI = [
   "function owner() view returns (address)",
@@ -41,18 +45,9 @@ async function main() {
   };
   console.log(JSON.stringify(state, null, 2));
 
-  const problems = [];
-  const eq = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
-  if (state.version !== 2) problems.push(`ESCROW_VERSION ${state.version} != 2`);
-  const ownerOk = process.env.EXPECT_OWNER && eq(state.owner, process.env.EXPECT_OWNER);
-  const pendingOk = process.env.EXPECT_OWNER && eq(state.pendingOwner, process.env.EXPECT_OWNER);
-  if (process.env.EXPECT_OWNER && !ownerOk && !pendingOk) problems.push("neither owner nor pendingOwner is EXPECT_OWNER");
-  if (process.env.EXPECT_OWNER && !ownerOk) console.log("NOTE: the Safe has not called acceptOwnership() yet");
-  if (process.env.EXPECT_RESOLVER && !eq(state.resolver, process.env.EXPECT_RESOLVER)) problems.push("resolver mismatch");
-  if (process.env.EXPECT_TREASURY && !eq(state.feeRecipient, process.env.EXPECT_TREASURY)) problems.push("feeRecipient mismatch");
-  if (process.env.EXPECT_MAX_STAKE_USDC && Number(state.maxStakeUsdc) !== Number(process.env.EXPECT_MAX_STAKE_USDC)) {
-    problems.push(`maxStakePerPlayer ${state.maxStakeUsdc} != ${process.env.EXPECT_MAX_STAKE_USDC}`);
-  }
+  // Audit 2026-10 D-03: the checks live in lib/v2_roles.js (tested).
+  const { problems, notes } = checkRoles(state, network.name);
+  for (const n of notes) console.log(`NOTE: ${n}`);
   if (problems.length) {
     console.error("MISMATCH:\n - " + problems.join("\n - "));
     process.exit(1);
