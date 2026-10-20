@@ -36,7 +36,7 @@ export default {
 
     // ── Arc Testnet (Boardman primary test path — USDC gas) ────────────
     arcTestnet: {
-      url: process.env.ARC_TESTNET_RPC_URL || process.env.ARC_RPC_URL || "https://rpc.testnet.arc.network",
+      url: process.env.ARC_TESTNET_RPC_URL || process.env.ARC_RPC_URL || "https://rpc.testnet.arc.io",
       chainId: Number(process.env.ARC_TESTNET_CHAIN_ID || 5042002),
       accounts: [ADMIN_PRIVATE_KEY],
     },

@@ -13,7 +13,7 @@ def _fake_cfg():
         "rpc_url": "http://fake-rpc.test",
         "usdc": "0x3600000000000000000000000000000000000000",
         "escrow": "0x3cD57447490c81598Bd8CaCBe3843b24E5735A77",
-        "explorer_tx": "https://testnet.arcscan.app/tx/",
+        "explorer_tx": "https://explorer.testnet.arc.io/tx/",
         "evm_chain_id": 5042002,
         "get_explorer_tx": None,
     }

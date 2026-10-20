@@ -2,7 +2,7 @@
  * Read Arc testnet USDC balances via JSON-RPC eth_call (no private keys).
  */
 
-const DEFAULT_RPC = 'https://rpc.testnet.arc.network'
+const DEFAULT_RPC = 'https://rpc.testnet.arc.io'
 const DEFAULT_USDC = '0x3600000000000000000000000000000000000000'
 
 export function arcRpcUrl(): string {

@@ -72,7 +72,7 @@ def test_project_deposit_idempotent_and_place_bet_blocked(tmp_path, monkeypatch)
         side="a",
         amount_usdc=Decimal("1.25"),
         tx_hash="0xdead",
-        explorer="https://testnet.arcscan.app/tx/0xdead",
+        explorer="https://explorer.testnet.arc.io/tx/0xdead",
     )
     again = book.project_deposit(
         mid,
@@ -123,7 +123,7 @@ def test_metrics_surface_spectator_hashes():
                             "side": "a",
                             "amount": "1.000000",
                             "tx_hash": "0xbet",
-                            "explorer": "https://testnet.arcscan.app/tx/0xbet",
+                            "explorer": "https://explorer.testnet.arc.io/tx/0xbet",
                         }
                     ],
                 },

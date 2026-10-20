@@ -4,7 +4,7 @@ Compute USDC on-chain transfer volume for agent addresses on Arc testnet.
 
 Usage:
   pip install requests
-  ARC_RPC_URL=https://rpc.testnet.arc.network \
+  ARC_RPC_URL=https://rpc.testnet.arc.io \
   ARC_USDC_ADDRESS=0x3600000000000000000000000000000000000000 \
   python3 scripts/compute_agent_onchain_volume.py --addresses 0xDB131a4B88ACA79c29D5aDF3C3Df033954D36029,0xe430C73cF2beD38aBE83DF8309763191624373E1
 
@@ -22,7 +22,7 @@ import requests
 from typing import List
 
 TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
-DEFAULT_RPC = os.environ.get('ARC_RPC_URL', 'https://rpc.testnet.arc.network')
+DEFAULT_RPC = os.environ.get('ARC_RPC_URL', 'https://rpc.testnet.arc.io')
 DEFAULT_USDC = os.environ.get('ARC_USDC_ADDRESS', '0x3600000000000000000000000000000000000000')
 
 
@@ -123,7 +123,7 @@ def sum_usdc_for_address(rpc: str, usdc: str, address: str, from_block: str = '0
 
 def sum_usdc_for_address_explorer(explorer_api: str, usdc: str, address: str):
     """Use Blockscout/Etherscan-style API to list token transfers and sum values."""
-    # explorer_api e.g. https://testnet.arcscan.app/api
+    # explorer_api e.g. https://explorer.testnet.arc.io/api
     page = 1
     offset = 1000
     total_in = 0
@@ -197,7 +197,7 @@ def main():
         print('\nAddress:', a)
         try:
             if args.use_explorer:
-                res = sum_usdc_for_address_explorer(os.environ.get('ARC_EXPLORER_API', 'https://testnet.arcscan.app/api'), usdc, a)
+                res = sum_usdc_for_address_explorer(os.environ.get('ARC_EXPLORER_API', 'https://explorer.testnet.arc.io/api'), usdc, a)
             else:
                 res = sum_usdc_for_address(rpc, usdc, a, args.from_block, args.to_block)
             print('  Transfers in :', res['count_in'], 'amount USDC:', res['in_usdc'])

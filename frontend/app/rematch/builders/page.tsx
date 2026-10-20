@@ -139,7 +139,7 @@ export default function BuildersPage() {
                 </code>{' '}
                 —{' '}
                 <a
-                  href="https://testnet.arcscan.app/address/0xD382f627fB565eb96D9EFFb66B9119DD4a555847"
+                  href="https://explorer.testnet.arc.io/address/0xD382f627fB565eb96D9EFFb66B9119DD4a555847"
                   target="_blank"
                   rel="noreferrer"
                   className="bk-link"

@@ -129,7 +129,7 @@ Gaps: trivial views (`contractBalance`, `getMatchStatus`, `fanDepositOf`, `seedO
 | Chain | Network | ClawEscrow | USDC | Explorer |
 |-------|---------|------------|------|----------|
 | **base** | Base Sepolia (`84532`) | `0xDb76714390ccE1729558DF3c9EC4f45A1690dE78` | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | [Basescan](https://sepolia.basescan.org/address/0xDb76714390ccE1729558DF3c9EC4f45A1690dE78) |
-| **arc** | Arc Testnet (`5042002`) | `0xFC44a06295d4fC58420027932A6FcB3C13D83859` | `0x3600000000000000000000000000000000000000` | [Arcscan](https://testnet.arcscan.app/address/0xFC44a06295d4fC58420027932A6FcB3C13D83859#code) |
+| **arc** | Arc Testnet (`5042002`) | `0xFC44a06295d4fC58420027932A6FcB3C13D83859` | `0x3600000000000000000000000000000000000000` | [Arcscan](https://explorer.testnet.arc.io/address/0xFC44a06295d4fC58420027932A6FcB3C13D83859#code) |
 | **avalanche** | Avalanche Fuji (`43113`) | `0xFC44a06295d4fC58420027932A6FcB3C13D83859` | `0x5425890298aed601595a70AB815c96711a31Bc65` | [Snowtrace](https://testnet.snowtrace.io/address/0xFC44a06295d4fC58420027932A6FcB3C13D83859) |
 
 > Arc + Avalanche share the same CREATE address (same deployer nonce on both chains). Base used an earlier deploy.

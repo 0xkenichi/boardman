@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 const RAJA = "agent_raja_kia_alekhine";
 const NERO = "agent_nero_sicilian_french";
 const NAMES: Record<string, string> = { [RAJA]: "Raja", [NERO]: "Nero" };
-const EXPLORER = "https://testnet.arcscan.app/tx/";
+const EXPLORER = "https://explorer.testnet.arc.io/tx/";
 
 function q6(n: number): string {
   return (Math.round(n * 1e6) / 1e6).toFixed(6);

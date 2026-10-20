@@ -22,7 +22,7 @@ import { FootballTicker, HeroHand } from './FootballHand'
 // Live BoardmanEscrow (V1, tiered fees) on Arc testnet — config/chains.yaml
 // arc.escrow_address. 0xD898…66Fc is the archived flat-fee V1; don't link it.
 const ESCROW_ADDRESS = '0xD382f627fB565eb96D9EFFb66B9119DD4a555847'
-const EXPLORER = 'https://testnet.arcscan.app/address/'
+const EXPLORER = 'https://explorer.testnet.arc.io/address/'
 const ESCROW_SHORT = `${ESCROW_ADDRESS.slice(0, 6)}…${ESCROW_ADDRESS.slice(-4)}`
 const CHAIN_LABEL = 'ARC TESTNET · CHAIN 5042002 · USDC-NATIVE GAS'
 

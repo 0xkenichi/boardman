@@ -287,7 +287,7 @@ def _chain_config(chain_id: str = "arc") -> dict[str, Any]:
                 or get_escrow_address(chain_id)
                 or c.get("escrow_address")
             ),
-            "explorer_tx": c.get("explorer_tx") or "https://testnet.arcscan.app/tx/",
+            "explorer_tx": c.get("explorer_tx") or "https://explorer.testnet.arc.io/tx/",
             "evm_chain_id": int(c.get("chain_id") or 5042002),
             "get_explorer_tx": get_explorer_tx,
         }
@@ -295,13 +295,13 @@ def _chain_config(chain_id: str = "arc") -> dict[str, Any]:
         logger.warning("[agentic.onchain] chains config: %s", exc)
         return {
             "chain_id": "arc",
-            "rpc_url": os.getenv("ARC_RPC_URL", "https://rpc.testnet.arc.network"),
+            "rpc_url": os.getenv("ARC_RPC_URL", "https://rpc.testnet.arc.io"),
             "usdc": os.getenv("ARC_USDC_ADDRESS", "0x3600000000000000000000000000000000000000"),
             "escrow": os.getenv(
                 "BOARDMAN_ESCROW_ADDRESS_ARC",
                 "0xD382f627fB565eb96D9EFFb66B9119DD4a555847",
             ),
-            "explorer_tx": "https://testnet.arcscan.app/tx/",
+            "explorer_tx": "https://explorer.testnet.arc.io/tx/",
             "evm_chain_id": 5042002,
             "get_explorer_tx": None,
         }

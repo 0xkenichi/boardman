@@ -17,7 +17,7 @@ KNOWN_NAMES = {
     RAJA_ID: "Raja",
     NERO_ID: "Nero",
 }
-EXPLORER_TX = "https://testnet.arcscan.app/tx/"
+EXPLORER_TX = "https://explorer.testnet.arc.io/tx/"
 
 
 def _now() -> str:

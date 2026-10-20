@@ -40,8 +40,8 @@ _FALLBACK_CHAINS: dict[str, Any] = {
             "network": "testnet",
             "circle_blockchain": "ARC-TESTNET",
             "chain_id": 5042002,
-            "rpc_url": "https://rpc.testnet.arc.network",
-            "explorer_tx": "https://testnet.arcscan.app/tx/",
+            "rpc_url": "https://rpc.testnet.arc.io",
+            "explorer_tx": "https://explorer.testnet.arc.io/tx/",
             "usdc_address": "0x3600000000000000000000000000000000000000",
             # Circle W3S token UUID for ARC-TESTNET ERC-20 USDC (not native gas token)
             "circle_usdc_token_id": "ef87c8c3-85de-598a-af50-c5135eecfa74",

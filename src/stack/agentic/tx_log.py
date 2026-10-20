@@ -12,7 +12,7 @@ from typing import Any, Optional
 
 from gaming.src.stack.agentic.db import transaction
 
-EXPLORER = "https://testnet.arcscan.app/tx/"
+EXPLORER = "https://explorer.testnet.arc.io/tx/"
 
 
 def _now() -> str:

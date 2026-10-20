@@ -66,8 +66,8 @@ def _match(
             "join_tx_hash": "0xbbb",
             "escrow": "0x3cD57447490c81598Bd8CaCBe3843b24E5735A77",
             "txs": [
-                {"step": "createMatch", "tx_hash": "0xaaa", "explorer": "https://testnet.arcscan.app/tx/0xaaa"},
-                {"step": "joinMatch", "tx_hash": "0xbbb", "explorer": "https://testnet.arcscan.app/tx/0xbbb"},
+                {"step": "createMatch", "tx_hash": "0xaaa", "explorer": "https://explorer.testnet.arc.io/tx/0xaaa"},
+                {"step": "joinMatch", "tx_hash": "0xbbb", "explorer": "https://explorer.testnet.arc.io/tx/0xbbb"},
             ],
         }
         rec["onchain_settle"] = {"tx_hash": "0xccc"}
