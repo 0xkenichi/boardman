@@ -165,9 +165,11 @@ class FakeBL:
         m = CHAINS.get(_b32(match_id))
         if m is None:
             raise KeyError("no match")
+        # The chain records the wallet's ADDRESS (msg.sender), not Circle's
+        # wallet id; crash recovery now compares it with our address (audit D-01).
         return {
-            "player1": m.p1,
-            "player2": m.p2,
+            "player1": f"0x{m.p1}" if m.p1 else None,
+            "player2": f"0x{m.p2}" if m.p2 else None,
             "stake_per_player": float(m.stake or 0),
             "status": m.status,
         }
