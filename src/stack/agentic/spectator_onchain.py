@@ -242,12 +242,18 @@ def pool_version(w3, cfg: dict[str, Any]) -> int:
     env = (os.getenv("SPECTATOR_POOL_VERSION") or "").strip()
     if env in {"1", "2"}:
         return int(env)
+    from gaming.src.stack.agentic.onchain import is_missing_function_error
+
     key = str(cfg["pool"]).lower()
     if key not in _POOL_VERSION_CACHE:
         try:
             probe = w3.eth.contract(address=w3.to_checksum_address(cfg["pool"]), abi=SPECTATOR_ABI)
             _POOL_VERSION_CACHE[key] = int(probe.functions.POOL_VERSION().call())
-        except Exception:
+        except Exception as exc:
+            # Only a contract without POOL_VERSION() is v1. An RPC hiccup must
+            # not pin the v1 ABI for the life of the process (audit L-02).
+            if not is_missing_function_error(exc):
+                raise
             _POOL_VERSION_CACHE[key] = 1
     return _POOL_VERSION_CACHE[key]
 
@@ -456,6 +462,43 @@ def cancel_book_onchain(match_id: str, *, chain_id: str = "arc") -> dict[str, An
     }
 
 
+# Off-chain book states after which no new bet may reach the pool.
+_FROZEN_BOOK_STATUSES = frozenset({"closed", "settled", "void"})
+
+
+def assert_offchain_betting_open(match_id: str, match: Optional[dict[str, Any]] = None) -> None:
+    """Refuse a House deposit once the match or its off-chain book is frozen.
+
+    The on-chain close() for the ply-N freeze is sent asynchronously and may
+    land late or fail, and closeAt can be minutes after the game ends. The
+    off-chain state is the authority on "betting is still open".
+    """
+    if match is not None:
+        from gaming.src.stack.agentic.house import BET_STATUSES
+
+        status = str(match.get("status") or "")
+        if status not in BET_STATUSES:
+            raise SpectatorOnchainError(f"match {match_id} is {status or 'unknown'} — betting is closed")
+    from gaming.src.stack.agentic.economy.spectator import SpectatorBook
+
+    book = SpectatorBook().get(match_id) or {}
+    if str(book.get("status") or "") in _FROZEN_BOOK_STATUSES:
+        raise SpectatorOnchainError(
+            f"spectator book {match_id} is {book.get('status')} ({book.get('closed_reason') or 'frozen'}) — betting is closed"
+        )
+
+
+def deposit_may_have_landed(exc: BaseException) -> bool:
+    """True when a depositFor was broadcast but its receipt never arrived.
+
+    The tx may still mine, so the pulled stake must NOT be refunded from the
+    House float (audit 2026-10 M-01); ops reconcile it from the tx hash.
+    """
+    from gaming.src.stack.agentic.db.nonces import TxPendingConfirmation
+
+    return isinstance(exc, TxPendingConfirmation) and getattr(exc, "label", "") == "depositFor"
+
+
 def deposit_for(
     match_id: str,
     user_address: str,
@@ -477,6 +520,10 @@ def deposit_for(
     if not user.startswith("0x") or len(user) != 42:
         raise SpectatorOnchainError("user address required for depositFor")
     side_idx = side_to_idx(side)
+    # Audit 2026-10 H-01: a Telegram approval can be applied minutes after the
+    # request, after the ply-N freeze or the final move. The pool only knows
+    # closeAt, so refuse here once the result could be known.
+    assert_offchain_betting_open(mid, match)
 
     book = read_book(mid, chain_id=chain_id)
     if book["status"] == 0:

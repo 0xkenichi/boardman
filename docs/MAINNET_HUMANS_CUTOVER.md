@@ -173,9 +173,12 @@ sign with the threshold > execute. Fallback owner: call `acceptOwnership()`
 from that wallet. Then check, read-only:
 ```
 ESCROW=<escrow> EXPECT_OWNER=<Safe> EXPECT_RESOLVER=<resolver> EXPECT_TREASURY=<treasury> \
-EXPECT_MAX_STAKE_USDC=25 npx hardhat run scripts/check_v2_roles.js --network arcMainnet
+EXPECT_MAX_STAKE_USDC=25 EXPECT_ACCEPTED=1 npx hardhat run scripts/check_v2_roles.js --network arcMainnet
 ```
-It must print `OK` with `owner` = the Safe and `pendingOwner` = 0x0.
+It must print `OK`. `EXPECT_ACCEPTED=1` makes it fail unless `owner` = the Safe
+and `pendingOwner` = 0x0 (without it, a not-yet-accepted ownership only prints
+a NOTE). On arcMainnet the three `EXPECT_*` roles are required and `usdc()`
+must be `0x3600…0000`.
 
 ### 4.7 Gas Station policies (Circle Console, LIVE)
 * **Arc mainnet:** sponsor only the humans wallet set; allowlist contracts

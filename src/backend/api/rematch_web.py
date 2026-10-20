@@ -92,7 +92,6 @@ async def _deposit_spectator_onchain(
     user_address: str,
 ) -> dict:
     """House depositFor + JSON projection. Caller already debited the ledger."""
-    from gaming.src.stack.agentic.economy.spectator import SpectatorBook
     from gaming.src.stack.agentic.house import resolve_side
     from gaming.src.stack.agentic.matches import get_match_service
     from gaming.src.stack.agentic.spectator_onchain import deposit_for
@@ -111,6 +110,42 @@ async def _deposit_spectator_onchain(
         slot,
         match=match,
     )
+    # The USDC is in the pool from here on. A projection failure must not
+    # bubble up: the caller would refund the pulled stake and the user would
+    # hold both the refund and the on-chain ticket (audit 2026-10 M-01).
+    try:
+        return _project_spectator_deposit(svc, match, match_id, slot, amount, profile_id, dep)
+    except Exception as exc:
+        logger.exception("[RematchWeb] on-chain bet landed (tx %s) but projection failed", dep.get("tx_hash"))
+        return {"tx_hash": dep.get("tx_hash"), "explorer": dep.get("explorer"), "projection_error": str(exc)}
+
+
+def _deposit_may_have_landed(exc: BaseException) -> bool:
+    from gaming.src.stack.agentic.spectator_onchain import deposit_may_have_landed
+
+    return deposit_may_have_landed(exc)
+
+
+def _pending_deposit_result(exc: BaseException, amount: float) -> dict:
+    """Bet result when the pool deposit is unconfirmed: no refund, ops reconcile."""
+    tx = str(getattr(exc, "tx_hash", "") or "")
+    return {
+        "success": False,
+        "pending": True,
+        "error": "spectator_deposit_pending",
+        "tx_hash": tx,
+        "message": (
+            f"Your ${amount} bet was sent to the pool but is not confirmed yet (tx {tx[:12]}). "
+            "It was not refunded; we will confirm it or return it."
+        ),
+    }
+
+
+def _project_spectator_deposit(svc, match: dict, match_id: str, slot: str, amount: float,
+                               profile_id: str, dep: dict) -> dict:
+    """JSON projection of a confirmed SpectatorPool deposit."""
+    from gaming.src.stack.agentic.economy.spectator import SpectatorBook
+
     book = SpectatorBook()
     if not (book.get(match_id) or {}).get("onchain"):
         book.mark_onchain(
@@ -298,7 +333,7 @@ async def _book_profile_bet(
     the USDC to the House (on success the reservation is released, since the
     chain now carries the debit; on failure the reservation IS the debit).
     On-chain book: pull -> pool deposit (the chain itself cannot overdraw).
-    Returns {book, chain_tx, pulled, pull_err}; raises _SpendRefused when
+    Returns {book, chain_tx, pulled, pull_err[, pending]}; raises _SpendRefused when
     nothing was booked or charged.
     """
     from gaming.src.stack.agentic.house import get_house
@@ -326,6 +361,11 @@ async def _book_profile_bet(
             except Exception as exc:
                 logger.exception("[RematchWeb] spectator pull/deposit failed match=%s", match_id)
                 out["pull_err"] = str(exc)
+                if out["pulled"] and _deposit_may_have_landed(exc):
+                    # The depositFor was broadcast and may still mine: a refund
+                    # now could pay the user twice (audit 2026-10 M-01).
+                    out["pending"] = _pending_deposit_result(exc, amount)
+                    return out
                 if out["pulled"]:
                     # Money safety: the pull landed but the pool deposit didn't
                     # — push the USDC back to the user's wallet, never strand it.
@@ -457,6 +497,9 @@ async def _apply_approved_spectator_bet(
             "error": "spectator_book_failed",
             "message": str(exc),
         }
+    if spent.get("pending"):
+        store_apply_result(approval_id, spent["pending"])
+        return spent["pending"]
     book, chain_tx, pull_err = spent["book"], spent["chain_tx"], spent["pull_err"]
     booked = book is not None or bool(chain_tx.get("tx_hash"))
     try:
@@ -979,6 +1022,8 @@ async def web_spectator_bet(
                 "match_id": match_id,
                 "address": summary.get("address") or "",
             }
+        if spent.get("pending"):
+            return {**spent["pending"], "match_id": match_id, "address": summary.get("address") or ""}
         book, chain_tx, pull_err = spent["book"], spent["chain_tx"], spent["pull_err"]
         booked = book is not None or bool(chain_tx.get("tx_hash"))
         try:

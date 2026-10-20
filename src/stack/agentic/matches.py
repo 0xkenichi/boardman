@@ -884,6 +884,33 @@ class AgentMatchService:
         _after_step(name)
         return out
 
+    def _close_spectator_pool_first(self, match_id: str, m: dict[str, Any]) -> None:
+        """Close the SpectatorPool book as settlement's first step.
+
+        The game is over and visible to spectators, but the pool keeps taking
+        deposit() calls until close() lands or closeAt passes. Waiting for the
+        escrow and stats steps left a window to bet on a known winner. A
+        failure here is logged, not raised: resolve_book closes again before
+        it resolves, and the pool's closeAt still applies.
+        """
+        try:
+            from gaming.src.stack.agentic.economy.spectator import SpectatorBook
+            from gaming.src.stack.agentic import spectator_onchain as soc
+
+            live = SpectatorBook().get(match_id) or {}
+            if not (live.get("onchain") and soc.spectator_onchain_enabled()):
+                return
+            chain = m.get("chain_id") or "arc"
+            self._external_step(
+                match_id,
+                "spectator_close_onchain",
+                lambda: soc.close_book_onchain(match_id, chain_id=chain),
+            )
+        except leases.LeaseLost:
+            raise
+        except Exception:
+            logger.warning("[agentic] early SpectatorPool close %s failed", match_id, exc_info=True)
+
     def _external_step(self, match_id: str, name: str, fn: Callable[[], Any]) -> Any:
         """A step that leaves the database (chain, registry file, Telegram).
 
@@ -1060,6 +1087,9 @@ class AgentMatchService:
         """
         if updates is None:
             updates = {}
+        # The result is public from here on: stop on-chain spectator bets
+        # before any other step (audit 2026-10 H-01).
+        self._close_spectator_pool_first(match_id, m)
         from gaming.src.stack.agentic.onchain import onchain_enabled, resolve_onchain
         from gaming.src.stack.agentic.economy.fees import FeeRouter
         from gaming.src.stack.agentic.economy.spectator import SpectatorBook

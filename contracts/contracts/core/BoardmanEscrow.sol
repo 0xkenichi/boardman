@@ -457,10 +457,10 @@ contract BoardmanEscrow is Ownable2Step, ReentrancyGuard, Pausable {
         emit FeeTiersUpdated(_flatFeePerPlayer, _feeBps, _premiumFeeBps, _tierFlatMax, _tierBpsMax);
     }
 
-    /// @notice Stop new stakes (create/join). Settlement and refunds keep working.
     /**
      * @notice Set the per-player stake cap (applies to matches created after).
-     * @dev MIN_STAKE ≤ newMax ≤ MAX_STAKE. Existing matches are unaffected.
+     * @dev MIN_STAKE ≤ newMax ≤ MAX_STAKE. Existing matches are unaffected:
+     *      joinMatch, resolve, cancel and refunds never read the cap.
      */
     function setMaxStake(uint256 newMax) external onlyOwner {
         if (newMax < MIN_STAKE || newMax > MAX_STAKE) revert InvalidStakeCap(newMax);
@@ -468,6 +468,7 @@ contract BoardmanEscrow is Ownable2Step, ReentrancyGuard, Pausable {
         maxStakePerPlayer = newMax;
     }
 
+    /// @notice Stop new stakes (create/join). Settlement and refunds keep working.
     function pause() external onlyOwner { _pause(); }
     function unpause() external onlyOwner { _unpause(); }
 

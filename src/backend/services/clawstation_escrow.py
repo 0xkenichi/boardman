@@ -95,6 +95,11 @@ def _onchain_match_status(chain_id: str, challenge_id: str) -> Optional[dict]:
         return None
 
 
+def _same_address(a: Optional[str], b: Optional[str]) -> bool:
+    """Case-insensitive address equality; False if either is missing."""
+    return bool(a) and bool(b) and str(a).lower() == str(b).lower()
+
+
 def _same_stake(a: Optional[float], b: Decimal) -> bool:
     try:
         return abs(Decimal(str(a or 0)) - b) <= Decimal("0.000001")
@@ -481,7 +486,9 @@ async def _approve_and_create_match(
         st = _onchain_match_status(chain_id, challenge_id)
         if (
             st
-            and st.get("player1")
+            # Audit 2026-10 D-01: only OUR earlier create converges; a match
+            # for this id from another account (e.g. a passkey lock) is not ours.
+            and _same_address(st.get("player1"), creator_address)
             and (st.get("status") or "").upper() in ("OPEN", "CREATOR_LOCKED", "LOCKED", "DISPUTED")
             and _same_stake(st.get("stake_per_player"), stake_usd)
         ):
@@ -589,9 +596,22 @@ async def _approve_and_join_match(
         raise EscrowError("Creator must lock stake before opponent can join")
 
     await stage["reserve"](chain_id)
-    wallet_id, _ = await _prepare_wallet(user_id, chain_id)
+    wallet_id, joiner_address = await _prepare_wallet(user_id, chain_id)
     stake_wei = _usdc_to_wei(stake_usd)
     match_id = _challenge_id_to_bytes32(challenge_id)
+
+    # Audit 2026-10 D-01: a v2 escrow lets only the player2 bound at create
+    # join. If that is not this Circle wallet (the creator's permit bound the
+    # opponent's passkey account), refuse before any approve: the joinMatch
+    # would revert and the money would sit until the open timeout.
+    if escrow_version(chain_id) >= 2:
+        bound = _onchain_match_status(chain_id, challenge_id) or {}
+        bound_p2 = str(bound.get("player2") or "")
+        if bound_p2 and int(bound_p2, 16) != 0 and not _same_address(bound_p2, joiner_address):
+            raise EscrowError(
+                "This match is set up for your passkey wallet. Lock from the passkey link instead. "
+                "Nothing was charged."
+            )
 
     idempotency_key = f"approve-join-{challenge_id}"
     existing = _find_existing_audit(
@@ -648,7 +668,7 @@ async def _approve_and_join_match(
         st = _onchain_match_status(chain_id, challenge_id)
         if (
             st
-            and st.get("player2")
+            and _same_address(st.get("player2"), joiner_address)  # audit D-01: our join only
             and (st.get("status") or "").upper() in ("LOCKED", "DISPUTED")
             and _same_stake(st.get("stake_per_player"), stake_usd)
         ):

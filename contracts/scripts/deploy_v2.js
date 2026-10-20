@@ -61,6 +61,7 @@ import hre from "hardhat";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { preflight } from "./lib/v2_preflight.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -126,27 +127,19 @@ async function main() {
   }
   if (!usdc) throw new Error(`no USDC address for ${network.name}; set USDC_ADDRESS`);
 
-  // Real-money checks before anything is sent.
+  // Real-money posture: never a SpectatorPool, and a launch stake cap.
+  if (mainnet && process.env.DEPLOY_SPECTATOR_POOL === "1") {
+    throw new Error("SpectatorPool is never deployed to a mainnet: spectator betting stays on testnet");
+  }
+  // Audit 2026-10 L-04, on every non-local network (not only mainnets): USDC
+  // is a 6-decimal contract, the owner is a Safe with code on this chain (or
+  // the founder EOA fallback with V2_OWNER_IS_EOA=1), the resolver is an EOA.
+  const { ownerKind, warnings } = await preflight(ethers, {
+    networkName: network.name, local, mainnet, usdc, multisig, treasury, resolver,
+  });
+  for (const w of warnings) console.warn(`WARNING: ${w}`);
   let maxStake = null;
-  let ownerKind = "unchecked";
   if (mainnet) {
-    if (process.env.DEPLOY_SPECTATOR_POOL === "1") {
-      throw new Error("SpectatorPool is never deployed to a mainnet: spectator betting stays on testnet");
-    }
-    const code = await ethers.provider.getCode(multisig);
-    if (code && code !== "0x") {
-      ownerKind = "contract (Safe)";
-    } else if (process.env.V2_OWNER_IS_EOA === "1") {
-      ownerKind = "EOA (founder-wallet fallback)";
-    } else {
-      throw new Error(
-        `V2_OWNER_MULTISIG ${multisig} has no code on ${network.name}. Deploy the Safe first, or set ` +
-          "V2_OWNER_IS_EOA=1 to accept the founder-wallet fallback (see the runbook)"
-      );
-    }
-    const erc20 = new ethers.Contract(usdc, ["function decimals() view returns (uint8)"], ethers.provider);
-    const decimals = Number(await erc20.decimals());
-    if (decimals !== 6) throw new Error(`USDC at ${usdc} reports ${decimals} decimals, expected 6`);
     maxStake = ethers.parseUnits(process.env.ESCROW_MAX_STAKE_USDC || "25", 6);
   } else if (process.env.ESCROW_MAX_STAKE_USDC) {
     maxStake = ethers.parseUnits(process.env.ESCROW_MAX_STAKE_USDC, 6);
@@ -178,8 +171,10 @@ async function main() {
   // Offer ownership to the multisig; it must acceptOwnership() on each.
   await (await escrow.transferOwnership(multisig)).wait();
   if (pool) await (await pool.transferOwnership(multisig)).wait();
-  if ((await escrow.pendingOwner()).toLowerCase() !== multisig.toLowerCase()) {
-    throw new Error("pendingOwner is not the multisig — stop and investigate");
+  for (const c of pool ? [escrow, pool] : [escrow]) {
+    if ((await c.pendingOwner()).toLowerCase() !== multisig.toLowerCase()) {
+      throw new Error("pendingOwner is not the multisig — stop and investigate");
+    }
   }
 
   const info = {
@@ -228,7 +223,7 @@ async function main() {
   }
   console.log("\nBackend env (switch only after acceptOwnership on both):");
   console.log(`BOARDMAN_ESCROW_ADDRESS_ARC=${escrowAddr}`);
-  console.log(`SPECTATOR_ESCROW_ADDRESS=${poolAddr}`);
+  if (poolAddr) console.log(`SPECTATOR_ESCROW_ADDRESS=${poolAddr}`);
   console.log("BOARDMAN_RESOLVER_KEY=<private key of the resolver above>");
 }
 
