@@ -7,6 +7,7 @@ Auth (required for all routes except GET /health when keys are configured):
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any, Literal, Optional
 
@@ -149,6 +150,59 @@ def _require_owner_of(caller: StackCaller, agent_id: str) -> Optional[str]:
     return caller.party_id
 
 
+def _require_builder_may_seat(principal: ApiKeyPrincipal, agent_ids: list[str]) -> None:
+    """A builder key opens / locks / plays only its own agents' matches.
+
+    Its opponent may be a platform agent (the House, Raja, Nero: no
+    ``registered_by`` or registered by the master key), never another
+    builder's agent: locking stakes from someone else's bankroll and then
+    running the game is theirs to decide. The master key (and the local open
+    demo) may seat anyone.
+    """
+    if _principal_trusted(principal):
+        return
+    from gaming.src.backend.rematch_auth import MASTER_BUILDER_ID
+    from gaming.src.stack.agentic.registry import get_registry
+
+    reg = get_registry()
+    own = False
+    for aid in agent_ids:
+        rec = reg.get_agent(str(aid or "")) or {}
+        by = str(rec.get("registered_by") or "")
+        if by == principal.builder_id:
+            own = True
+        elif by and by != MASTER_BUILDER_ID:
+            raise HTTPException(status_code=403, detail=f"{aid} belongs to another builder")
+    if not own:
+        raise HTTPException(status_code=403, detail="a builder key can only seat its own agents")
+
+
+def _require_builder_may_run(principal: ApiKeyPrincipal, match_id: str) -> None:
+    if _principal_trusted(principal):
+        return
+    from gaming.src.stack.agentic.matches import get_match_service
+
+    m = get_match_service().get(match_id)
+    if not m:
+        raise HTTPException(404, "match not found")
+    _require_builder_may_seat(principal, [m.get("agent_a_id"), m.get("agent_b_id")])
+
+
+_URL_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9+.-]*://\S+")
+MAX_VOLUME_DAYS = 90
+
+
+def _safe_err(exc: BaseException) -> str:
+    """Error text for a client: RPC URLs (which often embed a provider key)
+    are cut out and the message is capped."""
+    return _URL_RE.sub("<url>", str(exc))[:200]
+
+
+def _clamp_days(days: Optional[int]) -> Optional[int]:
+    """eth_getLogs scans grow with the window; keep it bounded."""
+    return None if days is None else max(1, min(int(days), MAX_VOLUME_DAYS))
+
+
 class CreateMatchBody(BaseModel):
     agent_a_id: str
     agent_b_id: str
@@ -251,7 +305,7 @@ class HouseOpenBody(BaseModel):
 
 
 @router.post("/house/matches")
-def house_open_match(body: HouseOpenBody, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def house_open_match(body: HouseOpenBody, _: StackCaller = Depends(require_platform_admin)):
     from gaming.src.stack.agentic.house import get_house
 
     try:
@@ -269,7 +323,7 @@ def house_open_match(body: HouseOpenBody, _: ApiKeyPrincipal = Depends(require_s
 
 
 @router.post("/house/matches/{match_id}/lock")
-def house_lock(match_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def house_lock(match_id: str, _: StackCaller = Depends(require_platform_admin)):
     from gaming.src.stack.agentic.house import get_house
 
     try:
@@ -329,7 +383,7 @@ class HouseRematchBody(BaseModel):
 
 
 @router.post("/house/rematch")
-def house_rematch(body: HouseRematchBody = HouseRematchBody(), _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def house_rematch(body: HouseRematchBody = HouseRematchBody(), _: StackCaller = Depends(require_platform_admin)):
     """Raja vs Nero via House — same path as scripts/run_house_session.py."""
     from gaming.src.stack.agentic.house import get_house
     from gaming.src.stack.agentic.disbursement import DisbursementDenied
@@ -426,7 +480,7 @@ def house_schedule_get(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
 @router.post("/house/schedule")
 def house_schedule_set(
     body: HouseScheduleBody = HouseScheduleBody(),
-    _: ApiKeyPrincipal = Depends(require_stack_api_key),
+    _: StackCaller = Depends(require_platform_admin),
 ):
     from gaming.src.stack.agentic.house_schedule import (
         clamp_burst,
@@ -448,7 +502,7 @@ def house_schedule_set(
 
 
 @router.get("/house/status")
-def house_status(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def house_status(_: StackCaller = Depends(require_platform_admin)):
     """Operator status: schedule, agent health, bot process, last settlement.
 
     Plain def: socket probes and the /proc scan block, so FastAPI runs this in
@@ -572,7 +626,7 @@ def house_status(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
 
 
 @router.post("/house/matches/{match_id}/play")
-def house_play(match_id: str, body: HousePlayBody = HousePlayBody(), _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def house_play(match_id: str, body: HousePlayBody = HousePlayBody(), _: StackCaller = Depends(require_platform_admin)):
     from gaming.src.stack.agentic.house import get_house
 
     try:
@@ -590,7 +644,7 @@ def house_play(match_id: str, body: HousePlayBody = HousePlayBody(), _: ApiKeyPr
 
 
 @router.post("/agents/demo/seed")
-def seed_demo_agents(_: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def seed_demo_agents(_: StackCaller = Depends(require_platform_admin)):
     from gaming.src.stack.agentic.registry import get_registry
     from gaming.src.stack.agentic.chess.personas import get_persona
 
@@ -620,6 +674,7 @@ def agents_onchain_volume(
     """
     from gaming.src.stack.agentic.store import load_json
 
+    days = _clamp_days(days)
     try:
         data = load_json("matches.json", {"matches": {}})
     except Exception:
@@ -693,9 +748,9 @@ def _agents_onchain_transfer_volume(days: Optional[int] = None) -> dict[str, Any
                     "cached": vol.get("cached", False),
                 }
             except Exception as exc:
-                res[a["agent_id"]] = {"wallet": wid, "error": str(exc)}
+                res[a["agent_id"]] = {"wallet": wid, "error": _safe_err(exc)}
     except Exception as exc:
-        res["_error"] = str(exc)
+        res["_error"] = _safe_err(exc)
     return res
 
 
@@ -709,6 +764,7 @@ def agent_onchain_volume(
     from gaming.src.stack.agentic.registry import get_registry
     from gaming.src.stack.agentic.onchain import usdc_transfer_volume
 
+    days = _clamp_days(days)
     a = get_registry().get_agent(agent_id)
     if not a:
         raise HTTPException(404, "agent not found")
@@ -720,7 +776,7 @@ def agent_onchain_volume(
             wid, chain_id=a.get("chain_id") or "arc", days=days
         )
     except Exception as exc:
-        raise HTTPException(502, f"on-chain volume read failed: {exc}") from exc
+        raise HTTPException(502, f"on-chain volume read failed: {_safe_err(exc)}") from exc
     return {
         "success": True,
         "agent_id": agent_id,
@@ -772,7 +828,7 @@ def get_agent(
             # Prefer on-chain as the play balance when live
             a["usdc_balance"] = str(onchain_bal)
     except Exception as exc:
-        a["wallet"]["onchain_error"] = str(exc)
+        a["wallet"]["onchain_error"] = _safe_err(exc)
     a["llm"] = key_status(a.get("agent_id") or agent_id, a.get("name") or "")
     return {"success": True, "agent": a}
 
@@ -816,7 +872,7 @@ def get_agent_wallet(
             out["spendable_usdc"] = str(onchain_bal)
             out["settlement_mode"] = "onchain"
     except Exception as exc:
-        out["onchain_error"] = str(exc)
+        out["onchain_error"] = _safe_err(exc)
     return out
 
 
@@ -838,8 +894,10 @@ def get_match(match_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)
 
 
 @router.post("/matches")
-def create_match(body: CreateMatchBody, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def create_match(body: CreateMatchBody, principal: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.matches import get_match_service
+
+    _require_builder_may_seat(principal, [body.agent_a_id, body.agent_b_id])
 
     try:
         m = get_match_service().create_match(
@@ -856,8 +914,10 @@ def create_match(body: CreateMatchBody, _: ApiKeyPrincipal = Depends(require_sta
 
 
 @router.post("/matches/{match_id}/lock")
-def lock_match(match_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def lock_match(match_id: str, principal: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.matches import get_match_service
+
+    _require_builder_may_run(principal, match_id)
 
     try:
         m = get_match_service().lock_both(match_id)
@@ -867,8 +927,10 @@ def lock_match(match_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key
 
 
 @router.post("/matches/{match_id}/play")
-def play_match(match_id: str, body: RunBody = RunBody(), _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def play_match(match_id: str, body: RunBody = RunBody(), principal: ApiKeyPrincipal = Depends(require_stack_api_key)):
     from gaming.src.stack.agentic.matches import get_match_service
+
+    _require_builder_may_run(principal, match_id)
 
     try:
         m = get_match_service().run_match(
@@ -893,7 +955,7 @@ class DemoGameBody(BaseModel):
 
 
 @router.post("/demo/game")
-def demo_any_game(body: DemoGameBody = DemoGameBody(), _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def demo_any_game(body: DemoGameBody = DemoGameBody(), _: StackCaller = Depends(require_platform_admin)):
     """Raja vs Nero on any catalog game — lock, play, fees, spectator pot."""
     from gaming.src.stack.agentic.matches import get_match_service
 
@@ -993,7 +1055,7 @@ def register_agent(body: RegisterAgentBody, principal: ApiKeyPrincipal = Depends
 
 
 @router.post("/demo/chess")
-def demo_chess(body: DemoBody = DemoBody(), _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def demo_chess(body: DemoBody = DemoBody(), _: StackCaller = Depends(require_platform_admin)):
     """
     Seed Raja vs Nero, dual-lock USDC, play live chess, settle.
     """
@@ -2210,18 +2272,20 @@ async def football_agents_purchase(body: FootballAgentPurchaseBody, caller: Stac
 
 
 @router.get("/football/agents/wallet")
-def football_agents_wallet(party_id: str, _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def football_agents_wallet(party_id: str = "", caller: StackCaller = Depends(require_stack_caller)):
     """Wallet status for a marketplace party: what they pay with and get paid
-    to — demo ledger wallet vs a bound real (Circle) wallet on Arc."""
+    to — demo ledger wallet vs a bound real (Circle) wallet on Arc. The
+    party is the caller's own (the platform may name any)."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
         wallet_status,
     )
 
-    return {"success": True, "wallet": wallet_status(party_id)}
+    party = _acting_party(caller, party_id, field="party_id") or ""
+    return {"success": True, "wallet": wallet_status(party)}
 
 
 @router.get("/football/agents/sales")
-def football_agents_sales(party_id: str = "", _: ApiKeyPrincipal = Depends(require_stack_api_key)):
+def football_agents_sales(party_id: str = "", caller: StackCaller = Depends(require_stack_caller)):
     """Owner dashboard desk: money a party has earned from manager sales and
     the listing history — earnings (seller proceeds + developer creator cuts),
     the managers they own with their live listing state, and the timeline of
@@ -2230,7 +2294,8 @@ def football_agents_sales(party_id: str = "", _: ApiKeyPrincipal = Depends(requi
         party_sales_view,
     )
 
-    return {"success": True, "sales": party_sales_view(party_id)}
+    party = _acting_party(caller, party_id, field="party_id") or ""
+    return {"success": True, "sales": party_sales_view(party)}
 
 
 @router.post("/football/agents/wallet/bind")

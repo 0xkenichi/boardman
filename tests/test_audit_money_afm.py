@@ -205,14 +205,17 @@ def test_afm_bets_refused_on_mainnet_even_with_the_switch_on(fixture_open, monke
     assert L.balance("fan_main") == Decimal("10")
 
 
-def test_bridge_withdraw_refused_on_mainnet(monkeypatch):
+def test_bridge_withdraw_refused_on_a_real_money_chain(monkeypatch):
+    """The withdraw had no realm gate at all; since the realms merge the one
+    gate is realms.bridge_chain(): practice money only, fail closed."""
     from gaming.src.backend.services import play_adjust
+    from gaming.src.backend.services.realms import RealmMisconfigured, RealmViolation
     from gaming.src.stack.agentic import ledger as L
     from gaming.src.stack.agentic import wallet_bridge as wb
 
     L.credit(wb.party_ledger_wallet("p_main"), Decimal("25"), reason="legacy")
-    monkeypatch.setenv("NETWORK", "mainnet")
-    with pytest.raises(wb.BridgeError):
+    monkeypatch.setenv("BOARDMAN_ARENA_CHAIN", "arc_mainnet")
+    with pytest.raises((RealmMisconfigured, RealmViolation, wb.BridgeError)):
         wb.withdraw("p_main", "25", "wd-main-1")
     assert play_adjust.get_adjust("p_main") == Decimal("0")
     assert L.balance(wb.party_ledger_wallet("p_main")) == Decimal("25")

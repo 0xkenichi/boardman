@@ -595,10 +595,10 @@ async def _process_screenshot_message(
             conf = ai.get("confidence") or 0
             clubs = ""
             if ai.get("team1_name") or ai.get("team2_name"):
-                clubs = f"\nClubs: {ai.get('team1_name') or '?'} vs {ai.get('team2_name') or '?'}"
+                clubs = f"\nClubs: {h(ai.get('team1_name') or '?')} vs {h(ai.get('team2_name') or '?')}"
             ids = ""
             if ai.get("player1_id") or ai.get("player2_id"):
-                ids = f"\nIDs: {ai.get('player1_id') or '—'} / {ai.get('player2_id') or '—'}"
+                ids = f"\nIDs: {h(ai.get('player1_id') or '—')} / {h(ai.get('player2_id') or '—')}"
             from gaming.src.backend.services.game_catalog import is_binary_outcome
 
             if is_binary_outcome(game_key) and ai_home is not None and ai_away is not None:

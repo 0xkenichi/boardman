@@ -46,13 +46,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy requirement file first to leverage Docker layer caching.
-COPY src/backend/requirements.txt /app/requirements.txt
+# Copy requirement files first to leverage Docker layer caching.
+COPY src/backend/requirements.txt src/backend/requirements-lock.txt /app/
 
-# Create the shared Python virtual environment and install all dependencies.
+# Create the shared Python virtual environment and install all dependencies,
+# constrained to the exact versions in requirements-lock.txt (infra audit INF-11).
 RUN python -m venv /app/.venv && \
-    /app/.venv/bin/pip install --no-cache-dir --upgrade pip && \
-    /app/.venv/bin/pip install --no-cache-dir -r /app/requirements.txt
+    /app/.venv/bin/pip install --no-cache-dir pip==26.2.1 && \
+    /app/.venv/bin/pip install --no-cache-dir -r /app/requirements.txt -c /app/requirements-lock.txt
 
 # Copy the tracked source tree and config (brand assets are optional for the bot).
 COPY src /app/src

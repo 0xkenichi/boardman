@@ -74,6 +74,8 @@ export async function POST(
     if (action === 'accept') {
       const res = await stackFetch(`/api/stack/v1/matches/${encodeURIComponent(code)}/accept`, {
         method: 'POST',
+        headers: { 'X-Boardman-Caller': s.profileId },
+        clientReq: req,
         body: JSON.stringify({ opponent_id: s.profileId }),
       })
       return NextResponse.json(
@@ -84,6 +86,8 @@ export async function POST(
     if (action === 'lock') {
       const res = await stackFetch(`/api/stack/v1/matches/${encodeURIComponent(code)}/lock`, {
         method: 'POST',
+        headers: { 'X-Boardman-Caller': s.profileId },
+        clientReq: req,
         body: JSON.stringify({ profile_id: s.profileId }),
       })
       return NextResponse.json(

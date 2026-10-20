@@ -125,6 +125,10 @@ def is_production() -> bool:
     for name in ("CLAW_DEFAULT_CHAIN", "BOARDMAN_SETTLEMENT_RAIL"):
         if (os.getenv(name) or "").strip().lower() == "arc_mainnet":
             return True
+    # Money realms: once real money is switched on, money routes fail closed
+    # (the arena keeps running on practice chips in the same process).
+    if _env_flag("REAL_MONEY_ENABLED"):
+        return True
     return False
 
 
@@ -349,17 +353,20 @@ def detect_country(request, db_path: Optional[Path] = None) -> Optional[str]:
         return None
 
     edge = list(load_policy().get("edge_country_headers") or [])
-    # Accept the legacy capitalised spellings when callers pass a plain dict.
-    names: list[str] = []
+    # The first edge header that is PRESENT decides, even when its value is
+    # unknown (Cloudflare "XX", Tor "T1", garbage). Falling through to the
+    # next header let a Tor user (cf-ipcountry: T1) pick their country with a
+    # self-typed x-vercel-ip-country, which nothing overwrites on the
+    # Cloudflare-fronted API host.
     for h in edge:
-        names.append(h)
+        variants = [h, h.lower()]
         if h == "cf-ipcountry":
-            names.append("CF-IPCountry")
+            variants.append("CF-IPCountry")
         elif h == "x-vercel-ip-country":
-            names.append("X-Vercel-IP-Country")
-    country = _header_country(headers, names)
-    if country:
-        return country
+            variants.append("X-Vercel-IP-Country")
+        raw = next((headers.get(v) for v in variants if headers.get(v)), None)
+        if raw is not None and str(raw).strip():
+            return _header_country({h: raw}, [h])
 
     client_ip = None
     if hasattr(request, "client") and request.client is not None:

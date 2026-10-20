@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional
@@ -216,14 +217,32 @@ def _dispute_window_elapsed(challenge: dict) -> bool:
     return (_utcnow() - updated) >= timedelta(minutes=DEFAULT_DISPUTE_WINDOW_MINUTES)
 
 
+_B64_RE = re.compile(r"[A-Za-z0-9+/=\s]+")
+
+
 async def _resolve_screenshot_source(ref: str) -> str:
     """Turn a Telegram file_id into a downloadable HTTPS URL when needed."""
     if not ref:
         return ref
-    if ref.startswith("http://") or ref.startswith("https://") or ref.startswith("data:"):
+    if ref.startswith("http://") or ref.startswith("https://"):
+        # Only Telegram's own file host. Any other URL in a challenge row would
+        # make settlement fetch an attacker-chosen target (SSRF) with redirects on.
+        from urllib.parse import urlsplit
+
+        if urlsplit(ref).hostname == "api.telegram.org" and ref.startswith("https://"):
+            return ref
+        logger.warning("[Settlement] refusing screenshot URL on an untrusted host")
+        return ""
+    if ref.startswith("data:"):
         return ref
-    if len(ref) > 200 and "/" not in ref:
-        return ref  # already base64
+    if len(ref) > 200 and _B64_RE.fullmatch(ref):
+        # Raw base64 from the bot. Hand it on as a data URL so the verifier
+        # never mistakes it for a file path ("////etc/passwd" is base64-clean).
+        return f"data:image/jpeg;base64,{ref}"
+    if not ref.startswith("evidence://") and ("/" in ref or "\\" in ref or ref.startswith(".")):
+        # Never a filesystem path: score_verifier would open() it.
+        logger.warning("[Settlement] refusing path-like screenshot ref")
+        return ""
     if ref.startswith("evidence://"):
         # Chat screenshots copied to our storage (WhatsApp media, CHANNELS_DESIGN §4.4)
         try:
@@ -268,6 +287,46 @@ async def _resolve_screenshot_source(ref: str) -> str:
     except Exception as exc:
         logger.warning("[Settlement] Telegram file resolve failed: %s", exc)
         return ref
+
+
+def _is_binary_game(challenge: dict) -> bool:
+    try:
+        from gaming.src.backend.services.game_catalog import is_binary_outcome
+
+        return bool(is_binary_outcome(str(challenge.get("game") or "")))
+    except Exception:
+        return False
+
+
+def _side_owner(challenge: dict, side: str) -> Optional[str]:
+    """Profile that played ``side`` (home | away), from the reported sides."""
+    creator, opponent = challenge.get("creator_id"), challenge.get("opponent_id")
+    cs, os_ = challenge.get("creator_side"), challenge.get("opponent_side")
+    if cs == side:
+        return creator
+    if os_ == side:
+        return opponent
+    if cs in ("home", "away"):
+        return opponent
+    if os_ in ("home", "away"):
+        return creator
+    return creator if side == "home" else opponent  # legacy: creator treated as home
+
+
+def _ai_winner_id(challenge: dict, label: Optional[str], *, shot_owner: str = "creator") -> Optional[str]:
+    """Map the verifier's left/right winner (player1 = left) to a profile.
+
+    Scoreline games show home on the left for everyone, so left is whoever
+    played home (``creator_side``), not the creator. Avatar games (8 Ball...)
+    show the screenshot's owner on the left.
+    """
+    if label not in ("player1", "player2"):
+        return None
+    creator, opponent = challenge.get("creator_id"), challenge.get("opponent_id")
+    if _is_binary_game(challenge):
+        left, right = (creator, opponent) if shot_owner == "creator" else (opponent, creator)
+        return left if label == "player1" else right
+    return _side_owner(challenge, "home" if label == "player1" else "away")
 
 
 async def verify_with_ai_vision(challenge: dict) -> dict:
@@ -327,20 +386,14 @@ async def verify_with_ai_vision(challenge: dict) -> dict:
                 screenshot_p2=opponent_ss,
                 reported_p1=reported_p1,
                 reported_p2=reported_p2,
+                mirrored_layout=_is_binary_game(challenge),
             )
-            winner_label = result.get("winner")
-            winner_id = None
-            if winner_label == "player1":
-                winner_id = challenge["creator_id"]
-            elif winner_label == "player2":
-                winner_id = challenge["opponent_id"]
-            conf = 0.0
-            p1 = result.get("p1_result")
-            p2 = result.get("p2_result")
-            if p1 is not None and hasattr(p1, "confidence"):
-                conf = max(conf, float(p1.confidence or 0))
-            if p2 is not None and hasattr(p2, "confidence"):
-                conf = max(conf, float(p2.confidence or 0))
+            winner_id = _ai_winner_id(challenge, result.get("winner"), shot_owner="creator")
+            # The weaker of the two readings: one sure screenshot must not
+            # vouch for the other.
+            confs = [float(getattr(r, "confidence", 0) or 0)
+                     for r in (result.get("p1_result"), result.get("p2_result")) if r is not None]
+            conf = min(confs) if len(confs) == 2 else 0.0
             return {
                 "resolved": bool(result.get("resolved")),
                 "winner_id": winner_id,
@@ -360,8 +413,10 @@ async def verify_with_ai_vision(challenge: dict) -> dict:
                 "skip_dispute_window": False,
             }
 
-    # Single screenshot — extract score and map winner by who is ahead
+    # Single screenshot — extract score and map winner by who is ahead. One
+    # player's own picture is never enough to skip the dispute window.
     ss = creator_ss or opponent_ss
+    owner = "creator" if creator_ss else "opponent"
     try:
         single = await verifier.verify_screenshot(ss)
         if not single.is_valid:
@@ -374,18 +429,16 @@ async def verify_with_ai_vision(challenge: dict) -> dict:
                 "skip_dispute_window": False,
             }
         p1, p2 = int(single.player1_score or 0), int(single.player2_score or 0)
-        winner_id = None
-        if p1 > p2:
-            winner_id = challenge["creator_id"]
-        elif p2 > p1:
-            winner_id = challenge.get("opponent_id")
+        label = "player1" if p1 > p2 else "player2" if p2 > p1 else None
+        winner_id = _ai_winner_id(challenge, label, shot_owner=owner)
         return {
             "resolved": True,
             "winner_id": winner_id,
             "confidence": float(single.confidence or 0),
             "verified_score": f"{p1}-{p2}",
             "reason": "single_screenshot",
-            "skip_dispute_window": float(single.confidence or 0) >= AI_FAST_SETTLE_CONFIDENCE,
+            "single": True,
+            "skip_dispute_window": False,
         }
     except Exception as exc:
         logger.warning("[Settlement] single screenshot verify failed: %s", exc)
@@ -673,8 +726,15 @@ async def settle_challenge(challenge_id: str, admin_winner_id: Optional[str] = N
             # Scores may agree but we want photos — try AI if at least one shot exists
             if challenge.get("screenshot_creator_url") or challenge.get("screenshot_opponent_url"):
                 ai = await verify_with_ai_vision(challenge)
-                if ai.get("resolved") and float(ai.get("confidence") or 0) >= AI_FAST_SETTLE_CONFIDENCE:
-                    winner_id = ai.get("winner_id")
+                reported_winner = _determine_winner_from_scores(challenge)
+                # The AI may confirm what both players reported, never replace it.
+                if (
+                    ai.get("resolved")
+                    and float(ai.get("confidence") or 0) >= AI_FAST_SETTLE_CONFIDENCE
+                    and reported_winner is not None
+                    and ai.get("winner_id") == reported_winner
+                ):
+                    winner_id = reported_winner
                     skip_window = True
                     ai_meta = {
                         "verified_score": ai.get("verified_score"),
@@ -713,13 +773,13 @@ async def settle_challenge(challenge_id: str, admin_winner_id: Optional[str] = N
                     "winner_id": ai.get("winner_id"),
                 }
                 if ai.get("resolved"):
-                    # Prefer AI winner when confidence high or scorelines inconclusive
-                    if ai.get("winner_id") is not None and (
-                        winner_id is None
-                        or float(ai.get("confidence") or 0) >= AI_FAST_SETTLE_CONFIDENCE
-                    ):
+                    # Agreeing reports decide; the AI only fills a gap (no
+                    # winner from the reports, two agreeing screenshots) and
+                    # never overrides what both players reported.
+                    if winner_id is None and ai.get("winner_id") is not None and not ai.get("single"):
                         winner_id = ai.get("winner_id")
-                    if ai.get("skip_dispute_window"):
+                    if (ai.get("skip_dispute_window") and winner_id is not None
+                            and ai.get("winner_id") == winner_id):
                         skip_window = True
                     # AI draw
                     if ai.get("resolved") and ai.get("winner_id") is None and ai.get("verified_score"):

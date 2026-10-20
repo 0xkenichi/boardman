@@ -77,12 +77,20 @@ def reauth_max_age_ms() -> int:
 
 
 def chain_key() -> str:
+    """The chain passkey wallets live on. Default: the chain new human
+    challenges use (the humans-realm mainnet chain once real money is live,
+    the practice chain before), so passkey locks and challenges agree."""
     raw = (os.getenv("SELF_CUSTODY_CHAIN") or "").strip()
     if raw:
         return raw
-    from gaming.src.backend.services.chains import default_chain_id
+    try:
+        from gaming.src.backend.services.realms import new_challenge_chain
 
-    return default_chain_id()
+        return new_challenge_chain()
+    except Exception:
+        from gaming.src.backend.services.chains import default_chain_id
+
+        return default_chain_id()
 
 
 def wallet_key(chain: str | None = None) -> str:
@@ -110,5 +118,13 @@ def chain_settings(chain: str | None = None) -> dict[str, Any]:
 
 
 def escrow_version_override() -> int | None:
+    """Practice chains: the legacy BOARDMAN_ESCROW_VERSION override. A real
+    chain uses its configured version (chains.yaml), never a testnet knob."""
+    from gaming.src.backend.services.realms import is_real_chain
+
+    if is_real_chain(chain_key()):
+        from gaming.src.backend.services.chains import escrow_version
+
+        return escrow_version(chain_key())
     raw = (os.getenv("BOARDMAN_ESCROW_VERSION") or "").strip()
     return int(raw) if raw in {"1", "2"} else None

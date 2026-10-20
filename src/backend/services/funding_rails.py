@@ -68,8 +68,21 @@ def reload_funding_config() -> dict[str, Any]:
 
 
 def settlement_rail_id() -> str:
+    """The PRACTICE settlement rail (legacy default for paths that name no
+    chain). Real money is never reached through it: a human challenge uses
+    its own ``settlement_chain`` (services/realms.py)."""
     cfg = load_funding_config()
-    return (os.getenv("BOARDMAN_SETTLEMENT_RAIL") or cfg.get("settlement_rail") or "arc").strip().lower()
+    raw = (os.getenv("BOARDMAN_SETTLEMENT_RAIL") or cfg.get("settlement_rail") or "arc").strip().lower()
+    try:
+        from gaming.src.backend.services.realms import arena_chain, is_practice_chain
+
+        if not is_practice_chain(raw):
+            logger.error("[funding] settlement rail %s is real money; using the arena chain", raw)
+            return arena_chain()
+    except Exception:
+        logger.error("[funding] realm check failed; using arc", exc_info=True)
+        return "arc"
+    return raw
 
 
 def player_copy() -> dict[str, str]:
@@ -227,11 +240,11 @@ class AbstractBalance:
         }
 
 
-async def get_abstract_balance(user_id: str) -> AbstractBalance:
+async def get_abstract_balance(user_id: str, chain_id: Optional[str] = None) -> AbstractBalance:
     """Single play balance on settlement rail (Arc). Chain names stay internal."""
     from gaming.src.backend.services.clawstation_circle import get_balance_summary
 
-    settle = settlement_rail_id()
+    settle = chain_id or settlement_rail_id()
     summary = await get_balance_summary(user_id, chain_id=settle)
     play = Decimal(str(summary.get("spendable_usdc") or 0))
     other = Decimal(str(summary.get("other_usdc") or 0))
@@ -258,14 +271,16 @@ class StakeReadiness:
     message_html: str = ""
 
 
-async def ensure_stake_ready(user_id: str, amount_usdc: float | Decimal) -> StakeReadiness:
+async def ensure_stake_ready(
+    user_id: str, amount_usdc: float | Decimal, chain_id: Optional[str] = None
+) -> StakeReadiness:
     """
     Stakes require USDC on the settlement rail (Arc).
 
     Funding-rail balances are NOT stakeable until converted.
     """
     amount = Decimal(str(amount_usdc)).quantize(Decimal("0.01"))
-    bal = await get_abstract_balance(user_id)
+    bal = await get_abstract_balance(user_id, chain_id=chain_id)
     settle = bal.settlement_rail
     play = bal.play_usdc
     short = amount - play if play < amount else Decimal("0")
@@ -280,6 +295,16 @@ async def ensure_stake_ready(user_id: str, amount_usdc: float | Decimal) -> Stak
             message_html="",
         )
 
+    from gaming.src.backend.services.realms import is_real_chain
+
+    if is_real_chain(settle):
+        msg = (
+            f"You need <b>${amount:,.2f}</b> real money to lock this stake.\n"
+            f"Real-money balance: <b>${play:,.2f}</b>. Short by <b>${short:,.2f}</b>.\n\n"
+            "Top up with naira (Add money). Practice chips can't be used in real-money matches."
+        )
+        return StakeReadiness(ok=False, amount_usdc=amount, play_usdc=play, shortfall=short,
+                              settlement_rail=settle, needs_convert=False, message_html=msg)
     # Could scan other EVM wallets later; for now abstract = Arc play only
     msg = (
         f"You need <b>${amount:,.2f}</b> play money to lock this stake.\n"

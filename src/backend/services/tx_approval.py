@@ -16,6 +16,7 @@ Mode columns on profiles: approval_mode_spectator_bet / approval_mode_lp_deposit
 from __future__ import annotations
 
 import asyncio
+import html
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
@@ -75,7 +76,7 @@ def set_approval_mode(profile_id: str, action: str, mode: str) -> None:
 def _approval_text(action: str, payload: dict) -> str:
     amount = float(payload.get("amount") or 0)
     if action == "lp_deposit":
-        agent = str(payload.get("agent_name") or payload.get("agent_id") or "the agent")
+        agent = html.escape(str(payload.get("agent_name") or payload.get("agent_id") or "the agent"))
         return (
             f"💧 <b>Approve LP deposit?</b>\n\n"
             f"You're about to provide <b>${amount:,.2f}</b> of liquidity to "
@@ -240,6 +241,19 @@ def store_apply_result(approval_id: str, result: dict) -> None:
         pass
 
 
+def _expired(row: dict) -> bool:
+    exp = row.get("expires_at")
+    if not exp:
+        return False
+    try:
+        end = datetime.fromisoformat(str(exp).replace("Z", "+00:00"))
+    except ValueError:
+        return True  # unreadable expiry: fail closed
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=timezone.utc)
+    return end <= datetime.now(timezone.utc)
+
+
 def resolve_approval(approval_id: str, decision: str, always: bool = False) -> dict:
     """
     Called by the Telegram bot when the user taps Yes / No / Always approve.
@@ -252,9 +266,19 @@ def resolve_approval(approval_id: str, decision: str, always: bool = False) -> d
         return {"ok": False, "reason": "approval_not_found"}
     if row.get("status") != "pending":
         return {"ok": False, "reason": "already_decided", "status": row.get("status")}
+    # A prompt outlives its request: if the website gave up (restart, closed
+    # tab) the row stays pending, and a Yes tapped hours later must not spend.
+    if _expired(row):
+        _mark_status(approval_id, "expired")
+        return {"ok": False, "reason": "already_decided", "status": "expired"}
 
     status = "approved" if decision == "yes" else "denied"
     _mark_status(approval_id, status)
+    # The update only applies to a pending row; a racing tap (No vs Yes, or a
+    # double tap) may have won. Report what is actually stored.
+    fresh = get_approval_row(approval_id) or {}
+    if fresh.get("status") != status:
+        return {"ok": False, "reason": "already_decided", "status": fresh.get("status")}
 
     profile_id = row.get("profile_id")
     action = row.get("action") or ""
@@ -416,7 +440,10 @@ async def apply_approved_spend(approval_id: str) -> dict:
 
     profile_id = str(row.get("profile_id") or "")
     try:
-        summary = await get_balance_summary(profile_id)
+        from gaming.src.backend.services.realms import arena_chain
+
+        # Spectator bets and LP deposits spend PRACTICE money only.
+        summary = await get_balance_summary(profile_id, chain_id=arena_chain())
     except Exception:
         summary = {}
 

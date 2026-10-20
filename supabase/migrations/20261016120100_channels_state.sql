@@ -74,11 +74,19 @@ CREATE TABLE IF NOT EXISTS channel_outbox (
 
 CREATE INDEX IF NOT EXISTS channel_outbox_provider_idx ON channel_outbox (provider_message_id);
 
+CREATE TABLE IF NOT EXISTS channel_evidence (
+  digest TEXT PRIMARY KEY,
+  challenge_id TEXT NOT NULL,
+  profile_id TEXT NOT NULL,
+  first_seen_ms BIGINT NOT NULL
+);
+
 -- Never reachable with the anon/authenticated keys.
 ALTER TABLE channel_conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE channel_tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE channel_rate_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE channel_inbound ENABLE ROW LEVEL SECURITY;
 ALTER TABLE channel_outbox ENABLE ROW LEVEL SECURITY;
+ALTER TABLE channel_evidence ENABLE ROW LEVEL SECURITY;
 
 COMMIT;

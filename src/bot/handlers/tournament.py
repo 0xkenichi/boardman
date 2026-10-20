@@ -1,7 +1,7 @@
 """
 Tournament Mode bot commands (v0) + Cups menu.
 
-Ops (admin / @stillkenichi):
+Ops (Telegram ids in CLAW_ADMIN_TELEGRAM_IDS only):
   /tcreate [4|8] [entry] [game_id] [title...] [--center=CODE]
   /tstart CODE
   /tstart CODE force
@@ -57,11 +57,9 @@ router = Router(name="tournament")
 def _is_ops(user: types.User | None) -> bool:
     if not user:
         return False
-    if is_admin(user.id):
-        return True
-    if (user.username or "").strip().lower() == "stillkenichi":
-        return True
-    return False
+    # By numeric Telegram id only: an @username can be changed and then
+    # claimed by anyone, so it never grants operator rights.
+    return is_admin(user.id)
 
 
 def _tag_map(profile_ids: list[str]) -> dict[str, str]:

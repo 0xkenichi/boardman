@@ -386,6 +386,39 @@ describe("BoardmanEscrow v2 safety", function () {
 
   // ─── Roles ───────────────────────────────────────────────────────────────
 
+  describe("stake cap (launch posture)", function () {
+    it("defaults to MAX_STAKE and only the owner can lower or raise it within bounds", async function () {
+      expect(await escrow.maxStakePerPlayer()).to.equal(await escrow.MAX_STAKE());
+      await expect(escrow.connect(resolver).setMaxStake(25_000_000n)).to.be.revertedWithCustomError(
+        escrow,
+        "OwnableUnauthorizedAccount"
+      );
+      await expect(escrow.connect(owner).setMaxStake(1_999_999n))
+        .to.be.revertedWithCustomError(escrow, "InvalidStakeCap")
+        .withArgs(1_999_999n);
+      await expect(escrow.connect(owner).setMaxStake(10_000_000_001n)).to.be.revertedWithCustomError(
+        escrow,
+        "InvalidStakeCap"
+      );
+      await expect(escrow.connect(owner).setMaxStake(25_000_000n))
+        .to.emit(escrow, "MaxStakeUpdated")
+        .withArgs(10_000_000_000n, 25_000_000n);
+    });
+
+    it("refuses a create above the cap even with a valid permit; joins of older matches still work", async function () {
+      const old = ethers.id("cap_old");
+      await create(old, 100_000_000n);
+      await escrow.connect(owner).setMaxStake(25_000_000n);
+      await expect(create(ethers.id("cap_over"), 25_000_001n))
+        .to.be.revertedWithCustomError(escrow, "StakeExceedsMax")
+        .withArgs(25_000_001n);
+      await create(ethers.id("cap_at"), 25_000_000n);
+      await escrow.connect(player2).joinMatch(old);
+      expect(await escrow.getMatchStatus(old)).to.equal(LOCKED);
+      await expectSolvent();
+    });
+  });
+
   describe("roles", function () {
     it("ownership moves in two steps and cannot be renounced", async function () {
       await expect(escrow.connect(owner).transferOwnership(multisig.address))

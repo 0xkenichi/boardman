@@ -11,21 +11,23 @@ python-dotenv>=1.0.0
 pydantic>=2.9.2
 httpx>=0.24.0,<0.28.0
 h2>=4.4.1  # PYSEC-2026-3628 (HTTP/2 flood via httpx)
-aiohttp>=3.11.18
+aiohttp>=3.14.4  # GHSA-2g87-pp6c-29x5, CVE-2026-111063/111064 (2026-10 web audit)
+multidict>=6.9.1  # PYSEC-2026-4244 (aiohttp dep)
+anyio>=4.14.2  # PYSEC-2026-4024/4025 (starlette dep)
 web3>=6.15.0
 aiogram>=3.15.0
 python-multipart>=0.0.18
-PyJWT>=2.8.0
-python-jose[cryptography]>=3.3.0
-# ecdsa 0.19.2 (python-jose dep) has PYSEC-2026-1325 with NO published fix —
-# python-jose pins ecdsa<2, so monitor upstream; do not force-upgrade ecdsa.
+PyJWT>=2.15.0  # PYSEC-2026-4140..4167 (2026-10 web audit)
+# python-jose dropped (2026-10 web audit): nothing imports it, and it pulled
+# ecdsa (PYSEC-2026-1325, no fix) and its own PYSEC-2024-232 / PYSEC-2026-4298.
 passlib[bcrypt]>=1.7.4
 aiofiles>=24.1.0
 requests>=2.32.2
-urllib3>=2.7.0  # PYSEC-2026-141/142 (requests dep)
+urllib3>=2.8.0  # PYSEC-2026-141/142, PYSEC-2026-4175..4177 (requests dep)
 click>=8.3.3  # PYSEC-2026-2132
 cryptography>=50.0.0  # PYSEC-2026-3552
 openai>=1.3.0
+httpx2>=2.12.0  # PYSEC-2026-3846/3848/3849 (openai dep)
 Pillow>=11.1.0
 redis>=5.0.1
 anthropic>=0.25.0

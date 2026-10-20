@@ -56,16 +56,6 @@ def _emit(row: dict) -> None:
             logger.exception("[cctp] finish listener failed bridge=%s", row.get("id"))
 
 
-def _emit_burned(row: dict) -> None:
-    """The source-chain burn confirmed (the USDC has left the sender)."""
-    from gaming.src.backend.services.paycrest import events
-
-    try:
-        events.bridge_burned(row)
-    except Exception:
-        logger.exception("[cctp] burned listener failed bridge=%s", row.get("id"))
-
-
 def _backoff(attempts: int) -> int:
     return RETRY_MS[min(attempts, len(RETRY_MS) - 1)]
 
@@ -74,6 +64,14 @@ def start(*, idempotency_key: str, kind: str, profile_id: str, src_chain: str, d
           amount: Decimal, from_wallet_id: str, mint_recipient: str, fast: bool = False,
           max_fee_bps: Decimal = Decimal("0")) -> dict:
     """Record a transfer (once per key) and try its first leg."""
+    from gaming.src.backend.services import realms
+
+    # Money realms: a CCTP leg never crosses real and practice money, and the
+    # naira rail (Paycrest) moves real money only.
+    realms.assert_same_network(src_chain, dst_chain, path=f"cctp {kind}")
+    if kind.startswith(("onramp", "offramp")):
+        realms.assert_real(src_chain, path=f"cctp {kind}")
+        realms.assert_real(dst_chain, path=f"cctp {kind}")
     ops = get_chain_ops()
     use_fast = False
     max_fee = Decimal("0")
@@ -145,8 +143,7 @@ def advance(bridge_id: str) -> Optional[dict]:
                 # The allowance is still there: just burn again.
                 _fail_or_retry(row, "burn failed on chain", back_to="approve_submitted")
             else:
-                if store.update_bridge(bridge_id, expect=st, status="burned", burn_tx_hash=tx_hash, error=None):
-                    _emit_burned(store.get_bridge(bridge_id) or row)
+                store.update_bridge(bridge_id, expect=st, status="burned", burn_tx_hash=tx_hash, error=None)
         elif st == "burned":
             m = ops.fetch_message(row["src_chain"], row["burn_tx_hash"])
             if m.get("status") != "complete":

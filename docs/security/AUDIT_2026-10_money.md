@@ -155,15 +155,16 @@ These are the invariants the PoCs attack. Each is now asserted by at least one t
 
 - **Description.** `offramp.perform` checked `chain + overlay`, then `cctp.start`, which only approves; the burn lands 15 to 30 s or more later. Nothing reserved the amount in between.
 - **Exploit.** Confirm a 39.95 cash-out PIN on 40, then spend 39 through an overlay debit (a bet or the wallet bridge) before the burn. The bank is paid **and** an unbacked position is left behind; the house is short. This becomes exploitable once mainnet overlay debits are on.
-- **PoC.** `tests/test_audit_money_paycrest.py::test_cashout_holds_the_balance_until_the_burn`.
-- **Fix (`c138711`).**
-  - `perform` runs under `spend_lock`.
-  - It reserves the daily cap, then holds the amount on the overlay (`cashout-hold:<order>`, checked against the strict chain read minus gas).
-  - It releases the hold:
-    - when the burn confirms (new `cctp → events.bridge_burned → offramp.on_bridge_burned`);
-    - or when the bridge reaches a terminal state;
-    - or immediately if the bridge never started (the cap is given back too).
-- **Status.** Fixed.
+- **PoC.** On `70a7c64`: `test_cashout_holds_the_balance_until_the_burn`, in `c138711`.
+- **Fix (`c138711`, revised in the integration merge).**
+  - `perform` runs under `spend_lock` and reserves the daily cap before the bridge starts. The cap is given back if the bridge never starts.
+  - `c138711` also held the amount on the overlay until the burn. The merge of `integration/wave1` (launch/arc-mainnet-humans, `services/realms.py`) made that hold unnecessary and wrong:
+    - the overlay is now practice-only and never counts toward a real-money balance;
+    - bet, LP and bridge reservations read the practice chain;
+    - so a hold on the overlay would mix realms.
+  
+  The merge therefore removes the hold and the `cctp` burned hook. The regression test is now `test_overlay_spends_never_read_the_real_cashout_wallet`, which pins the realm separation.
+- **Status.** Fixed, by spend lock and cap reservation plus realm separation. Residual: a second real-money spend before the burn still passes the chain check. The burn then fails, and the order goes to `needs_review`. No double spend is possible (the chain cannot overdraw), but the runbook must check the chain before any manual refund (§8).
 
 ### M-04: High: a sub-micro AFM stake freezes the fixture
 
@@ -197,8 +198,11 @@ These are the invariants the PoCs attack. Each is now asserted by at least one t
   - `wallet_bridge.withdraw` (football wallet to play overlay) had no mainnet refusal, unlike `deposit`. Any `owner:` balance on mainnet (legacy or migrated) could become positive play overlay. That overlay counts toward bets, withdraw links and cash-out checks.
 - **PoC.** `tests/test_audit_money_afm.py`:
   - `test_afm_bets_refused_on_mainnet_even_with_the_switch_on`;
-  - `test_bridge_withdraw_refused_on_mainnet`.
-- **Fix (`e95442b`).** Both now refuse when `ledger._money_chain_is_mainnet()`. AFM bets return the standard 403 `spectator_betting_disabled`.
+  - `test_bridge_withdraw_refused_on_a_real_money_chain`.
+- **Fix (`e95442b`, revised in the integration merge).**
+  - **AFM bets** refuse when `ledger._money_chain_is_mainnet()`, with the standard 403 `spectator_betting_disabled`.
+  - **Bridge withdraw:** after the merge, `realms.bridge_chain()` is its single gate. That function is practice chain only, fails closed, and raises if the arena chain is ever configured as real money.
+  - The overlay this withdraw credits is practice-only and never counts toward a real balance, withdraw link or cash-out. So the `NETWORK=mainnet` refusal from `e95442b` was dropped: it would have blocked practice money on a mainnet-humans deployment.
 
 ### M-11: Medium: cash-out pays the whole out-wallet balance
 
@@ -311,11 +315,11 @@ These are the invariants the PoCs attack. Each is now asserted by at least one t
 - **Changed:** `tests/channels_fixtures.py` now also fakes `get_usdc_balance_strict`, because the money paths read the strict chain balance before reserving.
 - **Every PoC was run against the unfixed code and failed**, except the hardening tests marked as such in their docstrings.
 - **Postgres:** not run. There is no local Postgres on the audit host, and `BOARDMAN_TEST_DATABASE_URL` was unset. The new lock is built on `match_leases` (`INSERT … ON CONFLICT` plus `FOR UPDATE`), which earlier waves exercised on Postgres. Re-run `tests/test_audit_money_processes.py` with `BOARDMAN_TEST_DATABASE_URL` before mainnet.
-- **Full suite after the fixes:** 1150 passed, 7 skipped, 0 failed (1103 baseline + 47 new). Same command as the baseline, at `ff6da3d`.
+- **Full suite after the fixes:** 1150 passed, 7 skipped, 0 failed (1103 baseline + 47 new) at `ff6da3d`. After merging `integration/wave1` (realms, audit/channels, audit/infra, audit/web): 1290 passed, 7 skipped, 0 failed.
 
 ## 8. Residual risks and go-live gates
 
 1. **Don't turn on mainnet spectator, LP or AFM betting until O-1 is fixed.** M-05 and M-13 make the gates fail closed.
 2. **Settle O-2 and O-3 before naira volume grows.** Both turn a provider timeout into an "it failed" that a human then refunds by hand. Until they are fixed, give `needs_review` cash-outs and bridges a runbook step that checks the chain before any manual refund.
-3. **Reconcile reservations.** Ops should alert on `hold:*` and `cashout-hold:*` keys in `play_adjust.json` that have no release after 1 h.
+3. **Reconcile reservations.** Ops should alert on `hold:*` keys in `play_adjust.json` that have no `hold-pulled:` or `hold-unbooked:` release after 1 h.
 4. **Keep a single host** for the API, bot and house until `play_adjust` and the daily-cap store move into the shared database (O-18).

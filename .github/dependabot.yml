@@ -1,0 +1,41 @@
+# Keeps the pins introduced by the 2026-10 infra audit current: Python
+# (requirements.txt + requirements-lock.txt), npm lockfiles, the Docker base image
+# and the SHA-pinned GitHub Actions. Weekly, grouped, so it is one review pass.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /src/backend
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+    groups:
+      python-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      python-minor:
+        update-types: [minor, patch]
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule: { interval: weekly, day: monday }
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+    groups:
+      frontend-minor:
+        update-types: [minor, patch]
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /contracts
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 3

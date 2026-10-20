@@ -343,7 +343,10 @@ def _circle(chain_id: str = "arc"):
         get_rpc_url,
         get_usdc_address,
     )
+    from gaming.src.backend.services.realms import assert_practice
 
+    # AFM is arena money: practice chains only (services/realms.py).
+    assert_practice(chain_id, path="AFM market")
     return CircleWalletService(
         blockchain=get_circle_blockchain(chain_id),
         usdc_address=get_usdc_address(chain_id),

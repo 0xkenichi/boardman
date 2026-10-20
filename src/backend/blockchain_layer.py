@@ -223,6 +223,8 @@ class BlockchainLayer:
         explorer_tx: Optional[str] = None,
         evm_chain_id: Optional[int] = None,
         label: Optional[str] = None,
+        signer_private_key: Optional[str] = None,
+        real_money: bool = False,
     ):
         # Legacy NETWORK=testnet|mainnet path when no chain_id override
         if chain_id is None and rpc_url is None:
@@ -284,13 +286,24 @@ class BlockchainLayer:
                 e,
             )
 
-        # Admin wallet (resolver) — cancel/resolve/dispute
-        private_key = (
-            os.getenv("ADMIN_PRIVATE_KEY")
-            or os.getenv("RESOLVER_PRIVATE_KEY")
-            or os.getenv("GAS_TANK_PRIVATE_KEY")
-            or ""
-        )
+        # Admin wallet (resolver) — cancel/resolve/dispute.
+        # Money realms: a real-money chain signs ONLY with the keystore
+        # resolver passed in by get_blockchain_layer_for_chain (never an env
+        # private key); practice chains keep the legacy env keys.
+        if signer_private_key:
+            private_key = signer_private_key
+        elif real_money:
+            raise ValueError(
+                "[Blockchain] real-money chain needs the keystore resolver "
+                "(BOARDMAN_RESOLVER_KEY_MAINNET); env private keys are refused"
+            )
+        else:
+            private_key = (
+                os.getenv("ADMIN_PRIVATE_KEY")
+                or os.getenv("RESOLVER_PRIVATE_KEY")
+                or os.getenv("GAS_TANK_PRIVATE_KEY")
+                or ""
+            )
         if not private_key:
             raise ValueError(
                 "[Blockchain] ADMIN_PRIVATE_KEY not set "
@@ -576,8 +589,11 @@ def get_blockchain_layer_for_chain(chain_id: str) -> BlockchainLayer:
         normalize_chain_id,
     )
 
+    from gaming.src.backend.services.realms import is_real_chain, resolver_private_key
+
     cid = normalize_chain_id(cid)
     meta = get_chain(cid)
+    real = is_real_chain(cid)
     layer = BlockchainLayer(
         chain_id=cid,
         rpc_url=get_rpc_url(cid),
@@ -586,6 +602,10 @@ def get_blockchain_layer_for_chain(chain_id: str) -> BlockchainLayer:
         explorer_tx=meta.get("explorer_tx") or "",
         evm_chain_id=int(meta.get("chain_id") or 0),
         label=meta.get("label") or cid,
+        signer_private_key=resolver_private_key(cid) if real else None,
+        real_money=real,
     )
+    if real and int(layer.network.get("chain_id") or 0) != int(meta.get("chain_id") or -1):
+        raise ValueError(f"[Blockchain] {cid} chain id mismatch; refusing to sign real money")
     _chain_instances[cid] = layer
     return layer

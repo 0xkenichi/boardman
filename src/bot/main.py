@@ -41,6 +41,12 @@ logger = logging.getLogger(__name__)
 
 def _build_dispatcher() -> Dispatcher:
     dp = Dispatcher(storage=MemoryStorage())
+    # Groups only get read-only commands and the buttons on public posts: no
+    # money, link or PIN step may answer where other members can see it.
+    from gaming.src.bot.middleware.private_chat import PrivateChatGuard
+
+    dp.message.outer_middleware(PrivateChatGuard())
+    dp.callback_query.outer_middleware(PrivateChatGuard())
     # Instant callback.answer + debounce double-taps (stops spinner / dual replies)
     from gaming.src.bot.middleware.ux_speed import UxCallbackMiddleware
 

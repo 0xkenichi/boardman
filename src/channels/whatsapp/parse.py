@@ -32,7 +32,10 @@ def _int(v: Any) -> int:
         return 0
 
 
-def parse(payload: dict) -> tuple[list[Inbound], list[Status]]:
+def parse(payload: dict, *, phone_number_id: str = "") -> tuple[list[Inbound], list[Status]]:
+    """``phone_number_id``: when set, changes addressed to any other business
+    number (another number on the same Meta app, whose deliveries are signed
+    with the same app secret) are ignored instead of being answered from ours."""
     events: list[Inbound] = []
     statuses: list[Status] = []
     if not isinstance(payload, dict) or payload.get("object") != "whatsapp_business_account":
@@ -40,6 +43,12 @@ def parse(payload: dict) -> tuple[list[Inbound], list[Status]]:
     for entry in payload.get("entry") or []:
         for change in (entry or {}).get("changes") or []:
             value = (change or {}).get("value") or {}
+            if not isinstance(value, dict):
+                continue
+            if phone_number_id:
+                got = str((value.get("metadata") or {}).get("phone_number_id") or "")
+                if got != phone_number_id:
+                    continue
             names = {
                 str(c.get("wa_id")): ((c.get("profile") or {}).get("name") or "")
                 for c in value.get("contacts") or []

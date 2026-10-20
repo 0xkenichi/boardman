@@ -33,6 +33,42 @@ class MediaRejected(Exception):
     pass
 
 
+# Leading bytes of each accepted type. The declared mime (Meta's media_info, a
+# Telegram document's mime_type) is what the *sender* claims; the bytes decide.
+def _sniff_ok(data: bytes, mime: str) -> bool:
+    if mime == "image/jpeg":
+        return data[:3] == b"\xff\xd8\xff"
+    if mime == "image/png":
+        return data[:8] == b"\x89PNG\r\n\x1a\n"
+    if mime == "image/webp":
+        return data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+    if mime == "application/pdf":
+        return data[:5] == b"%PDF-"
+    return False
+
+
+def max_pixels() -> int:
+    # A small, highly compressed PNG can declare a huge canvas (a decompression
+    # bomb); decoding it would take the webhook worker down with it.
+    return config.int_env("CHANNELS_MEDIA_MAX_PIXELS", 40_000_000)
+
+
+# Hosts Meta serves media from. The bearer token goes with the download, so it
+# must never be sent anywhere else, whatever URL media_info returns.
+MEDIA_HOST_SUFFIXES = (".fbsbx.com", ".fbcdn.net", ".facebook.com", ".whatsapp.net")
+
+
+def media_url_allowed(url: str) -> bool:
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(url or "")
+    host = (parts.hostname or "").lower()
+    if parts.scheme != "https" or not host:
+        return False
+    extra = tuple(h.strip().lower() for h in (os.getenv("CHANNELS_MEDIA_HOSTS") or "").split(",") if h.strip())
+    return any(host == s.lstrip(".") or host.endswith(s) for s in MEDIA_HOST_SUFFIXES + extra)
+
+
 class EvidenceStore(Protocol):
     def put(self, key: str, data: bytes, mime: str) -> str: ...
 
@@ -77,12 +113,17 @@ def strip_exif(data: bytes, mime: str) -> bytes:
     except ImportError:
         return data
     try:
-        img = Image.open(io.BytesIO(data))
+        img = Image.open(io.BytesIO(data))  # lazy: reads the header only
+        w, h = img.size
+        if w * h > max_pixels():
+            raise MediaRejected("image dimensions too large")
         clean = Image.new(img.mode, img.size)
-        clean.putdata(list(img.getdata()))
+        clean.paste(img)  # pixels only (no EXIF / text chunks), decoded in C
         buf = io.BytesIO()
         clean.save(buf, format=img.format or "PNG")
         return buf.getvalue()
+    except MediaRejected:
+        raise
     except Exception:
         logger.warning("[whatsapp] EXIF strip failed; keeping original", exc_info=True)
         return data
@@ -96,6 +137,8 @@ def copy_to_storage(client, media_id: str, *, store: EvidenceStore | None = None
     mime = str(info.get("mime_type") or "application/octet-stream").split(";")[0].strip()
     if not url:
         raise MediaRejected("no media url")
+    if not media_url_allowed(str(url)):
+        raise MediaRejected("media url host not allowed")
     if mime not in EXT:
         raise MediaRejected(f"unsupported media type {mime}")
     declared = int(info.get("file_size") or 0)
@@ -116,6 +159,8 @@ def store_bytes(data: bytes, mime: str, *, channel: str, store: EvidenceStore | 
         raise MediaRejected(f"unsupported media type {mime}")
     if len(data) > config.int_env("CHANNELS_MEDIA_MAX_BYTES", 8 * 1024 * 1024):
         raise MediaRejected("too large")
+    if not _sniff_ok(data, mime):
+        raise MediaRejected(f"content is not {mime}")
     digest = hashlib.sha256(data).hexdigest()
     clean = strip_exif(data, mime)
     day = datetime.now(timezone.utc).strftime("%Y/%m/%d")

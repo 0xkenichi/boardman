@@ -88,6 +88,9 @@ export async function POST(req: Request) {
   if (stackConfigured()) {
     const res = await stackFetch('/api/stack/v1/matches/by-tag', {
       method: 'POST',
+      // the backend refuses a creator_id that is not this caller
+      headers: { 'X-Boardman-Caller': s.profileId },
+      clientReq: req,
       body: JSON.stringify({
         creator_id: s.profileId,
         opponent_tag,

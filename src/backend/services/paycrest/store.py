@@ -112,6 +112,11 @@ TEMPLATE = [
 
 TABLES = ("paycrest_orders", "paycrest_webhook_events", "payment_wallets", "bridge_transfers")
 
+# Columns added after the first release (supabase/migrations/20261020120100_paycrest_order_chain.sql).
+# ``chain``: the real-money settlement chain of the order (money realms: every
+# order row says which chain its USDC lives on, so reconciliation is per realm).
+UPGRADES: tuple[tuple[str, str, str], ...] = (("paycrest_orders", "chain", "TEXT"),)
+
 # ── order state machine ──────────────────────────────────────────────────────
 #
 # On-ramp (naira in):
@@ -145,7 +150,7 @@ TRANSITIONS: dict[str, frozenset[str]] = {
 }
 TERMINAL = frozenset({"completed", "refunded", "expired", "failed", "cancelled"})
 ORDER_COLUMNS = frozenset({
-    "channel", "external_id", "paycrest_id", "paycrest_status", "amount_ngn", "amount_usdc", "rate",
+    "chain", "channel", "external_id", "paycrest_id", "paycrest_status", "amount_ngn", "amount_usdc", "rate",
     "quote", "provider_account", "details", "bridge_id", "error", "attempts", "next_attempt_at_ms",
     "expires_at_ms", "settled_at_ms",
 })
@@ -187,10 +192,32 @@ def _ensure(db: Database) -> None:
                 tx.execute("SELECT pg_advisory_xact_lock(724100318)")
             for stmt in render(db.dialect):
                 tx.execute(stmt)
+            _upgrade(tx, db)
             if db.is_postgres:
                 for t in TABLES:
                     tx.execute(f"ALTER TABLE {t} ENABLE ROW LEVEL SECURITY")
         _ready.add(db)
+
+
+def _upgrade(tx: Any, db: Database) -> None:
+    """Add UPGRADES columns to tables created before them (idempotent)."""
+    for table, column, kind in UPGRADES:
+        if db.is_postgres:
+            tx.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {kind}")
+            continue
+        have = {str(r.get("name")) for r in tx.all(f"PRAGMA table_info({table})")}
+        if column not in have:
+            tx.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
+
+
+def postgres_upgrade_migration_sql() -> str:
+    head = (
+        "-- Boardman money realms: tag every Paycrest order with its settlement chain.\n"
+        "-- Generated from src/backend/services/paycrest/store.py (UPGRADES).\n\n"
+        "BEGIN;\n\n"
+    )
+    body = "".join(f"ALTER TABLE {t} ADD COLUMN IF NOT EXISTS {c} {k};\n" for t, c, k in UPGRADES)
+    return head + body + "\nCOMMIT;\n"
 
 
 def db() -> Database:

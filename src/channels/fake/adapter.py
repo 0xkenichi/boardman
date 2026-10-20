@@ -51,7 +51,7 @@ class FakeMedia:
         import hashlib
 
         data, mime = self.blobs[media_id]
-        return {"url": f"https://media.example/{media_id}", "mime_type": mime,
+        return {"url": f"https://lookaside.fbsbx.com/media/{media_id}", "mime_type": mime,
                 "sha256": hashlib.sha256(data).hexdigest(), "file_size": len(data)}
 
     def download(self, url: str, *, max_bytes: int) -> bytes:

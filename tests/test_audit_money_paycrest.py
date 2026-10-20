@@ -4,8 +4,10 @@ PoCs for AUDIT_2026-10_money.md:
 
 * M-10  A confirmed cash-out only *checked* the play balance; the Arc burn
         lands 15-30 s later, and in between the same USDC could be spent
-        again through the play overlay (a bet, the wallet bridge): naira paid
-        AND an unbacked position.
+        again through the play overlay (a bet, the wallet bridge). Since the
+        realms merge the overlay is practice-only and never counts toward the
+        real balance; the cash-out keeps the spend lock and the cap
+        reservation, and the test pins the realm separation instead.
 * M-11  The Base "out" wallet sent its whole balance to Paycrest, not the
         order's amount: USDC sent to that (public) address, or a sibling
         order's refund, went to the bank above the per-order and daily caps.
@@ -47,21 +49,24 @@ def _drain():
         cctp.reconcile()
 
 
-def test_cashout_holds_the_balance_until_the_burn(world, live_balance):
-    rail = live_balance
-    prof, _wa, _q, url = _cashout_link(world, rail)
-    pid = prof["id"]
-    out = asyncio.run(withdraw_links.confirm(_token(url), pin="246810", pin_confirm="246810", amount="20"))
-    assert out["ok"], out
-    # Burn not landed yet: the chain still shows 40. Spending 39 of it through
-    # the overlay (a bet, the wallet bridge) must be refused now.
-    assert rail.ops.bal(ARC, PLAY_ADDR) == Decimal("40")
-    with pytest.raises(play_adjust.InsufficientPlayBalance):
-        play_adjust.apply_once(pid, Decimal("-39"), key="bet:x", chain_usdc=rail.ops.bal(ARC, PLAY_ADDR))
-    _drain()
-    # After the burn the hold is gone and the books agree with the chain.
-    assert rail.ops.bal(ARC, PLAY_ADDR) == Decimal("20")
-    assert play_adjust.get_adjust(pid) == Decimal("0")
+def test_overlay_spends_never_read_the_real_cashout_wallet(monkeypatch):
+    """M-10, after the realms merge: the overlay reservation behind bets and
+    LP deposits reads the PRACTICE chain only, so it can never be checked
+    against (and double-spend) the real USDC a pending cash-out will burn."""
+    from gaming.src.backend.api import rematch_web
+    from gaming.src.backend.services import realms
+
+    reads: list = []
+
+    async def _strict(user_id, chain_id=None):
+        reads.append(chain_id)
+        return Decimal("40"), None
+
+    monkeypatch.setattr("gaming.src.backend.services.clawstation_circle.get_usdc_balance_strict", _strict)
+    asyncio.run(rematch_web._reserve_play_stake("p_realm", Decimal("5"), "k1"))
+    assert reads and all(realms.is_practice_chain(c) for c in reads), reads
+    assert not any(realms.is_real_chain(c) for c in reads)
+    assert play_adjust.get_adjust("p_realm") == Decimal("-5")
 
 
 def test_cashout_sends_only_the_order_amount(world, live_balance):
@@ -113,7 +118,7 @@ def test_a_webhook_that_failed_to_apply_is_processed_on_retry(world, rail, monke
     assert store.get_order(order["id"])["status"] in ("settled", "bridging")
 
 
-def test_failed_bridge_start_gives_the_hold_and_cap_back(world, live_balance, monkeypatch):
+def test_failed_bridge_start_gives_the_cap_back(world, live_balance, monkeypatch):
     from gaming.src.backend.services import safety
 
     rail = live_balance

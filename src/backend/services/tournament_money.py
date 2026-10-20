@@ -67,7 +67,12 @@ def _circle_for_arc():
     )
     from backend.circle_wallet_service import CircleWalletService
 
-    cid = normalize_chain_id(os.getenv("BOARDMAN_SETTLEMENT_RAIL") or default_chain_id() or "arc")
+    from gaming.src.backend.services.realms import assert_practice
+
+    # Cup pots are practice money (realms.py): never a real-money chain.
+    cid = assert_practice(
+        normalize_chain_id(os.getenv("BOARDMAN_SETTLEMENT_RAIL") or default_chain_id() or "arc"), path="tournament pot"
+    )
     return CircleWalletService(
         blockchain=get_circle_blockchain(cid),
         usdc_address=get_usdc_address(cid),
