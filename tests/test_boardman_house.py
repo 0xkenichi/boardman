@@ -252,6 +252,56 @@ def test_book_closes_after_plies(tmp_path, monkeypatch):
         assert "closed" in str(e).lower()
 
 
+def test_book_closes_on_the_clock_before_the_ply_limit(tmp_path, monkeypatch):
+    """Friendlies: betting closes N seconds after kickoff, even on move 2."""
+    from datetime import datetime, timedelta, timezone
+
+    reg = _iso(tmp_path, monkeypatch)
+    monkeypatch.setenv("BOARDMAN_BOOK_CLOSE_SEC", "30")
+    from gaming.src.stack.agentic.house import get_house
+    from gaming.src.stack.agentic.store import load_json, save_json
+
+    agents = {a["agent_id"]: a for a in reg.ensure_demo_agents()}
+    rt = get_house()
+    m = rt.open_match(
+        agent_a_id=agents["agent_raja_kia_alekhine"]["agent_id"],
+        agent_b_id=agents["agent_nero_sicilian_french"]["agent_id"],
+        stake_usdc=1,
+    )
+    rt.lock(m["match_id"])
+    store = load_json("matches.json", {"matches": {}})
+    rec = store["matches"][m["match_id"]]
+    rec["moves"] = [{"ply": i, "uci": "e2e4", "san": "e4"} for i in range(1, 3)]
+    rec["play_started_at"] = (datetime.now(timezone.utc) - timedelta(seconds=10)).isoformat()
+    store["matches"][m["match_id"]] = rec
+    save_json("matches.json", store)
+    # 10s in: still open.
+    rt.take_bet(m["match_id"], bettor_id="fan", side="a", amount_usdc=Decimal("0.25"), funding="profile")
+
+    store = load_json("matches.json", {"matches": {}})
+    rec = store["matches"][m["match_id"]]
+    rec["play_started_at"] = (datetime.now(timezone.utc) - timedelta(seconds=31)).isoformat()
+    store["matches"][m["match_id"]] = rec
+    save_json("matches.json", store)
+    with pytest.raises(ValueError, match="closed"):
+        rt.take_bet(m["match_id"], bettor_id="fan2", side="b", amount_usdc=Decimal("0.25"), funding="profile")
+
+
+def test_book_close_reason_clock_is_off_by_default(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    from gaming.src.stack.agentic.economy.spectator import book_close_reason
+
+    monkeypatch.delenv("BOARDMAN_BOOK_CLOSE_SEC", raising=False)
+    monkeypatch.setenv("BOARDMAN_BOOK_CLOSE_PLIES", "24")
+    old = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    assert book_close_reason({"moves": [{}] * 3, "play_started_at": old}) is None
+    assert book_close_reason({"moves": [{}] * 24}) == "ply_24"
+    monkeypatch.setenv("BOARDMAN_BOOK_CLOSE_SEC", "30")
+    assert book_close_reason({"moves": [{}] * 3, "play_started_at": old}) == "clock_30s"
+    assert book_close_reason({"moves": [{}] * 3}) is None  # not kicked off yet
+
+
 def test_bet_window_zero_is_instant(tmp_path, monkeypatch):
     _iso(tmp_path, monkeypatch)
     from gaming.src.stack.agentic.house import _wait_bet_window, bet_window_sec, get_house

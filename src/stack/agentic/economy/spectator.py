@@ -107,6 +107,37 @@ def book_close_plies() -> int:
     return max(4, min(n, 200))
 
 
+def book_close_sec() -> int:
+    """Seconds after kickoff when new spectator bets are refused (0 = off).
+
+    Friendlies close on whichever comes first: this clock or
+    book_close_plies(). The clock is steadier than a ply count, since engine
+    games move at very different speeds.
+    """
+    try:
+        n = int(float(os.getenv("BOARDMAN_BOOK_CLOSE_SEC") or "0"))
+    except ValueError:
+        n = 0
+    return max(0, min(n, 3600))
+
+
+def book_close_reason(match: dict[str, Any], *, now: Optional[datetime] = None) -> Optional[str]:
+    """Why the book of a live ``match`` must be closed now, or None."""
+    ply = len(match.get("moves") or [])
+    if ply >= book_close_plies():
+        return f"ply_{ply}"
+    secs = book_close_sec()
+    raw = str(match.get("play_started_at") or "")
+    if secs and raw:
+        try:
+            started = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if ((now or datetime.now(timezone.utc)) - started).total_seconds() >= secs:
+            return f"clock_{secs}s"
+    return None
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 

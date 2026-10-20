@@ -7,7 +7,7 @@ import threading
 import time
 import uuid
 from contextlib import ExitStack
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from functools import lru_cache
 from typing import Any, Callable, Optional
@@ -359,6 +359,8 @@ class AgentMatchService:
                     "settled_at",
                     "locked_at",
                     "bet_window_ends_at",
+                    "play_started_at",
+                    "book_close_at",
                     "ply",
                 )
             }
@@ -1561,6 +1563,14 @@ class AgentMatchService:
                 raise ValueError(f"cannot play from status {st}")
             r["status"] = "playing"
             r["updated_at"] = _now()
+            # Kickoff time drives the clock-based book close (kept on resume).
+            r.setdefault("play_started_at", r["updated_at"])
+            from gaming.src.stack.agentic.economy.spectator import book_close_sec
+
+            close_sec = book_close_sec()
+            if close_sec and not r.get("book_close_at"):
+                kick = datetime.fromisoformat(str(r["play_started_at"]).replace("Z", "+00:00"))
+                r["book_close_at"] = (kick + timedelta(seconds=close_sec)).isoformat()
 
         m = self._update(match_id, _start) or m
 
@@ -1612,13 +1622,13 @@ class AgentMatchService:
                 try:
                     from gaming.src.stack.agentic.economy.spectator import (
                         SpectatorBook,
-                        book_close_plies,
+                        book_close_reason,
                     )
 
-                    close_at = book_close_plies()
-                    if ply is not None and int(ply) >= close_at:
+                    why = book_close_reason(rec)
+                    if why and (rec.get("spectator_book") or {}).get("status") != "closed":
                         before = (SpectatorBook().get(match_id) or {}).get("status")
-                        book = SpectatorBook().close_book(match_id, reason=f"ply_{ply}")
+                        book = SpectatorBook().close_book(match_id, reason=why)
                         snap_b = dict(rec.get("spectator_book") or {})
                         snap_b["status"] = book.get("status")
                         snap_b["closed_reason"] = book.get("closed_reason")
@@ -1635,7 +1645,7 @@ class AgentMatchService:
             if flags.get("dup"):
                 return
             if flags.get("close_onchain"):
-                # Ply-N freeze on the SpectatorPool too (after our commit).
+                # Ply/clock freeze on the SpectatorPool too (after our commit).
                 _close_book_onchain_async(match_id, chain)
             if on_move:
                 on_move(ev)

@@ -873,7 +873,7 @@ class HouseRuntime:
         ``ledger`` debits the bettor's agentic-ledger wallet with the ticket;
         ``profile`` is the web/Telegram play balance, taken by the caller."""
         from gaming.src.stack.agentic.matches import get_match_service
-        from gaming.src.stack.agentic.economy.spectator import SpectatorBook, book_close_plies
+        from gaming.src.stack.agentic.economy.spectator import SpectatorBook, book_close_reason
 
         m = get_match_service().get(match_id)
         if not m:
@@ -883,12 +883,12 @@ class HouseRuntime:
         if is_house(bettor_id) or (bettor_id or "").lower() in HOUSE_NAMES:
             raise ValueError("Boardman House cannot bet on its own tables")
 
-        ply = len(m.get("moves") or [])
-        if ply >= book_close_plies():
+        why = book_close_reason(m)
+        if why:
             from gaming.src.stack.agentic.matches import freeze_book
 
-            freeze_book(match_id, reason=f"ply_{ply}", chain_id=m.get("chain_id") or "arc")
-            raise ValueError(f"book closed after {book_close_plies()} plies")
+            freeze_book(match_id, reason=why, chain_id=m.get("chain_id") or "arc")
+            raise ValueError(f"betting closed ({why.replace('_', ' ')})")
         slot = resolve_side(m, side)
         existing = SpectatorBook().get(match_id) or {}
         if not existing:
