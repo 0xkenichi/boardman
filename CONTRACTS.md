@@ -41,12 +41,16 @@ and must run from a throwaway deployer key. Defaults: `openTimeout` 24h,
 `deployments/boardman_v2_<network>.json` and offers ownership to the
 multisig. The multisig must call `acceptOwnership()` on every contract deployed.
 
-Before deploying, `scripts/lib/v2_preflight.js` checks that `arcMainnet` really
-is chain 5042, that the USDC address is a contract with `decimals() == 6`, that
-the owner Safe already has code on this chain, and that the resolver is an EOA
-(permits are plain ECDSA). On mainnets the SpectatorPool is skipped unless
-`V2_DEPLOY_POOL=1`, because spectator betting stays off on mainnet until counsel
-signs off and the pool's `deposit()` is permissionless once a book is open.
+Before deploying, on every non-local network, `scripts/lib/v2_preflight.js`
+checks four things:
+- `arcMainnet` really is chain 5042
+- the USDC address is a contract with `decimals() == 6`
+- the owner Safe already has code on this chain (an EOA owner only with `V2_OWNER_IS_EOA=1`)
+- the resolver is an EOA, because permits are plain ECDSA
+
+Mainnets never get a SpectatorPool: spectator betting stays off there, and the
+pool's `deposit()` is permissionless once a book is open. After the Safe
+accepts ownership, run `scripts/check_v2_roles.js` with `EXPECT_ACCEPTED=1`.
 Smoke-test locally with `npx hardhat run scripts/deploy_v2.js --network localhost`.
 
 ### Migration plan v1 → v2

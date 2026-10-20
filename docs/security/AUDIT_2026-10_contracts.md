@@ -11,6 +11,7 @@ for the external audit; section 8 lists what that audit should focus on.
 | Compiler | solc 0.8.20 (viaIR, optimizer 200, evm paris), OpenZeppelin 5.6.1 |
 | Target chain | Arc mainnet (chain id 5042), USDC at `0x3600…0000` |
 | Result | 0 Critical, 1 High, 1 Medium, 7 Low, 8 Info. No contract code change was needed. The High and the Medium are in the backend and are fixed. |
+| Delta (section 9) | After merging integration/wave1 (`2db55ab`): 1 Medium (D-01, fixed), 2 Low (D-02 open, D-03 fixed), 2 Info. The only contract change was a NatSpec move. |
 
 ## 1. Scope
 
@@ -82,7 +83,7 @@ Out of scope: ClawEscrow (V0), the v1 deployments, Circle wallet internals, and 
 | I-05 | Arc chain specifics (decimals, blocklist, timestamps, base fee, chain id) | Info | all | Verified, see section 6 | — |
 | I-06 | CONTRACTS.md said the ply-N close was not wired | Info | docs | Fixed | this commit |
 | I-07 | The deployer stays owner until the Safe accepts ownership | Info | deploy | Recommendation | — |
-| I-08 | ClawStation crash recovery does not check that `player1` is ours | Info | backend (being cut) | Fails closed on v2 | — |
+| I-08 | ClawStation crash recovery does not check that `player1` is ours | Info | backend | Superseded by D-01: the custodial path is now the v2 real-money path, and recovery checks identity | `a004d57` |
 
 ## 4. Findings
 
@@ -167,7 +168,9 @@ The `arcMainnet` RPC URL and chain id are both env-overridable, and so is the US
 
 The script also deployed SpectatorPool on mainnet, where betting is off until counsel signs off and where `deposit()` is permissionless once a book is open.
 
-**Fix:** `scripts/lib/v2_preflight.js` runs all of these checks. Mainnets skip the pool unless `V2_DEPLOY_POOL=1`. PoC: the 6 tests in `test/DeployPreflight.js`. The local deploy smoke run passes.
+**Fix:** `scripts/lib/v2_preflight.js` runs all of these checks. PoC: the 6 tests in `test/DeployPreflight.js`. The local deploy smoke run passes.
+
+After the integration merge (section 9), mainnets never deploy the pool and there is no `V2_DEPLOY_POOL` override. An EOA owner is accepted only with `V2_OWNER_IS_EOA=1`.
 
 ### L-05: Passkey confirm does not check `MatchTerms.player2` (Low, open)
 
@@ -307,3 +310,96 @@ Checked against docs.arc.io (EVM differences, stablecoin-native model) and third
 5. **Off-chain/on-chain gate parity.** Review L-06 against compliance: should `deposit()` be allowlisted on mainnet?
 6. **Formal properties.** Run the invariants in section 5 under Echidna, Medusa or Certora with unbounded sequences, especially the pool's `remaining` accounting across draw, seed and refund books.
 7. **Ops.** Reconcile pending `depositFor` txs (M-01 follow-up), add a withdraw/claim path for human players (L-07), alert on `owed` and on `balance != accounted`, and do the ownership acceptance checklist (I-07).
+8. **Stake cap.** Reconcile the off-chain and on-chain caps (D-02), and decide whether raising `maxStakePerPlayer` should go through a timelock (D-04).
+
+## 9. Delta review: integration/wave1 merged in (launch/arc-mainnet-humans)
+
+Merge commit `2db55ab` brings `integration/wave1` (`10f17bb`) into this branch. The delta under review:
+
+- **BoardmanEscrow:** owner-settable `maxStakePerPlayer` (`setMaxStake`, `MaxStakeUpdated`, `InvalidStakeCap`). It is checked at `createMatch`, and deploy sets it to $25 on mainnet.
+- **Deploy and ops scripts:**
+  - `deploy_v2.js` mainnet mode: escrow only, Safe owner or a declared EOA fallback, the stake cap, a chain id check per network, and a pendingOwner check
+  - `hardhat.config.js`: arcMainnet chain id pinned and a separate `MAINNET_DEPLOYER_KEY`
+  - the new `check_v2_roles.js`
+- **Custodial v2 `createMatch`** in `clawstation_escrow.py`: a realm resolver permit (`realms.resolver_private_key`), player2 bound to the opponent's passkey account or Circle wallet, and stake-cap reservations. The passkey path also got realm and cap changes.
+
+**Merge resolution**
+- The two deploy-script intents were combined. Their mainnet logic stays: escrow only on mainnet with no pool override, the founder-EOA fallback through `V2_OWNER_IS_EOA=1`, the cap, and the pendingOwner check (now applied to the pool too).
+- Our L-04 preflight now runs on *every* non-local network, not only mainnets: USDC code and 6 decimals, an EOA resolver, owner code (or the declared EOA fallback), and a treasury warning. The `V2_DEPLOY_POOL` override was dropped in favour of their "never on mainnet".
+- Our backend fixes (H-01, M-01, L-02, L-03) merged cleanly with their realm rules: `assert_practice` in `_chain_config` / `_send`, and the per-realm resolver key in the passkey permit.
+
+### Delta findings
+
+| ID | Title | Severity | Status | Fix commit |
+|---|---|---|---|---|
+| D-01 | A real-money match cannot lock when the custodial creator's permit binds the opponent's passkey account; crash recovery trusts any on-chain match | Medium | Fixed | `a004d57` |
+| D-02 | The off-chain stake cap and the on-chain `maxStakePerPlayer` are not reconciled | Low | Open (recommendation) | — |
+| D-03 | `check_v2_roles.js` printed OK with no expectations, and could not detect an ownership that was never accepted | Low | Fixed | `6f527f2` |
+| D-04 | Lowering the cap mid-match: no effect on existing matches (refuted). It does make outstanding permits above the new cap revert. | Info | Refuted / acknowledged | — |
+| D-05 | Misplaced NatSpec: `pause()` lost its `@notice` to `setMaxStake` | Info | Fixed | `6f527f2` |
+
+**D-01: the custodial creator binds a player2 that no join path follows (Medium, fixed)**
+
+- **The binding.** `_v2_create_args` binds `player2` to the opponent's passkey account whenever they have one on the challenge's chain, and otherwise to their Circle wallet.
+- **The passkey path refused.** The opponent's lock was routed by `routing.lock_route` → `intents.join_allowed`. That function only knew about a *passkey* creator's binding row. With a custodial creator there is no such row, so on v2 it answered False and routed the opponent to the custodial path.
+- **The custodial path reverted.** It approved USDC and sent `joinMatch` from the opponent's Circle wallet. The escrow rejects that with `NotPlayer` because the bound address is the passkey account. The stake-cap reservation also stayed counted (`submitted`).
+- **Result.** Every custodial creator against a passkey-holding opponent on a real-money chain deadlocked. The creator's stake stayed locked until `openTimeout` (24 h) or a resolver cancel.
+- **Recovery paths.** The create and join crash-recovery paths treated *any* on-chain match with the same stake as "ours". They did not compare `player1` or `player2` with this wallet, so a revert caused by the binding could be recorded as a successful lock.
+
+**Fix**
+- `join_allowed` falls back to the on-chain binding through a new `ChainReader.escrow_player2`.
+- The custodial join reads the on-chain `player2` before any approve, and refuses with a "lock from your passkey link" message. Nothing is submitted, so the cap reservation is released.
+- Crash recovery requires the on-chain `player1` (create) or `player2` (join) to be this wallet.
+
+**PoC:** `tests/test_audit_contracts_delta.py`. The three D-01 tests below fail on the merge commit and pass after the fix:
+- `test_d01_passkey_opponent_can_join_a_custodial_creators_match`
+- `test_d01_custodial_join_refuses_before_approve_when_bound_to_another_account`
+- `test_d01_create_recovery_requires_the_onchain_player1_to_be_us`
+- guards: `…passkey_join_still_refused_without_an_onchain_match` and `…custodial_join_proceeds_when_bound_to_this_wallet`
+
+**D-02: two caps that can disagree (Low, open)**
+
+`stake_caps` enforces `BOARDMAN_HUMANS_MAX_STAKE_USDC` (default $25), and the escrow enforces `maxStakePerPlayer` (deploy default $25). If an operator raises the env cap first, or the Safe lowers the on-chain cap first, the following happens:
+- the backend signs a permit for a stake the escrow rejects
+- the Circle approve still happens and leaves an allowance
+- `createMatch` reverts
+- the reservation stays counted against the player's daily cap, because the create was "submitted"
+
+Funds are safe. **Recommendation:** read `maxStakePerPlayer()` before signing a permit and use the smaller of the two caps. Release the reservation when the create reverts on-chain.
+
+**D-03: role check could not fail (Low, fixed)**
+
+The first `check_v2_roles.js` had three gaps:
+- With no `EXPECT_*` set it printed `OK`.
+- It accepted `pendingOwner == Safe` as success, so the runbook's "after acceptOwnership" run could not detect that the Safe never accepted.
+- It never checked `usdc()` or the paused flag.
+
+The checks now live in `scripts/lib/v2_roles.js`:
+- On a mainnet, `EXPECT_OWNER`, `EXPECT_RESOLVER` and `EXPECT_TREASURY` are required.
+- `usdc()` must equal the known USDC; `EXPECT_USDC` overrides.
+- `EXPECT_ACCEPTED=1` requires `owner == Safe` and `pendingOwner == 0`.
+- A paused escrow fails unless `EXPECT_PAUSED=1`.
+
+PoC: the 3 `D-03` tests in `contracts/test/Audit.2026-10.delta.js`. **Runbook change:** run it a second time with `EXPECT_ACCEPTED=1`.
+
+**D-04: the stake cap itself (Info)**
+
+`maxStakePerPlayer` is read only in `createMatch`. `joinMatch` uses the stake stored at create, and resolve, cancel and refund never read the cap. Lowering it mid-match therefore cannot brick anything. PoC `D-A1` lowers the cap to the $2 floor with four $1,000 matches in flight, and all four still join, resolve, cancel or refund.
+
+- **Bounds.** `[MIN_STAKE, MAX_STAKE]` and owner-only, with an event (`D-A3`). The cap and the fee tiers are independent.
+- **Permits.** The permit does not bind the cap, so a cap lowered after a permit was issued makes that `createMatch` revert with nothing moved. Raising it back revives the permit within its deadline (`D-A2`).
+- **Raising.** The cap can be raised to $10,000 immediately, with no timelock. That is a deliberate Safe power. Consider a timelock or a Safe policy for raises once real money flows.
+
+**D-05: NatSpec (Info, fixed)**
+
+`/// @notice Stop new stakes…` now sits on `pause()` again instead of stacking on top of `setMaxStake`. This is a comment-only change; the runtime bytecode is unchanged apart from the metadata hash.
+
+**Also reviewed, no finding**
+- **`hardhat.config.js`.** arcMainnet has chain id 5042 pinned with no env override, and hardhat refuses a mismatched RPC. The deployer comes only from `MAINNET_DEPLOYER_KEY`, never `ADMIN_PRIVATE_KEY`.
+- **`deploy_v2.js` mainnet mode.** It refuses `DEPLOY_SPECTATOR_POOL=1`. It sets the cap before offering ownership, and checks `pendingOwner` before writing the deployment file. A cap outside the bounds reverts `setMaxStake` and stops the script before ownership is offered. That leaves an orphan escrow owned by the throwaway deployer, which holds no funds and can be ignored. The local mainnet-mode smoke run (`V2_TREAT_AS_MAINNET=1`) deploys the escrow only, with a $25 cap.
+- **Custodial permit signing.** The chain id comes from `chains.yaml`, not the RPC, so a wrong value only produces invalid permits that fail closed. The permit is built before any transaction, so a missing realm key means nothing is charged. `realms.resolver_private_key` refuses a mainnet key that equals the testnet resolver key. The TTL is 600 s, which is enough for the 90 s approve wait.
+- **Realm guards.** `assert_practice` / `assert_practice_evm` in `onchain._chain_config` / `_send` keep the agentic signer off real-money chains. That covers `dual_lock_onchain` (L-03) and the spectator operator, including H-01's `close_book_onchain`.
+
+**Tests after the merge and delta fixes:** `npx hardhat test` **153 passing** (+2 from integration, +6 in `test/Audit.2026-10.delta.js`), and `pytest tests` **1267 passed**, 7 skipped (+5 in `tests/test_audit_contracts_delta.py`).
+
+`tests/test_escrow_replay.py`'s fake escrow reported Circle wallet *ids* as player1 and player2. The real contract records the wallet *address*, which the D-01 recovery check now compares, so commit `6e9a7e2` fixes the fake to report addresses.
