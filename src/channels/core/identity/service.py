@@ -251,10 +251,62 @@ class LinkResult:
         return self.status in {"linked", "merged", "already_linked"}
 
 
-async def redeem_link_code(
+@dataclass
+class LinkPreview:
+    status: str  # ok | invalid | rate_limited | already_linked | conflict
+    code_hash: str = ""
+    profile_id: Optional[str] = None
+    target_tag: str = ""
+
+
+def _redeem_hit(channel: str, ext: str) -> bool:
+    return ratelimit.hit(f"link_redeem:{channel}:{ext}",
+                         limit=config.int_env("CHANNELS_LINK_REDEEM_PER_10MIN", 5), window_sec=600)
+
+
+def preview_link_code(
     channel: str,
     external_id: str,
     raw_code: str,
+    *,
+    repo: Optional[IdentityRepo] = None,
+    now: Optional[datetime] = None,
+) -> LinkPreview:
+    """Check a code without using it, and say which account it would link to.
+
+    A code (or a ``t.me/…?start=link_…`` / ``wa.me/…?text=LINK …`` link) can be
+    sent to a victim by the account that issued it; redeeming it at once would
+    silently put the victim's chat on the sender's account, where the victim
+    then deposits. So the chat shows the target account first and links only
+    after an explicit "Yes" (``redeem_link_code(code_hash=…)``). Attempts count
+    against the same per-sender limit as redeeming.
+    """
+    repo = repo or get_repo()
+    ext = str(external_id)
+    now = now or utcnow()
+    if not _redeem_hit(channel, ext):
+        return LinkPreview("rate_limited")
+    code = normalize_code(raw_code)
+    if len(code) != CODE_LEN:
+        return LinkPreview("invalid")
+    h = hash_code(code)
+    row = repo.get_link_code(h)
+    if row is None or row.consumed_at is not None or row.expires_at <= now or row.purpose != "link_channel":
+        return LinkPreview("invalid")
+    existing = repo.get(channel, ext)
+    if existing is not None and existing.profile_id == row.profile_id:
+        return LinkPreview("already_linked", h, row.profile_id)
+    if any(i.channel == channel and i.external_id != ext for i in repo.for_profile(row.profile_id)):
+        return LinkPreview("conflict", h, row.profile_id)
+    prof = repo.get_profile(row.profile_id) or {}
+    tag = str(prof.get("gaming_tag") or prof.get("display_name") or "")
+    return LinkPreview("ok", h, row.profile_id, tag)
+
+
+async def redeem_link_code(
+    channel: str,
+    external_id: str,
+    raw_code: str = "",
     *,
     profile_is_empty: EmptyCheck,
     phone: Optional[str] = None,
@@ -262,18 +314,25 @@ async def redeem_link_code(
     handle: Optional[str] = None,
     repo: Optional[IdentityRepo] = None,
     now: Optional[datetime] = None,
+    code_hash: Optional[str] = None,
 ) -> LinkResult:
-    """Attach ``(channel, external_id)`` to the profile that issued ``raw_code``."""
+    """Attach ``(channel, external_id)`` to the profile that issued ``raw_code``.
+
+    ``code_hash`` (from ``preview_link_code``) redeems a code the sender has
+    already confirmed; the preview counted the attempt.
+    """
     repo = repo or get_repo()
     ext = str(external_id)
     now = now or utcnow()
-    if not ratelimit.hit(f"link_redeem:{channel}:{ext}",
-                         limit=config.int_env("CHANNELS_LINK_REDEEM_PER_10MIN", 5), window_sec=600):
-        return LinkResult("rate_limited")
-    code = normalize_code(raw_code)
-    if len(code) != CODE_LEN:
-        return LinkResult("invalid")
-    h = hash_code(code)
+    if code_hash:
+        h = code_hash
+    else:
+        if not _redeem_hit(channel, ext):
+            return LinkResult("rate_limited")
+        code = normalize_code(raw_code)
+        if len(code) != CODE_LEN:
+            return LinkResult("invalid")
+        h = hash_code(code)
     row = repo.get_link_code(h)
     if row is None or row.consumed_at is not None or row.expires_at <= now or row.purpose != "link_channel":
         return LinkResult("invalid")

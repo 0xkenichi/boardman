@@ -14,6 +14,20 @@ export type TelegramLoginUser = {
   hash: string
 }
 
+/** Telegram login payloads older than this are refused (replay window). */
+export function telegramLoginMaxAgeSec(env: Record<string, string | undefined> = process.env): number {
+  const n = Number(env.TELEGRAM_LOGIN_MAX_AGE_SEC || 86400)
+  return Number.isFinite(n) && n >= 60 ? Math.min(n, 86400) : 86400
+}
+
+/** auth_date must be a positive integer second, not older than the window, not in the future. */
+export function authDateFresh(raw: unknown, nowSec = Math.floor(Date.now() / 1000)): boolean {
+  const s = String(raw ?? '')
+  if (!/^[1-9]\d{0,11}$/.test(s)) return false
+  const t = Number(s)
+  return t <= nowSec + 60 && t >= nowSec - telegramLoginMaxAgeSec()
+}
+
 function botToken(): string {
   // Prefer Boardman bot; legacy ClawStation aliases still work
   return (
@@ -48,8 +62,9 @@ export function verifyTelegramLogin(data: Record<string, string>): TelegramLogin
   } catch {
     return null
   }
-  const authDate = Number(data.auth_date || 0)
-  if (authDate < Math.floor(Date.now() / 1000) - 86400) return null // 24h
+  if (!authDateFresh(data.auth_date)) return null
+  const authDate = Number(data.auth_date)
+  if (!/^[1-9]\d{0,15}$/.test(String(data.id || ''))) return null
   return {
     id: Number(data.id),
     first_name: data.first_name,
@@ -92,7 +107,6 @@ export function verifyTelegramWebAppInitData(initData: string): Record<string, s
   out.hash = hash
   // Freshness: initData older than 24h is stale (mirrors the widget check) —
   // blocks replay of a captured initData string indefinitely.
-  const authDate = Number(out.auth_date || 0)
-  if (!authDate || authDate < Math.floor(Date.now() / 1000) - 86400) return null
+  if (!authDateFresh(out.auth_date)) return null
   return out
 }

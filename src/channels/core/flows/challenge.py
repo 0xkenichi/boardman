@@ -29,11 +29,30 @@ def _clean(label: str) -> str:
     return re.sub(r"^[^\w]+", "", label or "").strip() or label
 
 
-def presets() -> list[Decimal]:
+def stake_range() -> tuple[Decimal, Decimal, bool]:
+    """(min, max, real?) for a new challenge: real-money matches use the
+    lower real-money cap (services/stake_caps.py)."""
+    from gaming.src.backend.services import stake_caps
+    from gaming.src.backend.services.realms import is_real_chain, new_challenge_chain
     from gaming.src.backend.services.safety import MAX_STAKE_USDC, MIN_STAKE_USDC
 
-    out = [Decimal(p) for p in (2, 5, 10, 25) if MIN_STAKE_USDC <= Decimal(p) <= MAX_STAKE_USDC]
-    return out[:3] or [MIN_STAKE_USDC]
+    real = is_real_chain(new_challenge_chain())
+    hi = min(MAX_STAKE_USDC, stake_caps.max_stake_usdc()) if real else MAX_STAKE_USDC
+    return MIN_STAKE_USDC, hi, real
+
+
+def presets() -> list[Decimal]:
+    lo, hi, _real = stake_range()
+    out = [Decimal(p) for p in (2, 5, 10, 25) if lo <= Decimal(p) <= hi]
+    return out[:3] or [lo]
+
+
+def money_note(real: bool) -> str:
+    if not real:
+        return "Practice chips (no cash value)."
+    from gaming.src.backend.services import stake_caps
+
+    return f"*Real money* (USDC). {stake_caps.limits_text()}"
 
 
 async def start(ctx) -> None:
@@ -108,23 +127,25 @@ async def _games(ctx, category: str) -> None:
 
 async def _game(ctx, game_id: str) -> None:
     from gaming.src.backend.services.game_catalog import get_game
-    from gaming.src.backend.services.safety import MAX_STAKE_USDC, MIN_STAKE_USDC
 
     g = get_game(game_id)
     if not g or not g.get("enabled", True):
         ctx.say("That game is not available.")
         await start(ctx)
         return
+    lo, hi, real = stake_range()
     ctx.st.set(NAME, "stake", game=g["game_id"])
     opts = [Option(ids.encode(NAME, "amt", str(p)), f"${p:,.0f}") for p in presets()]
     ctx.choose(
         f"*{match_notices.game_label(g['game_id'])}*\nHow much USDC each? "
-        f"Pick one or type an amount (${MIN_STAKE_USDC:,.0f} to ${MAX_STAKE_USDC:,.0f}).",
+        f"Pick one or type an amount (${lo:,.0f} to ${hi:,.0f}).\n{money_note(real)}",
         opts,
     )
 
 
 async def _amount(ctx, raw: str) -> None:
+    from gaming.src.backend.services import stake_caps
+    from gaming.src.backend.services.realms import new_challenge_chain
     from gaming.src.backend.services.safety import validate_stake
 
     if not ctx.st.data.get("game"):
@@ -138,6 +159,10 @@ async def _amount(ctx, raw: str) -> None:
     err = validate_stake(amount)
     if err:
         ctx.say(svc.plain(err).lstrip("❌ ").strip())
+        return
+    capped = await asyncio.to_thread(stake_caps.check, str(ctx.profile_id), new_challenge_chain(), amount)
+    if capped:
+        ctx.say(capped)
         return
     ctx.st.set(NAME, "opponent", game=ctx.st.data["game"], amount=str(amount))
     ctx.choose(
@@ -211,9 +236,10 @@ async def _confirm(ctx, opp) -> None:
     ctx.st.set(NAME, "confirm", game=d["game"], amount=d["amount"],
                opponent_id=str(opp["id"]) if opp else None,
                opponent_tag=str(opp.get("gaming_tag") or "") if opp else "")
+    _lo, _hi, real = stake_range()
     ctx.choose(
         f"*Confirm challenge*\nGame: {match_notices.game_label(d['game'])}\nStake: *${amount:,.2f}* each\n"
-        f"Opponent: {who}\n\nWhen they accept, you both lock your stakes in escrow. Send it?",
+        f"Opponent: {who}\n{money_note(real)}\n\nWhen they accept, you both lock your stakes in escrow. Send it?",
         [Option(ids.encode(NAME, "send"), "Send it"), ctx.menu_option("Cancel")],
     )
 

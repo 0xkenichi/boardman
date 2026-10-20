@@ -220,9 +220,22 @@ async def prepare_lock(profile_id: str, challenge: dict, *, channel: str, extern
     if gate:
         raise IntentRefused("gate", svc.plain(gate))
     s = _settings()
+    # Money realms: a passkey lock moves money on the passkey chain, so it is
+    # only allowed for a challenge created on that same chain.
+    from gaming.src.backend.services.chains import normalize_chain_id
+
+    ch_chain = normalize_chain_id(challenge.get("settlement_chain") or "arc")
+    if ch_chain != normalize_chain_id(s["chain"]):
+        raise IntentRefused("wrong_chain", "This match is on a different network than your passkey wallet. "
+                                           "Lock it from your Boardman play wallet instead.")
     reader = chain.get_reader()
     cid = str(challenge["id"])
     amount = Decimal(str(challenge["amount_usdc"]))
+    from gaming.src.backend.services import stake_caps
+
+    capped = await asyncio.to_thread(stake_caps.check, pid, ch_chain, amount, challenge_id=cid)
+    if capped:
+        raise IntentRefused("cap", capped)
     raw = C.to_raw(amount)
     mid = C.match_id_bytes32(cid)
     version = await asyncio.to_thread(_version, reader, s["escrow"])
@@ -236,12 +249,15 @@ async def prepare_lock(profile_id: str, challenge: dict, *, channel: str, extern
             raise IntentRefused("state", "Wait until your opponent accepts, then lock.")
         action = "lock_create"
         if version >= 2:
-            from gaming.src.stack.agentic.onchain import load_resolver_key, sign_create_permit
+            from gaming.src.backend.services.realms import resolver_private_key
+            from gaming.src.stack.agentic.onchain import sign_create_permit
 
             p2 = to_checksum_address(await escrow_address_of(str(challenge["opponent_id"])))
             deadline = (now_ms or store.now_ms()) // 1000 + config.ttl_ms() // 1000
+            # The permit is signed by THIS chain's realm resolver (keystore on
+            # a real chain; the arena resolver on a practice chain).
             sig = await asyncio.to_thread(
-                sign_create_permit, load_resolver_key(), chain_id=s["evm_chain_id"],
+                sign_create_permit, resolver_private_key(s["chain"]), chain_id=s["evm_chain_id"],
                 escrow=to_checksum_address(s["escrow"]), match_id_b32=mid,
                 player1=to_checksum_address(account), player2=p2, stake_raw=raw, deadline=deadline,
             )
@@ -266,12 +282,37 @@ async def prepare_lock(profile_id: str, challenge: dict, *, channel: str, extern
     expires = (now_ms or store.now_ms()) + config.ttl_ms()
 
     def _make() -> Prepared:
+        # Real-money caps: reserve before the player can sign (idempotent per
+        # challenge + player; a re-prepare never counts twice). Released if
+        # the approval expires or the network rejects it unsigned/unmined.
+        try:
+            stake_caps.reserve(pid, ch_chain, cid, amount, path=f"passkey {action}")
+        except stake_caps.StakeCapExceeded as exc:
+            raise IntentRefused("cap", str(exc)) from exc
         intent = store.create(profile_id=pid, action=action, chain=s["chain"], account=account,
                               challenge_id=cid, amount_micro=raw, to_address=s["escrow"], calls=call_list,
                               detail=detail, expires_at_ms=expires, from_block=from_block)
         return _issue(pid, intent, channel=channel, external_id=external_id, now_ms=now_ms)
 
     return await asyncio.to_thread(_make)
+
+
+def _release_cap(intent: dict, reason: str) -> None:
+    """Give a lock's real-money reservation back: the lock never happened."""
+    if intent.get("action") not in ("lock_create", "lock_join") or not intent.get("challenge_id"):
+        return
+    try:
+        from gaming.src.backend.services import stake_caps
+
+        live = [r for r in store.find(challenge_id=str(intent["challenge_id"]),
+                                      profile_id=str(intent["profile_id"]),
+                                      statuses=("prepared", "submitted", "confirmed"), limit=5)
+                if r["id"] != intent["id"] and r["action"] in ("lock_create", "lock_join")]
+        if live:
+            return  # another approval for this lock still holds the reservation
+        stake_caps.release(str(intent["profile_id"]), str(intent["challenge_id"]), reason=reason)
+    except Exception:
+        logger.exception("[self_custody] stake cap release failed for %s", intent.get("id"))
 
 
 def prepare_withdraw(profile_id: str, to_address: str, amount: Decimal, *, channel: str, external_id: str,
@@ -468,8 +509,9 @@ def confirm(intent_id: str, *, reader=None) -> dict:
         if rec is None:
             return {"status": "pending", "newly": False}
         if int(rec.get("status") or 0) != 1:
-            store.transition(intent_id, "failed", expect=("submitted", "prepared"),
-                             detail={**(intent.get("detail") or {}), "failure": "reverted"})
+            if store.transition(intent_id, "failed", expect=("submitted", "prepared"),
+                                detail={**(intent.get("detail") or {}), "failure": "reverted"}):
+                _release_cap(intent, "reverted")  # a reverted tx moved nothing
             return {"status": "failed", "newly": False}
         found = next((lg for lg in rec.get("logs") or [] if _log_matches(intent, lg)), None)
         if found is None:
@@ -571,6 +613,7 @@ async def sweep(now_ms: Optional[int] = None) -> dict[str, int]:
         if st == "pending" and it["status"] == "prepared" and now > int(it["expires_at_ms"]) + EXPIRE_GRACE_MS:
             if await asyncio.to_thread(store.transition, it["id"], "expired", expect=("prepared",)):
                 st = "expired"
+                await asyncio.to_thread(_release_cap, it, "approval expired")
         counts[st] = counts.get(st, 0) + 1
     return counts
 

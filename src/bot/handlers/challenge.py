@@ -1,7 +1,9 @@
 """Challenge creation and accept/decline callbacks (multi-chain MVP)."""
 from __future__ import annotations
 
+import asyncio
 import logging
+import re
 import shlex
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -29,6 +31,10 @@ from gaming.src.bot.utils.text import bold, code, h
 
 logger = logging.getLogger(__name__)
 
+# Free-text game names end up in the public group card, the opponent's DM,
+# WhatsApp template parameters and the AI verifier's prompt.
+_GAME_RE = re.compile(r"^[A-Za-z0-9 .:'+&\-]{1,40}$")
+
 router = Router()
 
 from gaming.src.backend.services.safety import MAX_STAKE_USDC, MIN_STAKE_USDC
@@ -44,6 +50,22 @@ _USAGE = (
     "Chains: base (live), arc, avalanche\n"
     "Default chain uses the live escrow (usually base)."
 )
+
+
+def _is_real(chain_id: str) -> bool:
+    from gaming.src.backend.services.realms import is_real_chain
+
+    return is_real_chain(chain_id)
+
+
+def _new_challenge_chain() -> str:
+    try:
+        from gaming.src.backend.services.realms import new_challenge_chain
+
+        return new_challenge_chain()
+    except Exception:
+        logger.error("[Challenge] realm resolution failed; practice chain", exc_info=True)
+        return default_chain_id()
 
 
 def _parse_challenge_args(
@@ -66,7 +88,8 @@ def _parse_challenge_args(
         return None, Decimal("0"), "", "", default_chain_id(), _USAGE
 
     # Optional trailing chain: arc | base | avalanche
-    chain_id = default_chain_id()
+    # No chain typed: real money when the humans realm is live, else practice.
+    chain_id = _new_challenge_chain()
     known_chains = {"arc", "base", "avalanche", "avax", "fuji", "base_sepolia"}
     if parts[-1].lower() in known_chains:
         try:
@@ -122,6 +145,17 @@ def _parse_challenge_args(
             "",
             chain_id,
             f"Amount must be between ${_MIN_STAKE} and ${_MAX_STAKE}.",
+        )
+
+    game = " ".join((game or "").split())
+    if game and not _GAME_RE.match(game):
+        return (
+            None,
+            Decimal("0"),
+            "",
+            "",
+            chain_id,
+            "Game name: up to 40 letters, digits, spaces and . : ' + & - only.",
         )
 
     return opponent_tag, amount, game or "EAFC", visibility, chain_id, None
@@ -205,6 +239,13 @@ async def cmd_challenge(message: types.Message) -> None:
         await message.answer(gate, parse_mode=ParseMode.HTML)
         return
 
+    from gaming.src.backend.services import stake_caps
+
+    capped = await asyncio.to_thread(stake_caps.check, profile["id"], chain_id, amount)
+    if capped:
+        await message.answer(f"❌ {capped}", parse_mode=None)
+        return
+
     blocked = assert_can_start_or_accept(profile["id"])
     if blocked:
         await message.answer(f"❌ {blocked}", parse_mode=None)
@@ -220,7 +261,8 @@ async def cmd_challenge(message: types.Message) -> None:
     if balance < amount:
         await message.answer(
             f"❌ Insufficient balance. You have {bold(f'${balance:,.2f}')} but need {bold(f'${amount:,.2f}')}.\n"
-            f"Deposit Base Sepolia USDC to the address from /start.",
+            + ("Top up with naira (Add money). Practice chips can't be used for real-money matches."
+               if _is_real(chain_id) else "Tap Get money to add practice USDC."),
             parse_mode=ParseMode.HTML,
         )
         return
@@ -332,14 +374,30 @@ async def cb_accept(callback: types.CallbackQuery) -> None:
 
     challenge_id = callback.data.split(":", 2)[2]
     accepter = await get_or_create_profile(callback.from_user)
+
+    from gaming.src.bot.middleware.private_chat import is_private
+
+    in_group = not is_private(getattr(callback.message, "chat", None))
+
+    async def reply(text: str, **kw):
+        """Answers go to the accepter's private chat when the tap came from a
+        group post: balances, match buttons and lock links are not for the group."""
+        if not in_group:
+            return await callback.message.answer(text, **kw)
+        try:
+            return await callback.bot.send_message(callback.from_user.id, text, **kw)
+        except Exception:
+            logger.info("[challenge] accepter has no private chat with the bot yet")
+            return None
+
     try:
         ch_full = await accept_challenge(challenge_id, accepter)
     except MatchRefused as exc:
         if exc.kind == "paused":
-            await callback.message.answer(exc.detail["html"], parse_mode=ParseMode.HTML)
+            await reply(exc.detail["html"], parse_mode=ParseMode.HTML)
         elif exc.kind == "busy":
             active = exc.detail.get("active") or {}
-            await callback.message.answer(
+            await reply(
                 f"❌ You already have an open match.\n"
                 f"Finish <code>{active.get('id')}</code> first.\n"
                 f"/match_info {active.get('id')}",
@@ -347,18 +405,18 @@ async def cb_accept(callback: types.CallbackQuery) -> None:
             )
         elif exc.kind == "funds":
             amount, bal = exc.detail["amount"], exc.detail["balance"]
-            await callback.message.answer(
+            await reply(
                 f"❌ Need {bold(f'${amount:,.2f}')} USDC to accept. You have {bold(f'${bal:,.2f}')}.",
                 parse_mode=ParseMode.HTML,
             )
         else:
-            await callback.message.answer(f"❌ {exc.message}", parse_mode=None)
+            await reply(f"❌ {exc.message}", parse_mode=None)
         return
 
     chain = ch_full.get("settlement_chain") or default_chain_id()
     from gaming.src.bot.keyboards import match_actions_menu
 
-    await callback.message.answer(
+    await reply(
         f"✅ Challenge accepted.\n\n"
         f"Network: {bold(chain)}\n"
         f"Tap <b>Lock my stake</b> below.\n"

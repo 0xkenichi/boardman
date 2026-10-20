@@ -111,7 +111,7 @@ def start(profile_id: str, *, channel: str, external_id: str, amount_ngn: Decima
     key = f"bm-on-{uuid.uuid4().hex[:24]}"
     ttl = config.limits().quote_ttl_sec * 1000
     order, _ = store.create_order(
-        idempotency_key=key, direction="onramp", profile_id=profile_id, status="quoted",
+        idempotency_key=key, direction="onramp", profile_id=profile_id, status="quoted", chain=config.settlement_chain(),
         channel=channel, external_id=str(external_id), amount_ngn=str(amount_ngn),
         amount_usdc=str(q.receive_usdc), rate=str(q.rate), quote=q.to_json(),
         details={"arc_address": arc_address}, expires_at_ms=now + ttl,

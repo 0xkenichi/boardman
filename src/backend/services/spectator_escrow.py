@@ -87,7 +87,12 @@ async def deposit_to_pool(profile_id: str, match_id: str, side: str, amount: Dec
             "spectator on-chain requires a live match_id, not 'arena'"
         )
 
-    chain_id = normalize_chain_id(os.getenv("SPECTATOR_CHAIN") or default_chain_id())
+    from gaming.src.backend.services.realms import assert_practice
+
+    # Spectator pools are arena money: practice chains only (realms.py).
+    chain_id = assert_practice(
+        normalize_chain_id(os.getenv("SPECTATOR_CHAIN") or default_chain_id()), path="spectator pool deposit"
+    )
     escrow_address = os.getenv("SPECTATOR_ESCROW_ADDRESS")
     if not escrow_address:
         raise SpectatorEscrowError("SPECTATOR_ESCROW_ADDRESS not configured")

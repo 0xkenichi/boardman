@@ -7,6 +7,7 @@ Telegram approval handling for web-initiated spectator spends.
 from __future__ import annotations
 
 import logging
+from html import escape
 
 from aiogram import F, Router, types
 from aiogram.enums import ParseMode
@@ -51,7 +52,7 @@ def _locked_text(applied: dict, *, always: bool) -> str:
         amt = applied.get("amount")
         kind = applied.get("kind") or applied.get("action") or ""
         if kind == "lp" or applied.get("agent_id"):
-            who = applied.get("agent_name") or applied.get("agent_id") or "the agent"
+            who = escape(str(applied.get("agent_name") or applied.get("agent_id") or "the agent"))
             return (
                 f"✅ <b>Locked ${float(amt or 0):,.2f} LP into {who}.</b>\n\n"
                 f"The website ticket updates now.{extra}"
@@ -64,7 +65,7 @@ def _locked_text(applied: dict, *, always: bool) -> str:
         )
     if applied.get("pending"):
         return "✅ <b>Approved.</b>\n\nLocking the funds now — the website will catch up."
-    err = applied.get("message") or applied.get("error") or "could not lock"
+    err = escape(str(applied.get("message") or applied.get("error") or "could not lock"))
     return (
         f"✅ <b>Approved in Telegram</b> but the lock did not finish: {err}\n\n"
         "Stay on the website — it will retry."

@@ -203,7 +203,7 @@ def _apply_bet(monkeypatch, deposit_exc: BaseException | None, *, projection_fai
     async def _debit(profile_id, amount):
         return None
 
-    async def _balance(profile_id):
+    async def _balance(profile_id, **kw):
         return 0
 
     from gaming.src.backend.services import clawstation_circle as cc

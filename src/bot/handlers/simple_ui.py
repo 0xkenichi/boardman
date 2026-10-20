@@ -98,6 +98,13 @@ def _safe_row(result) -> Optional[dict]:
     return None
 
 
+def _is_participant(ch: Optional[dict], profile_id: Optional[str]) -> bool:
+    """Callback data is client-supplied: a match id in a button proves nothing."""
+    if not ch or not profile_id:
+        return False
+    return str(profile_id) in {str(ch.get("creator_id") or ""), str(ch.get("opponent_id") or "")}
+
+
 async def _load_challenge(cid: str) -> Optional[dict]:
     """Load by UUID (callbacks) or public short code (user input).
 
@@ -402,11 +409,10 @@ async def ui_public_board(callback: types.CallbackQuery) -> None:
     from aiogram.types import InlineKeyboardButton, WebAppInfo
     from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-    # Full ops metrics only for operator (@stillkenichi / CLAW_ADMIN_TELEGRAM_IDS)
-    show_ops = False
+    # Full ops metrics only for operators, by numeric id (CLAW_ADMIN_TELEGRAM_IDS);
+    # never by @username, which anyone can claim once it is released.
     u = callback.from_user
-    if u and (is_admin(u.id) or (u.username or "").strip().lower() == "stillkenichi"):
-        show_ops = True
+    show_ops = bool(u and is_admin(u.id))
 
     try:
         if show_ops:
@@ -648,7 +654,7 @@ async def ui_info(callback: types.CallbackQuery) -> None:
         return
     profile = await get_or_create_profile(user)
     ch = await _load_challenge(cid)
-    if not ch:
+    if not ch or not _is_participant(ch, profile.get("id")):
         await callback.message.answer("Match not found.", reply_markup=main_menu())
         return
     await callback.message.answer(
@@ -917,7 +923,13 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
     profile = await get_or_create_profile(user)
     data = await state.get_data()
     amount = Decimal(str(data.get("amount", 1)))
-    chain = "arc"  # product surface is Arc-only for now
+    # Money realms: real money on the humans chain once it is live, practice
+    # chips on the arena chain until then (services/realms.py).
+    from gaming.src.backend.services import stake_caps
+    from gaming.src.backend.services.realms import is_real_chain, new_challenge_chain
+
+    chain = new_challenge_chain()
+    real = is_real_chain(chain)
     game = data.get("game") or "EAFC"
     game_label = game_display_name(game)
     opponent_id = data.get("opponent_id")
@@ -938,6 +950,12 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
         await callback.message.answer(f"❌ {blocked}", reply_markup=main_menu())
         return
 
+    capped = stake_caps.check(profile["id"], chain, amount)
+    if capped:
+        await state.clear()
+        await callback.message.answer(f"❌ {capped}", reply_markup=main_menu())
+        return
+
     await callback.message.answer("⏳ Creating challenge…")
 
     try:
@@ -949,8 +967,9 @@ async def ui_chal_confirm(callback: types.CallbackQuery, state: FSMContext) -> N
         from gaming.src.bot.keyboards import get_usdc_menu
 
         await callback.message.answer(
-            f"❌ Not enough USDC. You have <b>${bal:,.2f}</b>.\n"
-            f"Tap <b>Get money</b> to fund your wallet, then try again.",
+            f"❌ Not enough {'real-money' if real else 'practice'} USDC. You have <b>${bal:,.2f}</b>.\n"
+            + ("Top up with naira, then try again. Practice chips can't be used for real-money matches."
+               if real else "Tap <b>Get money</b> to fund your wallet, then try again."),
             reply_markup=get_usdc_menu(),
             parse_mode=ParseMode.HTML,
         )
@@ -1767,6 +1786,13 @@ async def ui_report_finalize(callback: types.CallbackQuery, state: FSMContext) -
 async def ui_settle(callback: types.CallbackQuery) -> None:
     await callback.answer("Checking…")
     cid = callback.data.split(":", 2)[2]
+    user = callback.from_user
+    if not user:
+        return
+    profile = await get_or_create_profile(user)
+    if not _is_participant(await _load_challenge(cid), profile.get("id")):
+        await callback.message.answer("Match not found.", reply_markup=main_menu())
+        return
     try:
         from gaming.src.backend.services.clawstation_settlement import settle_challenge
 
@@ -1775,8 +1801,6 @@ async def ui_settle(callback: types.CallbackQuery) -> None:
         await callback.message.answer(f"Settle check: {h(exc)}", parse_mode=ParseMode.HTML)
         return
     ch = await _load_challenge(cid)
-    user = callback.from_user
-    profile = await get_or_create_profile(user) if user else None
     text = f"Result: <b>{h(result.get('action'))}</b>"
     if result.get("reason"):
         text += f"\n{h(result.get('reason'))}"

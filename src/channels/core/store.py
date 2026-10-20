@@ -95,6 +95,16 @@ TEMPLATE = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS channel_outbox_provider_idx ON channel_outbox (provider_message_id)",
+    # First match each evidence file (SHA-256 of the received bytes) was sent
+    # for: the same screenshot cannot be evidence for a second match.
+    """
+    CREATE TABLE IF NOT EXISTS channel_evidence (
+      digest TEXT PRIMARY KEY,
+      challenge_id TEXT NOT NULL,
+      profile_id TEXT NOT NULL,
+      first_seen_ms BIGINT NOT NULL
+    )
+    """,
 ]
 
 TABLES = (
@@ -103,6 +113,7 @@ TABLES = (
     "channel_rate_events",
     "channel_inbound",
     "channel_outbox",
+    "channel_evidence",
 )
 
 # Weak, so a handle closed by reset_databases() (and a new one that happens to

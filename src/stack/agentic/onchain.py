@@ -267,6 +267,12 @@ def onchain_enabled() -> bool:
 
 
 def _chain_config(chain_id: str = "arc") -> dict[str, Any]:
+    # Money realms: the agentic stack (House, arena escrow, spectator pool,
+    # AFM, fee sweep) is practice money only. Refuse a real-money chain here,
+    # outside the fallback below, so no config error can turn into mainnet.
+    from gaming.src.backend.services.realms import assert_practice
+
+    assert_practice(chain_id, path="agentic on-chain")
     try:
         from gaming.src.backend.services.chains import get_chain, get_escrow_address, get_usdc_address, get_rpc_url, get_explorer_tx
 
@@ -419,6 +425,13 @@ def _send(w3, acct, tx: dict[str, Any], label: str) -> str:
     tx = dict(tx)
     tx.setdefault("from", acct.address)
     chain_id = int(w3.eth.chain_id)
+    # The arena signer never broadcasts on a real-money chain, whatever an
+    # RPC env override (ARC_RPC_URL…) points at.
+    from gaming.src.backend.services.realms import assert_practice_evm
+
+    assert_practice_evm(chain_id, path=f"agentic {label}")
+    if int(tx.get("chainId") or chain_id) != chain_id:
+        raise RuntimeError(f"{label}: tx chainId {tx.get('chainId')} != RPC chain {chain_id}")
     tx.setdefault("chainId", chain_id)
     chain_key = str(chain_id)
 

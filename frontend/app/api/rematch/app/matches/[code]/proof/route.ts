@@ -39,6 +39,8 @@ export async function POST(
     fd.set('file', file, 'proof.jpg')
     const res = await stackFetch(`/api/stack/v1/matches/${encodeURIComponent(code)}/proof`, {
       method: 'POST',
+      headers: { 'X-Boardman-Caller': s.profileId },
+      clientReq: req,
       body: fd,
     })
     return NextResponse.json(

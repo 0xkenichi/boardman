@@ -2,12 +2,19 @@
 # Boardman API + Telegram bot + house session + builder webhooks.
 # Used by Railway (railway.toml), Akash, Fly and docker-compose.
 # Entrypoint: deploy/start_akash.py (process supervisor).
+#
+# Supply chain (infra audit 2026-10, INF-11/INF-12):
+#   * the base image is pinned to an exact Python patch + Debian release
+#     (Dependabot proposes bumps; add an @sha256 digest once you have one);
+#   * Python packages install with -c requirements-lock.txt (exact versions);
+#   * compilers live only in the build stages, not in the runtime image.
+ARG PYTHON_IMAGE=python:3.12.15-slim-trixie
 
 # ── Ethereal: Sheila's UCI engine ────────────────────────────────────────────
 # Built portable (no -march=native) so the binary runs on whatever CPU the
 # platform schedules us on. If the build fails the image still builds and
 # Sheila falls back to Stockfish (house.ensure_builder_webhooks checks is_file).
-FROM python:3.12-slim AS ethereal
+FROM ${PYTHON_IMAGE} AS ethereal
 ARG ETHEREAL_REF=0e47e9b67f345c75eb965d9fb3e2493b6a11d09a
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential git ca-certificates \
@@ -23,23 +30,36 @@ RUN mkdir -p /out \
          && printf 'uci\nquit\n' | /out/ethereal | grep -q uciok ) \
     || (rm -f /out/ethereal; echo "WARN: Ethereal build failed; Sheila will use Stockfish")
 
+# ── Python dependencies ─────────────────────────────────────────────────────
+# Built here, with a compiler available for any sdist, then copied into the
+# runtime image (same base, same /app/.venv path) without the toolchain.
+FROM ${PYTHON_IMAGE} AS pydeps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential gcc libffi-dev libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY src/backend/requirements.txt src/backend/requirements-lock.txt /app/
+RUN python -m venv /app/.venv \
+    && /app/.venv/bin/pip install --no-cache-dir pip==26.2.1 \
+    && /app/.venv/bin/pip install --no-cache-dir \
+         -r /app/requirements.txt -c /app/requirements-lock.txt
+
 # ── runtime ─────────────────────────────────────────────────────────────────
-FROM python:3.12-slim
+FROM ${PYTHON_IMAGE}
 
 # stockfish: Debian package, installs /usr/games/stockfish. Without a local
 # engine every chess move goes to the external stockfish.online API.
+# curl is for the HEALTHCHECK. No compilers in the runtime image.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential gcc libffi-dev libssl-dev curl ca-certificates stockfish \
+    curl ca-certificates stockfish \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/games/stockfish /usr/local/bin/stockfish \
     && printf 'uci\nquit\n' | /usr/games/stockfish | grep -q uciok
 
 WORKDIR /app
 
-COPY src/backend/requirements.txt /app/requirements.txt
-RUN python -m venv /app/.venv \
-    && /app/.venv/bin/pip install --no-cache-dir --upgrade pip \
-    && /app/.venv/bin/pip install --no-cache-dir -r /app/requirements.txt
+COPY --from=pydeps /app/.venv /app/.venv
+COPY src/backend/requirements.txt src/backend/requirements-lock.txt /app/
 
 COPY src /app/src
 COPY config /app/config

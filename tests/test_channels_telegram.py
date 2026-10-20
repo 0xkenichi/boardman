@@ -90,6 +90,9 @@ def test_link_deep_link_redeems(world, monkeypatch):
     code, _ = ids.issue_link_code(ids.resolve("whatsapp", "2348011112222"))
 
     async def legacy_profile(user):  # /start would have created this empty profile
+        for p in world.repo.profiles.values():
+            if p.get("telegram_id") == user.id:
+                return p
         p = world.repo.create_profile({"gaming_tag": "sq_new", "telegram_id": user.id})
         ids.ensure_telegram_identity(p["id"], user.id)
         return p
@@ -103,6 +106,14 @@ def test_link_deep_link_redeems(world, monkeypatch):
     msg = _message(uid=7777, text=f"/start link_{code}")
     cmd = MagicMock(args=f"link_{code}")
     run(adapter.core_link_deeplink(msg, cmd, _FSM()))
-    assert "Linked to <b>@wa_first</b>" in msg.answer.await_args_list[0].args[0]
+    # the deep link alone links nothing: it names the target account and asks
+    ask = msg.answer.await_args_list[0]
+    assert "<b>@wa_first</b>?" in ask.args[0]
+    assert world.repo.get("telegram", "7777").profile_id != wa_prof["id"]
+    yes = [b for row in ask.kwargs["reply_markup"].inline_keyboard for b in row if b.text == "Yes, link it"][0]
+    cb = MagicMock(data=yes.callback_data, from_user=msg.from_user, message=msg)
+    cb.answer = AsyncMock()
+    run(adapter.core_button(cb, _FSM()))
+    assert "Linked to <b>@wa_first</b>" in msg.answer.await_args_list[1].args[0]
     assert world.repo.get("telegram", "7777").profile_id == wa_prof["id"]
     assert world.repo.profiles[wa_prof["id"]]["telegram_id"] == 7777

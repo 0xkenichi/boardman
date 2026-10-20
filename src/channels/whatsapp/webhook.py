@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Query, Request
@@ -72,7 +73,7 @@ async def whatsapp_receive(request: Request, background: BackgroundTasks):
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, ValueError):
         return JSONResponse({"ok": False, "error": "bad_json"}, status_code=400)
-    events, statuses = parse(payload)
+    events, statuses = parse(payload, phone_number_id=(os.getenv("WHATSAPP_PHONE_NUMBER_ID") or "").strip())
     fresh = await asyncio.to_thread(_enqueue_all, events, statuses)
     if fresh:
         background.add_task(_process, fresh)

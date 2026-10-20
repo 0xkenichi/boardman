@@ -11,6 +11,7 @@ Phase C (disabled): bridge-on-behalf + extra fee cut.
 """
 from __future__ import annotations
 
+import logging
 import os
 from functools import lru_cache
 from pathlib import Path
@@ -21,11 +22,14 @@ try:
 except ImportError:  # pragma: no cover
     yaml = None  # type: ignore
 
+logger = logging.getLogger(__name__)
+
 _CONFIG_PATH = Path(__file__).resolve().parents[3] / "config" / "chains.yaml"
 
 # Built-in fallback if PyYAML is not installed or file is missing.
 _FALLBACK_CHAINS: dict[str, Any] = {
     "default_settlement_chain": "arc",
+    "realms": {"humans": {"chain": "arc_mainnet"}, "arena": {"chain": "arc"}},
     "chains": {
         "arc": {
             "id": "arc",
@@ -33,6 +37,7 @@ _FALLBACK_CHAINS: dict[str, Any] = {
             "enabled": True,
             "recommended": True,
             "status": "live",
+            "network": "testnet",
             "circle_blockchain": "ARC-TESTNET",
             "chain_id": 5042002,
             "rpc_url": "https://rpc.testnet.arc.network",
@@ -53,6 +58,8 @@ _FALLBACK_CHAINS: dict[str, Any] = {
             "enabled": False,
             "recommended": False,
             "status": "prep",
+            "network": "mainnet",
+            "escrow_version": 2,
             "circle_blockchain": "ARC",
             "chain_id": 5042,
             "rpc_url": "https://rpc.mainnet.arc.io",
@@ -70,6 +77,7 @@ _FALLBACK_CHAINS: dict[str, Any] = {
             "enabled": False,
             "recommended": False,
             "status": "next",
+            "network": "testnet",
             "circle_blockchain": "AVAX-FUJI",
             "chain_id": 43113,
             "rpc_url": "https://api.avax-test.network/ext/bc/C/rpc",
@@ -89,6 +97,7 @@ _FALLBACK_CHAINS: dict[str, Any] = {
             "enabled": False,
             "recommended": False,
             "status": "legacy",
+            "network": "testnet",
             "circle_blockchain": "BASE-SEPOLIA",
             "chain_id": 84532,
             "rpc_url": "https://sepolia.base.org",
@@ -215,20 +224,39 @@ def is_chain_enabled(chain_id: str) -> bool:
     return cid == "arc"
 
 
+def _is_testnet(chain_id: str) -> bool:
+    """Declared ``network: testnet`` (no recursion into default_chain_id)."""
+    cid = _ALIASES.get((chain_id or "").lower().strip(), (chain_id or "").lower().strip())
+    row = (load_chains_config().get("chains") or {}).get(cid) or {}
+    return str(row.get("network") or "").strip().lower() == "testnet"
+
+
 def default_chain_id() -> str:
+    """The legacy default chain for every older code path.
+
+    Money realms (services/realms.py): this default is the ARENA chain and is
+    never a real-money chain. A mainnet ``CLAW_DEFAULT_CHAIN`` /
+    ``default_settlement_chain`` is ignored with an error — real money is
+    reached only through the humans realm (BOARDMAN_HUMANS_CHAIN), per row.
+    """
     cfg = load_chains_config()
     env_default = (os.getenv("CLAW_DEFAULT_CHAIN") or "").strip().lower()
     if env_default and is_chain_enabled(env_default):
-        return normalize_chain_id(env_default)
+        if _is_testnet(env_default):
+            return _ALIASES.get(env_default, env_default)
+        logger.error(
+            "[chains] CLAW_DEFAULT_CHAIN=%s is a real-money chain; ignored (use BOARDMAN_HUMANS_CHAIN)",
+            env_default,
+        )
     # Prefer default_settlement_chain if enabled
     preferred = cfg.get("default_settlement_chain") or "arc"
-    if is_chain_enabled(preferred):
-        return normalize_chain_id(preferred)
+    if is_chain_enabled(preferred) and _is_testnet(preferred):
+        return _ALIASES.get(preferred, preferred)
     for cid, c in (cfg.get("chains") or {}).items():
-        if is_chain_enabled(cid) and c.get("escrow_address"):
+        if is_chain_enabled(cid) and c.get("escrow_address") and _is_testnet(cid):
             return cid
     for cid in (cfg.get("chains") or {}):
-        if is_chain_enabled(cid):
+        if is_chain_enabled(cid) and _is_testnet(cid):
             return cid
     return "arc"
 
@@ -299,6 +327,25 @@ def get_escrow_address(chain_id: str) -> str:
             f"or deploy: npx hardhat run scripts/deploy_escrow.js --network <net>"
         )
     return addr
+
+
+def escrow_version(chain_id: str) -> int:
+    """BoardmanEscrow ABI generation on this chain: 2 = v2 safety escrow
+    (createMatch needs a resolver permit + bound player2), 1 = older V1.
+
+    From ``escrow_version`` in chains.yaml. Practice chains also honour the
+    legacy global ``BOARDMAN_ESCROW_VERSION``; a real chain never does (a
+    testnet override must not change how real money is locked).
+    """
+    c = get_chain(chain_id)
+    if str(c.get("network") or "").lower() == "testnet":
+        env = (os.getenv("BOARDMAN_ESCROW_VERSION") or "").strip()
+        if env in {"1", "2"}:
+            return int(env)
+    try:
+        return 2 if int(c.get("escrow_version") or 1) >= 2 else 1
+    except (TypeError, ValueError):
+        return 1
 
 
 def get_usdc_address(chain_id: str) -> str:

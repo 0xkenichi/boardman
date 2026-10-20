@@ -174,6 +174,14 @@ class _MockQuery:
                 sb.add_challenge(data)
                 return MagicMock(data=[data])
             if self.operation == "update":
+                # Conditional updates (.eq("status", "open")) only touch rows
+                # that still match, like PostgREST.
+                row = sb._challenge_by_id.get(self.row_id)
+                if row is not None and all(
+                    str(row.get(col)) == str(val) for kind, col, val in self.filters if kind == "eq"
+                ):
+                    row.update(self.data)
+                    return MagicMock(data=[row])
                 return MagicMock(data=[])
         if self.table == "bets" and self.operation == "insert":
             data = dict(self.data)
@@ -380,6 +388,7 @@ def _make_message(
     msg.text = text
     msg.from_user = _make_user(user_id, first_name, username)
     msg.chat.id = chat_id
+    msg.chat.type = "private"
     msg.photo = None  # MagicMock attrs are truthy; handlers gate on these
     msg.document = None
     msg.reply_to_message = None
@@ -399,6 +408,7 @@ def _make_callback(data: str, user_id: int = 99999, chat_id: int = 11111):
     cb.message.answer = AsyncMock()
     cb.message.edit_text = AsyncMock()
     cb.message.chat.id = chat_id
+    cb.message.chat.type = "private"
     return cb
 
 

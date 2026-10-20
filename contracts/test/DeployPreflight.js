@@ -42,18 +42,23 @@ describe("Audit 2026-10: deploy_v2 preflight (L-04)", function () {
     await expect(preflight(ethers, args({ usdc: owner.address }))).to.be.rejectedWith(/no code/);
   });
 
-  it("L-04 refuses an owner multisig with no code on this chain", async function () {
+  it("L-04 refuses an owner multisig with no code on this chain unless the EOA fallback is declared", async function () {
     await expect(preflight(ethers, args({ multisig: owner.address }))).to.be.rejectedWith(/has no code/);
+    const out = await preflight(ethers, args({ multisig: owner.address, env: { V2_OWNER_IS_EOA: "1" } }));
+    expect(out.ownerKind).to.match(/EOA/);
+    expect(out.warnings.join(" ")).to.match(/move ownership to a Safe/);
+    expect((await preflight(ethers, args())).ownerKind).to.match(/Safe/);
   });
 
   it("L-04 refuses a contract resolver (permits are plain ECDSA)", async function () {
     await expect(preflight(ethers, args({ resolver: safe.target }))).to.be.rejectedWith(/must be an EOA/);
   });
 
-  it("L-04 skips SpectatorPool on mainnets unless V2_DEPLOY_POOL=1", async function () {
-    const off = await preflight(ethers, args({ networkName: "baseMainnet" }));
-    expect(off.deployPool).to.equal(false);
-    const on = await preflight(ethers, args({ networkName: "baseMainnet", env: { V2_DEPLOY_POOL: "1" } }));
-    expect(on.deployPool).to.equal(true);
+  it("L-04 never deploys SpectatorPool on a mainnet (no override)", async function () {
+    expect((await preflight(ethers, args({ networkName: "baseMainnet" }))).deployPool).to.equal(false);
+    expect((await preflight(ethers, args({ networkName: "baseMainnet", env: { V2_DEPLOY_POOL: "1" } }))).deployPool)
+      .to.equal(false);
+    expect((await preflight(ethers, args({ mainnet: true }))).deployPool).to.equal(false); // V2_TREAT_AS_MAINNET
+    expect((await preflight(ethers, args())).deployPool).to.equal(true);
   });
 });
