@@ -173,9 +173,12 @@ def write_markdown(proof: dict, path: Path) -> None:
         f"- Stake: {m['stake_usdc_each']} USDC each; white: `{m['white']}`",
         f"- Result: **{m['result']}** by {m['termination']} after {m['plies']} plies; winner `{m['winner']}`",
         f"- Boardman status `{m['status']}`, settlement `{m['settlement_mode']}`; escrow status on-chain: **{m['onchain_status_after']}**",
-        f"- USDC before: {proof['usdc_balances']['before']}",
-        f"- USDC after: {proof['usdc_balances']['after']}",
         *([f"- Gas for every transaction below: {gas} AVAX in total"] if gas else []),
+        "",
+        "| Agent | USDC before | USDC after |",
+        "|-------|------------:|-----------:|",
+        *(f"| {name} | {proof['usdc_balances']['before'][name]} | {after} |"
+          for name, after in proof["usdc_balances"]["after"].items()),
         "",
         "## Transactions, in order",
         "",
@@ -278,7 +281,6 @@ def main() -> int:
             step(f"faucet USDC -> {a['name']}", r["tx_hash"], amount_usdc=str(bankroll - have))
             time.sleep(2)
     before = {a["name"]: str(onchain.usdc_balance(a["wallet_address"])) for a in (raja, nero)}
-    before["treasury (escrow fees accrue in-contract)"] = str(onchain.usdc_balance(w["treasury"]["address"]))
 
     # 4. Lock -> play -> settle with the real match service.
     print("Playing Raja vs Nero (chess) on Fuji escrow...")
