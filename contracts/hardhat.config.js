@@ -30,8 +30,10 @@ export default {
 
   networks: {
     // ── Local development ──────────────────────────────────────────────
+    // HARDHAT_CHAIN_ID=43113 with `hardhat node --fork <Fuji RPC>` rehearses
+    // the Avalanche proof run on a local Fuji fork (scripts/avalanche/README.md).
     hardhat: {
-      chainId: 31337,
+      chainId: Number(process.env.HARDHAT_CHAIN_ID || 31337),
     },
 
     // ── Arc Testnet (Boardman primary test path — USDC gas) ────────────
@@ -51,6 +53,25 @@ export default {
     arcMainnet: {
       url: process.env.ARC_MAINNET_RPC_URL || "https://rpc.mainnet.arc.io",
       chainId: 5042,
+      accounts: process.env.MAINNET_DEPLOYER_KEY ? [process.env.MAINNET_DEPLOYER_KEY] : [],
+    },
+
+    // ── Avalanche Fuji (C-Chain testnet, 43113) ────────────────────────
+    // Gas is AVAX; stakes are Circle's Fuji USDC (0x5425…Bc65, 6 decimals).
+    // FUJI_DEPLOYER_KEY is a throwaway testnet key that holds none of the
+    // v2 roles (scripts/avalanche/README.md).
+    avalancheFuji: {
+      url: process.env.AVALANCHE_FUJI_RPC_URL || "https://api.avax-test.network/ext/bc/C/rpc",
+      chainId: 43113,
+      accounts: [process.env.FUJI_DEPLOYER_KEY || ADMIN_PRIVATE_KEY],
+    },
+
+    // ── Avalanche C-Chain mainnet (43114) — REAL MONEY ─────────────────
+    // Not deployed. Same rules as arcMainnet: v2 escrow only, Safe owner,
+    // throwaway MAINNET_DEPLOYER_KEY typed blind, never ADMIN_PRIVATE_KEY.
+    avalancheMainnet: {
+      url: process.env.AVALANCHE_MAINNET_RPC_URL || "https://api.avax.network/ext/bc/C/rpc",
+      chainId: 43114,
       accounts: process.env.MAINNET_DEPLOYER_KEY ? [process.env.MAINNET_DEPLOYER_KEY] : [],
     },
 
@@ -76,6 +97,9 @@ export default {
         baseMainnet: process.env.BASESCAN_API_KEY || "",
         // Arc's explorer needs no key; hardhat-verify wants a non-empty string.
         arcMainnet: process.env.ARC_EXPLORER_API_KEY || "arc",
+        // Snowtrace runs on Routescan, which needs no key either.
+        avalancheFuji: process.env.SNOWTRACE_API_KEY || "snowtrace",
+        avalancheMainnet: process.env.SNOWTRACE_API_KEY || "snowtrace",
       },
       customChains: [
         {
@@ -87,6 +111,22 @@ export default {
           urls: {
             apiURL: "https://explorer.arc.io/api",
             browserURL: "https://explorer.arc.io",
+          },
+        },
+        {
+          network: "avalancheFuji",
+          chainId: 43113,
+          urls: {
+            apiURL: "https://api.routescan.io/v2/network/testnet/evm/43113/etherscan",
+            browserURL: "https://testnet.snowtrace.io",
+          },
+        },
+        {
+          network: "avalancheMainnet",
+          chainId: 43114,
+          urls: {
+            apiURL: "https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan",
+            browserURL: "https://snowtrace.io",
           },
         },
         {

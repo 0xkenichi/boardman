@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.avalanche.example
 .vercel
 
 # Python
@@ -27,7 +28,7 @@ data/*.session
 /backend
 /gaming/
 deploy/akash/deploy.generated.yml
-frontend/node_modules/
+frontend/node_modules
 frontend/.next/
 frontend/.env.local
 frontend/tsconfig.tsbuildinfo
@@ -38,7 +39,7 @@ engines/afm/engine-adapter/node_modules/
 
 
 # Hardhat / Solidity
-contracts/node_modules/
+contracts/node_modules
 contracts/artifacts/
 contracts/cache/
 contracts/typechain-types/
@@ -110,3 +111,6 @@ frontend/public/demos/*.html
 
 # third-party engine clones + built binaries
 engines/Ethereal/
+
+# Avalanche Fuji proof run: testnet-only wallets, keystore and arena data
+/.fuji/

@@ -22,6 +22,8 @@ from gaming.src.backend.rematch_auth import (
     resolve_api_key,
 )
 
+from gaming.src.stack.agentic.onchain import default_chain
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/stack/agentic", tags=["boardman-agentic"])
@@ -208,7 +210,7 @@ class CreateMatchBody(BaseModel):
     agent_b_id: str
     stake_usdc: float = Field(5.0, gt=0, le=1000)
     white_agent_id: Optional[str] = None
-    chain_id: str = "arc"
+    chain_id: Optional[str] = None  # None = the arena chain (BOARDMAN_ARENA_CHAIN)
     game_id: str = "agentic.chess_standard"
 
 
@@ -300,7 +302,7 @@ class HouseOpenBody(BaseModel):
     agent_b_id: str
     stake_usdc: Optional[float] = Field(None, gt=0, le=1000)
     white_agent_id: Optional[str] = None
-    chain_id: str = "arc"
+    chain_id: Optional[str] = None  # None = the arena chain (BOARDMAN_ARENA_CHAIN)
     game_id: str = "agentic.chess_standard"
 
 
@@ -722,7 +724,7 @@ def _agents_onchain_transfer_volume(days: Optional[int] = None) -> dict[str, Any
         def _scan(a: dict[str, Any]) -> Any:
             try:
                 return usdc_transfer_volume(
-                    a["wallet_address"], chain_id=a.get("chain_id") or "arc", days=days
+                    a["wallet_address"], chain_id=a.get("chain_id") or default_chain(), days=days
                 )
             except Exception as exc:  # reported per agent below
                 return exc
@@ -773,7 +775,7 @@ def agent_onchain_volume(
         raise HTTPException(400, "agent has no wallet_address")
     try:
         vol = usdc_transfer_volume(
-            wid, chain_id=a.get("chain_id") or "arc", days=days
+            wid, chain_id=a.get("chain_id") or default_chain(), days=days
         )
     except Exception as exc:
         raise HTTPException(502, f"on-chain volume read failed: {_safe_err(exc)}") from exc
@@ -781,7 +783,7 @@ def agent_onchain_volume(
         "success": True,
         "agent_id": agent_id,
         "wallet": wid,
-        "chain_id": a.get("chain_id") or "arc",
+        "chain_id": a.get("chain_id") or default_chain(),
         "window_days": days,
         "volume": vol,
     }
@@ -809,7 +811,7 @@ def get_agent(
     a["ledger_balance_usdc"] = str(ledger_bal)
     a["wallet"] = {
         "address": wallet,
-        "chain_id": a.get("chain_id") or "arc",
+        "chain_id": a.get("chain_id") or default_chain(),
         "identity_contract": a.get("identity_contract"),
         "ledger_balance_usdc": str(ledger_bal),
         "onchain_balance_usdc": None,
@@ -820,7 +822,7 @@ def get_agent(
         from gaming.src.stack.agentic.onchain import onchain_enabled, usdc_balance
 
         if onchain_enabled() and wallet:
-            onchain_bal = usdc_balance(wallet, chain_id=a.get("chain_id") or "arc")
+            onchain_bal = usdc_balance(wallet, chain_id=a.get("chain_id") or default_chain())
             a["wallet"]["onchain_balance_usdc"] = str(onchain_bal)
             a["wallet"]["spendable_usdc"] = str(onchain_bal)
             a["wallet"]["source"] = "arc_onchain"
@@ -855,7 +857,7 @@ def get_agent_wallet(
         "name": a.get("name"),
         "wallet_address": wallet,
         "identity_contract": a.get("identity_contract"),
-        "chain_id": a.get("chain_id") or "arc",
+        "chain_id": a.get("chain_id") or default_chain(),
         "ledger_balance_usdc": str(ledger_bal),
         "onchain_balance_usdc": None,
         "spendable_usdc": str(ledger_bal),

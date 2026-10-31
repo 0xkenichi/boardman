@@ -1,5 +1,6 @@
 """
-On-chain dual-lock for agent matches on Arc (BoardmanEscrow V1).
+On-chain dual-lock for agent matches (BoardmanEscrow v1/v2) on the arena
+chain: Arc testnet by default, Avalanche Fuji with BOARDMAN_ARENA_CHAIN=avalanche.
 
 Uses each agent's random spend key sealed in the keystore (keystore.py)
 to approve USDC + createMatch / joinMatch. Resolver key settles the winner.
@@ -12,8 +13,10 @@ Env:
   BOARDMAN_AGENTIC_ONCHAIN=1
   BOARDMAN_RESOLVER_KEY=0x...   # must be BoardmanEscrow.resolver (v1 also took owner);
                                 # on v2 it also signs the createMatch permit
-  ARC_RPC_URL / from chains.yaml
+  BOARDMAN_ARENA_CHAIN=arc|avalanche   # chain used when a caller names none
+  ARC_RPC_URL / AVALANCHE_FUJI_RPC_URL / from chains.yaml
   CLAW_ESCROW_ADDRESS_ARC / BOARDMAN_ESCROW_ADDRESS_ARC
+  CLAW_ESCROW_ADDRESS_AVALANCHE / BOARDMAN_ESCROW_ADDRESS_AVALANCHE
 """
 from __future__ import annotations
 
@@ -266,32 +269,69 @@ def onchain_enabled() -> bool:
     return v in {"1", "true", "yes", "on"}
 
 
-def _chain_config(chain_id: str = "arc") -> dict[str, Any]:
+def default_chain() -> str:
+    """The chain agentic money uses when a caller names none: the arena realm
+    chain (``BOARDMAN_ARENA_CHAIN``, else ``realms.arena.chain`` in
+    chains.yaml), e.g. ``arc`` (Arc testnet) or ``avalanche`` (Fuji).
+
+    Raises RealmMisconfigured if that names a real-money chain.
+    """
+    from gaming.src.backend.services.realms import arena_chain
+
+    return arena_chain()
+
+
+# Per-chain env overrides, first match wins. The bare ARC_* names predate
+# multi-chain and only ever apply to Arc testnet, so an Arc override can never
+# point another chain's signer at Arc (or the reverse). chains.py also applies
+# CLAW_ESCROW_ADDRESS_<CHAIN> and <CHAIN>_RPC_URL to the config itself.
+_CHAIN_ENV = {
+    "arc": {
+        "rpc_url": ("ARC_RPC_URL",),
+        "usdc": ("ARC_USDC_ADDRESS",),
+        "escrow": ("BOARDMAN_ESCROW_ADDRESS_ARC", "CLAW_ESCROW_ADDRESS_ARC"),
+    },
+    "avalanche": {
+        "rpc_url": ("AVALANCHE_FUJI_RPC_URL",),
+        "usdc": ("AVALANCHE_FUJI_USDC_ADDRESS",),
+        "escrow": ("BOARDMAN_ESCROW_ADDRESS_AVALANCHE", "CLAW_ESCROW_ADDRESS_AVALANCHE"),
+    },
+}
+
+
+def _env_override(chain_id: str, field: str) -> str:
+    for name in (_CHAIN_ENV.get(chain_id) or {}).get(field, ()):
+        v = (os.getenv(name) or "").strip()
+        if v:
+            return v
+    return ""
+
+
+def _chain_config(chain_id: Optional[str] = None) -> dict[str, Any]:
     # Money realms: the agentic stack (House, arena escrow, spectator pool,
     # AFM, fee sweep) is practice money only. Refuse a real-money chain here,
     # outside the fallback below, so no config error can turn into mainnet.
     from gaming.src.backend.services.realms import assert_practice
 
-    assert_practice(chain_id, path="agentic on-chain")
+    chain_id = assert_practice(chain_id or default_chain(), path="agentic on-chain")
     try:
         from gaming.src.backend.services.chains import get_chain, get_escrow_address, get_usdc_address, get_rpc_url, get_explorer_tx
 
         c = get_chain(chain_id) or {}
         return {
             "chain_id": chain_id,
-            "rpc_url": os.getenv("ARC_RPC_URL") or get_rpc_url(chain_id) or c.get("rpc_url"),
-            "usdc": os.getenv("ARC_USDC_ADDRESS") or get_usdc_address(chain_id) or c.get("usdc_address"),
-            "escrow": (
-                os.getenv("BOARDMAN_ESCROW_ADDRESS_ARC")
-                or os.getenv("CLAW_ESCROW_ADDRESS_ARC")
-                or get_escrow_address(chain_id)
-                or c.get("escrow_address")
-            ),
-            "explorer_tx": c.get("explorer_tx") or "https://explorer.testnet.arc.io/tx/",
-            "evm_chain_id": int(c.get("chain_id") or 5042002),
+            "rpc_url": _env_override(chain_id, "rpc_url") or get_rpc_url(chain_id) or c.get("rpc_url"),
+            "usdc": _env_override(chain_id, "usdc") or get_usdc_address(chain_id) or c.get("usdc_address"),
+            "escrow": _env_override(chain_id, "escrow") or get_escrow_address(chain_id),
+            "explorer_tx": c["explorer_tx"],
+            "evm_chain_id": int(c["chain_id"]),
             "get_explorer_tx": get_explorer_tx,
         }
     except Exception as exc:
+        # Only Arc testnet has a built-in fallback. Any other chain fails
+        # closed rather than quietly signing against Arc's escrow.
+        if chain_id != "arc":
+            raise RuntimeError(f"[agentic.onchain] no usable config for chain {chain_id!r}: {exc}") from exc
         logger.warning("[agentic.onchain] chains config: %s", exc)
         return {
             "chain_id": "arc",
@@ -502,11 +542,12 @@ def _send(w3, acct, tx: dict[str, Any], label: str) -> str:
     return h
 
 
-def reconcile_pending_txs(chain_id: str = "arc") -> dict[str, int]:
+def reconcile_pending_txs(chain_id: Optional[str] = None) -> dict[str, int]:
     """Settle txs left ``pending_confirmation`` by a receipt timeout."""
     from gaming.src.stack.agentic.db import nonces
 
     cfg = _chain_config(chain_id)
+    chain_id = cfg["chain_id"]
     w3 = _w3(cfg)
     want = str(int(w3.eth.chain_id))
 
@@ -534,9 +575,10 @@ def _send_house(w3, acct, tx: dict[str, Any], label: str, escrow_address: str) -
     return _send(w3, acct, tx, label)
 
 
-def read_onchain_match(match_id: str, chain_id: str = "arc") -> dict[str, Any]:
+def read_onchain_match(match_id: str, chain_id: Optional[str] = None) -> dict[str, Any]:
     """Read BoardmanEscrow.matches(matchId). Raises if the slot is empty."""
     cfg = _chain_config(chain_id)
+    chain_id = cfg["chain_id"]
     w3 = _w3(cfg)
     _, escrow = _contracts(w3, cfg)
     mid = match_id_to_bytes32(match_id)
@@ -562,8 +604,9 @@ def read_onchain_match(match_id: str, chain_id: str = "arc") -> dict[str, Any]:
     }
 
 
-def usdc_balance(address: str, chain_id: str = "arc") -> Decimal:
+def usdc_balance(address: str, chain_id: Optional[str] = None) -> Decimal:
     cfg = _chain_config(chain_id)
+    chain_id = cfg["chain_id"]
     w3 = _w3(cfg)
     usdc, _ = _contracts(w3, cfg)
     raw = usdc.functions.balanceOf(w3.to_checksum_address(address)).call()
@@ -678,7 +721,7 @@ def from_block_for_days(cfg: dict[str, Any], days: int) -> int:
 
 def usdc_transfer_volume(
     address: str,
-    chain_id: str = "arc",
+    chain_id: Optional[str] = None,
     *,
     from_block: Optional[int] = None,
     to_block: Optional[int] = None,
@@ -700,6 +743,7 @@ def usdc_transfer_volume(
              cached, chain_id, address, window_days}.
     """
     cfg = _chain_config(chain_id)
+    chain_id = cfg["chain_id"]
     addr_l = address.lower()
     if not addr_l.startswith("0x"):
         addr_l = "0x" + addr_l
@@ -839,7 +883,7 @@ def dual_lock_onchain(
     agent_a_wallet: str,
     agent_b_wallet: str,
     stake_usdc: Decimal,
-    chain_id: str = "arc",
+    chain_id: Optional[str] = None,
     player1_is_a: bool = True,
 ) -> dict[str, Any]:
     """
@@ -847,6 +891,7 @@ def dual_lock_onchain(
     player1_is_a: if True agent_a is creator; else agent_b creates.
     """
     cfg = _chain_config(chain_id)
+    chain_id = cfg["chain_id"]
     w3 = _w3(cfg)
     usdc, escrow = _contracts(w3, cfg)
     stake_raw = usdc_to_raw(stake_usdc)
@@ -1076,7 +1121,7 @@ def resolve_onchain(
     match_id: str,
     winner_address: str,
     *,
-    chain_id: str = "arc",
+    chain_id: Optional[str] = None,
     draw: bool = False,
     authorization: Any = None,
 ) -> dict[str, Any]:
@@ -1101,6 +1146,7 @@ def resolve_onchain(
     authorization.assert_for_resolve(match_id, winner_address, draw)
 
     cfg = _chain_config(chain_id)
+    chain_id = cfg["chain_id"]
     resolver_pk = load_resolver_key()
     acct = _account(resolver_pk)
 
@@ -1181,7 +1227,7 @@ def fund_agent_from_key(
     amount_usdc: Decimal,
     *,
     funder_key: Optional[str] = None,
-    chain_id: str = "arc",
+    chain_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Ops faucet: USDC to a registered contestant. Never the House resolver key."""
     from gaming.src.stack.agentic.disbursement import (
@@ -1204,6 +1250,7 @@ def fund_agent_from_key(
     assert_faucet_destination(to_address)
 
     cfg = _chain_config(chain_id)
+    chain_id = cfg["chain_id"]
     w3 = _w3(cfg)
     usdc, _ = _contracts(w3, cfg)
     acct = _account(pk)

@@ -15,7 +15,7 @@
  *   deposit() is permissionless once a book is open). No override.
  */
 export const ARC_MAINNET_CHAIN_ID = 5042n;
-export const MAINNETS = new Set(["arcMainnet", "baseMainnet"]);
+export const MAINNETS = new Set(["arcMainnet", "baseMainnet", "avalancheMainnet"]);
 
 const ERC20_DECIMALS = ["function decimals() view returns (uint8)"];
 

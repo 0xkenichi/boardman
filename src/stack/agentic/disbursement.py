@@ -215,7 +215,7 @@ def _mint(
         trigger=trigger,
         action=action,
         match_id=mid,
-        chain_id=str(match.get("chain_id") or "arc"),
+        chain_id=str(match.get("chain_id") or _default_chain()),
         player_wallets=players,
         winner_wallet=w,
         result=result,
@@ -567,7 +567,19 @@ def require_onchain_settlement(match: dict[str, Any]) -> bool:
     return onchain_explicitly_enabled()
 
 
-def configured_escrow_address(chain_id: str = "arc") -> str:
+def _default_chain() -> str:
+    from gaming.src.stack.agentic.onchain import default_chain
+
+    return default_chain()
+
+
+def configured_escrow_address(chain_id: Optional[str] = None) -> str:
+    """Public BoardmanEscrow address on the arena chain (display only)."""
+    cid = chain_id or _default_chain()
+    if cid != "arc":
+        from gaming.src.stack.agentic.onchain import _chain_config
+
+        return str(_chain_config(cid).get("escrow") or "")
     env = (
         os.getenv("BOARDMAN_ESCROW_ADDRESS_ARC")
         or os.getenv("CLAW_ESCROW_ADDRESS_ARC")

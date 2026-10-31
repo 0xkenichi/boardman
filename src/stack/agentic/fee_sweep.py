@@ -121,7 +121,7 @@ def _guarded_send(w3: Any, acct: Any, tx: dict[str, Any], label: str) -> str:
     return _send(w3, acct, tx, label)
 
 
-def sweep_escrow_fees(chain_id: str = "arc") -> dict[str, Any]:
+def sweep_escrow_fees(chain_id: Optional[str] = None) -> dict[str, Any]:
     from gaming.src.stack.agentic.onchain import _chain_config, _w3, escrow_version
 
     cfg = _chain_config(chain_id)
@@ -137,11 +137,11 @@ def sweep_escrow_fees(chain_id: str = "arc") -> dict[str, Any]:
     return {"contract": "BoardmanEscrow", "version": version, **out}
 
 
-def sweep_pool_fees(chain_id: str = "arc") -> dict[str, Any]:
+def sweep_pool_fees(chain_id: Optional[str] = None) -> dict[str, Any]:
     from gaming.src.stack.agentic.spectator_onchain import _pool_cfg, pool_version, spectator_pool_address
     from gaming.src.stack.agentic.onchain import _w3
 
-    if not spectator_pool_address():
+    if not spectator_pool_address(chain_id):
         return {"contract": "SpectatorPool", "skipped": "no pool configured"}
     cfg = _pool_cfg(chain_id)
     w3 = _w3(cfg)
@@ -156,7 +156,7 @@ def sweep_pool_fees(chain_id: str = "arc") -> dict[str, Any]:
     return {"contract": "SpectatorPool", "version": version, **out}
 
 
-def sweep_all(chain_id: str = "arc") -> list[dict[str, Any]]:
+def sweep_all(chain_id: Optional[str] = None) -> list[dict[str, Any]]:
     results = []
     for fn in (sweep_escrow_fees, sweep_pool_fees):
         try:
@@ -194,8 +194,8 @@ def _claim_slot(key: str, every_sec: float) -> bool:
         return True
 
 
-def maintenance_tick(chain_id: str = "arc", *, force: bool = False) -> dict[str, Any]:
-    from gaming.src.stack.agentic.onchain import onchain_enabled, reconcile_pending_txs
+def maintenance_tick(chain_id: Optional[str] = None, *, force: bool = False) -> dict[str, Any]:
+    from gaming.src.stack.agentic.onchain import default_chain, onchain_enabled, reconcile_pending_txs
     from gaming.src.stack.agentic.store import cleanup_orphan_tmp
 
     out: dict[str, Any] = {"tmp_removed": cleanup_orphan_tmp()}
@@ -212,6 +212,7 @@ def maintenance_tick(chain_id: str = "arc", *, force: bool = False) -> dict[str,
     if not onchain_enabled():
         out["onchain"] = "disabled"
         return out
+    chain_id = chain_id or default_chain()
     try:
         out["reconciled"] = reconcile_pending_txs(chain_id)
     except Exception as exc:
@@ -224,7 +225,7 @@ def maintenance_tick(chain_id: str = "arc", *, force: bool = False) -> dict[str,
 _thread: Optional[threading.Thread] = None
 
 
-def start_maintenance_thread(chain_id: str = "arc", *, every_sec: float = 300.0) -> None:
+def start_maintenance_thread(chain_id: Optional[str] = None, *, every_sec: float = 300.0) -> None:
     """Daemon that runs ``maintenance_tick`` every few minutes (sweeps throttle themselves)."""
     global _thread
     if _thread is not None and _thread.is_alive():

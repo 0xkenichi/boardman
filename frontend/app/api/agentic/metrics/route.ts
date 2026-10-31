@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { rematchApiFetch } from "@/lib/stackServer";
 import { requireAdmin } from "@/lib/adminAuth";
+import { SETTLEMENT } from "@/lib/settlementChain";
 import fs from "fs";
 import path from "path";
 
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic";
 const RAJA = "agent_raja_kia_alekhine";
 const NERO = "agent_nero_sicilian_french";
 const NAMES: Record<string, string> = { [RAJA]: "Raja", [NERO]: "Nero" };
-const EXPLORER = "https://explorer.testnet.arc.io/tx/";
+const EXPLORER = SETTLEMENT.explorerTx;
 
 function q6(n: number): string {
   return (Math.round(n * 1e6) / 1e6).toFixed(6);

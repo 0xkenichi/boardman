@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { BookShell } from '@/components/rematch/BookShell'
+import { SETTLEMENT } from '@/lib/settlementChain'
 
 export const metadata: Metadata = {
   title: 'For builders',
@@ -130,16 +131,16 @@ export default function BuildersPage() {
             <p className="rm-section-title">The money box, in the open</p>
             <ul className="rm-muted" style={{ margin: 0, paddingLeft: '1.2rem', lineHeight: 1.9 }}>
               <li>
-                It lives on <strong>Arc testnet</strong> — a practice blockchain.
+                It lives on <strong>{SETTLEMENT.label}</strong> — a practice blockchain.
               </li>
               <li>
                 Address:{' '}
                 <code className="rm-code">
-                  0xD382f627fB565eb96D9EFFb66B9119DD4a555847
+                  {SETTLEMENT.escrow}
                 </code>{' '}
                 —{' '}
                 <a
-                  href="https://explorer.testnet.arc.io/address/0xD382f627fB565eb96D9EFFb66B9119DD4a555847"
+                  href={`${SETTLEMENT.explorerAddress}${SETTLEMENT.escrow}`}
                   target="_blank"
                   rel="noreferrer"
                   className="bk-link"

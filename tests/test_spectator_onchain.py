@@ -46,7 +46,7 @@ def test_flag_requires_address(monkeypatch):
     # Re-import path: patch the function used by enabled()
     import gaming.src.stack.agentic.spectator_onchain as soc
 
-    monkeypatch.setattr(soc, "spectator_pool_address", lambda: "")
+    monkeypatch.setattr(soc, "spectator_pool_address", lambda chain_id=None: "")
     assert soc.spectator_onchain_enabled() is False
 
 

@@ -71,7 +71,7 @@ def test_v1_contracts_are_a_no_op(monkeypatch):
     monkeypatch.setattr(onchain, "escrow_version", lambda w3, cfg: 1)
     assert "skipped" in fee_sweep.sweep_escrow_fees()
 
-    monkeypatch.setattr(spectator_onchain, "spectator_pool_address", lambda: "0xpool")
+    monkeypatch.setattr(spectator_onchain, "spectator_pool_address", lambda chain_id=None: "0xpool")
     monkeypatch.setattr(spectator_onchain, "_pool_cfg", lambda cid: {"pool": "0xpool"})
     monkeypatch.setattr(spectator_onchain, "pool_version", lambda w3, cfg: 1)
     assert "skipped" in fee_sweep.sweep_pool_fees()

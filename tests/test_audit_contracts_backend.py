@@ -91,7 +91,7 @@ def test_h01_settlement_closes_the_pool_book_before_any_other_step(store, monkey
     """The game is over (and public) when settlement starts. The SpectatorPool
     book must be closed first, not after the escrow and stats steps."""
     events: list[str] = []
-    monkeypatch.setattr(soc, "spectator_onchain_enabled", lambda: True)
+    monkeypatch.setattr(soc, "spectator_onchain_enabled", lambda chain_id=None: True)
     monkeypatch.setattr(soc, "close_book_onchain", lambda mid, chain_id="arc": events.append("pool_close") or {"tx_hash": "0xc"})
     monkeypatch.setattr(soc, "resolve_book", lambda mid, side, chain_id="arc": events.append("pool_resolve") or {"tx_hash": None})
     monkeypatch.setattr(matches_mod, "_SETTLE_STEP_HOOK", lambda name: events.append(name))
@@ -111,7 +111,7 @@ def test_h01_a_failed_early_close_does_not_block_settlement(store, monkeypatch):
     def _boom(mid, chain_id="arc"):
         raise RuntimeError("rpc down")
 
-    monkeypatch.setattr(soc, "spectator_onchain_enabled", lambda: True)
+    monkeypatch.setattr(soc, "spectator_onchain_enabled", lambda chain_id=None: True)
     monkeypatch.setattr(soc, "close_book_onchain", _boom)
     monkeypatch.setattr(soc, "resolve_book", lambda mid, side, chain_id="arc": {"tx_hash": None})
     mid = _onchain_table(monkeypatch)
@@ -195,7 +195,7 @@ def _apply_bet(monkeypatch, deposit_exc: BaseException | None, *, projection_fai
     monkeypatch.setattr(ta, "claim_apply", lambda aid: {"id": aid})
     monkeypatch.setattr(ta, "store_apply_result", lambda aid, res: stored.append(res))
     monkeypatch.setattr(rw, "_approved_flow_refusal", lambda *a, **k: None)
-    monkeypatch.setattr(soc, "spectator_onchain_enabled", lambda: True)
+    monkeypatch.setattr(soc, "spectator_onchain_enabled", lambda chain_id=None: True)
 
     async def _pull(profile_id, amount):
         return None

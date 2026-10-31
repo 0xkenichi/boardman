@@ -115,6 +115,30 @@ and `tests/test_audit_contracts_backend.py`).
 
 Gaps: trivial views (`contractBalance`, `getMatchStatus`, `fanDepositOf`, `seedOf`), `pause`/`unpause` on the escrow, and the v1 events, which were kept unchanged. Run `npx hardhat test` (all hardhat tests) and `REPORT_GAS=true npx hardhat test` for gas figures.
 
+## Avalanche Fuji (chain ID `43113`): v2 deployed, Avalanche build
+
+- **BoardmanEscrow v2:** [`__FUJI_ESCROW__`](https://testnet.snowtrace.io/address/__FUJI_ESCROW__)
+- **SpectatorPool v2:** [`__FUJI_POOL__`](https://testnet.snowtrace.io/address/__FUJI_POOL__)
+- USDC: Circle Fuji USDC `0x5425890298aed601595a70AB815c96711a31Bc65` (6 decimals). Gas: AVAX.
+- Record: `contracts/deployments/boardman_v2_avalancheFuji.json`, which has the roles,
+  timeouts (open 24h, lock 7d, refundGrace 7d, claimWindow 180d) and deploy tx hashes.
+- Roles are four separate testnet-only keys (deployer, owner EOA with
+  `V2_OWNER_IS_EOA=1`, treasury, resolver). The owner accepted ownership on
+  both contracts.
+- Deploy: `scripts/avalanche/deploy_fuji.sh` (`npm run deploy:v2:fuji`).
+  Verify on Snowtrace through Routescan: `npx hardhat verify --network avalancheFuji …`.
+- Backend: `.env.avalanche.example` (`BOARDMAN_ARENA_CHAIN=avalanche`;
+  overrides `CLAW_ESCROW_ADDRESS_AVALANCHE`, `SPECTATOR_ESCROW_ADDRESS_AVALANCHE`).
+- Live proof (agent match locked, played and settled): `docs/avalanche/FUJI_PROOF.md`.
+
+## Avalanche C-Chain mainnet (chain ID `43114`): not deployed
+
+- USDC: Circle `0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E`. RPC `https://api.avax.network/ext/bc/C/rpc`. Explorer `https://snowtrace.io`.
+- Same rules as Arc mainnet: v2 escrow only (no SpectatorPool), Safe owner,
+  $25 stake cap, throwaway `MAINNET_DEPLOYER_KEY`.
+  `CONFIRM_V2_DEPLOY=1 npm run deploy:v2:avalanche-mainnet`, then
+  `BOARDMAN_ESCROW_ADDRESS_AVALANCHE_MAINNET`. Gated on the external audit and counsel.
+
 ## Arc Mainnet (chain ID `5042` — live Sept 16 2026)
 
 - Native USDC ERC-20 facade predeploy: `0x3600000000000000000000000000000000000000` (same as testnet, 6 decimals)
@@ -130,7 +154,7 @@ Gaps: trivial views (`contractBalance`, `getMatchStatus`, `fanDepositOf`, `seedO
 |-------|---------|------------|------|----------|
 | **base** | Base Sepolia (`84532`) | `0xDb76714390ccE1729558DF3c9EC4f45A1690dE78` | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | [Basescan](https://sepolia.basescan.org/address/0xDb76714390ccE1729558DF3c9EC4f45A1690dE78) |
 | **arc** | Arc Testnet (`5042002`) | `0xFC44a06295d4fC58420027932A6FcB3C13D83859` | `0x3600000000000000000000000000000000000000` | [Arcscan](https://explorer.testnet.arc.io/address/0xFC44a06295d4fC58420027932A6FcB3C13D83859#code) |
-| **avalanche** | Avalanche Fuji (`43113`) | `0xFC44a06295d4fC58420027932A6FcB3C13D83859` | `0x5425890298aed601595a70AB815c96711a31Bc65` | [Snowtrace](https://testnet.snowtrace.io/address/0xFC44a06295d4fC58420027932A6FcB3C13D83859) |
+| **avalanche** (V0 archive) | Avalanche Fuji (`43113`) | `0xFC44a06295d4fC58420027932A6FcB3C13D83859` | `0x5425890298aed601595a70AB815c96711a31Bc65` | [Snowtrace](https://testnet.snowtrace.io/address/0xFC44a06295d4fC58420027932A6FcB3C13D83859). Superseded by v2 above |
 
 > Arc + Avalanche share the same CREATE address (same deployer nonce on both chains). Base used an earlier deploy.
 
@@ -164,7 +188,7 @@ Legacy name **ClawEscrow** = V0 archive only.
 ```
 CLAW_ESCROW_ADDRESS_BASE_SEPOLIA=0xDb76714390ccE1729558DF3c9EC4f45A1690dE78
 CLAW_ESCROW_ADDRESS_ARC=0xFC44a06295d4fC58420027932A6FcB3C13D83859
-CLAW_ESCROW_ADDRESS_AVALANCHE=0xFC44a06295d4fC58420027932A6FcB3C13D83859
+CLAW_ESCROW_ADDRESS_AVALANCHE=__FUJI_ESCROW__
 CSC_ADDRESS=0xDb76714390ccE1729558DF3c9EC4f45A1690dE78
 ```
 
@@ -175,6 +199,6 @@ Also mirrored in `gaming/config/chains.yaml` and `contracts/deployments/*.json`.
 ```bash
 cd contracts
 npx hardhat run scripts/deploy_escrow.js --network arcTestnet
-npx hardhat run scripts/deploy_escrow.js --network avalancheFuji
+scripts/avalanche/deploy_fuji.sh   # Avalanche Fuji: v2 escrow + pool
 npx hardhat run scripts/deploy_escrow.js --network baseSepolia
 ```

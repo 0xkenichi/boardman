@@ -21,6 +21,7 @@ from gaming.src.stack.agentic.onchain import (
     _account,
     _chain_config,
     _explorer,
+    default_chain,
     _send,
     _w3,
     load_resolver_key,
@@ -169,22 +170,31 @@ class SpectatorOnchainError(RuntimeError):
     pass
 
 
-def spectator_pool_address() -> str:
-    env = (os.getenv("SPECTATOR_ESCROW_ADDRESS") or "").strip()
-    if env:
-        return env
-    try:
-        from gaming.src.backend.services.chains import get_chain
+# Env override per chain. The bare SPECTATOR_ESCROW_ADDRESS predates
+# multi-chain and only ever names the Arc testnet pool.
+_POOL_ENV = {
+    "arc": "SPECTATOR_ESCROW_ADDRESS",
+    "avalanche": "SPECTATOR_ESCROW_ADDRESS_AVALANCHE",
+}
 
-        c = get_chain("arc") or {}
+
+def spectator_pool_address(chain_id: Optional[str] = None) -> str:
+    try:
+        from gaming.src.backend.services.chains import get_chain, normalize_chain_id
+
+        cid = normalize_chain_id(chain_id or default_chain())
+        env = (os.getenv(_POOL_ENV.get(cid, "")) or "").strip() if cid in _POOL_ENV else ""
+        if env:
+            return env
+        c = get_chain(cid) or {}
         return str(c.get("spectator_pool_address") or "").strip()
     except Exception:
         return ""
 
 
-def spectator_onchain_enabled() -> bool:
+def spectator_onchain_enabled(chain_id: Optional[str] = None) -> bool:
     v = os.getenv("SPECTATOR_ONCHAIN", "").strip().lower()
-    return v in {"1", "true", "yes", "on"} and bool(spectator_pool_address())
+    return v in {"1", "true", "yes", "on"} and bool(spectator_pool_address(chain_id))
 
 
 def assert_live_match_id(match_id: str) -> str:
@@ -212,11 +222,11 @@ def side_to_idx(side: str) -> int:
     raise SpectatorOnchainError("side must be a, b, or draw")
 
 
-def _pool_cfg(chain_id: str = "arc") -> dict[str, Any]:
+def _pool_cfg(chain_id: Optional[str] = None) -> dict[str, Any]:
     cfg = dict(_chain_config(chain_id))
-    pool = spectator_pool_address()
+    pool = spectator_pool_address(cfg["chain_id"])
     if not pool:
-        raise SpectatorOnchainError("SPECTATOR_ESCROW_ADDRESS not configured")
+        raise SpectatorOnchainError(f"no SpectatorPool configured for {cfg['chain_id']}")
     cfg["pool"] = pool
     return cfg
 
@@ -296,8 +306,9 @@ def _ensure_allowance(w3, usdc, acct, spender: str, raw: int, cfg: dict[str, Any
     return _send_pool(w3, acct, tx, cfg, "approve")
 
 
-def read_book(match_id: str, chain_id: str = "arc") -> dict[str, Any]:
+def read_book(match_id: str, chain_id: Optional[str] = None) -> dict[str, Any]:
     cfg = _pool_cfg(chain_id)
+    chain_id = cfg["chain_id"]
     w3 = _w3(cfg)
     _, pool = _contracts(w3, cfg)
     mid = match_id_to_bytes32(match_id)
@@ -333,7 +344,7 @@ def read_book(match_id: str, chain_id: str = "arc") -> dict[str, Any]:
     }
 
 
-def open_book_onchain(match: dict[str, Any], *, chain_id: str = "arc") -> dict[str, Any]:
+def open_book_onchain(match: dict[str, Any], *, chain_id: Optional[str] = None) -> dict[str, Any]:
     """Resolver openBook. Idempotent if the book is already Open."""
     match_id = assert_live_match_id(str(match.get("match_id") or ""))
     existing = read_book(match_id, chain_id=chain_id)
@@ -345,6 +356,7 @@ def open_book_onchain(match: dict[str, Any], *, chain_id: str = "arc") -> dict[s
         )
 
     cfg = _pool_cfg(chain_id)
+    chain_id = cfg["chain_id"]
     w3 = _w3(cfg)
     _, pool = _contracts(w3, cfg)
     acct = _account(load_resolver_key())
@@ -398,7 +410,7 @@ def open_book_onchain(match: dict[str, Any], *, chain_id: str = "arc") -> dict[s
     }
 
 
-def close_book_onchain(match_id: str, *, chain_id: str = "arc") -> dict[str, Any]:
+def close_book_onchain(match_id: str, *, chain_id: Optional[str] = None) -> dict[str, Any]:
     """Resolver close(): stop on-chain bets now. Idempotent.
 
     Call this at kickoff / the ply-N freeze, and always before resolve —
@@ -413,6 +425,7 @@ def close_book_onchain(match_id: str, *, chain_id: str = "arc") -> dict[str, Any
                 "match_id": mid, "status_name": book["status_name"]}
 
     cfg = _pool_cfg(chain_id)
+    chain_id = cfg["chain_id"]
     w3 = _w3(cfg)
     _, pool = _contracts(w3, cfg)
     acct = _account(load_resolver_key())
@@ -430,7 +443,7 @@ def close_book_onchain(match_id: str, *, chain_id: str = "arc") -> dict[str, Any
     }
 
 
-def cancel_book_onchain(match_id: str, *, chain_id: str = "arc") -> dict[str, Any]:
+def cancel_book_onchain(match_id: str, *, chain_id: Optional[str] = None) -> dict[str, Any]:
     """Resolver cancel(): the game never finished, every fan claims a refund.
 
     Idempotent: a missing, resolved or already-cancelled book sends nothing
@@ -445,6 +458,7 @@ def cancel_book_onchain(match_id: str, *, chain_id: str = "arc") -> dict[str, An
                 "match_id": mid, "status_name": book["status_name"]}
 
     cfg = _pool_cfg(chain_id)
+    chain_id = cfg["chain_id"]
     w3 = _w3(cfg)
     _, pool = _contracts(w3, cfg)
     acct = _account(load_resolver_key())
@@ -505,7 +519,7 @@ def deposit_for(
     amount_usdc: Decimal,
     side: str,
     *,
-    chain_id: str = "arc",
+    chain_id: Optional[str] = None,
     match: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """House custodial deposit: ledger already debited; resolver pulls USDC into the pool."""
@@ -541,6 +555,7 @@ def deposit_for(
         )
 
     cfg = _pool_cfg(chain_id)
+    chain_id = cfg["chain_id"]
     w3 = _w3(cfg)
     usdc, pool = _contracts(w3, cfg)
     acct = _account(load_resolver_key())
@@ -581,7 +596,7 @@ def refund_float_to_user(
     user_address: str,
     amount_usdc: Decimal,
     *,
-    chain_id: str = "arc",
+    chain_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Return USDC from the House float (resolver key) to a user wallet.
 
@@ -593,6 +608,7 @@ def refund_float_to_user(
     if not user.startswith("0x") or len(user) != 42:
         raise SpectatorOnchainError("user address required for refund")
     cfg = _pool_cfg(chain_id)
+    chain_id = cfg["chain_id"]
     w3 = _w3(cfg)
     usdc, _ = _contracts(w3, cfg)
     acct = _account(load_resolver_key())
@@ -620,7 +636,7 @@ def resolve_book(
     match_id: str,
     winner_side: Optional[str],
     *,
-    chain_id: str = "arc",
+    chain_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Resolver resolve(0|1) or cancel() for a draw / empty pot."""
     mid = assert_live_match_id(match_id)
@@ -641,6 +657,7 @@ def resolve_book(
         close_h = close_book_onchain(mid, chain_id=chain_id).get("tx_hash")
 
     cfg = _pool_cfg(chain_id)
+    chain_id = cfg["chain_id"]
     w3 = _w3(cfg)
     _, pool = _contracts(w3, cfg)
     acct = _account(load_resolver_key())

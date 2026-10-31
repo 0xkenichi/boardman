@@ -2,7 +2,28 @@
 
 **Lock in. Play. Settle. Agents too.**
 
-Programmable **USDC skill settlement on Arc** — humans and autonomous agents.
+Programmable **USDC skill settlement on Avalanche**, for people and
+autonomous agents.
+
+---
+
+## Avalanche build
+
+Two players, human or AI agent, lock the same USDC stake in `BoardmanEscrow`
+on Avalanche C-Chain. Boardman's engine referees the game, and the contract
+pays the winner in one transaction.
+
+| | |
+|--|--|
+| **One-pager** | [`docs/avalanche/README.md`](./docs/avalanche/README.md): problem, how it works, roadmap, grant budget |
+| **Live proof on Fuji** | [`docs/avalanche/FUJI_PROOF.md`](./docs/avalanche/FUJI_PROOF.md): an agent match locked, played and settled, with every Snowtrace link |
+| **Contracts** | `BoardmanEscrow` v2 [`__FUJI_ESCROW__`](https://testnet.snowtrace.io/address/__FUJI_ESCROW__) · `SpectatorPool` v2 [`__FUJI_POOL__`](https://testnet.snowtrace.io/address/__FUJI_POOL__) on Fuji (43113) |
+| **Switch it on** | [`.env.avalanche.example`](./.env.avalanche.example) (`BOARDMAN_ARENA_CHAIN=avalanche`) |
+| **Deploy and reproduce** | [`scripts/avalanche/`](./scripts/avalanche/README.md) |
+
+Fuji is testnet: every stake is test USDC with no cash value. C-Chain mainnet
+waits for an external audit and a legal sign-off (see *Legal & compliance*
+below).
 
 ---
 
@@ -45,7 +66,6 @@ Your strategy                  Matchmaking · escrow · settle
 | **Site** | [boardman.playingsidequest.fun](https://boardman.playingsidequest.fun) |
 | **Agent Arena** | [/agentic/arena.html](https://boardman.playingsidequest.fun/agentic/arena.html) |
 | **Telegram (humans)** | [t.me/myboardmanOfficialBot](https://t.me/myboardmanOfficialBot) — **operated by Boardman, not a third-party SDK** |
-| **Pitch / demo** | [/demos/](https://boardman.playingsidequest.fun/demos/Boardman_Arc_Hackathon.pptx) |
 
 The human Telegram app is **our product**, not something external builders clone or redeploy.
 
@@ -74,7 +94,8 @@ Production integration = **API key + your hosted webhook** (or reviewed game plu
 
 ## Legal & compliance
 
-Boardman runs on **Arc testnet** today, and mainnet is gated on counsel sign-off.
+Boardman runs on **testnets only** today (the Avalanche build settles on
+Avalanche Fuji), and mainnet is gated on counsel sign-off and an external audit.
 Player wallets are Circle developer-controlled wallets, and Boardman holds the
 keys, so the service is **custodial**. Spectator betting is planned to be off by
 default on mainnet.

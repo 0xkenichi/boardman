@@ -7,6 +7,7 @@
  *
  *   npx hardhat run scripts/deploy_v2.js --network localhost
  *   CONFIRM_V2_DEPLOY=1 npx hardhat run scripts/deploy_v2.js --network arcTestnet
+ *   CONFIRM_V2_DEPLOY=1 npx hardhat run scripts/deploy_v2.js --network avalancheFuji
  *
  * Constructor parameters
  * ──────────────────────
@@ -31,7 +32,7 @@
  * offered to V2_OWNER_MULTISIG (Ownable2Step). The multisig MUST call
  * acceptOwnership() on both contracts; until then the deployer is owner.
  *
- * MAINNET (arcMainnet, baseMainnet) — real money, humans realm only:
+ * MAINNET (arcMainnet, baseMainnet, avalancheMainnet) — real money, humans realm only:
  *   - deploys BoardmanEscrow ONLY. Spectator betting stays on testnet, so a
  *     SpectatorPool is never deployed to a mainnet (refused, no override).
  *   - sets the launch stake cap (ESCROW_MAX_STAKE_USDC, default 25) before
@@ -67,16 +68,29 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const LOCAL = new Set(["hardhat", "localhost"]);
 // Real-money networks: escrow only, stake cap, Safe owner checks.
-const MAINNET = new Set(["arcMainnet", "baseMainnet"]);
+const MAINNET = new Set(["arcMainnet", "baseMainnet", "avalancheMainnet"]);
 // Expected chain ids (the RPC must agree before anything is sent).
-const CHAIN_IDS = { arcTestnet: 5042002n, arcMainnet: 5042n, baseSepolia: 84532n, baseMainnet: 8453n };
+const CHAIN_IDS = {
+  arcTestnet: 5042002n, arcMainnet: 5042n, baseSepolia: 84532n, baseMainnet: 8453n,
+  avalancheFuji: 43113n, avalancheMainnet: 43114n,
+};
 const USDC = {
   arcTestnet: "0x3600000000000000000000000000000000000000",
   // https://docs.arc.io/arc/references/contract-addresses (ERC-20 facade, 6 decimals)
   arcMainnet: "0x3600000000000000000000000000000000000000",
   baseSepolia: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
   baseMainnet: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  // Circle USDC on Avalanche C-Chain (https://developers.circle.com/stablecoins/usdc-contract-addresses)
+  avalancheFuji: "0x5425890298aed601595a70AB815c96711a31Bc65",
+  avalancheMainnet: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E",
 };
+// Backend env names that take the new addresses, per network.
+const BACKEND_ENV = {
+  avalancheFuji: { escrow: "CLAW_ESCROW_ADDRESS_AVALANCHE", pool: "SPECTATOR_ESCROW_ADDRESS_AVALANCHE" },
+  avalancheMainnet: { escrow: "BOARDMAN_ESCROW_ADDRESS_AVALANCHE_MAINNET" },
+  arcMainnet: { escrow: "BOARDMAN_ESCROW_ADDRESS_ARC_MAINNET" },
+};
+const envName = (net, kind, dflt) => (BACKEND_ENV[net] || {})[kind] || dflt;
 
 const DAY = 24 * 3600;
 const num = (name, dflt) => BigInt(process.env[name] || dflt);
@@ -155,8 +169,12 @@ async function main() {
   );
   await escrow.waitForDeployment();
   const escrowAddr = await escrow.getAddress();
+  // Tx hashes for the deployment record (explorer links in the docs).
+  const txs = { "deploy BoardmanEscrow": escrow.deploymentTransaction().hash };
   if (maxStake !== null) {
-    await (await escrow.setMaxStake(maxStake)).wait();
+    const t = await escrow.setMaxStake(maxStake);
+    await t.wait();
+    txs["setMaxStake"] = t.hash;
   }
   let pool = null;
   let poolAddr = "";
@@ -166,11 +184,18 @@ async function main() {
     );
     await pool.waitForDeployment();
     poolAddr = await pool.getAddress();
+    txs["deploy SpectatorPool"] = pool.deploymentTransaction().hash;
   }
 
   // Offer ownership to the multisig; it must acceptOwnership() on each.
-  await (await escrow.transferOwnership(multisig)).wait();
-  if (pool) await (await pool.transferOwnership(multisig)).wait();
+  const offerEscrow = await escrow.transferOwnership(multisig);
+  await offerEscrow.wait();
+  txs["transferOwnership BoardmanEscrow"] = offerEscrow.hash;
+  if (pool) {
+    const offerPool = await pool.transferOwnership(multisig);
+    await offerPool.wait();
+    txs["transferOwnership SpectatorPool"] = offerPool.hash;
+  }
   for (const c of pool ? [escrow, pool] : [escrow]) {
     if ((await c.pendingOwner()).toLowerCase() !== multisig.toLowerCase()) {
       throw new Error("pendingOwner is not the multisig — stop and investigate");
@@ -202,6 +227,7 @@ async function main() {
     },
     deployedAt: new Date().toISOString(),
     deployer: deployer.address,
+    txs,
     todo: pool
       ? "multisig must call acceptOwnership() on both contracts"
       : "the owner (Safe) must call acceptOwnership() on BoardmanEscrow",
@@ -216,14 +242,14 @@ async function main() {
 
   if (mainnet) {
     console.log("\nBackend env for the humans realm (set ONLY after the Safe's acceptOwnership):");
-    console.log(`BOARDMAN_ESCROW_ADDRESS_ARC_MAINNET=${escrowAddr}`);
+    console.log(`${envName(network.name, "escrow", "BOARDMAN_ESCROW_ADDRESS_ARC_MAINNET")}=${escrowAddr}`);
     console.log("BOARDMAN_RESOLVER_KEY_MAINNET=<keystore entry name, e.g. resolver_arc_mainnet — never a key>");
     console.log(`(the keystore entry's address must equal V2_RESOLVER ${resolver})`);
     return;
   }
   console.log("\nBackend env (switch only after acceptOwnership on both):");
-  console.log(`BOARDMAN_ESCROW_ADDRESS_ARC=${escrowAddr}`);
-  if (poolAddr) console.log(`SPECTATOR_ESCROW_ADDRESS=${poolAddr}`);
+  console.log(`${envName(network.name, "escrow", "BOARDMAN_ESCROW_ADDRESS_ARC")}=${escrowAddr}`);
+  if (poolAddr) console.log(`${envName(network.name, "pool", "SPECTATOR_ESCROW_ADDRESS")}=${poolAddr}`);
   console.log("BOARDMAN_RESOLVER_KEY=<private key of the resolver above>");
 }
 

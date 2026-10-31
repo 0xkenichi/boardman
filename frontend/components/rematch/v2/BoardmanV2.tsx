@@ -18,13 +18,15 @@ import { Countdown, UtcClock, fmtUtcTime } from '../live'
 import { useHouseTable, type HouseTable, type LastResult } from '../house'
 import { BoardmanLifecycle } from './BoardmanLifecycle'
 import { FootballTicker, HeroHand } from './FootballHand'
+import { SETTLEMENT, shortAddress } from '@/lib/settlementChain'
 
-// Live BoardmanEscrow (V1, tiered fees) on Arc testnet — config/chains.yaml
-// arc.escrow_address. 0xD898…66Fc is the archived flat-fee V1; don't link it.
-const ESCROW_ADDRESS = '0xD382f627fB565eb96D9EFFb66B9119DD4a555847'
-const EXPLORER = 'https://explorer.testnet.arc.io/address/'
-const ESCROW_SHORT = `${ESCROW_ADDRESS.slice(0, 6)}…${ESCROW_ADDRESS.slice(-4)}`
-const CHAIN_LABEL = 'ARC TESTNET · CHAIN 5042002 · USDC-NATIVE GAS'
+// Live BoardmanEscrow on this build's settlement chain (lib/settlementChain.ts,
+// mirrors config/chains.yaml): Arc testnet by default, Avalanche Fuji in the
+// Avalanche build (NEXT_PUBLIC_SETTLEMENT_CHAIN=avalanche).
+const ESCROW_ADDRESS = SETTLEMENT.escrow
+const EXPLORER = SETTLEMENT.explorerAddress
+const ESCROW_SHORT = shortAddress(ESCROW_ADDRESS)
+const CHAIN_LABEL = SETTLEMENT.strap
 
 // Counted from the static catalog (public/agentic/afm-catalog.json) — see
 // docs/site/HOMEPAGE_CLAIMS.md. Licence-pending stars are shown, never sold.

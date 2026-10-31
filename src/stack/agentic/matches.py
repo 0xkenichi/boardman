@@ -16,6 +16,7 @@ from gaming.src.stack.agentic import ledger
 from gaming.src.stack.agentic.db import journal, leases, nonces, transaction
 from gaming.src.stack.agentic.db.engine import current_tx, is_retryable
 from gaming.src.stack.agentic.db.tables import HOT_SETTLED_MATCHES, MATCHES, hot_matches
+from gaming.src.stack.agentic.onchain import default_chain
 from gaming.src.stack.agentic.registry import get_registry
 
 logger = logging.getLogger(__name__)
@@ -206,7 +207,7 @@ def _adjust_already_applied(profile_id: str, reason: str) -> bool:
         return False
 
 
-def freeze_book(match_id: str, *, reason: str, chain_id: str = "arc") -> dict[str, Any]:
+def freeze_book(match_id: str, *, reason: str, chain_id: Optional[str] = None) -> dict[str, Any]:
     """Ply-N betting freeze: close the demo book, and the SpectatorPool book too.
 
     The on-chain close() is a resolver tx (up to minutes); it runs on a daemon
@@ -453,13 +454,16 @@ class AgentMatchService:
         agent_a_id: str,
         agent_b_id: str,
         stake_usdc: Optional[float] = None,
-        chain_id: str = "arc",
+        chain_id: Optional[str] = None,
         white_agent_id: Optional[str] = None,
         game_id: str = "agentic.chess_standard",
         auto_negotiate: bool = True,
     ) -> dict[str, Any]:
+        from gaming.src.backend.services.realms import assert_practice
         from gaming.src.stack.agentic.onchain import match_id_hex, onchain_enabled
 
+        # The arena chain (Arc testnet or Avalanche Fuji) unless named; never real money.
+        chain_id = assert_practice(chain_id or default_chain(), path="agentic match")
         reg = get_registry()
         a = reg.get_agent(agent_a_id)
         b = reg.get_agent(agent_b_id)
@@ -741,7 +745,7 @@ class AgentMatchService:
                     agent_a_wallet=m["agent_a_wallet"],
                     agent_b_wallet=m["agent_b_wallet"],
                     stake_usdc=Decimal(str(m["stake_usdc"])),
-                    chain_id=m.get("chain_id") or "arc",
+                    chain_id=m.get("chain_id") or default_chain(),
                     player1_is_a=white_is_a,
                 )
                 changes["onchain"] = onchain_result
@@ -813,7 +817,7 @@ class AgentMatchService:
 
             live_book = SpectatorBook().get(match_id) or {}
             if spectator_onchain_enabled() and live_book.get("closed_reason") != "betting_disabled":
-                opened = open_book_onchain(m, chain_id=m.get("chain_id") or "arc")
+                opened = open_book_onchain(m, chain_id=m.get("chain_id") or default_chain())
                 SpectatorBook().mark_onchain(
                     match_id,
                     pool=str(opened.get("pool") or ""),
@@ -902,7 +906,7 @@ class AgentMatchService:
             live = SpectatorBook().get(match_id) or {}
             if not (live.get("onchain") and soc.spectator_onchain_enabled()):
                 return
-            chain = m.get("chain_id") or "arc"
+            chain = m.get("chain_id") or default_chain()
             self._external_step(
                 match_id,
                 "spectator_close_onchain",
@@ -1157,7 +1161,7 @@ class AgentMatchService:
         )
         updates["fee_split"] = fee_split.to_dict()
 
-        chain = m.get("chain_id") or "arc"
+        chain = m.get("chain_id") or default_chain()
         onchain_settle = None
         onchain_needed = require_onchain_settlement(m) or (
             onchain_enabled() and m.get("onchain") and not m.get("onchain_error")
@@ -1575,7 +1579,7 @@ class AgentMatchService:
         m = self._update(match_id, _start) or m
 
         game_id = m.get("game_id") or "agentic.chess_standard"
-        chain = m.get("chain_id") or "arc"
+        chain = m.get("chain_id") or default_chain()
 
         def _persist_live(ev) -> None:
             payload = ev.__dict__ if hasattr(ev, "__dict__") else dict(ev)

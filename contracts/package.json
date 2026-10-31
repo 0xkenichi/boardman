@@ -7,6 +7,8 @@
     "deploy:v2:local": "hardhat run scripts/deploy_v2.js --network localhost",
     "deploy:v2:arc": "hardhat run scripts/deploy_v2.js --network arcTestnet",
     "deploy:v2:arc-mainnet": "hardhat run scripts/deploy_v2.js --network arcMainnet",
+    "deploy:v2:fuji": "hardhat run scripts/deploy_v2.js --network avalancheFuji",
+    "deploy:v2:avalanche-mainnet": "hardhat run scripts/deploy_v2.js --network avalancheMainnet",
     "test": "hardhat test",
     "compile": "hardhat compile"
   },

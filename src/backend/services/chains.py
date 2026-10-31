@@ -3,8 +3,12 @@ Multi-chain config for ClawStation / Rematch.
 
 Product posture (now):
   - testnet only
-  - Arc enabled for users
-  - Avalanche next (config kept, enabled: false)
+  - Arc enabled for users by default
+  - Avalanche Fuji: BoardmanEscrow v2 + SpectatorPool v2 deployed. The
+    Avalanche build turns it on with env (.env.avalanche.example):
+    CLAW_ENABLED_CHAINS=avalanche, CLAW_DEFAULT_CHAIN=avalanche,
+    BOARDMAN_ARENA_CHAIN=avalanche
+  - Avalanche C-Chain mainnet (avalanche_mainnet): prep, no escrow yet
   - Base legacy (enabled: false)
 
 Phase C (disabled): bridge-on-behalf + extra fee cut.
@@ -76,7 +80,7 @@ _FALLBACK_CHAINS: dict[str, Any] = {
             "label": "Avalanche Fuji",
             "enabled": False,
             "recommended": False,
-            "status": "next",
+            "status": "live",
             "network": "testnet",
             "circle_blockchain": "AVAX-FUJI",
             "chain_id": 43113,
@@ -89,7 +93,28 @@ _FALLBACK_CHAINS: dict[str, Any] = {
             "gas_tank_required": True,
             "gas_tank_min_wei": "10000000000000000",
             "gas_tank_topup_wei": "50000000000000000",
-            "escrow_address": "0xFC44a06295d4fC58420027932A6FcB3C13D83859",
+            "escrow_address": "__FUJI_ESCROW__",
+            "escrow_version": 2,
+            "spectator_pool_address": "__FUJI_POOL__",
+        },
+        "avalanche_mainnet": {
+            "id": "avalanche_mainnet",
+            "label": "Avalanche C-Chain",
+            "enabled": False,
+            "recommended": False,
+            "status": "prep",
+            "network": "mainnet",
+            "escrow_version": 2,
+            "circle_blockchain": "AVAX",
+            "chain_id": 43114,
+            "rpc_url": "https://api.avax.network/ext/bc/C/rpc",
+            "explorer_tx": "https://snowtrace.io/tx/",
+            "usdc_address": "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E",
+            "circle_usdc_token_id": "",
+            "gas_token": "AVAX",
+            "gas_mode": "native_avax",
+            "gas_tank_required": True,
+            "escrow_address": "",
         },
         "base": {
             "id": "base",
@@ -122,6 +147,7 @@ _ESCROW_ENV = {
     "base": "CLAW_ESCROW_ADDRESS_BASE_SEPOLIA",
     "base_mainnet": "BOARDMAN_ESCROW_ADDRESS_BASE_MAINNET",
     "avalanche": "CLAW_ESCROW_ADDRESS_AVALANCHE",
+    "avalanche_mainnet": "BOARDMAN_ESCROW_ADDRESS_AVALANCHE_MAINNET",
 }
 
 _TOKEN_ENV = {
@@ -130,6 +156,7 @@ _TOKEN_ENV = {
     "base": "CIRCLE_USDC_TOKEN_ID",
     "base_mainnet": "CIRCLE_USDC_TOKEN_ID_BASE_MAINNET",
     "avalanche": "CIRCLE_USDC_TOKEN_ID_AVALANCHE",
+    "avalanche_mainnet": "CIRCLE_USDC_TOKEN_ID_AVALANCHE_MAINNET",
 }
 
 # Circle blockchain labels → our chain id
@@ -139,6 +166,7 @@ CIRCLE_TO_CHAIN = {
     "BASE-SEPOLIA": "base",
     "BASE": "base_mainnet",
     "AVAX-FUJI": "avalanche",
+    "AVAX": "avalanche_mainnet",
 }
 
 _ALIASES = {
@@ -153,6 +181,10 @@ _ALIASES = {
     "avax_fuji": "avalanche",
     "fuji": "avalanche",
     "avalanche_fuji": "avalanche",
+    "avalanche_mainnet": "avalanche_mainnet",
+    "avalanchemainnet": "avalanche_mainnet",
+    "avax_mainnet": "avalanche_mainnet",
+    "avalanche_c_chain": "avalanche_mainnet",
 }
 
 
@@ -187,6 +219,7 @@ def load_chains_config() -> dict[str, Any]:
             "base": "BASE_SEPOLIA_RPC_URL",
             "base_mainnet": "BASE_MAINNET_RPC_URL",
             "avalanche": "AVALANCHE_FUJI_RPC_URL",
+            "avalanche_mainnet": "AVALANCHE_MAINNET_RPC_URL",
         }.get(chain_id)
         if rpc_env and os.getenv(rpc_env):
             chains[chain_id]["rpc_url"] = os.getenv(rpc_env)
@@ -373,6 +406,7 @@ def get_circle_usdc_token_id(chain_id: str) -> str:
         "base": "CIRCLE_USDC_TOKEN_ID",
         "base_mainnet": "CIRCLE_USDC_TOKEN_ID_BASE_MAINNET",
         "avalanche": "CIRCLE_USDC_TOKEN_ID_AVALANCHE",
+        "avalanche_mainnet": "CIRCLE_USDC_TOKEN_ID_AVALANCHE_MAINNET",
     }.get(normalize_chain_id(chain_id))
     if env_key and os.getenv(env_key):
         return os.getenv(env_key, "").strip()
@@ -405,13 +439,20 @@ def bridge_config() -> dict[str, Any]:
 
 
 def format_chain_help() -> str:
-    lines = [
-        "Settlement network (testnet):",
-        "  • arc — Arc Testnet ★ live (USDC gas)",
-    ]
-    # Roadmap hint without offering other chains
+    lines = ["Settlement network (testnet):"]
+    for c in list_chains():
+        if str(c.get("network") or "").lower() != "testnet":
+            continue
+        star = " ★ live" if c["id"] == default_chain_id() else ""
+        lines.append(f"  • {c['id']} — {c.get('label') or c['id']}{star} ({c.get('gas_token') or '?'} gas)")
+    # Roadmap hint for this build's own family only (arc -> arc_mainnet,
+    # avalanche -> avalanche_mainnet), without offering other chains.
+    family = default_chain_id()
     disabled = list_chains(include_disabled=True)
-    upcoming = [c for c in disabled if not c.get("enabled") and c.get("status") in {"next", "prep"}]
+    upcoming = [
+        c for c in disabled
+        if not c.get("enabled") and c.get("status") in {"next", "prep"} and c["id"].startswith(family)
+    ]
     if upcoming:
         lines.append(
             "  · next: "
@@ -419,8 +460,8 @@ def format_chain_help() -> str:
             + " — not ready yet"
         )
     lines.append("")
-    lines.append(f"Default / only live chain: {default_chain_id()}")
-    lines.append("Example: /challenge @rival 5 EAFC private arc")
+    lines.append(f"Default chain: {default_chain_id()}")
+    lines.append(f"Example: /challenge @rival 5 EAFC private {default_chain_id()}")
     return "\n".join(lines)
 
 

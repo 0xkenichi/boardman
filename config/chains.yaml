@@ -2,8 +2,11 @@
 #
 # Product posture (now):
 #   - NETWORK: testnet
-#   - LIVE for users: Arc only
-#   - NEXT: Avalanche Fuji (funding; Team1 grant path)
+#   - LIVE for users: Arc only (the default build)
+#   - Avalanche build: Avalanche Fuji is the settlement chain. BoardmanEscrow v2
+#     + SpectatorPool v2 are deployed there; .env.avalanche.example switches the
+#     arena to it (CLAW_ENABLED_CHAINS / CLAW_DEFAULT_CHAIN / BOARDMAN_ARENA_CHAIN
+#     = avalanche). Avalanche C-Chain mainnet (avalanche_mainnet) is prep only.
 #   - PLANNED: GOAT Testnet3 (ERC-8004 identity + x402; not settlement)
 #   - Base Sepolia: legacy / internal, not offered in product UI
 #
@@ -96,10 +99,12 @@ chains:
   avalanche:
     id: avalanche
     label: Avalanche Fuji
-    # Settlement/escrow UI still Arc-only; Avalanche is a funding rail (see funding_rails.yaml).
+    # Off in the default (Arc) build. The Avalanche build enables it with
+    # CLAW_ENABLED_CHAINS=avalanche and makes it the arena chain
+    # (BOARDMAN_ARENA_CHAIN=avalanche); see docs/avalanche/README.md.
     enabled: false
     recommended: false
-    status: funding
+    status: live
     # Money realm: mainnet = real money (humans only); testnet = practice chips.
     network: testnet
     circle_blockchain: AVAX-FUJI
@@ -113,8 +118,46 @@ chains:
     gas_tank_required: true
     gas_tank_min_wei: "10000000000000000"   # 0.01 AVAX
     gas_tank_topup_wei: "50000000000000000" # 0.05 AVAX
-    escrow_address: "0xFC44a06295d4fC58420027932A6FcB3C13D83859"
-    notes: "Funding rail only until USDC gas + BoardmanEscrow. Convert → Arc for stakes."
+    # BoardmanEscrow v2 (2026-10-31, contracts/deployments/boardman_v2_avalancheFuji.json).
+    # Override: CLAW_ESCROW_ADDRESS_AVALANCHE / BOARDMAN_ESCROW_ADDRESS_AVALANCHE.
+    # V0 archive (ClawEscrow, keys not held): 0xFC44a06295d4fC58420027932A6FcB3C13D83859
+    escrow_address: "__FUJI_ESCROW__"
+    escrow_contract: BoardmanEscrow
+    escrow_version: 2
+    # SpectatorPool v2. Override: SPECTATOR_ESCROW_ADDRESS_AVALANCHE
+    spectator_pool_address: "__FUJI_POOL__"
+    cctp_domain: 1
+    notes: "Avalanche build settlement chain. Gas in AVAX; stakes in Circle USDC."
+
+  # Avalanche C-Chain mainnet. REAL MONEY: the humans realm only, and only
+  # after counsel sign-off (BOARDMAN_HUMANS_CHAIN=avalanche_mainnet). Escrow:
+  # CONFIRM_V2_DEPLOY=1 npm run deploy:v2:avalanche-mainnet (Safe owner, escrow
+  # only, $25 stake cap), then BOARDMAN_ESCROW_ADDRESS_AVALANCHE_MAINNET.
+  avalanche_mainnet:
+    id: avalanche_mainnet
+    label: Avalanche C-Chain
+    enabled: false
+    recommended: false
+    status: prep
+    # Money realm: mainnet = real money (humans only); testnet = practice chips.
+    network: mainnet
+    circle_blockchain: AVAX
+    chain_id: 43114
+    rpc_url: https://api.avax.network/ext/bc/C/rpc
+    explorer_tx: https://snowtrace.io/tx/
+    usdc_address: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E"
+    circle_usdc_token_id: ""
+    gas_token: AVAX
+    gas_mode: native_avax
+    gas_tank_required: true
+    gas_tank_min_wei: "10000000000000000"
+    gas_tank_topup_wei: "50000000000000000"
+    escrow_address: ""
+    escrow_contract: BoardmanEscrow
+    escrow_version: 2
+    fee_recipient: ""
+    cctp_domain: 1
+    notes: "Prep only. No escrow until audit + counsel; humans realm only."
 
   # Stellar is NOT EVM — not used for BoardmanEscrow. Payments / USDC funding only.
   # Horizon + ops address live in funding_rails.yaml / env (BOARDMAN_OPS_USDC_STELLAR).
@@ -342,6 +385,8 @@ cctp:
     base: testnet
     arc_mainnet: mainnet
     base_mainnet: mainnet
+    avalanche: testnet
+    avalanche_mainnet: mainnet
 
 # Phase C: bridge funding rails → Arc play wallet (CCTP / ops).
 bridge:

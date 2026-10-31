@@ -20,6 +20,7 @@ from decimal import Decimal
 from typing import Any, Optional
 
 from gaming.src.stack.agentic.agents.boardman.manifest import HOUSE_ID, MANIFEST
+from gaming.src.stack.agentic.onchain import default_chain
 from gaming.src.stack.agentic.registry import get_registry
 
 logger = logging.getLogger(__name__)
@@ -605,7 +606,7 @@ def _abort_under_lease(match_id: str, reason: str) -> dict[str, Any]:
         raise RuntimeError(f"match {match_id}: abort attempts exhausted — parked as settle_failed")
     matches_mod._after_step("aborting")
 
-    chain = rec.get("chain_id") or "arc"
+    chain = rec.get("chain_id") or default_chain()
     onchain_out: Any = None
     if rec.get("onchain") or rec.get("settlement_mode") == "onchain":
 
@@ -823,7 +824,7 @@ class HouseRuntime:
         stake_usdc: Optional[float] = None,
         game_id: str = "agentic.chess_standard",
         white_agent_id: Optional[str] = None,
-        chain_id: str = "arc",
+        chain_id: Optional[str] = None,
     ) -> dict[str, Any]:
         if is_house(agent_a_id) or is_house(agent_b_id):
             raise ValueError("Boardman House does not play — pass two contestant agents")
@@ -887,7 +888,7 @@ class HouseRuntime:
         if why:
             from gaming.src.stack.agentic.matches import freeze_book
 
-            freeze_book(match_id, reason=why, chain_id=m.get("chain_id") or "arc")
+            freeze_book(match_id, reason=why, chain_id=m.get("chain_id") or default_chain())
             raise ValueError(f"betting closed ({why.replace('_', ' ')})")
         slot = resolve_side(m, side)
         existing = SpectatorBook().get(match_id) or {}
