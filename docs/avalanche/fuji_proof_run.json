@@ -1,0 +1,122 @@
+{
+  "network": "Avalanche Fuji C-Chain",
+  "chain_id": 43113,
+  "explorer": "https://testnet.snowtrace.io",
+  "contracts": {
+    "BoardmanEscrow": "0xa0626A1744D4817B8b6fE0414a04CB20F6696F09",
+    "SpectatorPool": "0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F"
+  },
+  "usdc": "0x5425890298aed601595a70AB815c96711a31Bc65",
+  "roles": {
+    "funder_deployer": "0x21E5e2E10BF660619B7228C0Eb682F0204aD5698",
+    "owner": "0x396248Eb4ba76bc0D45D78d7c57cc5C2507290ee",
+    "treasury": "0xa58e0B1D28f3AebeFb0DbCf58e20c201d6C71371",
+    "resolver": "0xde5e863A55281a5dEEDAEcc0EcCf5B0657367368"
+  },
+  "steps": [
+    {
+      "step": "gas top-up: owner",
+      "tx": "0x308aeda249c15488dcbe4ebbaa888d28d238074e031a6c07e85dbef3db8c81ef",
+      "link": "https://testnet.snowtrace.io/tx/0x308aeda249c15488dcbe4ebbaa888d28d238074e031a6c07e85dbef3db8c81ef"
+    },
+    {
+      "step": "acceptOwnership: BoardmanEscrow",
+      "tx": "0x6aebf122284dd69773548c8d250d5e3761924389909c4d0d2194266d6ebfad3c",
+      "link": "https://testnet.snowtrace.io/tx/0x6aebf122284dd69773548c8d250d5e3761924389909c4d0d2194266d6ebfad3c"
+    },
+    {
+      "step": "acceptOwnership: SpectatorPool",
+      "tx": "0x5c5125b76893feb431dea951844c850b51e882ced3a6676726dd5b94c98f27ad",
+      "link": "https://testnet.snowtrace.io/tx/0x5c5125b76893feb431dea951844c850b51e882ced3a6676726dd5b94c98f27ad"
+    },
+    {
+      "step": "gas top-up: resolver",
+      "tx": "0x0249c8addb1dac565188d7f74cf84ee684bd77de37a6b0fee86c2a2684f72512",
+      "link": "https://testnet.snowtrace.io/tx/0x0249c8addb1dac565188d7f74cf84ee684bd77de37a6b0fee86c2a2684f72512"
+    },
+    {
+      "step": "gas top-up: Raja",
+      "tx": "0xe32bfb6bf6fd8ec848ccac636d3be850cf74bb27794d8ed4d55a6f3a5383000b",
+      "link": "https://testnet.snowtrace.io/tx/0xe32bfb6bf6fd8ec848ccac636d3be850cf74bb27794d8ed4d55a6f3a5383000b"
+    },
+    {
+      "step": "gas top-up: Nero",
+      "tx": "0x49f34c215f6b618813dc140a0c23425c51b01f14afa46128cb82cfe4051da7b9",
+      "link": "https://testnet.snowtrace.io/tx/0x49f34c215f6b618813dc140a0c23425c51b01f14afa46128cb82cfe4051da7b9"
+    },
+    {
+      "step": "faucet USDC -> Raja",
+      "tx": "0xa791ac0576079c4c2e2ec1b8694c0da1518150530880aa299bce09960cc3acb3",
+      "link": "https://testnet.snowtrace.io/tx/0xa791ac0576079c4c2e2ec1b8694c0da1518150530880aa299bce09960cc3acb3",
+      "amount_usdc": "3.5"
+    },
+    {
+      "step": "faucet USDC -> Nero",
+      "tx": "0xf4fd2806d0ac5f9f34479d51566f47b222f5d985758661459308f3d8f471335a",
+      "link": "https://testnet.snowtrace.io/tx/0xf4fd2806d0ac5f9f34479d51566f47b222f5d985758661459308f3d8f471335a",
+      "amount_usdc": "3.5"
+    },
+    {
+      "step": "lock: p1_approve",
+      "tx": "0x48edd248f91ed06f9ef5e07c1c6602a86b265e4d6d472e14c594ed627a909011",
+      "link": "https://testnet.snowtrace.io/tx/0x48edd248f91ed06f9ef5e07c1c6602a86b265e4d6d472e14c594ed627a909011"
+    },
+    {
+      "step": "lock: createMatch",
+      "tx": "0x75161ab4e8ecd1231afe91045ac4e84417e289e49bdc7262f169971631791846",
+      "link": "https://testnet.snowtrace.io/tx/0x75161ab4e8ecd1231afe91045ac4e84417e289e49bdc7262f169971631791846"
+    },
+    {
+      "step": "lock: p2_approve",
+      "tx": "0x0b1370498c02f53f747c1930978f05e688ec95506f29003b4c06c1d8bea66d6a",
+      "link": "https://testnet.snowtrace.io/tx/0x0b1370498c02f53f747c1930978f05e688ec95506f29003b4c06c1d8bea66d6a"
+    },
+    {
+      "step": "lock: joinMatch",
+      "tx": "0xc8815424bc4eea96206b7fa03510d27232e7a2d29f8b6c535c6bf00ab4b07ab0",
+      "link": "https://testnet.snowtrace.io/tx/0xc8815424bc4eea96206b7fa03510d27232e7a2d29f8b6c535c6bf00ab4b07ab0"
+    },
+    {
+      "step": "settle: resolveMatch (win)",
+      "tx": "0x1f5beace099999bebd584aebd61ad75eff089a060139dd876ea363a807b79b1e",
+      "link": "https://testnet.snowtrace.io/tx/0x1f5beace099999bebd584aebd61ad75eff089a060139dd876ea363a807b79b1e"
+    }
+  ],
+  "agents": {
+    "Raja": "0x28bc7Df81A487a345E9b8DB38948c5fdD59fb7b7",
+    "Nero": "0xBD3c021Be14f0E0c4514aE176653a85BC7CC2527"
+  },
+  "match": {
+    "match_id": "agm_41f09332d9e0",
+    "match_id_bytes32": "0xd8096523a4beb96ede0179f269703dbd5a2dff40b6f4fab0c82c6ca7878fc34f",
+    "game": "agentic.chess_standard",
+    "stake_usdc_each": "2.000000",
+    "white": "agent_raja_kia_alekhine",
+    "result": "black_win",
+    "termination": "CHECKMATE",
+    "winner": "agent_nero_sicilian_french",
+    "plies": 66,
+    "pgn": "[Event \"Boardman Agent Arena\"]\n[Site \"boardman.playingsidequest.fun\"]\n[Date \"2026.10.31\"]\n[Round \"?\"]\n[White \"Raja\"]\n[Black \"Nero\"]\n[Result \"0-1\"]\n[WhiteAgent \"agent_raja_kia_alekhine\"]\n[BlackAgent \"agent_nero_sicilian_french\"]\n[TimeControl \"blitz_3|2\"]\n[Annotator \"Boardman HybridEngine (siloed minds + Stockfish)\"]\n\n1. e4 { builder_webhook \u00b7 clk 179273ms } 1... e6 { builder_webhook \u00b7 clk 178362ms } 2. Nc3 { builder_webhook \u00b7 clk 178558ms } 2... d5 { builder_webhook \u00b7 clk 174493ms } 3. Nf3 { builder_webhook \u00b7 clk 175535ms } 3... d4 { builder_webhook \u00b7 clk 172658ms } 4. Ne2 { builder_webhook \u00b7 clk 175540ms } 4... c5 { builder_webhook \u00b7 clk 169915ms } 5. c3 { builder_webhook \u00b7 clk 174655ms } 5... Nc6 { builder_webhook \u00b7 clk 163529ms } 6. cxd4 { builder_webhook \u00b7 clk 169258ms } 6... cxd4 { builder_webhook \u00b7 clk 151856ms } 7. Qa4 { builder_webhook \u00b7 clk 151050ms } 7... Bd7 { builder_webhook \u00b7 clk 126050ms } 8. Nexd4 { builder_webhook \u00b7 clk 138188ms } 8... Nge7 { builder_webhook \u00b7 clk 111639ms } 9. Bb5 { builder_webhook \u00b7 clk 126977ms } 9... a6 { builder_webhook \u00b7 clk 104269ms } 10. Bxc6 { builder_webhook \u00b7 clk 121521ms } 10... Nxc6 { builder_webhook \u00b7 clk 101272ms } 11. O-O { builder_webhook \u00b7 clk 120555ms } 11... Nxd4 { builder_webhook \u00b7 clk 100305ms } 12. Qxd4 { builder_webhook \u00b7 clk 119728ms } 12... Rc8 { builder_webhook \u00b7 clk 99484ms } 13. d3 { builder_webhook \u00b7 clk 118853ms } 13... f6 { builder_webhook \u00b7 clk 96890ms } 14. e5 { builder_webhook \u00b7 clk 114706ms } 14... Bc6 { builder_webhook \u00b7 clk 93824ms } 15. Qf4 { builder_webhook \u00b7 clk 114462ms } 15... Qd5 { builder_webhook \u00b7 clk 92106ms } 16. exf6 { builder_webhook \u00b7 clk 113202ms } 16... gxf6 { builder_webhook \u00b7 clk 91659ms } 17. Qxf6 { builder_webhook \u00b7 clk 112835ms } 17... Rg8 { builder_webhook \u00b7 clk 90060ms } 18. Bf4 { builder_webhook \u00b7 clk 108645ms } 18... Rg6 { builder_webhook \u00b7 clk 85104ms } 19. Qxg6+ { builder_webhook \u00b7 clk 107410ms } 19... hxg6 { builder_webhook \u00b7 clk 83813ms } 20. Rac1 { builder_webhook \u00b7 clk 100333ms } 20... Qd8 { builder_webhook \u00b7 clk 61683ms } 21. Rfe1 { builder_webhook \u00b7 clk 98515ms } 21... Bxf3 { builder_webhook \u00b7 clk 57889ms } 22. Bc7 { builder_webhook \u00b7 clk 97649ms } 22... Rxc7 { builder_webhook \u00b7 clk 56552ms } 23. Rxc7 { builder_webhook \u00b7 clk 96596ms } 23... Qxc7 { builder_webhook \u00b7 clk 55552ms } 24. gxf3 { builder_webhook \u00b7 clk 96626ms } 24... Kd7 { builder_webhook \u00b7 clk 55049ms } 25. b3 { builder_webhook \u00b7 clk 96137ms } 25... Qc3 { builder_webhook \u00b7 clk 54611ms } 26. Re4 { builder_webhook \u00b7 clk 95943ms } 26... Qa1+ { builder_webhook \u00b7 clk 53819ms } 27. Re1 { builder_webhook \u00b7 clk 96023ms } 27... Qxe1+ { builder_webhook \u00b7 clk 53096ms } 28. Kg2 { builder_webhook \u00b7 clk 95675ms } 28... Bc5 { builder_webhook \u00b7 clk 52366ms } 29. d4 { builder_webhook \u00b7 clk 94988ms } 29... Bxd4 { builder_webhook \u00b7 clk 51791ms } 30. Kh3 { builder_webhook \u00b7 clk 95001ms } 30... Qxf2 { builder_webhook \u00b7 clk 50096ms } 31. Kg4 { builder_webhook \u00b7 clk 94861ms } 31... Bf6 { builder_webhook \u00b7 clk 48500ms } 32. Kf4 { builder_webhook \u00b7 clk 93530ms } 32... g5+ { builder_webhook \u00b7 clk 45823ms } 33. Kg4 { builder_webhook \u00b7 clk 92726ms } 33... Qh4# { builder_webhook \u00b7 clk 46311ms } 0-1",
+    "status": "settled",
+    "settlement_mode": "onchain",
+    "onchain_status_after": "RESOLVED"
+  },
+  "usdc_balances": {
+    "before": {
+      "Raja": "3.5",
+      "Nero": "3.5"
+    },
+    "after": {
+      "Raja": "1.5",
+      "Nero": "4.5"
+    }
+  },
+  "recorded_at": "2026-10-31T19:39:52Z",
+  "gas_spent_avax": "0.00062014103035421",
+  "deploy_txs": {
+    "deploy BoardmanEscrow": "0x352ce8c791c00279fe7761b88aaf1662162dc2303960ebf2460509a69418e177",
+    "deploy SpectatorPool": "0x3578a360592cb577aad348261e45ec3a0a7552f19a55ce83d8bb35329c5251b3",
+    "transferOwnership BoardmanEscrow": "0x40c88b78ac10fff97d15c687670fed35f05ce2689cf33a75402040e49d55f777",
+    "transferOwnership SpectatorPool": "0x727c47cdd7195f8d91424a2c84b53146fe354550ee5ffb7d3fbf6c9636c5088c"
+  }
+}

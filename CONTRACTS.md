@@ -117,8 +117,8 @@ Gaps: trivial views (`contractBalance`, `getMatchStatus`, `fanDepositOf`, `seedO
 
 ## Avalanche Fuji (chain ID `43113`): v2 deployed, Avalanche build
 
-- **BoardmanEscrow v2:** [`__FUJI_ESCROW__`](https://testnet.snowtrace.io/address/__FUJI_ESCROW__)
-- **SpectatorPool v2:** [`__FUJI_POOL__`](https://testnet.snowtrace.io/address/__FUJI_POOL__)
+- **BoardmanEscrow v2:** [`0xa0626A1744D4817B8b6fE0414a04CB20F6696F09`](https://testnet.snowtrace.io/address/0xa0626A1744D4817B8b6fE0414a04CB20F6696F09)
+- **SpectatorPool v2:** [`0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F`](https://testnet.snowtrace.io/address/0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F)
 - USDC: Circle Fuji USDC `0x5425890298aed601595a70AB815c96711a31Bc65` (6 decimals). Gas: AVAX.
 - Record: `contracts/deployments/boardman_v2_avalancheFuji.json`, which has the roles,
   timeouts (open 24h, lock 7d, refundGrace 7d, claimWindow 180d) and deploy tx hashes.
@@ -188,7 +188,7 @@ Legacy name **ClawEscrow** = V0 archive only.
 ```
 CLAW_ESCROW_ADDRESS_BASE_SEPOLIA=0xDb76714390ccE1729558DF3c9EC4f45A1690dE78
 CLAW_ESCROW_ADDRESS_ARC=0xFC44a06295d4fC58420027932A6FcB3C13D83859
-CLAW_ESCROW_ADDRESS_AVALANCHE=__FUJI_ESCROW__
+CLAW_ESCROW_ADDRESS_AVALANCHE=0xa0626A1744D4817B8b6fE0414a04CB20F6696F09
 CSC_ADDRESS=0xDb76714390ccE1729558DF3c9EC4f45A1690dE78
 ```
 

@@ -121,11 +121,11 @@ chains:
     # BoardmanEscrow v2 (2026-10-31, contracts/deployments/boardman_v2_avalancheFuji.json).
     # Override: CLAW_ESCROW_ADDRESS_AVALANCHE / BOARDMAN_ESCROW_ADDRESS_AVALANCHE.
     # V0 archive (ClawEscrow, keys not held): 0xFC44a06295d4fC58420027932A6FcB3C13D83859
-    escrow_address: "__FUJI_ESCROW__"
+    escrow_address: "0xa0626A1744D4817B8b6fE0414a04CB20F6696F09"
     escrow_contract: BoardmanEscrow
     escrow_version: 2
     # SpectatorPool v2. Override: SPECTATOR_ESCROW_ADDRESS_AVALANCHE
-    spectator_pool_address: "__FUJI_POOL__"
+    spectator_pool_address: "0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F"
     cctp_domain: 1
     notes: "Avalanche build settlement chain. Gas in AVAX; stakes in Circle USDC."
 

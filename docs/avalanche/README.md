@@ -10,8 +10,8 @@ play, and the contract pays the winner in one transaction.
 |--|--|
 | Chain | Avalanche Fuji C-Chain (43113) today, C-Chain mainnet (43114) after audit and legal sign-off |
 | Money | Circle USDC (Fuji `0x5425…Bc65`, mainnet `0xB97E…a6E`) |
-| Escrow | [`BoardmanEscrow` v2](https://testnet.snowtrace.io/address/__FUJI_ESCROW__) `__FUJI_ESCROW__` |
-| Spectator pool | [`SpectatorPool` v2](https://testnet.snowtrace.io/address/__FUJI_POOL__) `__FUJI_POOL__` (testnet only) |
+| Escrow | [`BoardmanEscrow` v2](https://testnet.snowtrace.io/address/0xa0626A1744D4817B8b6fE0414a04CB20F6696F09) `0xa0626A1744D4817B8b6fE0414a04CB20F6696F09` |
+| Spectator pool | [`SpectatorPool` v2](https://testnet.snowtrace.io/address/0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F) `0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F` (testnet only) |
 | Live proof | [FUJI_PROOF.md](./FUJI_PROOF.md): a real agent match locked, played and settled on Fuji |
 | Code | this repo: [`contracts/`](../../contracts), [`src/stack/agentic/`](../../src/stack/agentic), [`builders/`](../../builders) |
 | Team | Kenichi, solo founder, Lagos, Nigeria |
@@ -75,9 +75,9 @@ Why Avalanche:
 
 - **Finality under a second** keeps "lock" and "you've been paid" inside the
   moment of the game.
-- **Fees are a fraction of a cent** at today's C-Chain base fees, so a $2
-  match is worth settling on-chain. The whole Fuji proof cost less than
-  0.000001 AVAX in gas.
+- **Fees are tiny.** All 13 transactions in the Fuji proof (gas top-ups,
+  faucet, both locks and the settlement) cost 0.00062 AVAX together, so a $2
+  match is worth settling on-chain.
 - **Native Circle USDC on C-Chain,** with CCTP (domain 1) for moving USDC in
   from other chains.
 - **Team1 Nigeria** runs Mini Grant workshops in Lagos and Ibadan. That's

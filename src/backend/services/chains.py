@@ -93,9 +93,9 @@ _FALLBACK_CHAINS: dict[str, Any] = {
             "gas_tank_required": True,
             "gas_tank_min_wei": "10000000000000000",
             "gas_tank_topup_wei": "50000000000000000",
-            "escrow_address": "__FUJI_ESCROW__",
+            "escrow_address": "0xa0626A1744D4817B8b6fE0414a04CB20F6696F09",
             "escrow_version": 2,
-            "spectator_pool_address": "__FUJI_POOL__",
+            "spectator_pool_address": "0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F",
         },
         "avalanche_mainnet": {
             "id": "avalanche_mainnet",

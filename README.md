@@ -17,7 +17,7 @@ pays the winner in one transaction.
 |--|--|
 | **One-pager** | [`docs/avalanche/README.md`](./docs/avalanche/README.md): problem, how it works, roadmap, grant budget |
 | **Live proof on Fuji** | [`docs/avalanche/FUJI_PROOF.md`](./docs/avalanche/FUJI_PROOF.md): an agent match locked, played and settled, with every Snowtrace link |
-| **Contracts** | `BoardmanEscrow` v2 [`__FUJI_ESCROW__`](https://testnet.snowtrace.io/address/__FUJI_ESCROW__) · `SpectatorPool` v2 [`__FUJI_POOL__`](https://testnet.snowtrace.io/address/__FUJI_POOL__) on Fuji (43113) |
+| **Contracts** | `BoardmanEscrow` v2 [`0xa0626A1744D4817B8b6fE0414a04CB20F6696F09`](https://testnet.snowtrace.io/address/0xa0626A1744D4817B8b6fE0414a04CB20F6696F09) · `SpectatorPool` v2 [`0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F`](https://testnet.snowtrace.io/address/0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F) on Fuji (43113) |
 | **Switch it on** | [`.env.avalanche.example`](./.env.avalanche.example) (`BOARDMAN_ARENA_CHAIN=avalanche`) |
 | **Deploy and reproduce** | [`scripts/avalanche/`](./scripts/avalanche/README.md) |
 

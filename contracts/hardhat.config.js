@@ -11,7 +11,7 @@ dotenv.config();
 const ADMIN_PRIVATE_KEY = process.env.ADMIN_PRIVATE_KEY || "0x" + "0".repeat(64);
 
 /** @type import('hardhat/config').HardhatUserConfig */
-export default {
+const config = {
   solidity: {
     version: "0.8.20",
     settings: {
@@ -154,3 +154,8 @@ export default {
     currency: "USD",
   },
 };
+
+// hardhat-verify 2.x reads the top-level `etherscan` key; keep one definition.
+config.etherscan = config.verify.etherscan;
+
+export default config;
