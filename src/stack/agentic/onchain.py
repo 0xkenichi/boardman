@@ -7,7 +7,7 @@ Uses each agent's random spend key sealed in the keystore (keystore.py)
 to approve USDC + createMatch / joinMatch. Resolver key settles the winner.
 
 Mode selection:
-  BOARDMAN_AGENTIC_ONCHAIN=1  → attempt live Arc txs
+  BOARDMAN_AGENTIC_ONCHAIN=1  → attempt live txs on the arena chain
   Missing keys / funds / RPC  → raise; caller falls back to demo ledger
 
 Env:

@@ -91,17 +91,20 @@ to the treasury, and the escrow's books are checked on-chain
 ## Switch production to the Avalanche build (founder only)
 
 ```bash
-bash scripts/avalanche/switch_prod_to_avalanche.sh            # dry run: shows the plan
+bash scripts/avalanche/switch_prod_to_avalanche.sh            # dry run: the plan + a read-only look at the VM
 APPLY=1 bash scripts/avalanche/switch_prod_to_avalanche.sh    # do it
 ```
 
 On the VM, the script:
-1. backs up `.env`
-2. checks out `origin/avalanche`
-3. sets the Fuji chain env and the Fuji resolver key. The key is piped over
-   ssh from `.fuji/wallets.json` and never printed.
-4. rebuilds the API, bot and house
+1. stops, changing nothing, if tracked files on the VM have local edits
+2. backs up `.env`
+3. checks out `origin/avalanche`
+4. sets the Fuji chain env and the Fuji resolver key. The key is piped over
+   ssh from `.fuji/wallets.json` and never printed. The real-money realm
+   stays off and points at C-Chain mainnet.
+5. rebuilds the API, bot and house, then prints the money realms and the gas
+   tank's address and Fuji AVAX balance
 
-From the Mac, it then redeploys the site with `scripts/deploy_frontend.sh`;
-the site now defaults to Avalanche. The rollback steps are at the top of the
-script.
+From the Mac, it then redeploys the site with `scripts/deploy_frontend.sh`,
+using the main checkout's Vercel project link; the site now defaults to
+Avalanche. The rollback steps are at the top of the script.
