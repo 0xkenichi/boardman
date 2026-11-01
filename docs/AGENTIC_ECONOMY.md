@@ -1,8 +1,8 @@
 # Agentic Economy on Rematch Stack
 
 **Status:** vision + architecture (not shipped)  
-**Rails (now):** Arc Testnet · Circle W3S · ClawEscrow · USDC  
-**Next chain:** Avalanche Fuji (funding) · GOAT Testnet3 (identity + x402)  
+**Rails (now):** Avalanche Fuji C-Chain · Circle W3S · BoardmanEscrow v2 · USDC  
+**Next:** Avalanche C-Chain mainnet, after an external audit and counsel · GOAT Testnet3 (identity + x402, planned)  
 **Related:** `REMATCH_STACK.md`, `TOKENOMICS_PLAY.md`, `OUTCOME_VERIFICATION.md`, `CONTRACTS.md`
 
 ---
@@ -39,17 +39,17 @@ Prediction markets are a **layer on top**, not a second conflicting money path.
 
 ---
 
-## 2. Why Circle + Arc fit this story
+## 2. Why Circle + Avalanche fit this story
 
 | Piece | Why it matters for agents |
 |-------|---------------------------|
 | **Circle developer-controlled wallets** | Every agent (or agent-owner) can have a **USDC wallet** without seed phrases in the bot. Agents can lock, receive, and pay fees programmatically. |
 | **USDC** | Stable unit of account for stakes, creator fees, prediction pools — agents don’t need volatile gas tokens if possible. |
-| **Arc (testnet first)** | Settlement chain with **USDC-native gas** story → better UX for high-frequency agent matches than “find testnet ETH.” |
-| **ClawEscrow** | Proven dual-lock pattern: both sides commit → play → resolve. Agents use the same primitive humans use. |
+| **Avalanche C-Chain (Fuji first)** | Finality under a second and tiny fees, so a $2 agent match is worth settling on-chain. Gas is AVAX; the platform gas tank tops up custodial wallets, so players and agents think only in USDC. |
+| **BoardmanEscrow** | Proven dual-lock pattern: both sides commit → play → resolve. Agents use the same primitive humans use. |
 
 **Agentic economy one-liner for grants / Circle:**  
-*Stablecoin rails where autonomous agents compete in finite-outcome games, settle stakes trustlessly, and share fees with creators — starting on Arc testnet.*
+*Stablecoin rails where autonomous agents compete in finite-outcome games, settle stakes trustlessly, and share fees with creators — starting on Avalanche Fuji.*
 
 ---
 
@@ -101,7 +101,7 @@ None of that kills the vision — it just means **Stack docs must separate layer
                                 │
 ┌───────────────────────────────▼─────────────────────────────────┐
 │  RAILS                                                            │
-│  Circle W3S · Arc Testnet USDC · ClawEscrow.sol · Supabase      │
+│  Circle W3S · Fuji USDC · BoardmanEscrow.sol · Supabase         │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -142,7 +142,7 @@ open → accepted → dual_lock → playing → outcome → settled | disputed
 ```
 
 - Side A / Side B can be **human profile** or **agent_id**  
-- Stake: USDC dual-lock via ClawEscrow on **Arc**  
+- Stake: USDC dual-lock via BoardmanEscrow on **Avalanche C-Chain**  
 - Outcome: verifier returns one of `outcome_space`  
 - Settlement: winner wallet gets pot − fees  
 
@@ -198,7 +198,7 @@ train better agents → win more → earn more creator share + reputation → at
 1. Builder registers `game:chess_standard` + `verifier:chess_engine_v1`  
 2. Alice registers `agent:alice_stockfish_style_v3` with Circle wallet  
 3. Bob registers `agent:bob_rl_v1`  
-4. Arena opens match: Alice’s agent vs Bob’s agent, **$5 USDC** each on Arc  
+4. Arena opens match: Alice’s agent vs Bob’s agent, **$5 USDC** each on Avalanche Fuji  
 5. Both dual-lock via Stack → status `locked`  
 6. Optional: spectators put $1 into “Alice wins” / “Bob wins” / “Draw” pool  
 7. Match runner executes game; engine emits signed result `{winner: white, pgn: ...}`  
@@ -216,7 +216,7 @@ This is the documentation set Stack should own:
 
 | Doc | Audience | Content |
 |-----|----------|---------|
-| **REMATCH_STACK.md** | everyone | Platform map, modules, Arc-only posture |
+| **REMATCH_STACK.md** | everyone | Platform map, modules, single-chain posture |
 | **AGENTIC_ECONOMY.md** (this) | vision / grants / partners | Agent + spectator + fee thesis |
 | **Game module spec** (todo) | game creators | Outcome schema, verifier interface, fee bps |
 | **Agent module spec** (todo) | agent creators | Register agent, wallet, versioning, anti-sybil |
@@ -227,14 +227,14 @@ This is the documentation set Stack should own:
 | **Safety & abuse** | ops | pause, caps, same-owner matches, rate limits |
 
 **Builder promise (one sentence):**  
-*If your game has a finite outcome and your agents can produce a verifiable result, Rematch Stack will wallet, lock, settle, and fee-split on Arc USDC — you build the game and the UX.*
+*If your game has a finite outcome and your agents can produce a verifiable result, Rematch Stack will wallet, lock, settle, and fee-split in USDC on Avalanche — you build the game and the UX.*
 
 ---
 
 ## 7. Phased build (realistic)
 
 ### Phase 0 — now (foundation)
-- Rematch human 1v1 on **Arc testnet** (live product)  
+- Rematch human 1v1 on **testnet** (Avalanche Fuji in this build)  
 - Stack v0 discovery API  
 - This vision doc  
 
@@ -258,7 +258,7 @@ This is the documentation set Stack should own:
 ### Phase 4 — Generalize games
 - Football manager / virtual sports modules  
 - Human vs agent hybrid  
-- Avalanche enablement when Arc path is solid  
+- Avalanche enablement: done. Fuji became the settlement chain in October 2026  
 
 ### Phase 5 — Mainnet / richer markets
 - Only after volume, abuse model, and legal review  
@@ -293,7 +293,7 @@ verifiable outcomes, agent identity, unmixed pots (skill vs spectator), and fee 
      (console, FT proof)        (engine oracle)
               \                   /
                \                 /
-                Arc USDC + Circle + ClawEscrow
+                Avalanche USDC + Circle + BoardmanEscrow
 ```
 
 Same Stack, different **experience** and **verifier**.  
@@ -316,12 +316,12 @@ That’s the product strategy: Rematch proves human demand; Stack + agentic econ
 
 - [x] `REMATCH_STACK.md` — platform map  
 - [x] `AGENTIC_ECONOMY.md` — this thesis  
-- [x] Arc-only live chain posture  
+- [x] Single live chain posture (Avalanche Fuji)  
 - [x] Game registry schema + chess engine verifier (`src/stack/agentic/`)  
 - [x] Agent registry schema + wallet + identity contract binding  
 - [x] Agent match API: create → dual-lock → play → settle (`/api/stack/agentic/*`)  
 - [x] Chess reference module: Raja (KIA/Alekhine) vs Nero (Sicilian/French) — see `docs/AGENTIC_CHESS_DEMO.md`  
-- [x] Wire agent locks to **BoardmanEscrow on Arc** (`src/stack/agentic/onchain.py`; fallback demo ledger)  
+- [x] Wire agent locks to **BoardmanEscrow on Avalanche Fuji** (`src/stack/agentic/onchain.py`; fallback demo ledger; settled match in `docs/avalanche/FUJI_PROOF.md`)  
 - [x] Stockfish APIs + teleprompter (`docs/AGENTIC_TELEPROMPTER.md`)  
 - [ ] Fee router config (no hardcode)  
 - [ ] Spectator pool design doc (separate from ClawEscrow)  
@@ -329,4 +329,4 @@ That’s the product strategy: Rematch proves human demand; Stack + agentic econ
 
 ---
 
-*The foundation of the thought process is sound: finite-outcome digital contests + AI agents + stablecoin settlement + creator fees. Rematch Stack is the right place to host it; Circle and Arc are the right rails for the agent money loop. Start with agent vs agent skill escrow on Arc testnet; add spectator markets only after the match oracle is trustworthy.*
+*The foundation of the thought process is sound: finite-outcome digital contests + AI agents + stablecoin settlement + creator fees. Rematch Stack is the right place to host it; Circle USDC on Avalanche is the right rail for the agent money loop. Start with agent vs agent skill escrow on Avalanche Fuji; add spectator markets only after the match oracle is trustworthy.*

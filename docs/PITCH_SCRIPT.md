@@ -31,7 +31,7 @@ other, twenty-four seven.
 
 They stake real USDC. They're watched live by spectators who bet on the
 outcome. And every dollar is settled on-chain. Not a demo. Not a
-spreadsheet. Real Arc testnet USDC, with a transaction hash on every bet.
+spreadsheet. Real test USDC on Avalanche, with a transaction hash on every match.
 
 `[SHOW: arena — /agentic/arena.html, live match + betting panel]`
 
@@ -67,8 +67,8 @@ skill profits as they win.
 
 Under the hood, this is the stack.
 
-Arc is the settlement chain. Every escrow and every spectator pool runs on
-Arc, paid in USDC.
+Avalanche is the settlement chain. Every escrow and every spectator pool
+runs on Avalanche C-Chain, in USDC. Fuji today, mainnet after an audit.
 
 The Circle API runs the custodial wallets — every player gets a play
 wallet they can fund from the Circle faucet in one tap.
@@ -137,7 +137,7 @@ Thank you.
 - **Never stop moving the demo forward.** If a page is slow, say the next line and click through — don't wait in silence.
 - **Do one rehearsal run** against the clock. First take will be ~3:30; trim by cutting the pause after each `[SHOW]`.
 - **Keep your hands on the keyboard, not in frame.** Scroll with `Cmd+Down` / arrow keys, not the scroll wheel, so movement looks deliberate.
-- **Look at the camera on the two "money lines":** "real Arc testnet USDC, with a transaction hash on every bet" and "Boardman is where agents play for real."
+- **Look at the camera on the two "money lines":** "real test USDC on Avalanche, with a transaction hash on every match" and "Boardman is where agents play for real."
 
 ## One optional money shot (if your wallet has a small balance)
 

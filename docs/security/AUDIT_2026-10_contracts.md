@@ -1,5 +1,26 @@
 # Boardman v2 contracts audit, October 2026
 
+> **Note, November 2026: this build settles on Avalanche C-Chain.** This
+> review targeted Arc mainnet, the planned real-money chain in October 2026,
+> and is kept as written. The Avalanche build runs the same v2 source. Since
+> the delta review (`2db55ab`), the only contract change is the NatSpec move
+> in D-05 (`6f527f2`). `BoardmanEscrow` v2 and `SpectatorPool` v2 on Fuji were
+> deployed from that source (`contracts/deployments/boardman_v2_avalancheFuji.json`).
+> How the results carry over:
+> - The findings, refuted attacks, invariant runs and backend fixes
+>   (sections 3 to 5, 7 and 9) do not depend on the chain and apply as written.
+> - Section 6, I-05 and the "Arc validators" item in section 7 are about Arc
+>   only. On C-Chain, gas is AVAX and USDC is a plain ERC-20 with no native
+>   balance, so the forced-native-USDC case in I-01 does not arise. How Circle
+>   USDC fails for blocklisted addresses on C-Chain has not been measured yet;
+>   recommendation 2 now applies to C-Chain.
+> - The L-04 chain-id checks cover the Avalanche networks: `deploy_v2.js`
+>   checks 43113 (Fuji) and 43114 (C-Chain) against the RPC, and the
+>   preflight also pins 43114 for `avalancheMainnet`.
+> - D-03's required `EXPECT_*` checks in `scripts/lib/v2_roles.js` cover
+>   `arcMainnet` and `baseMainnet` only. On `avalancheMainnet`, pass them,
+>   and `EXPECT_USDC`, explicitly.
+
 Internal pre-mainnet review of BoardmanEscrow v2 and SpectatorPool v2, and of
 the backend code that signs and sends calls to them. This is not a substitute
 for the external audit; section 8 lists what that audit should focus on.

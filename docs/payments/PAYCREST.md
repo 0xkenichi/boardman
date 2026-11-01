@@ -1,4 +1,4 @@
-# Naira on/off-ramp: Paycrest + CCTP to Arc
+# Naira on/off-ramp: Paycrest + CCTP to Avalanche
 
 Status: **built, off.** Nothing is visible to players until `PAYCREST_ENABLED=1`
 **and** `REAL_MONEY_ENABLED=1` **and** `PAYCREST_API_KEY` is set. Paycrest is
@@ -37,12 +37,12 @@ TOP UP (on-ramp)
              CCTP v2: approve + depositForBurn on Base (Fast Transfer, fee ≤ 5 bps)
                          │  Iris attestation
                          ▼
-             receiveMessage on Arc (Boardman relayer wallet pays USDC gas)
+             receiveMessage on Avalanche C-Chain (Boardman relayer wallet pays AVAX gas)
                          ▼
-                 player's Arc play wallet ── stakes / BoardmanEscrow
+                 player's Avalanche play wallet ── stakes / BoardmanEscrow
 
 CASH OUT (off-ramp)
- Arc play wallet ──CCTP burn (Arc, USDC gas)──▶ mint on Base (relayer pays gas)
+ Avalanche play wallet ──CCTP burn (C-Chain, AVAX gas)──▶ mint on Base (relayer pays gas)
                          ▼
              player's Base "out" wallet ──▶ POST /v2/sender/orders (crypto→fiat,
                          │                   refundAddress = this wallet)
@@ -117,22 +117,23 @@ Paycrest ([docs](https://docs.paycrest.io),
 * Minimum order $0.50; Paycrest's fee is in the rate (0.5% per the brief —
   not restated on the pages read); optional sender fee
   (`senderFee`/`senderFeePercent`); `transactionFeePayer: sender|customer`.
-* Networks include Base (USDC `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`);
-  **Arc is not supported** ([stablecoins](https://docs.paycrest.io/resources/supported-stablecoins.md)).
+* Networks include Base (USDC `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`).
+  **Avalanche is not in Paycrest's USDC network list** (checked 2026-11-01,
+  [stablecoins](https://docs.paycrest.io/resources/supported-stablecoins.md)),
+  so naira settles on Base and CCTP moves it to C-Chain.
   "Paycrest is not a licensed financial institution"; senders own their user
   KYC/KYB.
 
-Circle CCTP v2 ([supported chains](https://developers.circle.com/cctp/concepts/supported-chains-and-domains),
+Circle CCTP v2 ([supported chains](https://developers.circle.com/cctp/cctp-supported-blockchains),
 [contracts](https://developers.circle.com/cctp/references/contract-addresses),
-[interfaces](https://developers.circle.com/cctp/references/contract-interfaces),
-[Arc CCTP guide](https://docs.arc.io/integrate/exchanges/cctp-bridging.md)):
+[interfaces](https://developers.circle.com/cctp/references/contract-interfaces)),
+checked again 2026-11-01:
 
-* Arc is a CCTP domain: **26** (mainnet listed; Fast Transfer as a source is
-  N/A because standard attestation is already fast). Base: **6**, Fast
-  Transfer supported.
+* Avalanche is CCTP domain **1** (Fast Transfer as a source is N/A because
+  standard attestation is already fast). Base: **6**, Fast Transfer supported.
 * Mainnet TokenMessengerV2 `0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d`,
   MessageTransmitterV2 `0x81D40F21F12A8F0E3252Bccb954D722d4c464B64` (same on
-  Base and Arc). Testnet `0x8FE6…2DAA` / `0xE737…E275`.
+  Base and Avalanche, `config/chains.yaml` `cctp`). Testnet `0x8FE6…2DAA` / `0xE737…E275`.
 * `depositForBurn(amount, destinationDomain, mintRecipient(bytes32),
   burnToken, destinationCaller(bytes32), maxFee, minFinalityThreshold)`,
   1000 = fast, 2000 = standard; `destinationCaller = 0` lets anyone relay
@@ -141,8 +142,8 @@ Circle CCTP v2 ([supported chains](https://developers.circle.com/cctp/concepts/s
 
 Circle Gas Station ([docs](https://developers.circle.com/wallets/gas-station)):
 EVM needs **SCA** (ERC-4337) wallets; works with developer-controlled
-wallets; Base and Arc mainnet listed; billed to the developer's card at
-**gas + 5%**.
+wallets; Base and Avalanche (mainnet and Fuji) listed; billed to the
+developer's card at **gas + 5%**.
 
 ### Uncertain — verify before go-live
 
@@ -157,16 +158,17 @@ wallets; Base and Arc mainnet listed; billed to the developer's card at
    documented; we read `validUntil` per order.
 5. Paycrest documents no idempotency header; we rely on our unique
    `reference` + lookup before resubmitting.
-6. CCTP fast-transfer fee from Base and whether Arc → Base standard transfers
-   carry a fee: read live from Iris at burn time; we cap at
+6. CCTP fast-transfer fee from Base and whether Avalanche → Base standard
+   transfers carry a fee: read live from Iris at burn time; we cap at
    `bridge.max_fee_bps` (5) and fall back to standard if higher.
-7. Circle W3S: blockchain label `BASE` for Base mainnet, USDC token UUID on
-   BASE and ARC (set `CIRCLE_USDC_TOKEN_ID_BASE_MAINNET`,
-   `CIRCLE_USDC_TOKEN_ID_ARC_MAINNET`), and whether SCA and EOA wallets can
-   share our existing wallet set.
+7. Circle W3S: blockchain labels `BASE` and `AVAX`, the USDC token UUID on
+   each (set `CIRCLE_USDC_TOKEN_ID_BASE_MAINNET`,
+   `CIRCLE_USDC_TOKEN_ID_AVALANCHE_MAINNET`), and whether SCA and EOA wallets
+   can share our existing wallet set.
 8. ~~Mainnet Circle wallets reuse the testnet address?~~ Resolved
    (2026-10-19, money realms): a real chain gets its own LIVE-entity wallet
-   in `payment_wallets` under `arc_mainnet/play`, never the practice
+   in `payment_wallets` under `<chain>/play` (`avalanche_mainnet/play` in
+   this build), never the practice
    `gaming_deposit_address`; real balances exclude the practice overlay; and
    the rail is off unless both of its chains are mainnet. See
    [MAINNET_HUMANS_CUTOVER.md](../MAINNET_HUMANS_CUTOVER.md).
@@ -178,10 +180,11 @@ wallets; Base and Arc mainnet listed; billed to the developer's card at
 | `PAYCREST_ENABLED` | env | off |
 | `REAL_MONEY_ENABLED` | env | off |
 | `PAYCREST_API_KEY`, `PAYCREST_API_SECRET` | env (blind, `scripts/set_paycrest_env.sh`) | unset |
-| `PAYCREST_ARC_RELAYER_WALLET_ID`, `PAYCREST_BASE_RELAYER_WALLET_ID` | env | unset (mints wait, then alert) |
+| `PAYCREST_AVALANCHE_RELAYER_WALLET_ID`, `PAYCREST_BASE_RELAYER_WALLET_ID` | env | unset (mints wait, then alert) |
+| `PAYCREST_SETTLEMENT_CHAIN`, `PAYCREST_DELIVERY_CHAIN` | env override of `settlement_chain` / `delivery_chain` | `avalanche_mainnet` / `base_mainnet` |
 | `PAYCREST_BASE_GAS_MODE` | env override of `gas.base_mode` | `gas_station` |
 | `rails.paycrest_ngn` | `config/funding_rails.yaml` | `enabled: false`; limits, fees, bridge, gas |
-| `base_mainnet`, `cctp` | `config/chains.yaml` | `enabled: false` |
+| `base_mainnet`, `avalanche_mainnet`, `cctp` | `config/chains.yaml` | `enabled: false` |
 
 Limits (per player, `funding_rails.yaml`): top-up ₦1,000–₦500,000 per order,
 ₦1,000,000 per 24 h; cash-out $1–$300 per order, $500 per 24 h. Cash-outs also
@@ -212,13 +215,17 @@ the Paycrest order after the bridge) and masked everywhere else.
   each Base tx `gas_tank.ensure_native_gas` tops up from `ADMIN_PRIVATE_KEY`
   (0.0001 ETH per top-up, `chains.yaml base_mainnet`). Cheaper per tx, but a
   hot key and ETH float to manage.
-* **Arc:** gas is USDC. Cash-out burns are paid by the player's play wallet
-  (we keep $0.05 back); mints by the Boardman Arc relayer wallet — keep it
-  funded (a low-balance alert is a go-live item; not built yet).
+* **Avalanche:** gas is AVAX. Cash-out approve and burn are sent from the
+  player's real-money play wallet, an SCA by default, so a Gas Station policy
+  for Avalanche mainnet sponsors them. Mints on C-Chain are relayed by the
+  Boardman Avalanche relayer wallet, which needs AVAX: keep it funded (a
+  low-balance alert is a go-live item; not built yet). The off-ramp still
+  holds back $0.05 of USDC per cash-out for gas (`ARC_GAS_RESERVE` in
+  `paycrest/offramp.py`), a leftover from the Arc configuration.
 * Per top-up, roughly: Paycrest network fee (shown before paying) + CCTP fast
-  fee ≤ 5 bps + ~3 Base txs of sponsored gas. Per cash-out: ~2 Arc txs (player)
-  + 1 Base mint (relayer) + 1 Base transfer + Paycrest fee. Estimates — measure
-  on the first live orders.
+  fee ≤ 5 bps + ~3 Base txs of sponsored gas + 1 C-Chain mint (relayer). Per
+  cash-out: ~2 C-Chain txs (player) + 1 Base mint (relayer) + 1 Base
+  transfer + Paycrest fee. Estimates — measure on the first live orders.
 
 ## Founder setup (in order)
 
@@ -229,12 +236,15 @@ the Paycrest order after the bridge) and masked everywhere else.
 3. **Webhook URL** in the Paycrest dashboard:
    `https://boardman-api.playingsidequest.fun/webhooks/paycrest`
    (answers 404 until the rail is on; Paycrest retries for 24 h).
-4. **Circle**: in the Console enable Gas Station for **Base mainnet**
-   (policy: USDC + TokenMessengerV2 only, a monthly cap); create two
-   developer-controlled relayer wallets (Arc mainnet, Base mainnet) and fund
-   them (Arc: ~$20 USDC; Base: SCA with Gas Station, or a little ETH); capture
-   the USDC token UUIDs for BASE and ARC; re-run the script with the relayer
-   wallet ids.
+4. **Circle**: in the Console enable Gas Station for **Base mainnet** and
+   **Avalanche mainnet** (policy: USDC + TokenMessengerV2 only, plus the
+   escrow on Avalanche, a monthly cap); create two developer-controlled
+   relayer wallets (`AVAX`, `BASE`) and fund them (Avalanche: a little AVAX;
+   Base: SCA with Gas Station, or a little ETH); capture the USDC token UUIDs
+   for `BASE` and `AVAX`; re-run the script with the relayer wallet ids.
+   `scripts/circle_mainnet_setup.py` and `scripts/set_paycrest_env.sh` still
+   create and ask for an Arc relayer: port them first
+   ([MAINNET_HUMANS_CUTOVER.md](../MAINNET_HUMANS_CUTOVER.md) §3).
 5. **Dry run with dust**: with the go-live gate cleared and caps lowered
    (e.g. ₦2,000 / $2), run `bash scripts/set_paycrest_env.sh --enable`
    (type `REAL MONEY`), do one top-up and one cash-out yourself, and check
@@ -253,14 +263,16 @@ All of these must be true, with evidence, before `--enable`. This adds to
    Migration outline: create user-controlled wallets per player behind a
    flag → show both balances → player-signed sweep from the old wallet →
    stakes and cash-outs only from the user-controlled wallet → retire the
-   developer wallets. Also decide the Arc **mainnet** play-wallet mapping (do
-   not let `ensure_user_wallet` reuse a testnet address silently).
+   developer wallets. Also decide the **mainnet** play-wallet mapping (do
+   not let `ensure_user_wallet` reuse a testnet address silently; resolved
+   2026-10-19, uncertain #8).
    **Update 2026-10-18:** the founder chose passkey self-custody (Circle
-   Modular Wallets on Arc), built behind `SELF_CUSTODY_WALLETS_ENABLED` — see
+   Modular Wallets), built behind `SELF_CUSTODY_WALLETS_ENABLED` — see
    [SELF_CUSTODY_WALLETS.md](SELF_CUSTODY_WALLETS.md). Top-ups then mint to
    the player's own account; the Base transit wallets remain custodial for
    minutes and bank cash-outs from passkey wallets are not wired yet.
-2. **Escrow on Arc mainnet.** BoardmanEscrow v2 contracts are **unaudited**:
+2. **Escrow on Avalanche C-Chain mainnet.** BoardmanEscrow v2 has had only
+   an internal review:
    external audit, deploy from a dedicated key, verify source, smoke tests
    (see MAINNET_GOLIVE_CHECKLIST §3).
 3. **Agent wallet rotation.** Rotate every agent/house wallet key that ever

@@ -27,7 +27,7 @@ A line with no tag shows in every mode.
 - Short sentences. One idea each.
 - Say "you" and "your friend". Say "dollars" or "$", "naira" or "₦", "practice money", "your Boardman wallet".
 - Talk about Boardman as "we" or "Boardman". The old first-person "I'm the boardman" voice is retired, because it confuses first-time readers.
-- **Never** use: robot(s), USDC (except the one practice-money helper step where the faucet shows it), Arc, testnet, chain, escrow contract, on-chain, resolver, custody, non-custodial, gas, the book, the desk, vig, odds, bet (for 1v1 matches), guaranteed, instant, licensed, regulated, risk-free.
+- **Never** use: robot(s), USDC (except the one practice-money helper step where the faucet shows it), Fuji, AVAX, testnet, chain, escrow contract, on-chain, resolver, custody, non-custodial, gas, the book, the desk, vig, odds, bet (for 1v1 matches), guaranteed, instant, licensed, regulated, risk-free.
 - "Escrow" is allowed once per page, always explained: "Boardman holds both stakes until the game ends".
 - Numbers use digits. Money is "$10" or "₦1,000". Never "10 USDC".
 - **Read-aloud test:** a 16-year-old in Lagos reads it once and can tell a friend what it means.
@@ -394,7 +394,7 @@ The four badges, as written in Global components.
 
 - **Line:** We may lower limits for your safety. We'll never raise them without updating this page.
 
-> **Build note.** The numbers come from `lib/siteMode.ts`, never typed into the page. The "$100 a day" stake cap exists only on `launch/arc-mainnet-humans`. Show it only in [R].
+> **Build note.** The numbers come from `lib/siteMode.ts`, never typed into the page. The "$100 a day" stake cap is enforced by `src/backend/services/stake_caps.py` for real money only. Show it only in [R].
 
 ### Closing
 
@@ -875,7 +875,7 @@ Keep the current wording, with these changes:
 - **Steps:**
   1. Copy your Boardman address below.
   2. Open the faucet.
-  3. Choose **Arc Testnet** and **USDC** — that's the practice money.
+  3. Choose **Avalanche Fuji** and **USDC** — that's the practice money.
   4. Paste your address and tap Send.
   5. Back in the chat, tap **🔄 I funded — refresh**.
 - **Buttons:** `Copy my address` · `Open the faucet`
@@ -1002,7 +1002,7 @@ Re-check these when the code changes. Each fact cites the code that proves it.
 | Winner must be one of the two players | `BoardmanEscrow.sol:368` (`InvalidWinner`) |
 | Stakes $2–$25 each | `src/backend/services/safety.py:23-24` (`CLAW_MIN/MAX_STAKE_USDC`) |
 | Withdrawals $1–$50, $100 a day, 5 an hour | `safety.py:25-30` |
-| Real money: $25 a match, $100 a day staked | `src/backend/services/stake_caps.py` on `launch/arc-mainnet-humans` (not on main) |
+| Real money: $25 a match, $100 a day staked | `src/backend/services/stake_caps.py` (`BOARDMAN_HUMANS_MAX_STAKE_USDC`, `BOARDMAN_HUMANS_DAILY_STAKE_USDC`) |
 | Naira top-up ₦1,000–₦500,000 per order, ₦1,000,000 a day. Cash-out $1–$300 per order (Paycrest) and $500 a day; the stricter withdrawal cap of $50 and $100 a day applies. Boardman adds a 0% fee. | `config/funding_rails.yaml:104-133`; `docs/payments/PAYCREST.md` |
 | BVN or NIN asked only on a one-time page, passed through, not stored | `docs/payments/PAYCREST.md` "What the player sees", "KYC: pass-through" |
 | Failed top-up refunds to the bank; failed cash-out returns to the balance | `PAYCREST.md` architecture (refund account; refund → play wallet) |

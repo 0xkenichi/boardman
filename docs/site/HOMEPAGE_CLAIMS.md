@@ -1,5 +1,9 @@
 # Homepage claims — fact-check ledger
 
+> **Note, November 2026:** this check was made on 2026-10-15, when the site settled on Arc testnet, and is
+> kept as written. This build settles on Avalanche C-Chain (Fuji today), so chain names, chain ids and
+> stamps quoted below describe the old homepage. Re-run the check against the Avalanche build's copy.
+
 Scope: everything on `/` (served from `/v2`): `frontend/app/v2/layout.tsx` (title and
 meta), `frontend/components/rematch/v2/BoardmanV2.tsx` (nav, hero, slip, ledger strip,
 flagship, humans, arena, the book, builders, band, footer),

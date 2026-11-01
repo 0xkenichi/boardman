@@ -1,10 +1,12 @@
 # Boardman Mainnet Go-Live Checklist
 
-Bar to clear: **the stake → settle → payout flow must be correct 1,000,000 times out of 1,000,000** before real users touch mainnet. This checklist is the gate. Every item needs a ✅ with date + evidence before `arc_mainnet.enabled` flips to `true`.
+Bar to clear: **the stake → settle → payout flow must be correct 1,000,000 times out of 1,000,000** before real users touch mainnet. This checklist is the gate. Every item needs a ✅ with date + evidence before real money is switched on for Avalanche C-Chain mainnet (`avalanche_mainnet`, chain 43114: `REAL_MONEY_ENABLED=1` with `BOARDMAN_HUMANS_CHAIN=avalanche_mainnet`; runbook [MAINNET_HUMANS_CUTOVER.md](MAINNET_HUMANS_CUTOVER.md)).
 
 ## Status: 🔒 BLOCKED (config prepped, `enabled: false`)
 
 Legal & compliance gate (§4): **open**, with no counsel sign-off yet. Engineering cannot clear it alone.
+
+External audit of `BoardmanEscrow` v2: **not done**. Only the internal October 2026 review exists ([security/AUDIT_2026-10_contracts.md](security/AUDIT_2026-10_contracts.md)).
 
 ---
 
@@ -23,15 +25,15 @@ Legal & compliance gate (§4): **open**, with no counsel sign-off yet. Engineeri
 ## 2. Known soft spots (not blockers, watch these)
 
 - `resolveMatch` / `cancelMatch` are **admin-trust** operations — the resolver wallet is a single private key. Mainnet: use a dedicated resolver EOA, funded minimal, key in secrets manager (not `.env` on a laptop).
-- `joinMatch` transfers before checking the escrow actually received p1's stake? — No: p1's stake is verified by the chain itself (createMatch reverted otherwise). But the **backend** `creator_locked` state can be set while p1's tx later reorgs/fails on a reorg-prone chain. Arc finality: confirm no-reorg assumption with Arc docs before go-live.
+- `joinMatch` transfers before checking the escrow actually received p1's stake? — No: p1's stake is verified by the chain itself (createMatch reverted otherwise). But the **backend** `creator_locked` state can be set while p1's tx later reorgs/fails on a reorg-prone chain. Avalanche C-Chain finality: confirm the no-reorg assumption with Avalanche docs before go-live.
 - `cancelMatch` refunds but does not charge gas from users — resolver pays gas. Keep a gas budget alert on the resolver wallet.
 - Deposit webhook accepts `transfer | transactions.outbound | transactions.inbound` types — outbound payout events are filtered by USDC-symbol + confirmation, but re-verify Circle's real event taxonomy on mainnet (testnet payloads ≠ mainnet payloads sometimes).
 
-## 3. Gate checklist (all required before flipping `enabled: true`)
+## 3. Gate checklist (all required before real money is switched on)
 
 ### Contracts
-- [ ] `BoardmanEscrow` deployed to Arc mainnet (chain 5042) from a **dedicated deployer key**
-- [ ] Deployment tx verified on arcscan; `BOARDMAN_ESCROW_ADDRESS_ARC_MAINNET` set in backend env
+- [ ] `BoardmanEscrow` v2 deployed to Avalanche C-Chain mainnet (chain 43114) from a **dedicated deployer key** (`npm run deploy:v2:avalanche-mainnet`)
+- [ ] Deployment tx verified on Snowtrace; `BOARDMAN_ESCROW_ADDRESS_AVALANCHE_MAINNET` set in backend env
 - [ ] Contract source verified/published on the explorer
 - [ ] `ownership` transferred to ops multisig or secured owner key (not the deployer hot wallet)
 - [ ] `resolver` set to dedicated resolver EOA (≠ owner, ≠ deployer)
@@ -40,15 +42,15 @@ Legal & compliance gate (§4): **open**, with no counsel sign-off yet. Engineeri
 - [ ] Cancel path smoke test: create → cancel, both refunds land
 
 ### Circle / wallets
-- [ ] Circle W3S wallet-set confirmed working against `ARC` (mainnet) blockchain label
-- [ ] `CIRCLE_USDC_TOKEN_ID_ARC_MAINNET` captured from Circle API (do NOT reuse the testnet UUID)
+- [ ] Circle W3S wallet-set confirmed working against the `AVAX` (mainnet) blockchain label
+- [ ] `CIRCLE_USDC_TOKEN_ID_AVALANCHE_MAINNET` captured from Circle API (do NOT reuse the testnet UUID)
 - [ ] One test user wallet created on mainnet; deposit of real USDC credited exactly once (send same webhook twice, verify single credit)
 - [ ] Withdrawal/payout from a user wallet verified on-chain
 
 ### Backend config
-- [ ] `chains.yaml`: `arc_mainnet.enabled: true` + `status: live` (only after ALL of the above)
+- [ ] `REAL_MONEY_ENABLED=1` with `BOARDMAN_HUMANS_CHAIN=avalanche_mainnet` (only after ALL of the above). `avalanche_mainnet` keeps `enabled: false` in `chains.yaml`: the humans realm reaches it directly
 - [ ] `CLAW_DEFAULT_CHAIN` / `BOARDMAN_SETTLEMENT_RAIL` decision recorded (testnet users vs mainnet cutover plan — do NOT silently move existing testnet balances)
-- [ ] `ADMIN_PRIVATE_KEY` (resolver) funded with mainnet USDC-gas budget + low-balance alert
+- [ ] Mainnet resolver (keystore entry named by `BOARDMAN_RESOLVER_KEY_MAINNET`) and gas tank key (`ADMIN_PRIVATE_KEY` / `GAS_TANK_PRIVATE_KEY`) funded with an AVAX gas budget + low-balance alert
 - [ ] `DEPLOYER_KEY` removed from env after deploy
 - [ ] Scheduler running with `clawstation_creator_lock_sweep` active (log line on startup)
 
@@ -69,7 +71,7 @@ Legal & compliance gate (§4): **open**, with no counsel sign-off yet. Engineeri
 ### Reconciliation
 - [x] Job built: `src/backend/services/escrow_reconciliation.py` — per-challenge DB-expected-held (from lock tx ids) vs on-chain match state, plus headline contract-balance check; read-only, fail-loud, alerts ops. Scheduled every 60min (`clawstation_escrow_reconciliation`, `ESCROW_RECONCILE_INTERVAL_MIN=0` to disable). Tested clean + drift in `test_escrow_replay.py`.
 
-## 4. Legal & compliance gate (all required before flipping `enabled: true`)
+## 4. Legal & compliance gate (all required before real money is switched on)
 
 Not legal advice. These items track the controls and the counsel decisions described in
 [`COMPLIANCE.md`](../COMPLIANCE.md), [`legal/COUNSEL_BRIEF.md`](legal/COUNSEL_BRIEF.md) and
@@ -108,10 +110,10 @@ deployed.
 ### Custody, KYC/AML
 - [ ] Docs stop claiming "non-custodial" (branch: all tracked docs corrected 2026-10-14)
 - [ ] Compliance officer named; SAR process adopted (KYC/AML plan §5)
-- [ ] Wallet sanctions screening on every deposit source and withdrawal destination; vendor confirmed to support Arc
+- [ ] Wallet sanctions screening on every deposit source and withdrawal destination; vendor confirmed to support Avalanche C-Chain
 - [ ] KYC tiers enforced at the hooks in KYC/AML plan §7; T0 volume limit ($500 / 30 days, pending counsel)
 - [ ] Builder KYB decision (brief Q3/Q7) before builder keys stake real USDC
-- [ ] Fiat and cross-chain funding rails (Paystack, bank, Avalanche/Stellar ops credit) cleared by counsel or disabled on mainnet
+- [ ] Fiat and cross-chain funding rails (Paystack, bank, Paycrest via Base, Stellar ops credit) cleared by counsel or disabled on mainnet
 - [ ] P2P `/send` to other users: keep, limit, or disable (brief Q1)
 
 ### Terms and disclosures
@@ -125,6 +127,6 @@ deployed.
 
 - Spectator pools only: set `SPECTATOR_BETTING_ENABLED=0` and restart (once the switch exists). Existing tickets still settle.
 
-- Flip `arc_mainnet.enabled: false` (config reload — `reload_chains_config()` clears the cache; restart API workers to be safe)
+- `bash scripts/set_mainnet_humans_env.sh --disable` (writes `REAL_MONEY_ENABLED=0` and restarts the containers): new challenges fall back to practice; open real matches still lock, settle and refund
 - `pause()` the escrow from the owner key if a contract-level stop is needed — resolve/cancel still work while paused, new stakes don't
-- User comms template: funds are in escrow, not lost; refunds are on-chain and verifiable on arcscan
+- User comms template: funds are in escrow, not lost; refunds are on-chain and verifiable on Snowtrace

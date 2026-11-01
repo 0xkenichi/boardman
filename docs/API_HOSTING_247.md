@@ -49,7 +49,8 @@ Quick-tunnel URLs change on every restart, so the live site shows
      STACK_API_KEY=... \
      BOARDMAN_STACK_API_KEYS=... \
      CLAWSTATION_BOT_MODE=polling \
-     CLAW_DEFAULT_CHAIN=arc \
+     CLAW_DEFAULT_CHAIN=avalanche \
+     BOARDMAN_ARENA_CHAIN=avalanche \
      NETWORK=testnet
    ```
    > Demo/ledger mode runs without real Circle keys; add `CIRCLE_*` keys when

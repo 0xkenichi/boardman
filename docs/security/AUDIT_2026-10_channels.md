@@ -1,5 +1,9 @@
 # Security audit: chat channels (Telegram, WhatsApp) and the AI score verifier
 
+> **Note, November 2026: this build settles on Avalanche C-Chain** (Fuji
+> today). This audit covered the chat channels and the score verifier, none
+> of which depends on the chain, so its findings apply unchanged.
+
 | | |
 |---|---|
 | Date | 2026-10-20 |

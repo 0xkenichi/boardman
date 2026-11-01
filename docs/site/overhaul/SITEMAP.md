@@ -13,7 +13,7 @@ All copy variants in `COPY_DECK.md` switch on these flags. They are build-time p
 
 | Flag | Values | Default | Turns on |
 |---|---|---|---|
-| `NEXT_PUBLIC_MONEY_MODE` | `practice` \| `real` | `practice` | Real-money copy: the $25 a match and $100 a day limits, and the "real money" warnings. Set it only when the backend has `REAL_MONEY_ENABLED=1` and the Arc mainnet escrow is live. |
+| `NEXT_PUBLIC_MONEY_MODE` | `practice` \| `real` | `practice` | Real-money copy: the $25 a match and $100 a day limits, and the "real money" warnings. Set it only when the backend has `REAL_MONEY_ENABLED=1` and the Avalanche C-Chain mainnet escrow is live. |
 | `NEXT_PUBLIC_NAIRA_LIVE` | `0` \| `1` | `0` | Naira top-up and cash-out copy (Paycrest). Needs `MONEY_MODE=real`, because Paycrest is mainnet-only. |
 | `NEXT_PUBLIC_PASSKEY_WALLETS` | `0` \| `1` | `0` | "A wallet only you control" copy. Mirrors `SELF_CUSTODY_WALLETS_ENABLED`. |
 | `NEXT_PUBLIC_WHATSAPP_URL` | a `wa.me/…` link, or empty | empty | Empty shows "WhatsApp — coming soon". Set, it shows WhatsApp buttons, and WhatsApp becomes the first CTA. |

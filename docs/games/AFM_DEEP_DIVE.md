@@ -4,6 +4,10 @@ Branch `afm/deep-dive`, written 2026-10-15. Sources: the code on `integration/wa
 https://boardman.playingsidequest.fun, the keeper's launchd config and log, and engine batches run locally
 (4,000+ simulated matches). The live data and ledger were not modified.
 
+> **Note, November 2026:** this was written when the settlement chain was Arc testnet. This build settles on
+> Avalanche C-Chain (Fuji today). The findings are about AFM's ledger and money paths, which take their chain
+> from config, so they still apply.
+
 **One-line verdict:** the engine and the season machinery are real and well tested. In production the league
 has been stalled since 5 October. A human visitor can watch, but cannot fund, bet or play. The economy only works
 because the demo faucet mints money for the AI clubs.
@@ -79,7 +83,7 @@ folds over the feed. The engine takes about 25ms per match.
                                                       └ the 7% and any unbacked pot ──► afm_season_N_pot (clubs)
 ```
 
-All AFM money is book-entry. Only the manager marketplace can settle in real USDC (Circle/Arc), and only when
+All AFM money is book-entry. Only the manager marketplace can settle in real USDC (Circle wallets on the settlement chain), and only when
 both parties have bound Circle wallets. On mainnet the book-entry rail refuses manager sales
 (`ledger_rail_allowed()`).
 
@@ -98,7 +102,7 @@ both parties have bound Circle wallets. On mainnet the book-entry rail refuses m
 | Spectator betting | **Backend only.** `POST /football/betting/bet` and the BFF route exist. `BettingPots.tsx:7` says "Read-only for now" and no UI places a bet. There is no `/betting/my` BFF route | `betting.py` |
 | L4 integrity ("an agent owner may never bet") | **Roadmap-only** (🔴 in the doc). `place_bet` checks only the spectator policy, not ownership | `betting.py:117` |
 | Cup | Backend only. No page, no BFF, never opened live, never auto-opens | `cup.py`, `api.py:2269+` |
-| Real USDC settlement (Arc/Circle) | Code path and tests exist. Needs live Circle keys and bound wallets; not demonstrated live | `test_afm_market_settlement.py` |
+| Real USDC settlement (Circle, on-chain) | Code path and tests exist. Needs live Circle keys and bound wallets; not demonstrated live | `test_afm_market_settlement.py` |
 | 2D broadcast | Live as a DOM board that replays the phase stream. Not built: the Pixi client, the pacing layer, the goal-replay loop and "manager said" | `/football/watch/broadcast` |
 | Commentary (P4), in-match tools, inbox, agent SDK (L5), league pyramid, on-chain AFM escrow | Roadmap-only | — |
 | Frontend roadmap page | **Stale**: "Last synced with doc: 2026-09-20" (`afm-roadmap.ts:7`). It has no §11 rows and lists betting as watch-only | — |
@@ -121,9 +125,9 @@ both parties have bound Circle wallets. On mainnet the book-entry rail refuses m
    **402 InsufficientBalance**. The message says "top up your wallet", but **there is no way to fund the football
    ledger**:
    * there is no deposit, faucet or top-up route or UI for `owner:{profileId}`;
-   * Paystack (Naira) top-ups go to the Supabase/Arc *play wallet* by manual admin credit
+   * Paystack (Naira) top-ups go to the Supabase *play wallet* by manual admin credit
      (`paystack/webhook/route.ts`), never to the stack ledger.
-   On mainnet the only path is a bound Circle wallet holding Arc USDC. That is not a Nigerian retail on-ramp.
+   On mainnet the only path is a bound Circle wallet holding USDC on the settlement chain. That is not a Nigerian retail on-ramp.
 5. **Tries to bet.** There is no UI. Through the API a bet would also fail on balance. Bets debit the raw
    `{profileId}` ledger key, while marketplace proceeds land in `owner:{profileId}`, so even a user who sold a
    manager cannot stake those winnings (B9).
@@ -230,7 +234,7 @@ match, so a matchday write stops being a whole-file rewrite.
 **P1: let a Nigerian user actually play**
 
 4. **A funding path into the football ledger.** Credit `owner:{profileId}` from the same Paystack (Naira)
-   top-up and from the Arc play wallet, and show the balance on the owner page. Unify the betting and marketplace
+   top-up and from the on-chain play wallet, and show the balance on the owner page. Unify the betting and marketplace
    wallet keys (B9).
 5. **Ship the betting UI** behind L4: the owner-can't-bet check (B12) and the spectator policy. Add the
    `/betting/my` BFF route.
@@ -254,5 +258,5 @@ match, so a matchday write stops being a whole-file rewrite.
 **P3: scale and real money**
 
 11. Season state into the DB with cross-process locking (B10, §6).
-12. Mainnet: Circle wallet onboarding UX, Arc USDC settlement for entries and stakes (not just manager sales),
+12. Mainnet: Circle wallet onboarding UX, on-chain USDC settlement for entries and stakes (not just manager sales),
     and the integrity monitoring from roadmap L4.

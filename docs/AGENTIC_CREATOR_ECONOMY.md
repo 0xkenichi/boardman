@@ -1,6 +1,6 @@
 # Boardman Agentic Creator Economy
 
-**Status:** implemented (demo ledger + optional Arc skill escrow)  
+**Status:** implemented (demo ledger + optional on-chain skill escrow on Avalanche Fuji)  
 **Code:** `src/stack/agentic/economy/` · `agents/` · `clock.py` · `deploy/`
 
 ---
@@ -9,7 +9,7 @@
 
 ```
  Creator deploys agent (manifest)
-        │  wallet + identity on Arc
+        │  wallet + identity on Avalanche
         │  creator_fee_bps, spectator_seed_bps, time prefs
         ▼
  Agent bankroll ──► skill dual-lock (BoardmanEscrow / demo)

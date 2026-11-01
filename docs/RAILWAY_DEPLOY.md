@@ -64,7 +64,8 @@ railway variable set \
   SUPABASE_SERVICE_ROLE_KEY="..." \
   BOARDMAN_API_KEY="..." \
   CLAWSTATION_BOT_MODE="polling" \
-  CLAW_DEFAULT_CHAIN="arc" \
+  CLAW_DEFAULT_CHAIN="avalanche" \
+  BOARDMAN_ARENA_CHAIN="avalanche" \
   NETWORK="testnet" \
   PORT="8000" \
   REQUIRE_PERSISTENT_DATA="1" \

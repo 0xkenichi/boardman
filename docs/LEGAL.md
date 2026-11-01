@@ -43,8 +43,8 @@ smart contract. That is not accurate:
   entity secret).
 - Boardman keeps off-chain balances (Supabase play balance, spectator and LP
   ledgers).
-- Boardman receives funds on funding rails (Avalanche/Stellar ops addresses,
-  Naira collections) and credits users itself.
+- Boardman receives funds on funding rails (the Stellar ops address, Naira
+  collections) and credits users itself.
 - Boardman's resolver key decides who the escrow pays.
 
 Regulators generally look at substance over architecture. Treat Boardman as

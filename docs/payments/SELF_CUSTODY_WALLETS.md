@@ -1,4 +1,4 @@
-# Self-custody passkey wallets on Arc
+# Self-custody passkey wallets on Avalanche
 
 Status: **built, off.** Nothing changes for any player until
 `SELF_CUSTODY_WALLETS_ENABLED=1`. With the flag off every route answers 404,
@@ -9,17 +9,17 @@ Founder decision (2026-10-18): copy BlinkBox's custody model. Each player
 holds their own wallet, approved with a passkey on their phone; the bot only
 *prepares* transactions; Boardman never holds the keys.
 
-Research read on 2026-10-18. Facts carry a link; anything not confirmed by
-a primary source is marked **(unverified)**.
+Research read on 2026-10-18, when the settlement chain was Arc. The chain
+facts below were re-checked for Avalanche C-Chain on 2026-11-01. Facts carry
+a link; anything not confirmed by a primary source is marked **(unverified)**.
 
 ## 1. Research
 
 ### Circle Modular Wallets (passkey smart accounts)
 
-* **Arc is supported, mainnet and testnet.** Circle's supported-blockchains
-  table lists Arc (`ARC` / `ARC-TESTNET`) with **MSCA** in the *Modular*
-  column (also Arbitrum, Avalanche, Base, Monad, OP, Polygon, Unichain; *not*
-  Ethereum mainnet or Solana).
+* **Avalanche is supported, mainnet and Fuji.** Circle's supported-blockchains
+  table lists Avalanche (`AVAX` / `AVAX-FUJI`) with **MSCA** in the *Modular*
+  column.
   [developers.circle.com/wallets/supported-blockchains](https://developers.circle.com/wallets/supported-blockchains)
 * **What it is.** User-controlled ERC-4337 smart accounts (Circle's MSCA,
   ERC-6900 modules, EntryPoint v0.7). "Users control their keys with passkeys
@@ -31,10 +31,12 @@ a primary source is marked **(unverified)**.
   (`viem/account-abstraction`). Flow, verbatim from the quickstart:
   `toPasskeyTransport(clientUrl, clientKey)` →
   `toWebAuthnCredential({transport, mode: WebAuthnMode.Register | Login, username})` →
-  `toModularTransport(\`${clientUrl}/arcTestnet\`, clientKey)` →
+  `toModularTransport(\`${clientUrl}/<path>\`, clientKey)` →
   `createPublicClient` → `toCircleSmartAccount({client, owner: toWebAuthnAccount({credential})})` →
-  `createBundlerClient({account, chain, transport})`. The quickstart uses
-  `arcTestnet` from `viem/chains`.
+  `createBundlerClient({account, chain, transport})`. Boardman's path comes
+  from `self_custody/config.py`: `avalancheFuji` for Fuji, `avalanche` for
+  C-Chain mainnet. The chain itself is built with `viem.defineChain` from
+  `chains.yaml`.
   [create a modular wallet](https://developers.circle.com/wallets/modular/create-a-modular-wallet),
   [web SDK](https://developers.circle.com/sdks/modular/web-sdk)
 * **Client key.** Console → Keys → *Client Key*; the passkey domain
@@ -58,18 +60,15 @@ a primary source is marked **(unverified)**.
   [web SDK](https://developers.circle.com/sdks/modular/web-sdk)
 * **Gas.** Two options:
   1. *Gas Station* (`paymaster: true`): Boardman sponsors gas under a Console
-     policy, billed to the developer card at gas + 5 %. Arc mainnet and
-     testnet listed. [gas station](https://developers.circle.com/wallets/gas-station)
-  2. *No paymaster on Arc*: Arc's native gas token **is** USDC (18-decimal
-     native accounting, same balance as the 6-decimal ERC-20 at
-     `0x3600…0000`), so the smart account can pay its own prefund from the
-     player's USDC. [Arc gas and fees](https://docs.arc.io/arc/references/gas-and-fees.md)
-  *Circle Paymaster* (users pay gas in USDC on ETH-gas chains, +10 %) lists
-  Arbitrum, Avalanche, Base, Ethereum, OP, Polygon, Unichain — **not Arc**,
-  and Arc does not need it. [paymaster](https://developers.circle.com/paymaster)
-  Default here: `SELF_CUSTODY_SPONSOR_GAS=1` (Gas Station) so a player with
-  exactly $5 can stake $5; set 0 to let players pay Arc gas (~$0.001/tx
-  design target).
+     policy, billed to the developer card at gas + 5 %. Avalanche mainnet and
+     Fuji listed. [gas station](https://developers.circle.com/wallets/gas-station)
+  2. *Circle Paymaster*: players pay gas in USDC, +10 %. Avalanche is listed
+     (research of 2026-10-18). Not wired.
+     [paymaster](https://developers.circle.com/paymaster)
+  Gas on Avalanche is **AVAX**, and players hold USDC, so without one of
+  these the smart account would need AVAX of its own. Default here:
+  `SELF_CUSTODY_SPONSOR_GAS=1` (Gas Station), so a player with exactly $5 can
+  stake $5. Set 0 only if players hold AVAX.
 * **Recovery.** Optional. `registerRecoveryAddress` adds a backup EOA signer
   derived from a BIP-39 mnemonic the *player* keeps; `executeRecovery` binds
   a new passkey later. Must be set up while the passkey still works; passkey
@@ -79,13 +78,12 @@ a primary source is marked **(unverified)**.
   which covers "new phone" for most players.
 * **Pricing.** Circle Wallets bill per monthly active wallet: first 1,000
   free, then $0.05 → $0.02 per MAW by tier; $0.01 rebate per MAW holding ≥ 10
-  USDC. Arc is not in the published chain list for that table and the pages
-  disagree by region — **confirm with Circle sales**.
+  USDC. The pages disagree by region — **confirm with Circle sales**.
   [circle.com/wallets](https://www.circle.com/wallets)
 
 ### Circle User-Controlled Wallets (PIN / social login, MPC)
 
-* Arc mainnet and testnet supported (EOA and SCA).
+* Avalanche mainnet and Fuji supported (EOA and SCA).
   [supported blockchains](https://developers.circle.com/wallets/supported-blockchains)
 * The player approves with a Circle PIN or social login inside Circle's Web
   SDK iframe/UI; the app must create a Circle *user* and obtain a user token
@@ -99,7 +97,7 @@ a primary source is marked **(unverified)**.
 * Consumer product launched 2026-07-29; passkey per transaction ("Always
   Ask") or rules-based autonomy; keys on Sodot MPC/TEE infrastructure.
   Chains: Solana, Ethereum, Base, Arbitrum, Polygon, Hyperliquid, Tempo,
-  Robinhood Chain — **no Arc**.
+  Robinhood Chain — **no Avalanche**.
   [The Block](https://theblock.co/post/410032/moonpay-paybox-chatgpt-claude),
   [Finovate](https://finovate.com/moonpay-lets-ai-agents-transact-with-paybox/)
 * **No public third-party developer SDK found** (`@paybox-sh/sdk`, an MCP at
@@ -130,12 +128,13 @@ a primary source is marked **(unverified)**.
 
 ## 2. Decision
 
-**Circle Modular Wallets on Arc**, passkey-owned, with Gas Station
-sponsorship. Arc is supported on both networks, so real money stays on Arc
-and the existing escrow; it is the closest copy of BlinkBox (passkey per
-action, bot prepares, user approves). Fallbacks, in order: Circle
-user-controlled wallets on Arc (PIN), then PayBox on Base (would move real
-money and the escrow to Base).
+**Circle Modular Wallets on the settlement chain**, passkey-owned, with Gas
+Station sponsorship. Decided on 2026-10-18 for Arc; Avalanche C-Chain has the
+same Circle support on both networks, so the decision carries over: real money
+stays on the settlement chain and the v2 escrow. It is the closest copy of
+BlinkBox (passkey per action, bot prepares, user approves). Fallbacks, in
+order: Circle user-controlled wallets on the same chain (PIN), then PayBox on
+Base (would move real money and the escrow to Base).
 
 ## 3. How it works
 
@@ -145,7 +144,7 @@ chat: "Lock my stake"                         chat: "Withdraw 20 to 0x…"
    ▼
 https://<site>/app/approve/<token>   (opened in the phone's browser)
    │ page shows EXACTLY what is signed: "Lock 5.00 USDC into escrow match
-   │ ABC123 on Arc" / "Send 20.00 USDC to 0x…", the contract and calldata
+   │ ABC123 on Avalanche Fuji" / "Send 20.00 USDC to 0x…", the contract and calldata
    │ player taps Approve → passkey (Face ID / fingerprint)
    │ browser: Circle smart account → sendUserOperation({calls}) → bundler
    │ waits for the receipt → POST {tx_hash, user_op_hash, echoed amount/match}
@@ -164,7 +163,7 @@ a closed tab still confirms; a client that lies confirms nothing.
   (`onchain.sign_create_permit`, same key as settlement) and binds player1 =
   this smart account, player2 = the opponent's escrow address (their passkey
   account if they have one, else their Circle wallet), stake, a 10-minute
-  deadline. On a v1 escrow (today's testnet deploy) the call is
+  deadline. The Fuji escrow is v2. On a v1 escrow the call is
   `createMatch(bytes32,uint256)`; the version comes from
   `BOARDMAN_ESCROW_VERSION` or the on-chain probe.
 * **Lock (opponent).** `[USDC.approve(escrow, stake), escrow.joinMatch(matchId)]`.
@@ -230,7 +229,7 @@ Link this wallet to my Boardman account.
 
 Wallet: 0x…            (checksummed A)
 Account: <profile id>
-Chain ID: 5042002
+Chain ID: 43113
 Purpose: setup | change
 Nonce: <128-bit hex>
 Issued At / Expiration Time: <UTC>
@@ -310,14 +309,14 @@ itself after it became active.
 |---|---|---|
 | `SELF_CUSTODY_WALLETS_ENABLED` | `0` | Master switch: routes, setup, approve links |
 | `SELF_CUSTODY_REQUIRED` | `0` | `1`: players without a passkey wallet get a setup link instead of the custodial lock |
-| `SELF_CUSTODY_CHAIN` | settlement chain | `arc` (testnet) / `arc_mainnet` |
+| `SELF_CUSTODY_CHAIN` | the chain new human challenges use | `avalanche` (Fuji) / `avalanche_mainnet` |
 | `SELF_CUSTODY_SPONSOR_GAS` | `1` | `paymaster: true` (Gas Station) on UserOperations |
 | `SELF_CUSTODY_APPROVE_TTL_SEC` | `600` | Approve/setup link and setup challenge lifetime |
 | `SELF_CUSTODY_CONFIRM_TTL_SEC` | `1800` | How long a proven wallet waits for the chat "Yes" |
 | `SELF_CUSTODY_CHANGE_COOLDOWN_SEC` | `86400` | A changed wallet is unused (old one active, top-ups to the play wallet) this long |
 | `SELF_CUSTODY_REAUTH_SEC` | `900` | Max age of the web sign-in a wallet change needs |
 | `SELF_CUSTODY_ESCROW_ADDRESS`, `SELF_CUSTODY_RPC_URL` | chains.yaml | Overrides for the chain read by the watcher |
-| `SELF_CUSTODY_MODULAR_PATH` | `arcTestnet` / `arc` | Circle modular transport path (mainnet name **unverified**) |
+| `SELF_CUSTODY_MODULAR_PATH` | `avalancheFuji` / `avalanche` | Circle modular transport path (**unverified**: confirm in the Circle Console) |
 | `BOARDMAN_ESCROW_VERSION` | on-chain probe | `2` → v2 `createMatch` with resolver permit; `1` → v1 call |
 | `NEXT_PUBLIC_CIRCLE_CLIENT_KEY`, `NEXT_PUBLIC_CIRCLE_CLIENT_URL` | unset | Frontend; without them the page says "not available yet" |
 
@@ -348,12 +347,12 @@ skipped on WhatsApp; the player finds the prompt under *wallet*).
 
 1. **On-ramp (built).** Unchanged up to Base: Paycrest pays USDC to the
    player's Boardman Base "in" wallet (developer-controlled **transit**, minutes);
-   the CCTP mint on Arc now targets the player's **passkey account** when they
+   the CCTP mint on Avalanche now targets the player's **passkey account** when they
    have one (`paycrest.wallets.arc_destination`). CCTP's `mintRecipient` can
    be any address ([CCTP interfaces](https://developers.circle.com/cctp/references/contract-interfaces)).
 2. **Refunds (built).** A cash-out refund bridged home mints to the same
    destination.
-3. **Off-ramp (stubbed).** Needs the player to sign, on Arc,
+3. **Off-ramp (stubbed).** Needs the player to sign, on Avalanche,
    `[USDC.approve(TokenMessengerV2, x), depositForBurn(x, 6, mintRecipient =
    Boardman Base "out" transit wallet, …)]`; the existing reconciler then
    continues from the `burned` state. `calls.cctp_burn_calls()` builds the
@@ -392,8 +391,8 @@ skipped on WhatsApp; the player finds the prompt under *wallet*).
    (and a separate one for a preview domain); set the passkey domain under
    Wallets → Modular Wallets → Passkey. Put the key in Vercel as
    `NEXT_PUBLIC_CIRCLE_CLIENT_KEY` (plus `NEXT_PUBLIC_CIRCLE_CLIENT_URL`).
-2. Console → Gas Station → **policy for Arc** (testnet first): only the USDC
-   contract and BoardmanEscrow as targets, per-op and monthly caps.
+2. Console → Gas Station → **policy for Avalanche** (Fuji first): only the
+   USDC contract and BoardmanEscrow as targets, per-op and monthly caps.
 3. `npm i @circle-fin/modular-wallets-core viem` in `frontend/` and commit
    `package.json` + `package-lock.json` (not done here: no registry access).
    Until then `next.config.js` aliases both to `lib/selfCustody/sdkMissing.ts`
@@ -401,12 +400,15 @@ skipped on WhatsApp; the player finds the prompt under *wallet*).
    `frontend/types/circle-modular-wallets.d.ts` is a fallback type shim
    (real types win once installed) — re-run `tsc` after installing, the
    adapter (`lib/selfCustody/wallet.ts`) was typed against the shim.
-4. Deploy BoardmanEscrow **v2** (audited) on Arc mainnet; set
-   `BOARDMAN_ESCROW_VERSION=2` and the resolver key (keystore) for permits.
+4. Deploy BoardmanEscrow **v2** (after the external audit) on Avalanche
+   C-Chain mainnet; set `BOARDMAN_ESCROW_VERSION=2` and the resolver key
+   (keystore) for permits. Runbook: [MAINNET_HUMANS_CUTOVER.md](../MAINNET_HUMANS_CUTOVER.md).
+   Before that, `frontend/lib/selfCustody/wallet.ts` must declare AVAX, not
+   USDC, as the chain's native currency (USDC was right for Arc).
 5. Device test matrix on testnet: iOS Safari, Android Chrome, Telegram iOS /
    Android / Desktop, WhatsApp iOS / Android (open link → "Open in browser" →
    create passkey → sign the setup proof → "Yes" in chat → lock → back to
-   chat). Also confirm on Arc testnet that a real counterfactual account's
+   chat). Also confirm on Fuji that a real counterfactual account's
    signature passes `proof.verify` (only exercised against viem's bytes and
    a fake chain here). Record results here.
 6. Recovery: decide whether to prompt every player to save a recovery phrase

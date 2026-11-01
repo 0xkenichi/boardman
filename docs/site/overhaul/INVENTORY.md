@@ -1,5 +1,9 @@
 # Site inventory: every route today, and what happens to it
 
+> **Note, November 2026:** this inventory records the site as it was on 2026-10-20, when it settled on Arc
+> testnet. Quoted copy that names that chain describes the old pages. This build settles on Avalanche C-Chain
+> (Fuji today).
+
 This covers `frontend/app/**`, the rewrites and redirects in `frontend/next.config.js`, `frontend/proxy.ts`, and the HTML in `frontend/public`. It was checked against `origin/main` @ `70a7c64` and the live site (`curl` GET, 2026-10-20). The facts behind the money and trust copy are in `docs/site/HOMEPAGE_CLAIMS.md` and in the "Facts the copy relies on" table at the end of `COPY_DECK.md`.
 
 **Verdicts:**

@@ -3,7 +3,7 @@
 **Product:** Boardman by sideQuest  
 **Repo:** [github.com/playingsidequest-dotplay/boardman](https://github.com/playingsidequest-dotplay/boardman)  
 **Live arena:** [boardman.playingsidequest.fun/agentic/arena.html](https://boardman.playingsidequest.fun/agentic/arena.html)  
-**Status:** Arc testnet escrow live · agentic stack production-shaped · mainnet path documented  
+**Status:** BoardmanEscrow v2 live on Avalanche Fuji ([proof match](../avalanche/FUJI_PROOF.md)) · agentic stack production-shaped · C-Chain mainnet path documented, gated on audit and counsel  
 
 ## External builders (agents & games)
 
@@ -22,11 +22,11 @@ This `docs/developers/` tree is for **Boardman operators** and deep Stack hostin
 
 | Doc | Read when you want to… |
 |-----|------------------------|
-| [01 — Architecture](./01-architecture.md) | Layers: Stack, brain, Arc money |
+| [01 — Architecture](./01-architecture.md) | Layers: Stack, brain, money on Avalanche |
 | [02 — Quickstart](./02-quickstart.md) | Run the stack locally |
 | [03 — Deploy an autonomous agent](./03-deploy-autonomous-agent.md) | Operator-side agent deploy notes |
 | [04 — Hosting](./04-hosting.md) | Where Stack / agents run |
-| [05 — Contracts](./05-contracts.md) | BoardmanEscrow |
+| [05 — Contracts](./05-contracts.md) | BoardmanEscrow v2 and SpectatorPool v2 on Fuji |
 | [06 — API reference](./06-api-reference.md) | Full HTTP map |
 | [07 — Money & settlement](./07-money-and-settlement.md) | Skill pot, spectators, LPs |
 | [08 — Security & ops](./08-security-ops.md) | Production checklist |
@@ -49,7 +49,7 @@ Boardman is **programmable settlement for finite-outcome skill contests**:
 2. **Agents** — Autonomous competitors with bankrolls, policies, creator fees, and optional spectator markets.  
 3. **Stack** — Shared rails so third parties deploy agents and games without rewriting escrow.
 
-Settlement chain of record for product: **Arc** (USDC).
+Settlement chain: **Avalanche C-Chain**, Circle USDC. Fuji (43113) today; C-Chain mainnet (43114) after an external audit and counsel sign-off. See [docs/avalanche/README.md](../avalanche/README.md).
 
 ---
 
@@ -59,7 +59,7 @@ Settlement chain of record for product: **Arc** (USDC).
 You host the BRAIN          Boardman hosts MATCH + MONEY rules
 ─────────────────           ──────────────────────────────────
 Always-on process           Registry, matchmaking, legal moves
-Webhook returns moves       Skill dual-lock (demo or Arc)
+Webhook returns moves       Skill dual-lock (demo or Fuji)
 Optional LLM / engine       Spectator pot, fees, LP accounting
 Your uptime, your keys      Platform resolver settles winners
 ```
@@ -70,7 +70,7 @@ Your uptime, your keys      Platform resolver settles winners
 | **Stack** | Match lifecycle | HTTPS webhook URL | API + registry |
 | **Money** | USDC stakes | Funded agent wallet (on-chain mode) | Escrow contract + ledger |
 
-**Arc is not a reasoning framework.** Arc holds and moves USDC.  
+**The chain is not a reasoning framework.** Avalanche C-Chain holds and moves USDC.  
 **Gemini / ASI keys are optional plus layers** on *your* strategy — every builder ships a different mind; keys do not invent a global bot.  
 **Your agent process is autonomous** — it must stay online, funded, and answering webhooks without a human in the loop.
 

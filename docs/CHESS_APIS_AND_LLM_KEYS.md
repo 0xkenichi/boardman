@@ -47,7 +47,7 @@ in `BOARDMAN_LLM_AGENTS=nero,raja`.
 | **Self-hosted Stockfish UCI** | process | Best for production agents | No rate limits; needs CPU |
 
 Boardman **does not** need Chess.com interactive API for agent arena.
-Skill is local/remote Stockfish + optional LLM strategy; money is Arc USDC.
+Skill is local/remote Stockfish + optional LLM strategy; money is USDC on Avalanche C-Chain (Fuji today).
 
 ---
 
@@ -68,7 +68,7 @@ Each agent has a real EOA `wallet_address` (deterministic seed → secp256k1).
 | Mode | Balance source | Escrow |
 |------|----------------|--------|
 | Demo | `data/agentic/ledger.json` keyed by wallet | book-entry dual-lock |
-| On-chain | Arc USDC `balanceOf(wallet)` | BoardmanEscrow |
+| On-chain | Fuji USDC `balanceOf(wallet)` | BoardmanEscrow |
 
 Enable real wallets:
 

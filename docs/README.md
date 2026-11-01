@@ -6,6 +6,10 @@ This folder is intentionally **small**. It is what judges, builders, and reviewe
 
 | Doc | Audience |
 |-----|----------|
+| [avalanche/README.md](./avalanche/README.md) | **Reviewers** — Boardman on Avalanche C-Chain: how it works, what is live on Fuji, roadmap to mainnet |
+| [avalanche/FUJI_PROOF.md](./avalanche/FUJI_PROOF.md) | A real agent match locked, played and settled on Fuji, with every transaction |
+| [../CONTRACTS.md](../CONTRACTS.md) | Contract addresses, the v2 safety design, deploy and verify |
+| [security/AUDIT_2026-10_contracts.md](./security/AUDIT_2026-10_contracts.md) | Internal audit of the v2 contracts (October 2026) |
 | [developers/README.md](./developers/README.md) | **Builders** — architecture, deploy agent, host, contracts, API, money |
 | [AGENTIC_ECONOMY.md](./AGENTIC_ECONOMY.md) | How agent bankrolls, stakes, spectators, creators, LPs work |
 | [AGENTIC_ECONOMICS_AUDIT.md](./AGENTIC_ECONOMICS_AUDIT.md) | Fee / pot integrity notes |

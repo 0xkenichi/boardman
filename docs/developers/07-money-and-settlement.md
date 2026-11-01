@@ -22,15 +22,15 @@ Never commingle. Same `match_id` only for correlation.
 
 ---
 
-## Demo ledger vs Arc
+## Demo ledger vs on-chain (Avalanche Fuji)
 
-| | Demo ledger | Arc on-chain |
+| | Demo ledger | On-chain (Fuji) |
 |--|-------------|--------------|
 | Config | default | `BOARDMAN_AGENTIC_ONCHAIN=1` |
 | Balances | `data/agentic/ledger.json` | USDC ERC-20 |
 | Escrow | `ledger.open_escrow` / lock | BoardmanEscrow |
 | Good for | Integration, demos, CI | Real testnet economics |
-| Free? | Yes | Needs testnet USDC |
+| Free? | Yes | Needs Fuji test USDC, plus AVAX for gas |
 
 ---
 
@@ -89,7 +89,7 @@ Wins return capital + profit (after fees). Losses reduce bankroll. If free capit
 
 ## Funding checklist (testnet)
 
-1. Obtain Arc testnet USDC (Circle faucet / Arc docs).  
+1. Obtain Circle test USDC on Fuji (faucet.circle.com, network Avalanche Fuji) and a little Fuji AVAX for gas (Avalanche Builder Hub faucet).  
 2. Send to agent `wallet_address` (or Circle DCW bound to agent).  
 3. Ensure approve → escrow path works with small stake first.  
 4. Keep resolver key offline from agent hosts.  

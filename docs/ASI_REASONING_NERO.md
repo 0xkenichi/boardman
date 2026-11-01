@@ -5,15 +5,15 @@
 | Layer | Job | Needs money? |
 |-------|-----|----------------|
 | **Boardman Stack** | Register agents, legal moves, matchmaking, pots, LPs | No (demo ledger) |
-| **Arc** | Dual-lock **USDC** when you settle on-chain | Yes — **testnet** USDC (+ gas if not USDC-gas) |
+| **Avalanche Fuji** | Dual-lock **USDC** when you settle on-chain | Yes — **testnet** USDC (+ AVAX for gas) |
 | **Your strategy** | The mind *you* design (directive, openings, knobs) | No |
-| **ASI:One / Gemini** | **Amplify** that strategy when choosing a move | Free **API keys** only — no Arc gas |
+| **ASI:One / Gemini** | **Amplify** that strategy when choosing a move | Free **API keys** only — no gas |
 
 **Every builder will build their agents differently.**  
 Gemini and ASI are a **plus** on *your* strategy — they do not replace it with a shared “Nero chess bot.”  
 Nero is just the **reference silo** that demonstrates the pattern.
 
-You can create and run agents **with Boardman alone** (Stockfish + demo ledger) without Arc or LLM keys.
+You can create and run agents **with Boardman alone** (Stockfish + demo ledger) without chain or LLM keys.
 
 ```
    builder mind ──► strategy_id + strategy_notes + knobs
@@ -28,7 +28,7 @@ You can create and run agents **with Boardman alone** (Stockfish + demo ledger) 
                     │ Stockfish    │ ◄── fallback
                     └──────┬───────┘
                            ▼
-                    Boardman Stack ──► Arc escrow (money only)
+                    Boardman Stack ──► Avalanche escrow (money only)
 ```
 
 ## What you ship vs what keys do
@@ -50,7 +50,7 @@ Stack still enforces: **response must be one of `legal_moves`.**
 2. Engines: local Stockfish WASM (free).
 3. Without LLM keys → pure Stockfish (openings/mind still apply on Python hybrid).
 
-### Strategy + ASI (free API key, no Arc)
+### Strategy + ASI (free API key, no chain)
 1. Key from [ASI:One](https://asi1.ai) / [docs](https://docs.asi1.ai).
 2. Env:
    ```
@@ -59,7 +59,7 @@ Stack still enforces: **response must be one of `legal_moves`.**
    BOARDMAN_ASI_AGENTS=nero   # or your agent slug substring, or * for all
    ```
 
-### Strategy + free Gemini (also no Arc)
+### Strategy + free Gemini (also no chain)
 1. Key from [Google AI Studio](https://aistudio.google.com/apikey).
 2. **Per-agent keys** (recommended — Nero and Raja each get their own brain key):
    ```
@@ -84,7 +84,7 @@ Without keys, arena falls back to Stockfish and logs `LLM key probe · gemini=of
 All LLM prompts include the FIDE-based Boardman rule book. Illegal moves are
 rejected. See [`CHESS_RULE_BOOK.md`](./CHESS_RULE_BOOK.md).
 
-### Arc testnet money (optional)
+### Avalanche Fuji test money (optional)
 Only for on-chain dual-lock — never required for thinking. See developer docs [05 — Contracts](./developers/05-contracts.md).
 
 ## Demo agents (reference only)
@@ -140,5 +140,5 @@ If `fallback: true`, keys missing or model failed — fall back to Stockfish; **
 Your strategy  →  free LLM keys amplify it  →  legal move
                      (optional plus)
 Stockfish always available as free fallback
-Arc only if you want real USDC dual-lock
+Avalanche only if you want on-chain USDC dual-lock
 ```

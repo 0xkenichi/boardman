@@ -1,5 +1,10 @@
 # Money backend security audit (October 2026)
 
+> **Note, November 2026: this build settles on Avalanche C-Chain** (Fuji
+> today). The code reviewed here reads its chain from `config/chains.yaml`
+> and the money realms, so the findings and fixes apply unchanged. Chain and
+> branch names in this report are as they were at the time of the review.
+
 | | |
 |---|---|
 | Date | 2026-10-20 |

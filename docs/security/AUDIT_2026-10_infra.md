@@ -1,5 +1,9 @@
 # Boardman infrastructure audit — October 2026
 
+> **Note, November 2026: this build settles on Avalanche C-Chain** (Fuji
+> today). This audit covered the VM, Docker, backups, the repo and CI, none of
+> which depends on the chain, so its findings apply unchanged.
+
 | | |
 |---|---|
 | **Scope** | Production backend VM (Oracle Cloud A1, `150.230.112.144`, Ubuntu 24.04.5), Docker stack, Cloudflare tunnel, backups, public GitHub repo and its history, GitHub Actions, Supabase migrations, Vercel/Supabase usage visible from the repo |
@@ -65,7 +69,7 @@ Passed checks are listed at the end.
 - The keystore secret sits in the same file as everything it protects, and at present the keystore is empty (INF-03).
 
 **Fix**
-1. Move the **owner** role to a multisig (e.g. a 2-of-3 Safe on Arc), call `transferOwnership`, and delete `OWNER_PRIVATE_KEY` from the VM. Owner actions (pause, setResolver, sweep) become a deliberate, human-signed act.
+1. Move the **owner** role to a multisig (e.g. a 2-of-3 Safe on the settlement chain: Arc at the time of this audit, Avalanche C-Chain in this build), call `transferOwnership`, and delete `OWNER_PRIVATE_KEY` from the VM. Owner actions (pause, setResolver, sweep) become a deliberate, human-signed act.
 2. Remove the owner/admin fallback from the resolver lookup, so the resolver can only ever be `BOARDMAN_RESOLVER_KEY`. That is a code change for the money/contracts workstream.
 3. Remove `NEW_WALLET_PRIVATE_KEY` and `CIRCLE_API_KEY_LIVE` from the VM. No code under `src/` reads them.
 4. Give each container only the variables it needs (INF-15).

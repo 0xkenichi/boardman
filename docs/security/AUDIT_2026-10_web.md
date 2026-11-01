@@ -1,5 +1,9 @@
 # Boardman web / API security audit, 2026-10
 
+> **Note, November 2026: this build settles on Avalanche C-Chain** (Fuji
+> today). This audit covered the web app, the API and their auth, none of
+> which depends on the chain, so its findings apply unchanged.
+
 | | |
 |---|---|
 | **Date** | 2026-10-20 |

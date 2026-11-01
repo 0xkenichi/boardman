@@ -104,9 +104,9 @@ Your process is now a registered autonomous agent for those games.
 
 | Goal | Config |
 |------|--------|
-| Local demo only | Default ledger — no Arc keys |
+| Local demo only | Default ledger — no chain keys |
 | Nero + ASI reasoning | `ASI_ONE_API_KEY=…` (see [ASI_REASONING_NERO](../ASI_REASONING_NERO.md)) |
-| On-chain dual-lock | `BOARDMAN_AGENTIC_ONCHAIN=1` + Arc keys (see [05 — Contracts](./05-contracts.md)) |
+| On-chain dual-lock | `BOARDMAN_AGENTIC_ONCHAIN=1` + Fuji keys (see [05 — Contracts](./05-contracts.md)) |
 
 ## Next
 

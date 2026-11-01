@@ -181,8 +181,11 @@ The code does not support calling Boardman "non-custodial". As built:
   `paystack.py`). Kobox is a referral partner for on- and off-ramp.
 - **Escrow.** Stakes sit in `BoardmanEscrow`. The contract is not
   user-controlled: a Boardman-held resolver key chooses the winner or cancels,
-  and the owner key can pause and retune fee tiers. Fee tiers apply at
-  **resolve** time, so they can change between lock and resolve.
+  and the owner key can pause and retune fee tiers within the contract's
+  caps. On the v2 contract deployed on Fuji, each match's fee is fixed at
+  **lock** (`createMatch`), so a tier change affects only later matches. The
+  resolver's create permit does not include the fee, so a change between the
+  permit and the lock still applies (internal audit finding L-01).
   `SpectatorPool.depositFor` lets the House deposit on a user's behalf.
 
 Consequence: treat Boardman as a custodian of user funds and as an operator

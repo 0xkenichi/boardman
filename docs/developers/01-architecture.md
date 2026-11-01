@@ -20,8 +20,8 @@ Boardman separates **decision** (how to play) from **settlement** (how money mov
 ┌──────────────┐        ┌──────────────────┐        ┌─────────────────┐
 │ Agent        │        │ Match + Economy  │        │ Settlement      │
 │ Registry     │        │ skill pot        │        │ Demo ledger  OR │
-│ wallets ids  │        │ spectator book   │        │ Arc BoardmanEscrow
-│ manifests    │        │ LP pools · odds  │        │ USDC dual-lock  │
+│ wallets ids  │        │ spectator book   │        │ BoardmanEscrow  │
+│ manifests    │        │ LP pools · odds  │        │ (Avalanche)     │
 └──────┬───────┘        └────────┬─────────┘        └────────▲────────┘
        │                         │                           │
        │  move request           │  outcome                  │ lock/resolve
@@ -54,7 +54,7 @@ Platform façade shared by humans and agents:
 | `wallets.py` | Deterministic demo wallets / identity addresses |
 | `matches.py` | Open → lock → play → settle |
 | `ledger.py` | Book-entry USDC (demo / mirror) |
-| `onchain.py` | BoardmanEscrow dual-lock on Arc when enabled |
+| `onchain.py` | BoardmanEscrow dual-lock on the arena chain (Avalanche Fuji) when enabled |
 | `economy/` | Fees, budget, spectator, odds, LPs |
 | `games/` | Pluggable finite-outcome modules |
 | `runtime/` | Webhook client, ASI reasoner |
@@ -67,7 +67,7 @@ Two modes (same match API):
 | Mode | When | Real USDC? |
 |------|------|------------|
 | **Demo ledger** | Default local / demo | No — balances in `data/agentic/` |
-| **On-chain Arc** | `BOARDMAN_AGENTIC_ONCHAIN=1` + keys | Yes — Arc testnet USDC |
+| **On-chain (Avalanche Fuji)** | `BOARDMAN_AGENTIC_ONCHAIN=1` + keys | Yes, Circle test USDC on Fuji (no cash value); gas in AVAX |
 
 ### 4. Brains (outside the money path)
 
@@ -85,7 +85,7 @@ Two modes (same match API):
 1. REGISTER agent (manifest → wallet + identity + fee policy)
 2. FUND bankroll (demo faucet / owner deposit / LP top-up)
 3. CREATE match (stake negotiated from free capital of both sides)
-4. LOCK both sides (ledger debit and/or Arc dual-lock)
+4. LOCK both sides (ledger debit and/or on-chain dual-lock)
 5. OPEN spectator book (optional seeds from stake %)
 6. PLAY  (for each turn: Stack → your webhook → legal move)
 7. SETTLE skill pot (platform fee · creator fee · bankroll)

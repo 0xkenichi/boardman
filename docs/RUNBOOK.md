@@ -14,7 +14,7 @@ browser ──▶ boardman.playingsidequest.fun (Vercel, frontend/)
            Volume /data  →  /data/agentic  (ledger.json, matches.json, agents.json,
                                             spectator_books.json, house_log.db,
                                             secrets_agent_*.json, house_heartbeat.json)
-           Arc chain: BoardmanEscrow / SpectatorPool hold the real USDC
+           Avalanche C-Chain (Fuji today): BoardmanEscrow / SpectatorPool hold the staked USDC
 ```
 
 `/data/agentic` is the off-chain book of record. If it is lost, balances
@@ -107,7 +107,9 @@ Required for boot / core:
 - `BOARDMAN_API_KEY` (and/or `REMATCH_API_KEY`) — must equal the value Vercel
   sends; `BOARDMAN_STACK_API_KEYS` / `BOARDMAN_STACK_API_KEYS_FILE` for
   builder keys
-- `CLAWSTATION_BOT_MODE` = `polling`, `CLAW_DEFAULT_CHAIN` = `arc`, `NETWORK`
+- `CLAWSTATION_BOT_MODE` = `polling`, `NETWORK`
+- `CLAW_DEFAULT_CHAIN`, `BOARDMAN_ARENA_CHAIN` and `CLAW_ENABLED_CHAINS` = `avalanche`
+  (`.env.avalanche.example`)
 - `CLAW_ADMIN_TELEGRAM_IDS`, `BOARDMAN_OPS_TELEGRAM_ID`
 - `REMATCH_WEB_URL`, `BOARDMAN_URL`, `REMATCH_LEADERBOARD_URL`, `FRONTEND_URL`
 
@@ -115,12 +117,16 @@ On-chain (only with `BOARDMAN_AGENTIC_ONCHAIN=1` / `SPECTATOR_ONCHAIN=1`):
 
 - `BOARDMAN_AGENTIC_ONCHAIN`, `SPECTATOR_ONCHAIN`, `SPECTATOR_CHAIN`
 - `BOARDMAN_RESOLVER_KEY`, `BOARDMAN_FUNDER_KEY`
-- `BOARDMAN_ESCROW_ADDRESS_ARC`, `SPECTATOR_ESCROW_ADDRESS`,
-  `BOARDMAN_HOUSE_WALLET`, `BOARDMAN_FEE_RECIPIENT`
-- `ARC_RPC_URL`, `ARC_USDC_ADDRESS`
+- `BOARDMAN_HOUSE_WALLET`, `BOARDMAN_FEE_RECIPIENT`
+- Overrides only (`config/chains.yaml` already has the Fuji addresses):
+  `CLAW_ESCROW_ADDRESS_AVALANCHE`, `SPECTATOR_ESCROW_ADDRESS_AVALANCHE`,
+  `AVALANCHE_FUJI_RPC_URL`, `AVALANCHE_FUJI_USDC_ADDRESS`
+- `ADMIN_PRIVATE_KEY` (or `GAS_TANK_PRIVATE_KEY` when it is unset): pays the
+  AVAX gas top-ups for custodial play wallets (`src/backend/services/gas_tank.py`)
 
 Payments / Circle (if used): `CIRCLE_API_KEY`, `CIRCLE_CLIENT_KEY`,
 `CIRCLE_ENTITY_SECRET`, `CIRCLE_WALLET_SET_ID`, `CIRCLE_WEBHOOK_SECRET`,
+`CIRCLE_USDC_TOKEN_ID_AVALANCHE` (Circle blockchain `AVAX-FUJI`),
 `PAYSTACK_SECRET_KEY`, `PAYSTACK_PUBLIC_KEY`.
 
 Safety limits: `CLAW_PAUSED` (`0` normally), `CLAW_MAX_STAKE_USDC`,
@@ -135,8 +141,9 @@ whether the book-entry ledger may mint demo USDC:
 | `0` / `off` | Off. A house match that can't fund refuses to open; an unpayable season entry is recorded unpaid. | Off. |
 | `1` / `on` | Local demos only: also tops up marketplace buyers. Never set it on a shared deploy. | **Refused** and logged at CRITICAL. The faucet never runs on mainnet. |
 
-"Mainnet" is the money chain only (`NETWORK=mainnet`, `CLAW_DEFAULT_CHAIN=arc_mainnet`,
-or a `SPECTATOR_CHAIN`/`BOARDMAN_SETTLEMENT_RAIL` that resolves to Arc mainnet),
+"Mainnet" is the money chain only: `NETWORK=mainnet`, or a `CLAW_DEFAULT_CHAIN`,
+`SPECTATOR_CHAIN` or `BOARDMAN_SETTLEMENT_RAIL` that resolves to a chain with
+`network: mainnet` in `chains.yaml` (such as `avalanche_mainnet`). It is
 the same check the spectator kill switch uses. `BOARDMAN_ENV=production` on a
 testnet deploy is not mainnet. On mainnet the marketplace also refuses the
 book-entry rail: a sale needs bound Circle wallets or it fails with a clear
@@ -244,7 +251,7 @@ Public (shipped to the browser — never put a secret here):
 `NEXT_PUBLIC_TELEGRAM_GROUP_URL`, `NEXT_PUBLIC_REMATCH_TG_GROUP`,
 `NEXT_PUBLIC_MINIPAY_ENTRY_URL`, `NEXT_PUBLIC_SITE_HOST` (wallet sign-in
 message domain — `boardman.playingsidequest.fun`), `NEXT_PUBLIC_ALLOW_DEMO_LOGIN`
-(unset in prod)
+(unset in prod), `NEXT_PUBLIC_SETTLEMENT_CHAIN` (`avalanche` in this build)
 
 Regenerate this list with:
 
@@ -441,7 +448,7 @@ Record the numbers in the ops log.
    positive difference with no open matches is stuck money — find it with
    the verify script.
 4. **Agent bankrolls**: `/api/stack/agentic/house/status` `agents[].bankroll_usdc`
-   against on-chain USDC of each wallet (Arc explorer). Off-chain balances
+   against on-chain USDC of each wallet (Snowtrace, `https://testnet.snowtrace.io`). Off-chain balances
    above on-chain balances mean the ledger is ahead of the chain — stop and
    investigate before more games run.
 5. **Stale tables**: no match should sit in `locking`/`locked`/`playing` for

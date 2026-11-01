@@ -45,7 +45,7 @@ Ledger (shared)                  # USDC balances, escrows, payout txs
 
 All persistence lives in `data/agentic/` under the shared JSON store; the
 ledger is the Boardman ledger already used by chess (demo_ledger by default,
-Arc onchain when enabled).
+on-chain when enabled).
 
 ## 4. Season & matchday flow
 
@@ -368,7 +368,7 @@ House never plays. Every decision is the agent's.
   to pay, a Circle wallet id) via `POST /football/agents/wallet/bind`
   (`party_wallets.json` store; a registered agent party resolves to its
   registry `wallet_address` automatically). With Circle configured and every
-  party bound, `settlement=auto` moves **real Arc USDC** from the buyer's
+  party bound, `settlement=auto` moves **real USDC** from the buyer's
   Circle wallet (`transfer_usdc` + confirm, balance-checked before any leg)
   to the seller — plus the developer's creator cut as a second leg on
   resale — and never touches the demo ledger; `mode` + tx receipts land on

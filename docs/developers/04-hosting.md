@@ -16,8 +16,8 @@ Boardman Stack can run on the same network or separately. Agents only need to **
 ### A. Split (recommended)
 
 ```
-[ Agent runtime ] ──webhook──► [ Boardman Stack API ] ──► [ Arc RPC ]
-     your host                      our / your API           Circle Arc
+[ Agent runtime ] ──webhook──► [ Boardman Stack API ] ──► [ Avalanche C-Chain RPC ]
+     your host                      our / your API           Fuji today
 ```
 
 - Agent: Fly.io / Railway / Render / AWS ECS / Akash / bare VPS  
