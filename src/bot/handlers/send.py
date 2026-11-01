@@ -31,6 +31,7 @@ from gaming.src.backend.services.safety import (
 from gaming.src.bot.keyboards import back_menu, send_menu, wallet_menu
 from gaming.src.bot.utils.db import get_or_create_profile, get_profile_by_tag
 from gaming.src.bot.utils.security import has_tx_password, verify_tx_password
+from gaming.src.backend.services.chains import default_chain_id
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +117,7 @@ async def start_withdraw(message: types.Message, state: FSMContext) -> None:
         )
         return
 
-    pref = "arc"
+    pref = default_chain_id()
     bal = Decimal("0")
     try:
         pref = await get_preferred_chain(profile["id"])

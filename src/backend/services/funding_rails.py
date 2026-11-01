@@ -2,8 +2,9 @@
 Abstract multi-rail USDC for Boardman.
 
 Players see one "play balance". Under the hood:
-  - settlement rail (Arc): can stake, USDC gas, BoardmanEscrow
-  - funding rails (Stellar, Avalanche, Paystack, bank): money in → convert to Arc
+  - settlement rail (Avalanche C-Chain): can stake, BoardmanEscrow v2; AVAX
+    gas from the platform gas tank
+  - funding rails (Stellar, Paystack, bank): money in → convert to the settlement rail
 
 Stakes ALWAYS require spendable USDC on the settlement rail unless a rail
 is marked can_stake (the settlement rail: Avalanche C-Chain).

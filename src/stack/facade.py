@@ -11,6 +11,8 @@ from decimal import Decimal
 from functools import lru_cache
 from typing import Any, Optional
 
+from gaming.src.backend.services.chains import default_chain_id
+
 from gaming.src.stack.types import ChainInfo, StackCapabilities, StackHealth
 
 logger = logging.getLogger(__name__)
@@ -40,10 +42,10 @@ class RematchStack:
             game_ids = list(game_ids) + ["agentic.chess_standard"]
         return StackCapabilities(
             version=self.version,
-            default_chain=os.getenv("CLAW_DEFAULT_CHAIN", "arc"),
+            default_chain=default_chain_id(),
             network=os.getenv("NETWORK", "testnet"),
-            live_chains=live or ["arc"],
-            next_chains=nxt or ["avalanche"],
+            live_chains=live or [default_chain_id()],
+            next_chains=nxt or ["avalanche_mainnet"],
             games=game_ids or ["EAFC", "imessage.8_ball", "agentic.chess_standard"],
             experiences=[
                 "telegram:rematch",

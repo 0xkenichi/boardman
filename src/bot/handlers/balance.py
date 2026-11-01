@@ -12,6 +12,7 @@ from gaming.src.backend.services.clawstation_circle import get_balance_summary
 from gaming.src.backend.services.play_points import tier_from_play_points, tier_label
 from gaming.src.bot.keyboards import wallet_menu
 from gaming.src.bot.utils.db import get_or_create_profile
+from gaming.src.backend.services.chains import default_chain_id
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ async def cmd_balance(message: types.Message) -> None:
                 "other_address": "",
                 "ledger_usdc": 0,
                 "address": "",
-                "chain_id": "arc",
+                "chain_id": default_chain_id(),
                 "balance_error": "lookup failed",
             }
 

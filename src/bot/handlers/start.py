@@ -14,6 +14,7 @@ from gaming.src.backend.middleware.geo_fence import BlockedRegionError, check_re
 from gaming.src.backend.services.clawstation_circle import ensure_user_wallet
 from gaming.src.bot.keyboards import main_menu, back_menu, welcome_menu
 from gaming.src.bot.utils.db import get_or_create_profile, update_telegram_chat_id
+from gaming.src.backend.services.chains import default_chain_id
 
 logger = logging.getLogger(__name__)
 
@@ -225,16 +226,16 @@ async def cmd_start(message: types.Message) -> None:
         except Exception:
             logger.exception("[Start] deep-link failed payload=%s", payload)
 
-    # Arc-only product surface for now
+    # One settlement chain per build (Avalanche Fuji in this build).
     try:
         from gaming.src.backend.services.clawstation_circle import set_preferred_chain
 
-        await set_preferred_chain(profile["id"], "arc")
+        await set_preferred_chain(profile["id"], default_chain_id())
     except Exception:
-        logger.warning("[Start] set preferred arc failed for %s", profile["id"], exc_info=True)
+        logger.warning("[Start] set preferred chain failed for %s", profile["id"], exc_info=True)
 
     try:
-        wallet = await ensure_user_wallet(profile["id"], chain_id="arc")
+        wallet = await ensure_user_wallet(profile["id"], chain_id=default_chain_id())
         address = wallet.get("address", "Not linked")
     except Exception as exc:
         logger.exception("[Start] Failed to ensure wallet for %s", profile["id"])
@@ -254,7 +255,7 @@ async def cmd_start(message: types.Message) -> None:
 
         # Cap wait — never let balance RPC delay the welcome menu for all users
         s = await asyncio.wait_for(
-            get_balance_summary(profile["id"], chain_id="arc"), timeout=2.5
+            get_balance_summary(profile["id"], chain_id=default_chain_id()), timeout=2.5
         )
         spend = float(s.get("spendable_usdc") or 0)
         other = float(s.get("other_usdc") or 0)

@@ -62,6 +62,7 @@ from gaming.src.bot.utils.db import get_or_create_profile, get_profile_by_tag
 from gaming.src.bot.utils.flow import how_to_play, report_status
 from gaming.src.bot.utils.notify import get_balance_snapshot, notify_user
 from gaming.src.bot.utils.text import bold, code, h
+from gaming.src.backend.services.chains import default_chain_id
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -233,7 +234,7 @@ async def ui_get_usdc_crypto(callback: types.CallbackQuery) -> None:
     from gaming.src.backend.services.circle_faucet import (
         CIRCLE_FAUCET_URL,
         fund_helper_url,
-        request_arc_usdc,
+        request_testnet_usdc,
     )
     from gaming.src.bot.keyboards import get_usdc_menu
 
@@ -241,8 +242,8 @@ async def ui_get_usdc_crypto(callback: types.CallbackQuery) -> None:
     try:
         from gaming.src.backend.services.clawstation_circle import set_preferred_chain
 
-        await set_preferred_chain(profile["id"], "arc")
-        wallet = await ensure_user_wallet(profile["id"], chain_id="arc")
+        await set_preferred_chain(profile["id"], default_chain_id())
+        wallet = await ensure_user_wallet(profile["id"], chain_id=default_chain_id())
         addr = wallet.get("address") or ""
     except Exception as exc:
         logger.exception("[UI] get_usdc wallet failed")
@@ -261,7 +262,7 @@ async def ui_get_usdc_crypto(callback: types.CallbackQuery) -> None:
         return
 
     # Best path: Circle API auto-drip (needs account permission; often fails on free keys)
-    drip = await request_arc_usdc(addr)
+    drip = await request_testnet_usdc(addr)
     helper = fund_helper_url(addr)
 
     if drip.get("ok"):
@@ -310,9 +311,9 @@ async def ui_network_menu(callback: types.CallbackQuery) -> None:
     from gaming.src.bot.keyboards import network_menu
 
     try:
-        await set_preferred_chain(profile["id"], "arc")
-        wallet = await ensure_user_wallet(profile["id"], chain_id="arc")
-        bal = await get_usdc_balance(profile["id"], chain_id="arc")
+        await set_preferred_chain(profile["id"], default_chain_id())
+        wallet = await ensure_user_wallet(profile["id"], chain_id=default_chain_id())
+        bal = await get_usdc_balance(profile["id"], chain_id=default_chain_id())
         addr = wallet.get("address") or ""
     except Exception as exc:
         await callback.message.answer(
@@ -329,13 +330,13 @@ async def ui_network_menu(callback: types.CallbackQuery) -> None:
         f"Deposit:\n<code>{h(addr)}</code>\n\n"
         "Need funds? Tap <b>Get money</b>.",
         parse_mode=ParseMode.HTML,
-        reply_markup=network_menu("arc"),
+        reply_markup=network_menu(default_chain_id()),
     )
 
 
 @router.callback_query(F.data.startswith("ui:network:set:"))
 async def ui_network_set(callback: types.CallbackQuery) -> None:
-    """Force Arc for now — ignore other chain ids from old menus."""
+    """Always the build's settlement chain; other chain ids from old menus are ignored."""
     await callback.answer()
     user = callback.from_user
     if not user:
@@ -348,9 +349,9 @@ async def ui_network_set(callback: types.CallbackQuery) -> None:
     from gaming.src.bot.keyboards import get_usdc_menu
 
     try:
-        await set_preferred_chain(profile["id"], "arc")
-        wallet = await ensure_user_wallet(profile["id"], chain_id="arc")
-        bal = await get_usdc_balance(profile["id"], chain_id="arc")
+        await set_preferred_chain(profile["id"], default_chain_id())
+        wallet = await ensure_user_wallet(profile["id"], chain_id=default_chain_id())
+        bal = await get_usdc_balance(profile["id"], chain_id=default_chain_id())
         addr = wallet.get("address") or ""
         await callback.message.answer(
             f"✅ You're on <b>{h(chain_label())}</b>\n"
@@ -845,12 +846,12 @@ async def ui_chal_category(callback: types.CallbackQuery, state: FSMContext) -> 
 
 @router.callback_query(ChallengeWizard.waiting_game, F.data.startswith("ui:chal:game:"))
 async def ui_chal_game(callback: types.CallbackQuery, state: FSMContext) -> None:
-    """Pick game → Arc is fixed (no chain picker)."""
+    """Pick game → the settlement chain is fixed (no chain picker)."""
     await callback.answer()
     # game_id may contain dots: ui:chal:game:imessage.8_ball
     parts = callback.data.split(":")
     game = ":".join(parts[3:]) if len(parts) > 3 else parts[-1]
-    await state.update_data(game=game, chain="arc")
+    await state.update_data(game=game, chain=default_chain_id())
     data = await state.get_data()
     gname = game_display_name(game)
     extra = ""
@@ -893,9 +894,9 @@ async def ui_chal_game(callback: types.CallbackQuery, state: FSMContext) -> None
 
 @router.callback_query(ChallengeWizard.waiting_chain, F.data.startswith("ui:chal:chain:"))
 async def ui_chal_chain(callback: types.CallbackQuery, state: FSMContext) -> None:
-    """Legacy path if a user still has an old wizard state — force Arc."""
+    """Legacy path if a user still has an old wizard state — use the settlement chain."""
     await callback.answer()
-    await state.update_data(chain="arc")
+    await state.update_data(chain=default_chain_id())
     data = await state.get_data()
     await state.set_state(ChallengeWizard.confirm)
     await callback.message.answer(

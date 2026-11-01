@@ -23,6 +23,8 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Optional
 
+from gaming.src.backend.services.chains import default_chain_id
+
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
@@ -115,7 +117,7 @@ class CreateMatchBody(BaseModel):
     opponent_id: Optional[str] = Field(None, description="Profile UUID; omit for public")
     amount_usdc: float = Field(..., gt=0, le=10_000)
     game_id: str = Field("imessage.8_ball", description="Catalog game_id")
-    chain_id: str = "arc"
+    chain_id: Optional[str] = Field(None, description="Settlement chain; default is the build's chain (avalanche)")
     visibility: str = "private"
     message: Optional[str] = None
 
@@ -206,7 +208,7 @@ class CreateMatchByTagBody(BaseModel):
     opponent_tag: str
     amount_usdc: float = Field(..., gt=0, le=10_000)
     game_id: str = "mobile.fc_mobile"
-    chain_id: str = "arc"
+    chain_id: Optional[str] = Field(None, description="Settlement chain; default is the build's chain (avalanche)")
     message: Optional[str] = None
 
 
@@ -248,7 +250,7 @@ def v1_create_match(body: CreateMatchBody, caller: Optional[str] = Depends(_requ
     # The Stack API creates practice matches only: real-money challenges are
     # first-party (WhatsApp, Telegram, web) with caps and confirmations.
     try:
-        chain = assert_practice(body.chain_id or "arc", path="stack v1 create match")
+        chain = assert_practice(body.chain_id or default_chain_id(), path="stack v1 create match")
     except RealmViolation as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

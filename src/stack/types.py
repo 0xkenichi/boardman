@@ -41,11 +41,11 @@ class StackCapabilities:
             "agentic",
         ]
     )
-    default_chain: str = "arc"
+    default_chain: str = "avalanche"
     network: str = "testnet"
-    # Product posture: Arc only live; Avalanche next
-    live_chains: list[str] = field(default_factory=lambda: ["arc"])
-    next_chains: list[str] = field(default_factory=lambda: ["avalanche"])
+    # Product posture: Avalanche Fuji live; C-Chain mainnet next (gated)
+    live_chains: list[str] = field(default_factory=lambda: ["avalanche"])
+    next_chains: list[str] = field(default_factory=lambda: ["avalanche_mainnet"])
     games: list[str] = field(default_factory=lambda: ["ea_fc"])
     match_model: str = "1v1_dual_lock_usdc"
     experiences: list[str] = field(

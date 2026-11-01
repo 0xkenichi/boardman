@@ -29,6 +29,13 @@ FACTORY = bytes.fromhex("4b6f6172646d616e4167656e74466163746f7279")  # "Boardman
 INIT_CODE_HASH = hashlib.sha256(b"BoardmanAgentIdentityV1").digest()
 
 
+
+def _default_chain() -> str:
+    """The chain new agent wallets are recorded on (the build's default chain)."""
+    from gaming.src.backend.services.chains import default_chain_id
+
+    return default_chain_id()
+
 def _keccak(data: bytes) -> bytes:
     try:
         from eth_hash.auto import keccak
@@ -93,7 +100,7 @@ def provision_agent_crypto(agent_id: str, *, role: str = "contestant") -> dict[s
         "wallet_address": wallet,
         "identity_contract": identity,
         "key_custody": custody,
-        "chain_id": os.getenv("CLAW_DEFAULT_CHAIN", "arc"),
+        "chain_id": _default_chain(),
     }
 
 

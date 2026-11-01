@@ -32,7 +32,7 @@ PURPOSE = "sc_approve"
 SETUP_PURPOSE = "sc_setup"
 ACTIONS = ("lock_create", "lock_join", "withdraw")
 HASH_RE = re.compile(r"^0x[0-9a-fA-F]{64}$")
-GAS_MARGIN_RAW = 50_000  # $0.05 kept back when the player pays Arc gas in USDC
+GAS_MARGIN_RAW = 50_000  # $0.05 kept back, only on a chain whose gas is paid in USDC
 EXPIRE_GRACE_MS = 30 * 60 * 1000
 
 
@@ -121,7 +121,9 @@ def _from_block(reader) -> Optional[int]:
 
 
 def _check_balance(reader, s: dict, account: str, raw: int) -> None:
-    need = raw + (0 if config.sponsor_gas() else GAS_MARGIN_RAW)
+    # Keep USDC back for gas only where gas is USDC; on Avalanche gas is AVAX.
+    usdc_gas = str(s.get("gas_token") or "").upper() == "USDC"
+    need = raw + (GAS_MARGIN_RAW if usdc_gas and not config.sponsor_gas() else 0)
     try:
         have = int(reader.usdc_balance(s["usdc"], account))
     except Exception as exc:
@@ -415,7 +417,7 @@ def view(token: str, *, session_profile_id: Optional[str] = None, now_ms: Option
         "match": match,
         "calls": intent["calls"],
         "sponsor_gas": config.sponsor_gas(),
-        "chain": {k: s[k] for k in ("chain", "label", "evm_chain_id", "rpc_url", "modular_path", "explorer_tx")},
+        "chain": {k: s[k] for k in ("chain", "label", "evm_chain_id", "rpc_url", "modular_path", "explorer_tx", "gas_token")},
         "expires_in_sec": max(0, (int(row["expires_at_ms"]) - now) // 1000),
     }
 

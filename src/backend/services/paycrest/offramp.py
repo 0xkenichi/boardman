@@ -37,7 +37,19 @@ def _chain_label(chain_id: Optional[str]) -> str:
 
 logger = logging.getLogger(__name__)
 
-ARC_GAS_RESERVE = Decimal("0.05")   # USDC kept back for the approve + burn gas on Arc
+USDC_GAS_RESERVE = Decimal("0.05")  # USDC kept back for approve + burn gas, only where gas is USDC
+
+
+def _gas_reserve(chain_id: str) -> Decimal:
+    """USDC to keep back for gas on the play chain: none where gas is AVAX
+    (Avalanche; the platform gas tank pays it), 0.05 where gas is USDC."""
+    from gaming.src.backend.services.chains import get_chain
+
+    try:
+        token = str(get_chain(chain_id).get("gas_token") or "").upper()
+    except Exception:
+        return USDC_GAS_RESERVE
+    return USDC_GAS_RESERVE if token == "USDC" else Decimal("0")
 MIN_SEND = Decimal("0.50")          # Paycrest minimum order
 CENT = Decimal("0.01")
 
@@ -190,10 +202,12 @@ async def _perform_locked(profile_id: str, *, amount: Decimal, payload: dict, li
     except Exception as exc:
         logger.warning("[paycrest] cash-out wallet check failed", exc_info=True)
         return WithdrawOutcome(False, "wallet_error", f"Could not check your wallet ({type(exc).__name__}).", amount)
-    if balance < amount + ARC_GAS_RESERVE:
+    reserve = _gas_reserve(settle)
+    if balance < amount + reserve:
+        gas = f" plus about ${reserve} network gas" if reserve else ""
         return WithdrawOutcome(False, "insufficient",
                                f"Not enough balance: you have ${balance:,.2f}; this cash-out needs "
-                               f"${amount:,.2f} plus about ${ARC_GAS_RESERVE} network gas.", amount, settle)
+                               f"${amount:,.2f}{gas}.", amount, settle)
     if not play.get("wallet_id"):
         return WithdrawOutcome(False, "no_wallet", "Your wallet is not set up yet.", amount, settle)
 

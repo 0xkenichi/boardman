@@ -4,7 +4,7 @@
 ``SELF_CUSTODY_REQUIRED``         players without a passkey wallet are sent to
                                   set one up instead of the custodial lock.
 ``SELF_CUSTODY_CHAIN``            chain key in config/chains.yaml (default:
-                                  the settlement chain, ``arc``).
+                                  the settlement chain, ``avalanche``).
 ``SELF_CUSTODY_SPONSOR_GAS``      UserOperations ask Circle Gas Station to pay
                                   gas (``paymaster: true``). Default on.
 ``SELF_CUSTODY_APPROVE_TTL_SEC``  approve / setup link and setup challenge lifetime (600).
@@ -119,6 +119,8 @@ def chain_settings(chain: str | None = None) -> dict[str, Any]:
         "escrow": escrow,
         "explorer_tx": c.get("explorer_tx") or "",
         "modular_path": (os.getenv("SELF_CUSTODY_MODULAR_PATH") or _MODULAR_PATHS.get(key) or key),
+        # Native gas token: AVAX on Avalanche; USDC only where gas is paid in USDC.
+        "gas_token": str(c.get("gas_token") or "").upper(),
     }
 
 

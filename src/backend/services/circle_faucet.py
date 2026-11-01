@@ -1,8 +1,10 @@
 """
-Request Arc Testnet USDC via Circle's faucet drips API when the account allows it.
+Request testnet USDC on the build's settlement chain (Avalanche Fuji here) via
+Circle's faucet drips API when the account allows it. On a chain whose gas is
+not USDC (AVAX on Fuji) it asks for a native drip too.
 
 Circle docs: POST /v1/faucet/drips
-  { address, blockchain: "ARC-TESTNET", usdc: true }
+  { address, blockchain: "AVAX-FUJI", usdc: true, native: true }
 
 Notes:
 - Public faucet.circle.com always needs human reCAPTCHA — we cannot auto-submit that.
@@ -20,12 +22,21 @@ import httpx
 logger = logging.getLogger(__name__)
 
 CIRCLE_FAUCET_URL = "https://faucet.circle.com/"
-ARC_BLOCKCHAIN = "ARC-TESTNET"
 
 
-async def request_arc_usdc(address: str) -> dict[str, Any]:
+def _drip_target(chain_id: Optional[str]) -> tuple[str, bool]:
+    """(Circle blockchain label, also drip native gas?) for a testnet chain."""
+    from gaming.src.backend.services.chains import gas_tank_required, get_circle_blockchain, normalize_chain_id
+    from gaming.src.backend.services.realms import assert_practice
+
+    cid = assert_practice(normalize_chain_id(chain_id), path="circle faucet")
+    return get_circle_blockchain(cid), gas_tank_required(cid)
+
+
+async def request_testnet_usdc(address: str, chain_id: Optional[str] = None) -> dict[str, Any]:
     """
-    Try to drip Arc testnet USDC to ``address``.
+    Try to drip testnet USDC (and native gas where the chain needs it) to
+    ``address`` on ``chain_id`` (default: the build's settlement chain).
 
     Returns:
       { ok: bool, method: "api"|"none", message: str, status?: int }
@@ -55,6 +66,7 @@ async def request_arc_usdc(address: str) -> dict[str, Any]:
             seen.add(b)
             unique_bases.append(b)
 
+    blockchain, native = _drip_target(chain_id)
     last_err = "Faucet unavailable"
     async with httpx.AsyncClient(timeout=25.0) as client:
         for base in unique_bases:
@@ -64,9 +76,9 @@ async def request_arc_usdc(address: str) -> dict[str, Any]:
                     url,
                     json={
                         "address": addr,
-                        "blockchain": ARC_BLOCKCHAIN,
+                        "blockchain": blockchain,
                         "usdc": True,
-                        "native": False,
+                        "native": native,
                     },
                     headers={
                         "Authorization": f"Bearer {api_key}",

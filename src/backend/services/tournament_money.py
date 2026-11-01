@@ -18,6 +18,7 @@ import inspect
 import logging
 import os
 import uuid
+from gaming.src.backend.services.chains import default_chain_id
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -71,7 +72,7 @@ def _circle_for_arc():
 
     # Cup pots are practice money (realms.py): never a real-money chain.
     cid = assert_practice(
-        normalize_chain_id(os.getenv("BOARDMAN_SETTLEMENT_RAIL") or default_chain_id() or "arc"), path="tournament pot"
+        normalize_chain_id(os.getenv("BOARDMAN_SETTLEMENT_RAIL") or default_chain_id()), path="tournament pot"
     )
     return CircleWalletService(
         blockchain=get_circle_blockchain(cid),
@@ -87,7 +88,7 @@ async def assert_can_pay_entry(profile_id: str, amount: Decimal) -> None:
         return
     from gaming.src.backend.services.clawstation_circle import get_balance_summary
 
-    s = await get_balance_summary(profile_id, chain_id="arc")
+    s = await get_balance_summary(profile_id, chain_id=default_chain_id())
     if s.get("balance_error"):
         raise TournamentMoneyError(
             f"Could not read play balance: {s.get('balance_error')}. Try again."
@@ -131,7 +132,7 @@ async def lock_entry(
 
     from gaming.src.backend.services.clawstation_circle import ensure_user_wallet
 
-    wallet = await ensure_user_wallet(profile_id, chain_id="arc")
+    wallet = await ensure_user_wallet(profile_id, chain_id=default_chain_id())
     wid = wallet.get("wallet_id")
     if not wid:
         raise TournamentMoneyError("No Circle wallet for entry lock — open Wallet once then retry.")
@@ -207,7 +208,7 @@ async def refund_entry(
 
     from gaming.src.backend.services.clawstation_circle import ensure_user_wallet
 
-    wallet = await ensure_user_wallet(profile_id, chain_id="arc")
+    wallet = await ensure_user_wallet(profile_id, chain_id=default_chain_id())
     addr = wallet.get("address")
     if not addr:
         raise TournamentMoneyError("Player has no address for refund")
@@ -372,7 +373,7 @@ async def pay_payouts(payout_block: dict[str, Any], *, cup_code: str) -> dict[st
         try:
             from gaming.src.backend.services.clawstation_circle import ensure_user_wallet
 
-            wallet = await ensure_user_wallet(pid, chain_id="arc")
+            wallet = await ensure_user_wallet(pid, chain_id=default_chain_id())
             addr = wallet.get("address")
             if not addr:
                 row["paid"] = False

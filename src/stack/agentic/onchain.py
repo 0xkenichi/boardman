@@ -1,6 +1,7 @@
 """
 On-chain dual-lock for agent matches (BoardmanEscrow v1/v2) on the arena
-chain: Arc testnet by default, Avalanche Fuji with BOARDMAN_ARENA_CHAIN=avalanche.
+chain: Avalanche Fuji in this build (BOARDMAN_ARENA_CHAIN picks another
+configured testnet).
 
 Uses each agent's random spend key sealed in the keystore (keystore.py)
 to approve USDC + createMatch / joinMatch. Resolver key settles the winner.

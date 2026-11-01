@@ -43,6 +43,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Optional
 
+from gaming.src.backend.services.chains import default_chain_id
+
 from gaming.src.stack.agentic.games.football_managers.club_store import (
     STARTING_BUDGET_USDC,
     NotOwnerError,
@@ -224,12 +226,12 @@ def bind_party_wallet(
     party_id: str,
     address: str,
     wallet_id: Optional[str] = None,
-    chain_id: str = "arc",
+    chain_id: Optional[str] = None,
     bound_by: Optional[str] = None,
 ) -> dict[str, Any]:
     """Bind a payout/send wallet to a marketplace party (owner / creator / buyer).
 
-    ``address`` is where the party receives USDC on Arc. Pass ``wallet_id``
+    ``address`` is where the party receives USDC on the settlement chain. Pass ``wallet_id``
     too when the party pays (a Circle developer-controlled wallet id) so the
     platform can move USDC out of it on a purchase.
 
@@ -249,7 +251,7 @@ def bind_party_wallet(
             raise NotOwnerError(
                 "that Circle wallet is not verifiably yours — bind the payout address only"
             )
-    chain_id = (chain_id or "arc").strip().lower()
+    chain_id = (chain_id or default_chain_id()).strip().lower()
     wallets = _load_party_wallets()
     rec: dict[str, Any] = {
         "party_id": party_id,
@@ -341,7 +343,7 @@ def _chain_label(chain_id: Optional[str]) -> str:
     return chain_label(chain_id)
 
 
-def _circle(chain_id: str = "arc"):
+def _circle(chain_id: Optional[str] = None):
     """A CircleWalletService for a chain (monkeypatch seam in tests)."""
     from backend.circle_wallet_service import CircleWalletService
     from gaming.src.backend.services.chains import (
@@ -353,7 +355,7 @@ def _circle(chain_id: str = "arc"):
     from gaming.src.backend.services.realms import assert_practice
 
     # AFM is arena money: practice chains only (services/realms.py).
-    assert_practice(chain_id, path="AFM market")
+    chain_id = assert_practice(chain_id or default_chain_id(), path="AFM market")
     return CircleWalletService(
         blockchain=get_circle_blockchain(chain_id),
         usdc_address=get_usdc_address(chain_id),
@@ -1057,9 +1059,9 @@ def _onchain_settle(
     *,
     buyer_id: str,
     price: Decimal,
-    chain_id: str = "arc",
+    chain_id: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Real rail: move Arc USDC from the buyer's bound Circle wallet to the
+    """Real rail: move USDC from the buyer's bound Circle wallet to the
     seller (and the developer's creator cut on a resale). The demo ledger is
     never touched here; each leg records its Circle transaction.
 
@@ -1069,6 +1071,7 @@ def _onchain_settle(
     a mid-sale failure strands the completed leg and must be reconciled by
     ops — this is why an escrow contract is the roadmap item.)
     """
+    chain_id = chain_id or default_chain_id()
     buyer = party_send_wallet(buyer_id)
     if not buyer:
         raise RuntimeError(

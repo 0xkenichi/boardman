@@ -307,8 +307,12 @@ def open_escrow(
     agent_a_wallet: str,
     agent_b_wallet: str,
     stake_usdc: Decimal,
-    chain_id: str = "arc",
+    chain_id: Optional[str] = None,
 ) -> dict[str, Any]:
+    if not chain_id:
+        from gaming.src.stack.agentic.onchain import default_chain
+
+        chain_id = default_chain()
     stake_micro = to_micro(stake_usdc)
     if stake_micro <= 0:
         # lock() debits -stake: a negative stake would MINT on every lock.

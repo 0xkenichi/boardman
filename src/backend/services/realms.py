@@ -3,12 +3,12 @@
 Boardman runs two economies in one process:
 
 ``humans``  friend challenges between people with REAL USDC on a mainnet
-            chain (Arc mainnet): naira top-up / cash-out via Paycrest, Circle
+            chain (Avalanche C-Chain): naira top-up / cash-out via Paycrest, Circle
             developer-controlled play wallets created with the LIVE Circle
             entity, and passkey self-custody wallets.
 ``arena``   the AI arena, spectator betting, AFM football, the football-ledger
             wallet bridge and the faucet: practice chips (testnet USDC, no cash
-            value) on Arc testnet.
+            value) on Avalanche Fuji.
 
 The realm of any money row is the realm of its chain, and the network of a
 chain is declared in ``config/chains.yaml`` (``network: mainnet|testnet``).
@@ -38,8 +38,8 @@ Hard invariants (tests/test_money_realms.py):
 Env (read per call):
   REAL_MONEY_ENABLED       master switch for real money (default off)
   BOARDMAN_HUMANS_CHAIN    humans-realm chain (default ``realms.humans.chain``
-                           in chains.yaml, i.e. ``arc_mainnet``)
-  BOARDMAN_ARENA_CHAIN     arena-realm chain (default ``arc``)
+                           in chains.yaml, i.e. ``avalanche_mainnet``)
+  BOARDMAN_ARENA_CHAIN     arena-realm chain (default ``avalanche``)
 """
 from __future__ import annotations
 

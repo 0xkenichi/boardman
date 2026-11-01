@@ -51,6 +51,7 @@ from gaming.src.bot.keyboards import (
 from gaming.src.bot.utils.db import get_or_create_profile
 from gaming.src.bot.utils.notify import notify_user
 from gaming.src.bot.utils.text import h
+from gaming.src.backend.services.chains import default_chain_id
 
 logger = logging.getLogger(__name__)
 router = Router(name="fiat_topup")
@@ -121,7 +122,7 @@ async def ui_topup_kobox_info(callback: types.CallbackQuery, state: FSMContext) 
             profile = await get_or_create_profile(user)
             from gaming.src.backend.services.clawstation_circle import ensure_user_wallet
 
-            w = await ensure_user_wallet(profile["id"], chain_id="arc")
+            w = await ensure_user_wallet(profile["id"], chain_id=default_chain_id())
             play = w.get("address") or ""
         except Exception:
             pass
@@ -304,7 +305,7 @@ async def ui_topup_confirm(callback: types.CallbackQuery, state: FSMContext) -> 
     try:
         from gaming.src.backend.services.clawstation_circle import ensure_user_wallet
 
-        wallet = await ensure_user_wallet(profile["id"], chain_id="arc")
+        wallet = await ensure_user_wallet(profile["id"], chain_id=default_chain_id())
         play_addr = wallet.get("address") or ""
     except Exception:
         logger.exception("[FiatTopup] wallet lookup failed")
@@ -541,7 +542,7 @@ async def _start_paystack_for_amount(
     try:
         from gaming.src.backend.services.clawstation_circle import ensure_user_wallet
 
-        wallet = await ensure_user_wallet(profile["id"], chain_id="arc")
+        wallet = await ensure_user_wallet(profile["id"], chain_id=default_chain_id())
         play_addr = wallet.get("address") or ""
     except Exception:
         logger.exception("[Paystack] wallet lookup failed")
@@ -769,7 +770,7 @@ async def _rail_topup_start(
     try:
         from gaming.src.backend.services.clawstation_circle import ensure_user_wallet
 
-        w = await ensure_user_wallet(profile["id"], chain_id="arc")
+        w = await ensure_user_wallet(profile["id"], chain_id=default_chain_id())
         play_addr = w.get("address") or ""
     except Exception:
         logger.exception("[FundingRail] wallet lookup failed rail=%s", rail_id)

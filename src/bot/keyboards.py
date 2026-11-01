@@ -168,15 +168,15 @@ def community_menu() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def network_menu(current: str = "arc") -> InlineKeyboardMarkup:
-    """Arc-only for now (other chains kept in backend, not offered in UI)."""
-    from gaming.src.backend.services.chains import chain_label
+def network_menu(current: str = "") -> InlineKeyboardMarkup:
+    """The build's one settlement chain (others stay in config, not offered here)."""
+    from gaming.src.backend.services.chains import chain_label, default_chain_id
 
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
             text=f"🔺 {chain_label()} ✓",
-            callback_data="ui:network:set:arc",
+            callback_data=f"ui:network:set:{current or default_chain_id()}",
         )
     )
     builder.row(

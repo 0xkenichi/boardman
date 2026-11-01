@@ -21,8 +21,8 @@ import { FootballTicker, HeroHand } from './FootballHand'
 import { SETTLEMENT, shortAddress } from '@/lib/settlementChain'
 
 // Live BoardmanEscrow on this build's settlement chain (lib/settlementChain.ts,
-// mirrors config/chains.yaml): Arc testnet by default, Avalanche Fuji in the
-// Avalanche build (NEXT_PUBLIC_SETTLEMENT_CHAIN=avalanche).
+// mirrors config/chains.yaml): Avalanche Fuji (NEXT_PUBLIC_SETTLEMENT_CHAIN
+// picks another configured chain).
 const ESCROW_ADDRESS = SETTLEMENT.escrow
 const EXPLORER = SETTLEMENT.explorerAddress
 const ESCROW_SHORT = shortAddress(ESCROW_ADDRESS)

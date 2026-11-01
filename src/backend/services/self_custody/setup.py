@@ -134,7 +134,7 @@ def view(token: Optional[str], *, caller: Optional[str] = None, auth_iat_ms: Opt
         "pending": _pending_view(wallets.pending(pid)),
         "can_change": bool(w) and fresh,
         "change_needs_signin": bool(w) and not fresh,
-        "chain": {k: s[k] for k in ("chain", "label", "evm_chain_id", "rpc_url", "modular_path")},
+        "chain": {k: s[k] for k in ("chain", "label", "evm_chain_id", "rpc_url", "modular_path", "gas_token")},
         "via": "link" if row else "session",
     }
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from gaming.src.backend.services.chains import default_chain_id
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -68,5 +69,5 @@ async def snapshot(profile_id: str) -> WalletSnapshot:
 async def play_address(profile_id: str) -> str:
     from gaming.src.backend.services.clawstation_circle import ensure_user_wallet
 
-    wallet = await ensure_user_wallet(profile_id, chain_id="arc")
+    wallet = await ensure_user_wallet(profile_id, chain_id=default_chain_id())
     return str(wallet.get("address") or "")

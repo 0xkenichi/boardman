@@ -1,7 +1,8 @@
 """
-Platform gas tank for chains that need native gas (Base ETH, Avalanche AVAX).
-
-Arc does not need this — gas is paid in USDC.
+Platform gas tank for chains that need native gas: AVAX on Avalanche (the
+settlement chain of this build), ETH on Base. Players only hold USDC; this tops
+their custodial play wallet up with gas when it runs low. Chains that pay gas
+in USDC skip it.
 """
 from __future__ import annotations
 

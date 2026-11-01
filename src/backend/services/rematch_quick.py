@@ -10,6 +10,8 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Optional
 
+from gaming.src.backend.services.chains import default_chain_id
+
 from backend.supabase_client import get_supabase
 from gaming.src.backend.services.challenge_compat import denormalize_challenge
 from gaming.src.backend.services.match_codes import display_code, new_challenge_public_code
@@ -45,8 +47,8 @@ async def create_quick_rematch(
     prior = next((r for r in rivals if r["profile_id"] == opponent_id), None)
     amount = Decimal(str(stake if stake is not None else (prior or {}).get("stake") or 1))
     game_s = game or (prior or {}).get("game") or "EAFC"
-    # Product surface is Arc-only for now (ignore prior chain if Base/Ava)
-    chain_s = "arc" if not chain else chain
+    # One settlement chain per build unless the caller names one.
+    chain_s = chain or default_chain_id()
 
     err = validate_stake(amount)
     if err:
