@@ -99,7 +99,7 @@ Implementer: Ledger engineer (later wave). This spec is normative.
 > **Founder decision, 2026-10-14:** betting is on for testnet and off by default
 > on mainnet until counsel signs off. "Chain is mainnet" is decided by the money
 > chain only (`NETWORK=mainnet`, `CLAW_DEFAULT_CHAIN`/`SPECTATOR_CHAIN`/
-> `BOARDMAN_SETTLEMENT_RAIL`/default chain = Arc mainnet). A production deploy of
+> `BOARDMAN_SETTLEMENT_RAIL`/default chain = a mainnet chain). A production deploy of
 > the testnet site (`BOARDMAN_ENV=production`) is **not** mainnet. This
 > supersedes the `geo_fence.is_production()` clause in §6.1.
 
@@ -113,10 +113,10 @@ Implementer: Ledger engineer (later wave). This spec is normative.
 - Any other value of `SPECTATOR_BETTING_ENABLED` (a typo, for example) counts
   as **off** and logs an error once at startup.
 - **"Chain is mainnet"** is true if `geo_fence.is_production()` is true, or if
-  the spectator chain resolves to Arc mainnet: `SPECTATOR_CHAIN`, else
-  `BOARDMAN_SETTLEMENT_RAIL`, else `default_chain_id()`, equal to `arc_mainnet`,
-  or the resolved `chains.yaml` entry has `chain_id: 5042`. If chain resolution
-  raises, treat it as mainnet.
+  any chain signal (`CLAW_DEFAULT_CHAIN`, `SPECTATOR_CHAIN`,
+  `BOARDMAN_SETTLEMENT_RAIL`, `default_chain_id()`) names a chain declared
+  `network: mainnet` in `chains.yaml`, for example `avalanche_mainnet`. If chain
+  resolution raises, treat it as mainnet.
 - Values are read per call from the environment. No in-process caching, so a
   restart is not needed for tests, and ops can flip the switch with an env
   change and restart.
@@ -228,16 +228,16 @@ a screening check there catches every outbound path, including ones added
 later. Keep the per-flow checks too, because they hold the context (which user,
 and why).
 
-## 8. Vendor categories (no pricing claims; verify Arc support)
+## 8. Vendor categories (no pricing claims; verify Avalanche support)
 
 | Need | Category | Well-known vendors |
 |------|----------|--------------------|
-| Wallet / transaction screening | Blockchain analytics (KYT) | Chainalysis (KYT; also a free sanctions-screening API and oracle), TRM Labs, Elliptic, Merkle Science. Also check whether Circle's own compliance tooling for programmable wallets covers Arc. |
+| Wallet / transaction screening | Blockchain analytics (KYT) | Chainalysis (KYT; also a free sanctions-screening API and oracle), TRM Labs, Elliptic, Merkle Science. Also check whether Circle's own compliance tooling for programmable wallets covers Avalanche C-Chain. |
 | Identity verification | Document and liveness IDV | Sumsub, Onfido, Persona, Veriff, Jumio, Smile ID (strong African document coverage) |
 | Sanctions / PEP name screening | Watchlist screening | ComplyAdvantage, LSEG World-Check, Dow Jones Risk & Compliance (many IDV vendors bundle one) |
 | Gaming-grade geolocation | Location compliance | GeoComply; MaxMind GeoIP2 with its anonymous-IP (VPN/proxy) database |
 | Case management / monitoring | Transaction monitoring | Unit21, Hummingbird, Sardine |
 
-Selection questions for every vendor: does it support **Arc** (a new chain)
+Selection questions for every vendor: does it support **Avalanche C-Chain**
 and USDC on it; does it cover target-market ID documents; where is data
 stored; how does it fit Circle developer-controlled wallets.

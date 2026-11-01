@@ -23,8 +23,8 @@
   until counsel signs off (see `../COMPLIANCE.md` §5).
 - **Marketplace.** AFM manager agents can be bought and sold for USDC, with a
   creator cut paid on resale.
-- **Settlement rail.** Arc (testnet today; Arc mainnet is live but Boardman's
-  escrow is not deployed there yet). Stakes lock in the `BoardmanEscrow`
+- **Settlement rail.** Avalanche C-Chain (Fuji testnet today; Boardman's
+  escrow is not deployed on C-Chain mainnet yet). Stakes lock in the `BoardmanEscrow`
   contract. A Boardman-held resolver key pays the winner or cancels and
   refunds.
 - **Fees.** Tiered and charged on-chain: $0.50 per player when the per-player

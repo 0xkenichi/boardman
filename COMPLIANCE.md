@@ -93,8 +93,8 @@ mutating `/api/*` call counts as a money route.
 - If it is set (`1`/`0`), that value wins.
 - Otherwise it is **on** when the process looks like production: `BOARDMAN_ENV`,
   `APP_ENV` or `ENVIRONMENT` is `production`/`prod`/`mainnet`, or
-  `NETWORK=mainnet`, or `CLAW_DEFAULT_CHAIN`/`BOARDMAN_SETTLEMENT_RAIL` is
-  `arc_mainnet`. The hosted testnet stack sets none of these, so it stays
+  `NETWORK=mainnet`, or `CLAW_DEFAULT_CHAIN`/`BOARDMAN_SETTLEMENT_RAIL` names
+  a mainnet chain (for example `avalanche_mainnet`). The hosted testnet stack sets none of these, so it stays
   lenient.
 
 | Situation | Lenient (testnet) | Strict (production) |
@@ -174,8 +174,8 @@ The code does not support calling Boardman "non-custodial". As built:
   on-chain path is not used. The spectator, LP and agent "demo ledger" books
   (`src/stack/agentic/ledger.py`, `economy/lp.py`) are JSON files run by
   Boardman.
-- **Funding rails.** USDC sent on Avalanche or Stellar goes to a Boardman ops
-  address, and ops credits the user's Arc wallet. Naira top-ups through
+- **Funding rails.** USDC sent on another network (Stellar, for example) goes
+  to a Boardman ops address, and ops credits the user's play wallet. Naira top-ups through
   Paystack or bank transfer are collected by Boardman, and ops credits USDC
   manually at a quoted rate (`src/backend/services/fiat_topup.py`,
   `paystack.py`). Kobox is a referral partner for on- and off-ramp.
@@ -221,11 +221,10 @@ AFM manager sales carry a 0–20% creator cut. The off-chain fee code
 (`src/stack/agentic/economy/fees.py`, `spectator.py`) mirrors the contract
 tiers.
 
-Earlier figures ("3% + 3%", "flat 7%") are obsolete. The canonical Arc testnet
-addresses are in `CONTRACTS.md`: `BoardmanEscrow`
-`0xD382f627fB565eb96D9EFFb66B9119DD4a555847` and `SpectatorPool`
-`0xd45bE49456021B74D2712fcffD47f17f91D39664`. `0x3cD5…5A77` and `0xD898…66Fc`
-are archived deployments.
+Earlier figures ("3% + 3%", "flat 7%") are obsolete. The Avalanche Fuji
+addresses are in `docs/avalanche/CONTRACTS.md`: `BoardmanEscrow` v2
+`0xa0626A1744D4817B8b6fE0414a04CB20F6696F09` and `SpectatorPool` v2
+`0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F`.
 
 ---
 

@@ -61,13 +61,12 @@ Your strategy                  Matchmaking · escrow · settle
 
 ## Live product (Boardman-operated)
 
-| | |
-|--|--|
-| **Site** | [boardman.playingsidequest.fun](https://boardman.playingsidequest.fun) |
-| **Agent Arena** | [/agentic/arena.html](https://boardman.playingsidequest.fun/agentic/arena.html) |
-| **Telegram (humans)** | [t.me/myboardmanOfficialBot](https://t.me/myboardmanOfficialBot) — **operated by Boardman, not a third-party SDK** |
-
-The human Telegram app is **our product**, not something external builders clone or redeploy.
+The web app, the Agent Arena and the Telegram bot for people are **Boardman's
+own products**. External builders don't clone or redeploy them. Moving the
+public deployment onto the Avalanche build is milestone M1
+([roadmap](./docs/avalanche/README.md#roadmap-to-c-chain-mainnet)). Until
+then, the live proof of the Avalanche build is the settled match in
+[`FUJI_PROOF.md`](./docs/avalanche/FUJI_PROOF.md).
 
 ---
 
@@ -86,11 +85,6 @@ Cloning this repository does **not** grant live Stack access, bot tokens, or wal
 Production integration = **API key + your hosted webhook** (or reviewed game plugin).
 
 ---
-
-## Encode / tracks
-
-- **DeFi** — dual-lock USDC escrow, fees, capital rails  
-- **Agentic Economy** — agents, creators, LPs, spectator markets  
 
 ## Legal & compliance
 

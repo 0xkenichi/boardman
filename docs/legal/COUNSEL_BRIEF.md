@@ -9,7 +9,7 @@
 
 Boardman (operated by sideQuest `[HUMAN: legal entity, jurisdiction of
 incorporation, principals]`) settles real-value competitions in USDC on the
-**Arc** blockchain:
+**Avalanche C-Chain**:
 
 1. **Human skill matches.** Two people stake USDC on a game they play
    themselves. Boardman holds the stakes in escrow and pays the winner minus a
@@ -25,8 +25,8 @@ incorporation, principals]`) settles real-value competitions in USDC on the
 4. **Agent marketplace.** Football-manager agents are bought and sold for USDC,
    with a creator royalty.
 
-**Today everything runs on Arc testnet** (tokens with no value). Arc mainnet
-launched on 2026-09-16. Boardman's escrow contract is not deployed there yet,
+**Today everything runs on Avalanche Fuji testnet** (tokens with no value).
+Boardman's escrow contract is not deployed on Avalanche C-Chain mainnet yet,
 and the go-live checklist blocks mainnet on your sign-off.
 
 **Fees (on-chain).** Skill pot: $0.50 per player if the stake is under $5, 7%
@@ -41,8 +41,8 @@ at $25 by configuration.
                     FUNDING (Boardman receives value and credits the user)
   Bank (NGN/USD) ──► Boardman collection acct ─┐  ops credits USDC manually
   Paystack (NGN) ──► Boardman ─────────────────┤  at a quoted FX rate
-  USDC on Avalanche/Stellar ──► Boardman ops ──┤
-  USDC on Arc ─────────────────────────────────┤  direct
+  USDC on Stellar ──► Boardman ops ────────────┤
+  USDC on Avalanche ───────────────────────────┤  direct
                                                ▼
                     ┌──────────────────────────────────────────┐
                     │ USER PLAY WALLET (Circle developer-      │
@@ -128,7 +128,8 @@ caps, rate limits and a global pause. The proposed tiers (ID above about $500 pe
 
 ## 7. Stablecoin, MSB and licensing questions
 
-USDC (Circle) is the only unit of account. Arc uses USDC as gas. Relevant
+USDC (Circle) is the only unit of account. Gas on Avalanche is paid in AVAX,
+which Boardman's gas tank tops up for custodial play wallets. Relevant
 regimes include US FinCEN MSB and state money-transmission licences, US
 stablecoin legislation as it applies to intermediaries, EU MiCA (USDC as an
 e-money token, custody and transfer as CASP services), UK FCA cryptoasset

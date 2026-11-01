@@ -114,7 +114,8 @@ def is_production() -> bool:
 
     Any of: ``BOARDMAN_ENV`` / ``APP_ENV`` / ``ENVIRONMENT`` in {production, prod,
     mainnet}; ``NETWORK=mainnet``; ``CLAW_DEFAULT_CHAIN`` or
-    ``BOARDMAN_SETTLEMENT_RAIL`` = ``arc_mainnet``. The hosted testnet stack sets
+    ``BOARDMAN_SETTLEMENT_RAIL`` naming a mainnet chain (``arc_mainnet``,
+    ``avalanche_mainnet``, ...; see config/chains.yaml). The hosted testnet stack sets
     none of these, so it stays permissive unless ``GEO_FENCE_STRICT=1``.
     """
     for name in ("BOARDMAN_ENV", "APP_ENV", "ENVIRONMENT"):
@@ -123,13 +124,25 @@ def is_production() -> bool:
     if (os.getenv("NETWORK") or "").strip().lower() == "mainnet":
         return True
     for name in ("CLAW_DEFAULT_CHAIN", "BOARDMAN_SETTLEMENT_RAIL"):
-        if (os.getenv(name) or "").strip().lower() == "arc_mainnet":
+        v = (os.getenv(name) or "").strip().lower()
+        if v and _is_mainnet_chain(v):
             return True
     # Money realms: once real money is switched on, money routes fail closed
     # (the arena keeps running on practice chips in the same process).
     if _env_flag("REAL_MONEY_ENABLED"):
         return True
     return False
+
+
+def _is_mainnet_chain(chain_id: str) -> bool:
+    """A chain declared ``network: mainnet`` in chains.yaml. Fails closed."""
+    try:
+        from gaming.src.backend.services.realms import is_real_chain
+
+        return is_real_chain(chain_id)
+    except Exception:
+        logger.error("[geo_fence] chain %r unresolvable; treating as mainnet", chain_id, exc_info=True)
+        return True
 
 
 def strict_mode() -> bool:

@@ -52,9 +52,13 @@ def is_mainnet() -> bool:
         # betting on; only the money chain decides (founder, 2026-10-14).
         if (os.getenv("NETWORK") or "").strip().lower() == "mainnet":
             return True
-        if (os.getenv("CLAW_DEFAULT_CHAIN") or "").strip().lower() == "arc_mainnet":
-            return True
         from gaming.src.backend.services.chains import default_chain_id, get_chain, normalize_chain_id
+        from gaming.src.backend.services.realms import is_real_chain
+
+        # Any declared mainnet (arc_mainnet, avalanche_mainnet, ...), not one name.
+        env_default = (os.getenv("CLAW_DEFAULT_CHAIN") or "").strip().lower()
+        if env_default and is_real_chain(env_default):
+            return True
 
         # EVERY chain signal counts: a testnet SPECTATOR_CHAIN override must
         # not hide a mainnet settlement chain (it used to replace it).
@@ -64,7 +68,7 @@ def is_mainnet() -> bool:
             if raw:
                 cids.append(normalize_chain_id(raw))
         for cid in cids:
-            if cid == "arc_mainnet":
+            if is_real_chain(cid):
                 return True
             cfg = get_chain(cid) or {}
             if str(cfg.get("chain_id") or "") == "5042":

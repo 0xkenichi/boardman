@@ -140,3 +140,32 @@ def test_new_matches_land_on_the_arena_chain(avalanche_build):
             stake_usdc=2.0,
             chain_id="avalanche_mainnet",
         )
+
+
+@pytest.mark.parametrize("env", ["CLAW_DEFAULT_CHAIN", "SPECTATOR_CHAIN", "BOARDMAN_SETTLEMENT_RAIL"])
+def test_spectator_betting_treats_c_chain_mainnet_as_mainnet(monkeypatch, env):
+    """Betting stays off on any mainnet, not only Arc's."""
+    from gaming.src.backend.services import spectator_policy
+
+    for name in ("NETWORK", "CLAW_DEFAULT_CHAIN", "SPECTATOR_CHAIN", "BOARDMAN_SETTLEMENT_RAIL"):
+        monkeypatch.delenv(name, raising=False)
+    chains.reload_chains_config()
+    assert spectator_policy.is_mainnet() is False
+    monkeypatch.setenv(env, "avalanche")
+    assert spectator_policy.is_mainnet() is False
+    monkeypatch.setenv(env, "avalanche_mainnet")
+    assert spectator_policy.is_mainnet() is True
+
+
+def test_geo_fence_is_strict_on_c_chain_mainnet(monkeypatch):
+    from gaming.src.backend.middleware import geo_fence
+
+    for name in ("BOARDMAN_ENV", "APP_ENV", "ENVIRONMENT", "NETWORK", "REAL_MONEY_ENABLED",
+                 "CLAW_DEFAULT_CHAIN", "BOARDMAN_SETTLEMENT_RAIL"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("CLAW_DEFAULT_CHAIN", "avalanche")
+    assert geo_fence.is_production() is False
+    monkeypatch.setenv("CLAW_DEFAULT_CHAIN", "avalanche_mainnet")
+    assert geo_fence.is_production() is True
+    monkeypatch.setenv("CLAW_DEFAULT_CHAIN", "arc_mainnet")
+    assert geo_fence.is_production() is True

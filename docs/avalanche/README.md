@@ -58,7 +58,7 @@ the match is created. The payout is one transaction.
    the pot minus the platform fee, refunds both on a draw, and keeps the fee
    in-contract until anyone calls `withdrawFees()` to the treasury.
 
-What protects the money (v2 safety release, [`CONTRACTS.md`](../../CONTRACTS.md)):
+What protects the money (v2 safety release, [CONTRACTS.md](./CONTRACTS.md)):
 
 - **Fees are capped in the bytecode** (≤ 10%, flat fee ≤ $0.50 a player) and
   frozen per match when the match is created.
@@ -115,7 +115,7 @@ Reproduce it: [`scripts/avalanche/README.md`](../../scripts/avalanche/README.md)
   betting stays testnet-only, and the deploy script refuses to put a
   SpectatorPool on any mainnet.
 - **Audits.** An internal audit of the contracts and backend was done in
-  October 2026 ([`docs/security/`](../security)). There has been no
+  October 2026 ([summary and tests](./CONTRACTS.md#internal-audit)). There has been no
   external audit yet.
 
 ## Roadmap to C-Chain mainnet
