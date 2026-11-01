@@ -83,12 +83,12 @@ def test_apply_generates_the_secret_in_place_and_prints_only_addresses(setup_mod
     secret = vals["CIRCLE_ENTITY_SECRET_LIVE"]
     assert len(secret) == 64 and int(secret, 16) >= 0
     assert vals["CIRCLE_WALLET_SET_ID_LIVE"] == "ws-live-1"
-    assert vals["PAYCREST_ARC_RELAYER_WALLET_ID"] == "w-ARC"
+    assert vals["PAYCREST_AVALANCHE_RELAYER_WALLET_ID"] == "w-AVAX"
     assert vals["PAYCREST_BASE_RELAYER_WALLET_ID"] == "w-BASE"
-    assert calls == ["register", "set", "wallet:ARC:EOA", "wallet:BASE:SCA"]
+    assert calls == ["register", "set", "wallet:AVAX:EOA", "wallet:BASE:SCA"]
     printed = capsys.readouterr()
     assert secret not in printed.out + printed.err and LIVE_KEY not in printed.out + printed.err
-    assert "0xarcaddr" in printed.out
+    assert "0xavaxaddr" in printed.out
     rec = list(out.glob("circle_entity_recovery_*.dat"))
     assert rec and rec[0].read_text() == "RECOVERY-BLOB"
     assert stat.S_IMODE(rec[0].stat().st_mode) == 0o600 and stat.S_IMODE(env.stat().st_mode) == 0o600
@@ -109,7 +109,7 @@ def test_resolver_script_prints_the_address_only(tmp_path, monkeypatch, capsys):
     from gaming.src.stack.agentic.keystore import get_keystore
 
     ks = get_keystore()
-    addr = ks.address("resolver_arc_mainnet")
+    addr = ks.address("resolver_avalanche_mainnet")
     assert addr and addr in text
-    assert ks.private_key("resolver_arc_mainnet")[2:] not in text
+    assert ks.private_key("resolver_avalanche_mainnet")[2:] not in text
     assert mod.main(["--apply"]) == 0 and "not replaced" in capsys.readouterr().out

@@ -2,12 +2,12 @@
 """Create the real-money escrow resolver key IN the server keystore.
 
 NOT run by CI or agents. The founder runs it once on the production VM,
-before deploying BoardmanEscrow v2 to Arc mainnet. The key is 32 random bytes
+before deploying BoardmanEscrow v2 to Avalanche C-Chain mainnet. The key is 32 random bytes
 generated here, sealed with BOARDMAN_KEYSTORE_SECRET (AES-256-GCM, see
 src/stack/agentic/keystore.py) into the data volume. Only the ADDRESS is
 printed: pass it to the deploy as V2_RESOLVER. Then set, in ~/boardman/.env:
 
-    BOARDMAN_RESOLVER_KEY_MAINNET=resolver_arc_mainnet
+    BOARDMAN_RESOLVER_KEY_MAINNET=resolver_avalanche_mainnet
 
 That value is the keystore entry NAME, never a key. The backend refuses a
 plaintext private key there and refuses to reuse the testnet resolver.
@@ -39,7 +39,7 @@ for _name, _target in (("gaming", ROOT), ("backend", ROOT / "src" / "backend")):
         _m.__path__ = [str(_target)]  # type: ignore[attr-defined]
         sys.modules[_name] = _m
 
-DEFAULT_NAME = "resolver_arc_mainnet"
+DEFAULT_NAME = "resolver_avalanche_mainnet"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -78,7 +78,7 @@ def main(argv: list[str] | None = None) -> int:
             addr = ks.create(args.name)
             print(f"created. Resolver address: {addr}")
             print(f"Use it as V2_RESOLVER for the deploy, and set BOARDMAN_RESOLVER_KEY_MAINNET={args.name}")
-            print("Fund it with ~5 USDC on Arc mainnet (it pays gas for resolve/cancel/dispute).")
+            print("Fund it with ~0.5 AVAX on Avalanche C-Chain (it pays gas for resolve/cancel/dispute).")
     except KeystoreError as exc:
         print(f"keystore refused: {exc}", file=sys.stderr)
         return 1

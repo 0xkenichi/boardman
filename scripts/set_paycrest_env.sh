@@ -22,7 +22,7 @@ ENABLE=0
 read -rs -p "Paycrest API key (dashboard > Settings, hidden): " KEY; echo
 read -rs -p "Paycrest API secret (signs webhooks, hidden): " SECRET; echo
 [ -n "$KEY" ] && [ -n "$SECRET" ] || { echo "missing a value" >&2; exit 1; }
-read -r  -p "Circle wallet id of the Arc relayer (pays mint gas in USDC; blank to skip): " ARC_RELAYER
+read -r  -p "Circle wallet id of the Avalanche relayer (pays CCTP mint gas in AVAX; blank to skip): " AVAX_RELAYER
 read -r  -p "Circle wallet id of the Base relayer (blank to skip): " BASE_RELAYER
 
 FLAG=0
@@ -36,7 +36,7 @@ fi
 {
   printf 'PAYCREST_API_KEY=%s\n' "$KEY"
   printf 'PAYCREST_API_SECRET=%s\n' "$SECRET"
-  [ -n "$ARC_RELAYER" ] && printf 'PAYCREST_ARC_RELAYER_WALLET_ID=%s\n' "$ARC_RELAYER"
+  [ -n "$AVAX_RELAYER" ] && printf 'PAYCREST_AVALANCHE_RELAYER_WALLET_ID=%s\n' "$AVAX_RELAYER"
   [ -n "$BASE_RELAYER" ] && printf 'PAYCREST_BASE_RELAYER_WALLET_ID=%s\n' "$BASE_RELAYER"
   printf 'PAYCREST_ENABLED=%s\n' "$FLAG"
   [ "$FLAG" = "1" ] && printf 'REAL_MONEY_ENABLED=1\n'

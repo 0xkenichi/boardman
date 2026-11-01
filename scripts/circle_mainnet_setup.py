@@ -21,8 +21,8 @@ Steps (each skipped when its result already exists, so a rerun is safe):
    Secret, and the Console gives you the recovery file instead.
 3. Wallet set: POST /v1/w3s/developer/walletSets (name boardman-humans-mainnet)
    -> CIRCLE_WALLET_SET_ID_LIVE.
-4. Relayer wallets (pay CCTP mint gas): one on ARC (Arc mainnet) and one on
-   BASE (Base mainnet) -> PAYCREST_ARC_RELAYER_WALLET_ID /
+4. Relayer wallets (pay CCTP mint gas): one on AVAX (Avalanche C-Chain) and
+   one on BASE (Base mainnet) -> PAYCREST_AVALANCHE_RELAYER_WALLET_ID /
    PAYCREST_BASE_RELAYER_WALLET_ID.
 5. Prints ONLY wallet addresses, ids and funding instructions.
 
@@ -62,8 +62,8 @@ SECRET_ENV = "CIRCLE_ENTITY_SECRET_LIVE"
 SET_ENV = "CIRCLE_WALLET_SET_ID_LIVE"
 RELAYERS = (
     # (env var, Circle blockchain, account type, what to fund it with)
-    ("PAYCREST_ARC_RELAYER_WALLET_ID", "ARC", "EOA",
-     "~20 USDC on Arc mainnet (Arc gas is paid in USDC; it pays CCTP mint gas)"),
+    ("PAYCREST_AVALANCHE_RELAYER_WALLET_ID", "AVAX", "EOA",
+     "~0.5 AVAX on Avalanche C-Chain (gas is AVAX; it pays CCTP mint gas)"),
     ("PAYCREST_BASE_RELAYER_WALLET_ID", "BASE", "SCA",
      "nothing if the Gas Station policy for Base mainnet covers it, else ~0.001 ETH on Base"),
 )
