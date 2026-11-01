@@ -20,6 +20,8 @@ export type ChainInfo = {
   rpc_url: string
   modular_path: string
   explorer_tx?: string
+  /** Native gas token from chains.yaml (AVAX on Avalanche, USDC on Arc). */
+  gas_token?: string
 }
 
 export type PreparedCall = { to: string; data: string; value: string; label?: string }
@@ -72,6 +74,11 @@ function friendly(e: unknown): WalletError {
   return new WalletError('failed', msg.slice(0, 200) || 'Something went wrong. Nothing was sent.')
 }
 
+function nativeGas(info: ChainInfo): string {
+  if (info.gas_token) return info.gas_token.toUpperCase()
+  return info.evm_chain_id === 43113 || info.evm_chain_id === 43114 ? 'AVAX' : 'USDC'
+}
+
 async function account(info: ChainInfo, mode: 'register' | 'login', username: string) {
   const key = clientKey()
   const { sdk, viem, aa } = await load()
@@ -83,8 +90,9 @@ async function account(info: ChainInfo, mode: 'register' | 'login', username: st
   const chain = viem.defineChain({
     id: info.evm_chain_id,
     name: info.label,
-    // Arc's native gas token is USDC (18-decimal native accounting).
-    nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
+    // Native gas token, 18 decimals: AVAX on Avalanche C-Chain / Fuji. (Arc
+    // accounts native gas in USDC.)
+    nativeCurrency: { name: nativeGas(info), symbol: nativeGas(info), decimals: 18 },
     rpcUrls: { default: { http: [info.rpc_url] } },
   })
   const transport = sdk.toModularTransport(`${CLIENT_URL}/${info.modular_path}`, key)

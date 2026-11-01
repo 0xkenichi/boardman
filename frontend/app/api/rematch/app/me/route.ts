@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { requireSession } from '@/lib/bff'
 import { stackConfigured, stackFetch } from '@/lib/stackServer'
 import { fetchProfileWallet } from '@/lib/supabaseAdmin'
-import { usdcBalanceOf } from '@/lib/arcUsdc'
+import { usdcBalanceOf } from '@/lib/usdcBalance'
 import { isBoardmanAdmin } from '@/lib/adminAuth'
 
 export const dynamic = 'force-dynamic'

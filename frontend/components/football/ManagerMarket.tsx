@@ -509,7 +509,7 @@ export function ManagerMarket({ onChanged }: { onChanged?: () => void }) {
 
           <div className="fd-walletbar">
             <span className={`fd-chip${wallet?.mode === 'onchain' ? ' ok' : ''}`}>
-              {wallet?.mode === 'onchain' ? `Real USDC · ${SETTLEMENT.name}` : 'Demo ledger'}
+              {wallet?.mode === 'onchain' ? `On-chain test USDC · ${SETTLEMENT.name}` : 'Demo ledger'}
             </span>
             {wallet?.real_wallet ? (
               <span className="fd-walletnote">
@@ -534,7 +534,7 @@ export function ManagerMarket({ onChanged }: { onChanged?: () => void }) {
                   onChange={(e) => setSettlement(e.target.value as SettlementMode)}
                 >
                   <option value="auto">Auto</option>
-                  <option value="onchain">Real USDC</option>
+                  <option value="onchain">On-chain test USDC</option>
                   <option value="ledger">Demo ledger</option>
                 </select>
               </label>
@@ -764,9 +764,9 @@ export function ManagerMarket({ onChanged }: { onChanged?: () => void }) {
                   className={`fd-chip${settlement === 'onchain' || (settlement === 'auto' && wallet?.mode === 'onchain') ? ' ok' : ''}`}
                 >
                   {settlement === 'onchain'
-                    ? `Real USDC · ${SETTLEMENT.name} (forced)`
+                    ? `On-chain test USDC · ${SETTLEMENT.name} (forced)`
                     : settlement === 'auto' && wallet?.mode === 'onchain'
-                      ? `Real USDC · ${SETTLEMENT.name} (auto)`
+                      ? `On-chain test USDC · ${SETTLEMENT.name} (auto)`
                       : 'Demo ledger'}
                 </span>
               </div>

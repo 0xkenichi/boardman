@@ -14,6 +14,7 @@ export type SettlementChain = {
   /** Upper-case strap for the ledger rules on the homepage. */
   strap: string
   chainId: number
+  rpcUrl: string
   gasToken: string
   /** Network to pick on faucet.circle.com for test USDC. */
   faucetNetwork: string
@@ -32,6 +33,7 @@ const CHAINS: Record<SettlementChain['id'], SettlementChain> = {
     label: 'Arc testnet',
     strap: 'ARC TESTNET · CHAIN 5042002 · USDC-NATIVE GAS',
     chainId: 5042002,
+    rpcUrl: 'https://rpc.testnet.arc.io',
     gasToken: 'USDC',
     faucetNetwork: 'Arc Testnet',
     usdc: '0x3600000000000000000000000000000000000000',
@@ -47,6 +49,7 @@ const CHAINS: Record<SettlementChain['id'], SettlementChain> = {
     label: 'Avalanche Fuji',
     strap: 'AVALANCHE FUJI C-CHAIN · CHAIN 43113 · CIRCLE USDC',
     chainId: 43113,
+    rpcUrl: 'https://api.avax-test.network/ext/bc/C/rpc',
     gasToken: 'AVAX',
     faucetNetwork: 'Avalanche Fuji',
     usdc: '0x5425890298aed601595a70AB815c96711a31Bc65',

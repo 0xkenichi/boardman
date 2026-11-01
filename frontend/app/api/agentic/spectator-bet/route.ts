@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSession, rateLimitRequest } from "@/lib/bff";
 import { stackConfigured, stackFetch } from "@/lib/stackServer";
 import { fetchProfileWallet, supabaseRest } from "@/lib/supabaseAdmin";
-import { usdcBalanceOf } from "@/lib/arcUsdc";
+import { usdcBalanceOf } from "@/lib/usdcBalance";
 
 export const dynamic = "force-dynamic";
 

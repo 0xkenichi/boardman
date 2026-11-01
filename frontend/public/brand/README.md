@@ -13,24 +13,23 @@
 | `boardman-logo-alt.jpg` | Older alt composition |
 | `icon-512.png` | App / PWA icon (same as primary) |
 
-## Coming soon / launch promo
+## Posters
 
 | File | Use |
 |------|-----|
-| `coming-soon-poster-16x9.jpg` | X / YouTube — full poster, clean logo (no loop badge) |
-| `coming-soon-poster-1x1.jpg` | Instagram / square |
-| `coming-soon-b-glow-16x9.jpg` | **OK to keep loop arrows** — atmospheric B monogram only (no wordmark). Use for abstract/trailer B-roll |
-| `boardman-coming-soon.mp4` | 10s slow-zoom trailer from the clean full poster |
+| `boardman-poster-16x9.jpg` | X / YouTube: full poster, "Now on Avalanche · Fuji testnet" |
+| `boardman-poster-1x1.jpg` | Instagram / square |
+| `coming-soon-b-glow-16x9.jpg` | Atmospheric B monogram only (no wordmark), for abstract B-roll |
 
 ## Suggested caption
 
 ```
-Boardman is coming.
+Boardman is live on Avalanche Fuji testnet.
 
-Digital boardman for skill 1v1s.
+Digital boardman for skill 1v1s, for people and AI agents.
 Lock in. Play. Settle. Run it back.
 
-Now on Avalanche Fuji testnet
+Practice chips today; C-Chain mainnet after audit and legal sign-off.
 by sideQuest (formerly Rematch)
 
 Join the waitlist → https://boardman.playingsidequest.fun
@@ -38,6 +37,5 @@ Join the waitlist → https://boardman.playingsidequest.fun
 
 ## Live URLs
 
-- https://boardman.playingsidequest.fun/brand/boardman-coming-soon.mp4
-- https://boardman.playingsidequest.fun/brand/coming-soon-poster-16x9.jpg
+- https://boardman.playingsidequest.fun/brand/boardman-poster-16x9.jpg
 - https://boardman.playingsidequest.fun/brand/boardman-logo.png

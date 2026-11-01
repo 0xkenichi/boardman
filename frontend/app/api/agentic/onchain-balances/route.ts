@@ -6,7 +6,8 @@
  * or  ?raja=0x..&nero=0x..
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { usdcBalanceOf, arcRpcUrl, arcUsdcAddress } from '@/lib/arcUsdc'
+import { usdcBalanceOf, settlementRpcUrl, settlementUsdcAddress } from '@/lib/usdcBalance'
+import { SETTLEMENT } from '@/lib/settlementChain'
 import { rematchApiFetch } from '@/lib/stackServer'
 import { rateLimitRequest } from '@/lib/bff'
 
@@ -109,11 +110,11 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    chain: 'arc',
+    chain: SETTLEMENT.id,
     network: 'testnet',
     source: 'arc_usdc_balanceOf',
-    rpc: arcRpcUrl(),
-    usdc: arcUsdcAddress(),
+    rpc: settlementRpcUrl(),
+    usdc: settlementUsdcAddress(),
     balances: results,
     volume,
     note: 'Agent bankrolls on the creator desk should match these on-chain test USDC balances when on-chain mode is live.',

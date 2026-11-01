@@ -1,24 +1,20 @@
 /**
- * Read Arc testnet USDC balances via JSON-RPC eth_call (no private keys).
+ * Read USDC balances on this build's settlement chain via JSON-RPC eth_call
+ * (no private keys). The chain, RPC and USDC address come from
+ * lib/settlementChain.ts; SETTLEMENT_RPC_URL / SETTLEMENT_USDC_ADDRESS override.
  */
+import { SETTLEMENT } from './settlementChain'
 
-const DEFAULT_RPC = 'https://rpc.testnet.arc.io'
-const DEFAULT_USDC = '0x3600000000000000000000000000000000000000'
-
-export function arcRpcUrl(): string {
+export function settlementRpcUrl(): string {
   return (
-    process.env.ARC_RPC_URL ||
-    process.env.NEXT_PUBLIC_ARC_RPC_URL ||
-    DEFAULT_RPC
+    process.env.SETTLEMENT_RPC_URL ||
+    process.env.NEXT_PUBLIC_SETTLEMENT_RPC_URL ||
+    SETTLEMENT.rpcUrl
   ).replace(/\/$/, '')
 }
 
-export function arcUsdcAddress(): string {
-  return (
-    process.env.ARC_USDC_ADDRESS ||
-    process.env.NEXT_PUBLIC_ARC_USDC_ADDRESS ||
-    DEFAULT_USDC
-  )
+export function settlementUsdcAddress(): string {
+  return process.env.SETTLEMENT_USDC_ADDRESS || process.env.NEXT_PUBLIC_SETTLEMENT_USDC_ADDRESS || SETTLEMENT.usdc
 }
 
 function padAddress(addr: string): string {
@@ -42,8 +38,8 @@ export async function usdcBalanceOf(
   if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) {
     return { ok: false, address: addr, balance_usdc: 0, error: 'invalid_address' }
   }
-  const rpc = arcRpcUrl()
-  const usdc = arcUsdcAddress()
+  const rpc = settlementRpcUrl()
+  const usdc = settlementUsdcAddress()
   const data = `0x70a08231${padAddress(addr)}`
   try {
     const res = await fetch(rpc, {

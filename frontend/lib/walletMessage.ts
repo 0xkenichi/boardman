@@ -57,7 +57,7 @@ const STATEMENTS: Record<WalletSignAction, string> = {
   link: 'Link this wallet to your Boardman profile.',
 }
 /** Arc testnet, Celo, Celo Alfajores, Ethereum, Base — override with BOARDMAN_SIWE_CHAIN_IDS. */
-const DEFAULT_CHAIN_IDS = [5042002, 42220, 44787, 1, 8453]
+const DEFAULT_CHAIN_IDS = [43113, 43114, 5042002, 42220, 44787, 1, 8453]
 
 function hex(bytes: Uint8Array): string {
   let s = ''

@@ -1,3 +1,4 @@
+import { SETTLEMENT } from '@/lib/settlementChain'
 import { NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
 import { requireSession, rateLimitRequest } from '@/lib/bff'
@@ -96,7 +97,7 @@ export async function POST(req: Request) {
         opponent_tag,
         amount_usdc: amount,
         game_id,
-        chain_id: 'arc',
+        chain_id: SETTLEMENT.id,
       }),
     })
     if (res.ok) {
