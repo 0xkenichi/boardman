@@ -2,7 +2,8 @@
  * Pre-deploy checks for deploy_v2.js (audit 2026-10 L-04). Pure reads; throws
  * on anything that would make the deployment unsafe or unusable.
  *
- * - arcMainnet must really be chain 5042 (deploy_v2.js also checks every
+ * - arcMainnet must really be chain 5042 and avalancheMainnet chain 43114
+ *   (deploy_v2.js also checks every
  *   known network's chain id against the RPC).
  * - The USDC address must be a contract whose decimals() is 6: MIN_STAKE,
  *   MAX_STAKE, the stake cap and every fee cap assume 6 decimals.
@@ -15,6 +16,7 @@
  *   deposit() is permissionless once a book is open). No override.
  */
 export const ARC_MAINNET_CHAIN_ID = 5042n;
+export const AVALANCHE_MAINNET_CHAIN_ID = 43114n;
 export const MAINNETS = new Set(["arcMainnet", "baseMainnet", "avalancheMainnet"]);
 
 const ERC20_DECIMALS = ["function decimals() view returns (uint8)"];
@@ -28,6 +30,9 @@ export async function preflight(
   const { chainId } = await ethers.provider.getNetwork();
   if (networkName === "arcMainnet" && chainId !== ARC_MAINNET_CHAIN_ID) {
     throw new Error(`arcMainnet RPC reports chain id ${chainId}, expected ${ARC_MAINNET_CHAIN_ID}`);
+  }
+  if (networkName === "avalancheMainnet" && chainId !== AVALANCHE_MAINNET_CHAIN_ID) {
+    throw new Error(`avalancheMainnet RPC reports chain id ${chainId}, expected ${AVALANCHE_MAINNET_CHAIN_ID}`);
   }
 
   const code = async (a) => ethers.provider.getCode(a);

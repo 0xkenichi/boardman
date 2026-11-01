@@ -3,7 +3,7 @@
  * resolver, feeRecipient, stake cap, pause state. Sends nothing; needs no key.
  *
  *   ESCROW=0x… EXPECT_OWNER=0xSafe EXPECT_RESOLVER=0x… EXPECT_TREASURY=0x… \
- *   EXPECT_MAX_STAKE_USDC=25 npx hardhat run scripts/check_v2_roles.js --network arcMainnet
+ *   EXPECT_MAX_STAKE_USDC=25 npx hardhat run scripts/check_v2_roles.js --network avalancheMainnet
  *
  * Exits non-zero on any mismatch. Run it after deploy (pendingOwner = Safe)
  * and again after the Safe's acceptOwnership with EXPECT_ACCEPTED=1 (owner =

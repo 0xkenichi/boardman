@@ -2,7 +2,7 @@
 import hre from "hardhat";
 const { ethers } = hre;
 import { expect } from "chai";
-import { preflight } from "../scripts/lib/v2_preflight.js";
+import { MAINNETS, preflight } from "../scripts/lib/v2_preflight.js";
 import { deployEscrow } from "./helpers/boardman.js";
 
 describe("Audit 2026-10: deploy_v2 preflight (L-04)", function () {
@@ -34,6 +34,12 @@ describe("Audit 2026-10: deploy_v2 preflight (L-04)", function () {
 
   it("L-04 refuses arcMainnet when the RPC is not chain 5042", async function () {
     await expect(preflight(ethers, args({ networkName: "arcMainnet" }))).to.be.rejectedWith(/expected 5042/);
+  });
+
+  it("refuses avalancheMainnet when the RPC is not chain 43114, and treats it as real money", async function () {
+    await expect(preflight(ethers, args({ networkName: "avalancheMainnet" }))).to.be.rejectedWith(/expected 43114/);
+    expect(MAINNETS.has("avalancheMainnet")).to.equal(true);
+    expect(MAINNETS.has("avalancheFuji")).to.equal(false);
   });
 
   it("L-04 refuses a token that is not 6-decimal USDC", async function () {

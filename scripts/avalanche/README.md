@@ -67,9 +67,41 @@ cd contracts && HARDHAT_CHAIN_ID=43113 npx hardhat node &   # a local chain that
 Then:
 
 1. Deploy `MockUSDC` and mint to `funder_deployer`.
-2. Run `deploy_fuji.sh` with `AVALANCHE_FUJI_RPC_URL=http://127.0.0.1:8545 USDC_ADDRESS=<mock>`.
+2. Run `deploy_fuji.sh` with `AVALANCHE_FUJI_RPC_URL=http://127.0.0.1:8545 USDC_ADDRESS=<mock> DEPLOYMENT_OUT=/tmp/local_deployment.json`.
+   The deploy script never overwrites the live Fuji record unless `OVERWRITE_DEPLOYMENT=1`.
 3. Run `fuji_proof.py --rpc http://127.0.0.1:8545 --deployment <file> --data /tmp/arena`
    with `AVALANCHE_FUJI_USDC_ADDRESS=<mock>`.
 
 Forking real Fuji (`hardhat node --fork`) also works but is slow through the
 public RPC.
+
+## A season of matches
+
+```bash
+.venv/bin/python scripts/avalanche/fuji_season.py
+```
+
+Raja, Nero and Sheila play a double round robin: 6 chess matches, each
+locked, played and settled on BoardmanEscrow v2 on Fuji. Afterwards
+Boardman's fee sweep (`fee_sweep.sweep_escrow_fees`) moves the platform fees
+to the treasury, and the escrow's books are checked on-chain
+(`balance == totalLocked + accruedFees + totalOwed`). The run writes
+[`docs/avalanche/FUJI_SEASON.md`](../../docs/avalanche/FUJI_SEASON.md).
+
+## Switch production to the Avalanche build (founder only)
+
+```bash
+bash scripts/avalanche/switch_prod_to_avalanche.sh            # dry run: shows the plan
+APPLY=1 bash scripts/avalanche/switch_prod_to_avalanche.sh    # do it
+```
+
+On the VM, the script:
+1. backs up `.env`
+2. checks out `origin/avalanche`
+3. sets the Fuji chain env and the Fuji resolver key. The key is piped over
+   ssh from `.fuji/wallets.json` and never printed.
+4. rebuilds the API, bot and house
+
+From the Mac, it then redeploys the site with `scripts/deploy_frontend.sh`;
+the site now defaults to Avalanche. The rollback steps are at the top of the
+script.

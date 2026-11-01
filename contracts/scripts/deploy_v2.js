@@ -235,7 +235,14 @@ async function main() {
   console.log(JSON.stringify(info, null, 2));
 
   if (!local || process.env.WRITE_LOCAL_DEPLOYMENT === "1") {
-    const out = path.join(__dirname, "../deployments", `boardman_v2_${network.name}.json`);
+    // DEPLOYMENT_OUT redirects the record (local rehearsals against a node that
+    // reports a real chain id). An existing record is never overwritten unless
+    // OVERWRITE_DEPLOYMENT=1: it is the source of truth for live addresses.
+    let out = process.env.DEPLOYMENT_OUT || path.join(__dirname, "../deployments", `boardman_v2_${network.name}.json`);
+    if (fs.existsSync(out) && process.env.OVERWRITE_DEPLOYMENT !== "1") {
+      out = out.replace(/\.json$/, `.${Date.now()}.json`);
+      console.warn(`WARNING: a deployment record already exists; writing ${path.basename(out)} instead`);
+    }
     fs.writeFileSync(out, JSON.stringify(info, null, 2) + "\n");
     console.log(`Saved ${path.relative(process.cwd(), out)}`);
   }
