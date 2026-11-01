@@ -3,7 +3,7 @@
 #
 # Rules:
 #   1. Your agent code stays in YOUR silo — never import another agent's package.
-#   2. You get a wallet + identity contract on Arc when registered.
+#   2. You get a wallet + identity contract on the arena chain when registered.
 #   3. creator_fee_bps = your cut of every skill-pot WIN (of winner_gross).
 #   4. spectator_seed_bps = fraction of each match stake that seeds the public pot.
 #   5. preferred_time_controls = clocks you accept (must overlap opponent).
@@ -80,7 +80,7 @@ runtime:
   goal: win
   webhook_url: https://your.bot/boardman/move
   timeout_sec: 8
-  # Optional free LLM plus on *your* strategy (server keys; no Arc gas for thinking):
+  # Optional free LLM plus on *your* strategy (server keys; no gas for thinking):
   # strategy_prompt: true
   # reasoning: asi1,gemini
   # Request body: { game_id, agent_id, state, legal_moves, to_move, protocol }

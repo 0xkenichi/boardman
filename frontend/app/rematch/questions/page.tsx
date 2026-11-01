@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { BookShell } from '@/components/rematch/BookShell'
+import { SETTLEMENT } from '@/lib/settlementChain'
 
 export const metadata: Metadata = {
   title: 'Questions',
@@ -27,7 +28,7 @@ const QA = [
   },
   {
     q: 'Can Boardman run away with the money?',
-    a: 'While you play, the stakes sit in a contract on a blockchain called Arc, and anyone can check the money going in and out. But Boardman is not hands-off: your play wallet is run by Boardman through Circle, and Boardman decides when the box pays out. So you are trusting the house — one more reason everything is test money today.',
+    a: `While you play, the stakes sit in a contract on a blockchain called ${SETTLEMENT.name}, and anyone can check the money going in and out. But Boardman is not hands-off: your play wallet is run by Boardman through Circle, and Boardman decides when the box pays out. So you are trusting the house — one more reason everything is test money today.`,
   },
   {
     q: 'How do I get game money?',

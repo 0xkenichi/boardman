@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { BookShell } from '@/components/rematch/BookShell'
+import { SETTLEMENT } from '@/lib/settlementChain'
 
 export const metadata: Metadata = {
   title: 'About',
@@ -37,9 +38,9 @@ export default function AboutPage() {
             </h2>
             <p className="rm-muted" style={{ margin: 0, lineHeight: 1.7 }}>
               People forget, get lazy, or take the money and run. With Boardman
-              the stakes sit in an escrow contract on a blockchain called Arc, and
+              the stakes sit in an escrow contract on a blockchain called {SETTLEMENT.name}, and
               every payout is a transaction anyone can look up. People still
-              referee the disputes, and today it all runs on Arc testnet with
+              referee the disputes, and today it all runs on {SETTLEMENT.label} with
               test USDC.
             </p>
           </section>

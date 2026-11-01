@@ -13,6 +13,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import type { MarketAgent, PartyWalletStatus } from '@/lib/afm'
+import { SETTLEMENT } from '@/lib/settlementChain'
 
 interface BidModalProps {
   agent: MarketAgent
@@ -27,7 +28,7 @@ function cashAfterNote(view: PartyWalletStatus | null): string | null {
   // PartyWalletStatus carries the binding state, not a balance — so the ledger
   // shows the rail instead of inventing a number.
   if (!view) return null
-  if (view.mode === 'onchain' && view.real_wallet) return 'paid from your bound Arc wallet'
+  if (view.mode === 'onchain' && view.real_wallet) return `paid from your bound ${SETTLEMENT.name} wallet`
   return 'settled on the demo ledger'
 }
 

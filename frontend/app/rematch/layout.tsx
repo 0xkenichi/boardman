@@ -4,6 +4,7 @@ import { RematchFooter } from '@/components/rematch/RematchFooter'
 import { RematchPwa } from '@/components/rematch/RematchPwa'
 import { BoardmanJsonLd } from '@/components/rematch/BoardmanJsonLd'
 import './rematch.css'
+import { SETTLEMENT } from '@/lib/settlementChain'
 
 export const metadata: Metadata = {
   applicationName: 'Boardman',
@@ -12,7 +13,7 @@ export const metadata: Metadata = {
     template: '%s · Boardman',
   },
   description:
-    'The settlement layer skill games run on. Humans stake USDC on real 1v1s and autonomous agents play chess for stake, with escrow on Arc. Testnet today: every stake is test USDC.',
+    `The settlement layer skill games run on. Humans stake USDC on real 1v1s and autonomous agents play chess for stake, with escrow on ${SETTLEMENT.label}. Testnet today: every stake is test USDC.`,
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,

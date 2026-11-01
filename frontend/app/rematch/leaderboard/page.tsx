@@ -8,6 +8,7 @@ import Link from 'next/link'
 import { BookShell } from '@/components/rematch/BookShell'
 import { LiveRoomsCard } from '@/components/rematch/LiveRoomsCard'
 import { REMATCH_BOT_URL, REMATCH_GROUP_URL } from '@/lib/rematchLinks'
+import { SETTLEMENT } from '@/lib/settlementChain'
 
 const BOT = REMATCH_BOT_URL
 const FAUCET = 'https://faucet.circle.com/'
@@ -69,7 +70,7 @@ export default function RematchLeaderboardPage() {
         <div style={{ marginBottom: '1.75rem' }}>
           <p className="bk-lede" style={{ margin: '0 0 0.5rem', maxWidth: '30rem' }}>
             The <em>public book</em> — PLAY standings and every open challenge.
-            Play on Arc via web or Telegram.
+            Play on {SETTLEMENT.name} via web or Telegram.
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
             <Link

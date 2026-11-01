@@ -8,11 +8,15 @@
 
 export type SettlementChain = {
   id: 'arc' | 'avalanche'
+  /** Short network name for running text ("on Avalanche"). */
+  name: string
   label: string
   /** Upper-case strap for the ledger rules on the homepage. */
   strap: string
   chainId: number
   gasToken: string
+  /** Network to pick on faucet.circle.com for test USDC. */
+  faucetNetwork: string
   usdc: string
   escrow: string
   explorerName: string
@@ -24,10 +28,12 @@ const CHAINS: Record<SettlementChain['id'], SettlementChain> = {
   // BoardmanEscrow V1 (tiered fees). 0xD898…66Fc is the archived flat-fee V1.
   arc: {
     id: 'arc',
+    name: 'Arc',
     label: 'Arc testnet',
     strap: 'ARC TESTNET · CHAIN 5042002 · USDC-NATIVE GAS',
     chainId: 5042002,
     gasToken: 'USDC',
+    faucetNetwork: 'Arc Testnet',
     usdc: '0x3600000000000000000000000000000000000000',
     escrow: '0xD382f627fB565eb96D9EFFb66B9119DD4a555847',
     explorerName: 'Arcscan',
@@ -37,10 +43,12 @@ const CHAINS: Record<SettlementChain['id'], SettlementChain> = {
   // BoardmanEscrow v2 (contracts/deployments/boardman_v2_avalancheFuji.json).
   avalanche: {
     id: 'avalanche',
+    name: 'Avalanche',
     label: 'Avalanche Fuji',
     strap: 'AVALANCHE FUJI C-CHAIN · CHAIN 43113 · CIRCLE USDC',
     chainId: 43113,
     gasToken: 'AVAX',
+    faucetNetwork: 'Avalanche Fuji',
     usdc: '0x5425890298aed601595a70AB815c96711a31Bc65',
     escrow: '0xa0626A1744D4817B8b6fE0414a04CB20F6696F09',
     explorerName: 'Snowtrace',

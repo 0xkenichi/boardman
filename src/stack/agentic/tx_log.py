@@ -12,6 +12,8 @@ from typing import Any, Optional
 
 from gaming.src.stack.agentic.db import transaction
 
+# Match records without a chain_id predate per-chain links; those all settled
+# on Arc testnet. Records with a chain_id link to that chain's explorer.
 EXPLORER = "https://explorer.testnet.arc.io/tx/"
 
 
@@ -19,11 +21,20 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _explorer(tx: str) -> str:
+def _explorer(tx: str, chain_id: Optional[str] = None) -> str:
     if not tx:
         return ""
     if str(tx).startswith("http"):
         return str(tx)
+    if chain_id:
+        try:
+            from gaming.src.backend.services.chains import get_explorer_tx
+
+            base = get_explorer_tx(chain_id)
+            if base:
+                return base + str(tx)
+        except Exception:
+            pass
     return EXPLORER + str(tx)
 
 
@@ -108,7 +119,7 @@ def upsert_match(match: dict[str, Any]) -> None:
                     step,
                     mid,
                     agent,
-                    _explorer(txh),
+                    _explorer(txh, match.get("chain_id") or (match.get("onchain") or {}).get("chain_id")),
                     match.get("settled_at") or match.get("created_at") or _now(),
                 ),
             )

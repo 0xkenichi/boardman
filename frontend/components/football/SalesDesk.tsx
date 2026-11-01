@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { fetchOwnerSales, type PartySalesView, type SalesTimelineEntry } from '@/lib/afm'
 import { useSessionProfileId } from '@/lib/useSessionProfile'
+import { SETTLEMENT } from '@/lib/settlementChain'
 
 function money(usdc: string | number | null | undefined): string {
   const n = Number(usdc ?? 0)
@@ -32,7 +33,7 @@ function shortDate(iso: string | null | undefined) {
 }
 
 function timelineTitle(t: SalesTimelineEntry): { icon: string; text: string } {
-  const mode = t.mode === 'onchain' ? 'real USDC on Arc' : t.mode === 'ledger' ? 'demo ledger' : null
+  const mode = t.mode === 'onchain' ? `real USDC on ${SETTLEMENT.name}` : t.mode === 'ledger' ? 'demo ledger' : null
   const suffix = mode ? ` · settled on the ${mode}` : ''
   switch (t.kind) {
     case 'sold':

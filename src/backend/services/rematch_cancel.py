@@ -43,6 +43,18 @@ def _update(challenge_id: str, data: dict) -> None:
     ).execute()
 
 
+def _resolver_gas_hint(ch: dict) -> str:
+    """'AVAX on Avalanche Fuji' for the match's chain (from config)."""
+    try:
+        from gaming.src.backend.services.chains import chain_label, get_chain
+
+        cid = ch.get("settlement_chain") or None
+        token = get_chain(cid or "").get("gas_token") or "gas"
+        return f"{token} on {chain_label(cid)}"
+    except Exception:
+        return "gas on the settlement chain"
+
+
 def _has_onchain_lock(ch: dict) -> bool:
     return bool(ch.get("creator_lock_tx_id") or ch.get("opponent_lock_tx_id") or ch.get("creator_lock_tx_hash"))
 
@@ -144,7 +156,7 @@ async def execute_cancel(profile_id: str, challenge_id: str) -> dict[str, Any]:
             raise ValueError(
                 f"Refund failed: {exc}\n"
                 "Funds stay locked until the resolver wallet cancels on-chain. "
-                "Ops: set a real ADMIN_PRIVATE_KEY (escrow resolver) with Arc gas/USDC."
+                f"Ops: set a real ADMIN_PRIVATE_KEY (escrow resolver) funded with {_resolver_gas_hint(ch)}."
             ) from exc
 
     if mode == "propose":
@@ -185,7 +197,7 @@ async def execute_cancel(profile_id: str, challenge_id: str) -> dict[str, Any]:
             if "ADMIN_PRIVATE_KEY" in err or "import" in err.lower() or "not configured" in err.lower():
                 raise ValueError(
                     f"Refund failed: {exc}. "
-                    "Ops: set ADMIN_PRIVATE_KEY (resolver) funded on Arc, "
+                    f"Ops: set ADMIN_PRIVATE_KEY (resolver) funded with {_resolver_gas_hint(ch)}, "
                     "then retry Confirm cancel."
                 ) from exc
             raise ValueError(f"Refund failed: {exc}") from exc

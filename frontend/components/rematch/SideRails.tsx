@@ -7,6 +7,7 @@
  */
 
 import { usePathname } from 'next/navigation'
+import { SETTLEMENT } from '@/lib/settlementChain'
 
 const LEFT_GAMES = [
   { emoji: '⚽', name: 'EA FC', tag: 'Console · Mobile' },
@@ -26,7 +27,7 @@ const RIGHT_GAMES = [
   { emoji: '💎', name: 'USDC lock', tag: 'Fair settle' },
 ]
 
-const FLOAT_CHIPS_L = ['Lock in', '1v1', 'Arc', 'Screenshot', 'PLAY']
+const FLOAT_CHIPS_L = ['Lock in', '1v1', SETTLEMENT.name, 'Screenshot', 'PLAY']
 const FLOAT_CHIPS_R = ['Settle', 'Boardman', 'Telegram', 'Stake', 'Win']
 
 function GameCard({

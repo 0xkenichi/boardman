@@ -13,6 +13,7 @@ import { useSearchParams } from 'next/navigation'
 import { BookShell } from '@/components/rematch/BookShell'
 
 import { telegramBotUrl } from '@/lib/telegramBot'
+import { SETTLEMENT } from '@/lib/settlementChain'
 
 const BOT = telegramBotUrl()
 const FAUCET = 'https://faucet.circle.com/'
@@ -48,7 +49,7 @@ function FundInner() {
             <div className="rm-card rm-card-hero">
               <div className="bk-slip">
                 <div className="bk-slip-head">
-                  <span>YOUR ARC ADDRESS</span>
+                  <span>YOUR {SETTLEMENT.name.toUpperCase()} ADDRESS</span>
                   <span>DEPOSIT</span>
                 </div>
                 <div className="bk-slip-row">
@@ -78,7 +79,7 @@ function FundInner() {
             <ol className="rm-muted bk-rules" style={{ margin: 0, paddingLeft: '1.2rem', lineHeight: 1.85 }}>
               <li>Copy your address above</li>
               <li>
-                Open the faucet → choose <strong>Arc Testnet</strong> →{' '}
+                Open the faucet → choose <strong>{SETTLEMENT.faucetNetwork}</strong> →{' '}
                 <strong>USDC</strong>
               </li>
               <li>Paste address → request tokens</li>

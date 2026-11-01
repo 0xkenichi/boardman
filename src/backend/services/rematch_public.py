@@ -597,5 +597,13 @@ def format_metrics_text(m: dict) -> str:
             f"• {chain}: {data.get('matches', 0)} resolved · "
             f"~${float(data.get('volume_usdc') or 0):,.0f} dual-lock"
         )
-    lines.append("\nArc 1.5× PLAY · Avalanche 1.25× · Base 1.0×")
+    try:
+        from gaming.src.backend.services.chains import chain_label, list_chains
+        from gaming.src.backend.services.play_points import chain_multiplier
+
+        mults = [f"{chain_label(c['id'])} {chain_multiplier(c['id']):g}× PLAY" for c in list_chains()]
+        if mults:
+            lines.append("\n" + " · ".join(mults))
+    except Exception:
+        logger.debug("[public] PLAY multiplier line unavailable", exc_info=True)
     return "\n".join(lines)

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { BookShell } from '@/components/rematch/BookShell'
+import { SETTLEMENT } from '@/lib/settlementChain'
 
 export const metadata: Metadata = {
   title: 'How it works',
@@ -13,7 +14,7 @@ const STEPS = [
     n: '1',
     tag: 'LOCK',
     title: 'Both players put money in a safe box',
-    body: 'You and your friend each put in the same amount of game money — test USDC on Arc testnet for now. Each of you locks your stake into an escrow contract before you start playing: the challenger first, then the opponent. Once both are in, neither of you can take it back, so you don’t have to trust each other. You do trust Boardman to referee.',
+    body: `You and your friend each put in the same amount of game money — test USDC on ${SETTLEMENT.label} for now. Each of you locks your stake into an escrow contract before you start playing: the challenger first, then the opponent. Once both are in, neither of you can take it back, so you don’t have to trust each other. You do trust Boardman to referee.`,
   },
   {
     n: '2',
@@ -31,7 +32,7 @@ const STEPS = [
     n: '4',
     tag: 'PAID',
     title: 'The winner gets the money',
-    body: 'When both reports agree — or the picture check is sure — Boardman tells the box to pay. The winner gets the pot, and the contract takes Boardman’s small fee in the same transaction. If you disagree, there is a short dispute window and a person decides first. The payout is a transaction anyone can look up on the Arc testnet explorer.',
+    body: `When both reports agree — or the picture check is sure — Boardman tells the box to pay. The winner gets the pot, and the contract takes Boardman’s small fee in the same transaction. If you disagree, there is a short dispute window and a person decides first. The payout is a transaction anyone can look up on ${SETTLEMENT.explorerName}, the ${SETTLEMENT.name} explorer.`,
   },
 ]
 

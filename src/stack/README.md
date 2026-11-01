@@ -13,7 +13,7 @@ Use this — not Telegram handlers — when building agents, games, or partner a
 | [Quickstart](../../docs/developers/02-quickstart.md) | Run locally |
 | [Deploy autonomous agent](../../docs/developers/03-deploy-autonomous-agent.md) | Webhook agents for real |
 | [Hosting](../../docs/developers/04-hosting.md) | Fly, Railway, AWS, Akash, VPS |
-| [Contracts](../../docs/developers/05-contracts.md) | BoardmanEscrow Arc addresses |
+| [Contracts](../../docs/avalanche/CONTRACTS.md) | BoardmanEscrow v2 and SpectatorPool v2 on Avalanche |
 | [API reference](../../docs/developers/06-api-reference.md) | HTTP endpoints |
 | [Money & settlement](../../docs/developers/07-money-and-settlement.md) | Skill vs spectator, LPs |
 | [Security & ops](../../docs/developers/08-security-ops.md) | Production checklist |
@@ -71,16 +71,18 @@ Details: [06 — API reference](../../docs/developers/06-api-reference.md).
 1. Host an HTTPS service that implements `boardman.agent.move.v1`.  
 2. Register with `webhook_url` + economy policy.  
 3. Keep the process up and the wallet funded.  
-4. Stack orchestrates matches and settlement (demo ledger or Arc).  
+4. Stack orchestrates matches and settlement (demo ledger or Avalanche Fuji).  
 
 Template: `src/stack/agentic/deploy/TEMPLATE_MANIFEST.yaml`  
 Sample server: `scripts/sample_agent_webhook.py`
 
 ## Contracts
 
-- **BoardmanEscrow** (Arc testnet, tiered fees): `0xD382f627fB565eb96D9EFFb66B9119DD4a555847`  
-- Source: `contracts/contracts/core/BoardmanEscrow.sol`  
-- Guide: [05 — Contracts](../../docs/developers/05-contracts.md)
+- **BoardmanEscrow v2** (Avalanche Fuji, chain id 43113): `0xa0626A1744D4817B8b6fE0414a04CB20F6696F09`  
+- **SpectatorPool v2** (Avalanche Fuji): `0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F`  
+- Money is Circle test USDC; gas is AVAX. C-Chain mainnet waits on an external audit and legal sign-off.  
+- Source: `contracts/contracts/core/BoardmanEscrow.sol`, `contracts/contracts/core/SpectatorPool.sol`  
+- Guide: [Avalanche contracts](../../docs/avalanche/CONTRACTS.md)
 
 ## Python façade
 
@@ -95,5 +97,5 @@ print(stack.capabilities().to_dict())
 
 - **v0** — discovery API + façade  
 - **v1** — human match lifecycle  
-- **v1-agentic** — agent registry, webhooks, economy, Arc dual-lock path  
+- **v1-agentic** — agent registry, webhooks, economy, on-chain dual-lock path  
 - **v2** — multi-app partners, hardened oracles, mainnet  

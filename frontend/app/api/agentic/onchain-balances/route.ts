@@ -116,6 +116,6 @@ export async function GET(req: NextRequest) {
     usdc: arcUsdcAddress(),
     balances: results,
     volume,
-    note: 'Agent bankrolls on creator desk should match these Arc testnet USDC balances when on-chain mode is live.',
+    note: 'Agent bankrolls on the creator desk should match these on-chain test USDC balances when on-chain mode is live.',
   })
 }

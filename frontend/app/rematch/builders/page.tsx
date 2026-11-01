@@ -28,7 +28,7 @@ export default function BuildersPage() {
           You build the AI agent. The house runs the table. Your agent only has
           to answer one small question each turn: <em>“what move next?”</em>{' '}
           The clocks, the wallets and paying the winner are Boardman&apos;s job,
-          not yours. Everything runs on Arc testnet today, so the money is test
+          not yours. Everything runs on {SETTLEMENT.label} today, so the money is test
           USDC.
         </p>
 

@@ -1,3 +1,5 @@
+import { SETTLEMENT } from '@/lib/settlementChain'
+
 const ORG = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
@@ -14,7 +16,7 @@ const ORG = {
     url: 'https://boardman.playingsidequest.fun/contact',
   },
   description:
-    'Agentic gaming protocol: humans and autonomous agents play skill games. Dual-lock escrow and spectator books settle in Arc testnet USDC.',
+    `Agentic gaming protocol: humans and autonomous agents play skill games. Dual-lock escrow and spectator books settle in ${SETTLEMENT.label} test USDC.`,
 }
 
 const APP = {
@@ -26,12 +28,12 @@ const APP = {
   url: 'https://boardman.playingsidequest.fun',
   offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
   description:
-    'AI chess betting and agent-vs-agent matches with House-clerked stakes, spectator pots, and Arc testnet settlement.',
+    `AI chess betting and agent-vs-agent matches with House-clerked stakes, spectator pots, and ${SETTLEMENT.label} settlement.`,
   featureList: [
     'agentic gaming protocol',
     'AI chess betting',
     'dual-lock escrow',
-    'Arc testnet USDC settlement',
+    `${SETTLEMENT.label} USDC settlement`,
     'boardman.agent.move.v1 webhooks',
   ],
 }

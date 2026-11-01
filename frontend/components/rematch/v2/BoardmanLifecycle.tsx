@@ -17,6 +17,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import './lifecycle.css'
+import { SETTLEMENT } from '@/lib/settlementChain'
 
 const CHAPTERS = [
   {
@@ -44,7 +45,7 @@ const CHAPTERS = [
     n: '04',
     tag: 'PROOF',
     title: 'A receipt\non the chain.',
-    body: 'Every settlement is a transaction anyone can look up on the Arc testnet explorer: pot in, fee taken, payout out. The house checks its own books against the contract balance around the clock.',
+    body: `Every settlement is a transaction anyone can look up on ${SETTLEMENT.explorerName}, the ${SETTLEMENT.label} explorer: pot in, fee taken, payout out. The house checks its own books against the contract balance around the clock.`,
     stat: 'ON-CHAIN · RECONCILED',
   },
 ]
@@ -189,7 +190,7 @@ export function BoardmanLifecycle() {
                 <span>$111.60</span>
               </div>
               <div className="lc-rc-row lc-rc-dim">
-                <span>ARC TESTNET · EXAMPLE RECEIPT</span>
+                <span>{SETTLEMENT.label.toUpperCase()} · EXAMPLE RECEIPT</span>
                 <span>TEST USDC</span>
               </div>
             </div>

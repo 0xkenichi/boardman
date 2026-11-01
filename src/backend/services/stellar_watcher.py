@@ -226,6 +226,14 @@ def process_stellar_payments() -> dict[str, Any]:
     return {"found": found, "matched": matched, "errors": errors}
 
 
+def _settlement_label() -> str:
+    """Player-facing name of the settlement chain (config/chains.yaml label)."""
+    from gaming.src.backend.services.chains import chain_label
+    from gaming.src.backend.services.funding_rails import settlement_rail_id
+
+    return chain_label(settlement_rail_id())
+
+
 def _notify_rail_paid(ref: str, amount: float, tx_hash: str, rail: str) -> None:
     """Best-effort admin + user notify (sync path uses asyncio if loop running)."""
     import asyncio
@@ -244,7 +252,7 @@ def _notify_rail_paid(ref: str, amount: float, tx_hash: str, rail: str) -> None:
             f"Amount ~${amount:,.2f} USDC\n"
             f"Tx <code>{tx_hash[:20]}…</code>\n"
             f"Play: <code>{play}</code>\n\n"
-            f"Send USDC to play address on Arc, then:\n"
+            f"Send USDC to play address on {_settlement_label()}, then:\n"
             f"<code>/credit_topup {ref}</code>"
         )
         for aid in admin_telegram_ids():

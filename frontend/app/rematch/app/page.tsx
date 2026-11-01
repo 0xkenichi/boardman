@@ -9,6 +9,7 @@ import { LiveRoomsCard } from '@/components/rematch/LiveRoomsCard'
 import { MiniPayHost, MiniPayPromo } from '@/components/rematch/MiniPayHost'
 import { api, type Me } from '@/lib/appClient'
 import { REMATCH_BOT_URL, REMATCH_BOT_USERNAME } from '@/lib/rematchLinks'
+import { SETTLEMENT } from '@/lib/settlementChain'
 
 const BOT = REMATCH_BOT_URL
 const BOT_USERNAME = REMATCH_BOT_USERNAME
@@ -107,7 +108,7 @@ function HowToPlayGuide() {
           <div>
             <p className="rm-label" style={{ marginBottom: '0.25rem' }}>1 · Fund (testnet)</p>
             <p className="rm-muted" style={{ margin: 0, fontSize: '0.85rem', lineHeight: 1.55 }}>
-              Get Arc testnet USDC from <a href={FAUCET} target="_blank" rel="noreferrer">faucet.circle.com</a>{' '}
+              Get {SETTLEMENT.label} test USDC from <a href={FAUCET} target="_blank" rel="noreferrer">faucet.circle.com</a>{' '}
               — testnet only, <strong>don&apos;t send real money</strong>. Send it to your play wallet
               address (Wallet tab).
             </p>
@@ -303,7 +304,7 @@ export default function RematchAppHome() {
               Boardman settles.
             </h1>
             <p className="rm-muted rm-mb-0">
-              Same Telegram account. Same Arc USDC wallet. Challenge, lock, play, send the final
+              Same Telegram account. Same {SETTLEMENT.name} USDC wallet. Challenge, lock, play, send the final
               screen — no seed phrases.
             </p>
           </div>
@@ -391,7 +392,7 @@ export default function RematchAppHome() {
         </div>
 
         <div className="rm-card rm-card-hero">
-          <span className="rm-label">Balance on the book (Arc · play wallet)</span>
+          <span className="rm-label">Balance on the book ({SETTLEMENT.name} · play wallet)</span>
           <div className="rm-balance">
             <span>$</span>
             {Number(me.balance || 0).toFixed(2)}
@@ -429,7 +430,7 @@ export default function RematchAppHome() {
           <div className="rm-card rm-card-warn">
             <p className="rm-section-title">No balance yet — fund your play wallet</p>
             <p className="rm-muted" style={{ margin: '0 0 0.85rem', fontSize: '0.88rem', lineHeight: 1.6 }}>
-              Get Arc <strong>testnet</strong> USDC from{' '}
+              Get {SETTLEMENT.name} <strong>testnet</strong> USDC from{' '}
               <a href={FAUCET} target="_blank" rel="noreferrer">faucet.circle.com</a> and send it to
               your play address above. Testnet only — <strong>don&apos;t send real money</strong>.
             </p>

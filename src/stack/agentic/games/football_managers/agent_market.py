@@ -334,6 +334,13 @@ def circle_configured() -> bool:
     )
 
 
+def _chain_label(chain_id: Optional[str]) -> str:
+    """Player-facing chain name (config/chains.yaml label)."""
+    from gaming.src.backend.services.chains import chain_label
+
+    return chain_label(chain_id)
+
+
 def _circle(chain_id: str = "arc"):
     """A CircleWalletService for a chain (monkeypatch seam in tests)."""
     from backend.circle_wallet_service import CircleWalletService
@@ -1108,7 +1115,7 @@ def _onchain_settle(
     if have < total:
         raise InsufficientBalance(
             f"buyer wallet {buyer['address']} has ${have} USDC, need ${total} — "
-            "top up from the Arc faucet (faucet.circle.com)"
+            f"top up with {_chain_label(chain_id)} test USDC from faucet.circle.com"
         )
 
     sent: list[dict[str, Any]] = []
@@ -1470,7 +1477,7 @@ def wallet_status(party_id: str) -> dict[str, Any]:
             else "ledger"
         ),
         "note": (
-            "This party pays with a bound Circle wallet (real Arc USDC)."
+            f"This party pays with a bound Circle wallet (real USDC on {_chain_label(real.get('chain_id'))})."
             if real and real.get("can_send")
             else (
                 "No Circle wallet bound — purchases settle on the book-entry ledger "

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { BRAND } from '@/lib/brand'
 import { telegramBotUrl } from '@/lib/telegramBot'
+import { SETTLEMENT } from '@/lib/settlementChain'
 
 const BOT = telegramBotUrl()
 
@@ -49,7 +50,7 @@ export function RematchFooter() {
             sideQuest ↗
           </a>
         </div>
-        <p className="bm-colophon-fine">ARC TESTNET · DUAL-LOCK ESCROW · FAIR · FAST · YOURS TO KEEP</p>
+        <p className="bm-colophon-fine">{SETTLEMENT.label.toUpperCase()} · DUAL-LOCK ESCROW · FAIR · FAST · YOURS TO KEEP</p>
       </div>
     </footer>
   )

@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import '@fontsource-variable/inter'
 import '@fontsource-variable/jetbrains-mono'
 import './globals.css'
+import { SETTLEMENT } from '@/lib/settlementChain'
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://boardman.playingsidequest.fun'),
@@ -11,13 +12,13 @@ export const metadata: Metadata = {
   },
   applicationName: 'Boardman',
   description:
-    'The settlement layer skill games run on. Humans stake USDC on real 1v1s and autonomous agents play chess for stake, with escrow on Arc. Testnet today: every stake is test USDC.',
+    `The settlement layer skill games run on. Humans stake USDC on real 1v1s and autonomous agents play chess for stake, with escrow on ${SETTLEMENT.label}. Testnet today: every stake is test USDC.`,
   keywords: [
     'Boardman',
     'sideQuest',
     'agentic gaming protocol',
     'AI chess betting',
-    'Arc testnet settlement',
+    `${SETTLEMENT.label} settlement`,
     'dual-lock escrow',
     'autonomous chess agents',
   ],
@@ -31,7 +32,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Boardman — Lock in. Play. Settle. Agents too.',
     description:
-      'Programmable USDC skill settlement on Arc. Humans play for stake. Agents play for stake.',
+      `Programmable USDC skill settlement on ${SETTLEMENT.name}. Humans play for stake. Agents play for stake.`,
     url: 'https://boardman.playingsidequest.fun',
     siteName: 'Boardman',
     images: [{ url: '/boardman-logo.jpg', width: 1024, height: 1024, alt: 'Boardman' }],

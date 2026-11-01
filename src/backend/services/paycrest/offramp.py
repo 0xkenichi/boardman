@@ -27,6 +27,14 @@ from gaming.src.backend.services.paycrest.client import get_client
 from gaming.src.backend.services.paycrest.models import AmbiguousSubmit, BankAccount, PaycrestError
 from gaming.src.backend.services.paycrest.onramp import DAY_MS, NairaError, institution_name, institutions
 
+
+def _chain_label(chain_id: Optional[str]) -> str:
+    """Player-facing chain name (config/chains.yaml label)."""
+    from gaming.src.backend.services.chains import chain_label
+
+    return chain_label(chain_id or config.settlement_chain())
+
+
 logger = logging.getLogger(__name__)
 
 ARC_GAS_RESERVE = Decimal("0.05")   # USDC kept back for the approve + burn gas on Arc
@@ -113,7 +121,7 @@ def prepare(principal: Any, amount: Decimal, bank: dict, *, now_ms: Optional[int
         # TODO(self-custody): build calls.cctp_burn_calls() as a passkey intent
         # and continue this order from the bridge's ``burned`` state.
         raise NairaError("Cash out to bank isn't available for passkey wallets yet. Withdraw USDC to an "
-                         "exchange that supports Arc instead.", "self_custody")
+                         f"exchange that supports {_chain_label(config.settlement_chain())} instead.", "self_custody")
     now = now_ms if now_ms is not None else store.now_ms()
     reason = precheck(principal, amount) or limit_problem(principal.profile_id, amount, now_ms=now)
     if reason:
@@ -396,7 +404,7 @@ def on_bridge_finished(br: dict) -> None:
             else:
                 store.transition(o["id"], "needs_review", expect="bridging_out", error="bridge_failed")
                 notices.alert_admins(f"Cash-out bridge {br['id']} FAILED for order {o['id']}: check whether the "
-                                     "Arc burn happened before refunding by hand.")
+                                     f"burn on {_chain_label(br.get('src_chain'))} happened before refunding by hand.")
                 notices.tell(o["profile_id"], "Your cash-out is delayed. Your money is safe; support is on it.")
     elif kind == "offramp_refund":
         for o in _orders_for_bridge(br, "refund_bridging"):

@@ -29,6 +29,7 @@ import {
 } from '@/lib/afm'
 import { ownedBy } from '@/lib/sessionProfile'
 import { useSessionProfileId } from '@/lib/useSessionProfile'
+import { SETTLEMENT } from '@/lib/settlementChain'
 const FORMATIONS = ['4-3-3', '4-2-3-1', '4-4-2', '3-5-2', '5-3-2', '4-1-4-1', '3-4-3']
 
 function cutPct(bps: number | null | undefined): string {
@@ -153,7 +154,7 @@ export function ManagerMarket({ onChanged }: { onChanged?: () => void }) {
 
   const onBindWallet = async () => {
     if (!bindAddress.trim().toLowerCase().startsWith('0x')) {
-      setError('Enter a full 0x… Arc USDC address to bind.')
+      setError(`Enter a full 0x… ${SETTLEMENT.name} USDC address to bind.`)
       return
     }
     setWalling(true)
@@ -244,7 +245,7 @@ export function ManagerMarket({ onChanged }: { onChanged?: () => void }) {
       const s = out.sale
       const paid =
         s.mode === 'onchain'
-          ? `paid in real USDC on Arc`
+          ? `paid in real USDC on ${SETTLEMENT.name}`
           : `settled on the demo ledger`
       const tx = s.settlement.legs.find((l) => l.tx_hash)
       setAgents((prev) => (prev ? prev.map((a) => (a.agent_id === agentId ? out.agent : a)) : prev))
@@ -508,7 +509,7 @@ export function ManagerMarket({ onChanged }: { onChanged?: () => void }) {
 
           <div className="fd-walletbar">
             <span className={`fd-chip${wallet?.mode === 'onchain' ? ' ok' : ''}`}>
-              {wallet?.mode === 'onchain' ? 'Real USDC · Arc' : 'Demo ledger'}
+              {wallet?.mode === 'onchain' ? `Real USDC · ${SETTLEMENT.name}` : 'Demo ledger'}
             </span>
             {wallet?.real_wallet ? (
               <span className="fd-walletnote">
@@ -576,7 +577,7 @@ export function ManagerMarket({ onChanged }: { onChanged?: () => void }) {
             <div className="fd-walletbar">
               <input
                 className="fd-input"
-                placeholder="Bind a real Arc USDC wallet — 0x… address you're paid to"
+                placeholder={`Bind a real ${SETTLEMENT.name} USDC wallet — 0x… address you're paid to`}
                 value={bindAddress}
                 onChange={(e) => setBindAddress(e.target.value)}
               />
@@ -763,9 +764,9 @@ export function ManagerMarket({ onChanged }: { onChanged?: () => void }) {
                   className={`fd-chip${settlement === 'onchain' || (settlement === 'auto' && wallet?.mode === 'onchain') ? ' ok' : ''}`}
                 >
                   {settlement === 'onchain'
-                    ? 'Real USDC · Arc (forced)'
+                    ? `Real USDC · ${SETTLEMENT.name} (forced)`
                     : settlement === 'auto' && wallet?.mode === 'onchain'
-                      ? 'Real USDC · Arc (auto)'
+                      ? `Real USDC · ${SETTLEMENT.name} (auto)`
                       : 'Demo ledger'}
                 </span>
               </div>

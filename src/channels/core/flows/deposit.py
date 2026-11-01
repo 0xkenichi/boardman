@@ -34,7 +34,9 @@ async def start(ctx) -> None:
                            "Top up with naira (Paycrest): bank transfer, real money"))
     if dep.paystack_ready():
         opts.append(Option(ids.encode(NAME, "ngn"), "Pay with Naira", "Card, bank or USSD via Paystack"))
-    opts.append(Option(ids.encode(NAME, "crypto"), "Send USDC", "To your play address on Arc"))
+    from gaming.src.backend.services.chains import chain_label
+
+    opts.append(Option(ids.encode(NAME, "crypto"), "Send USDC", f"To your play address on {chain_label()}"))
     opts.append(ctx.menu_option())
     ctx.choose("*Add money*\nHow do you want to pay?", opts)
 

@@ -170,10 +170,12 @@ def community_menu() -> InlineKeyboardMarkup:
 
 def network_menu(current: str = "arc") -> InlineKeyboardMarkup:
     """Arc-only for now (other chains kept in backend, not offered in UI)."""
+    from gaming.src.backend.services.chains import chain_label
+
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
-            text="🟣 Arc ✓",
+            text=f"🔺 {chain_label()} ✓",
             callback_data="ui:network:set:arc",
         )
     )
@@ -186,6 +188,8 @@ def network_menu(current: str = "arc") -> InlineKeyboardMarkup:
 
 def rematch_rivals_menu(rivals: list) -> InlineKeyboardMarkup:
     """One-tap rematch against past opponents."""
+    from gaming.src.backend.services.chains import chain_label
+
     builder = InlineKeyboardBuilder()
     if not rivals:
         builder.row(
@@ -196,7 +200,7 @@ def rematch_rivals_menu(rivals: list) -> InlineKeyboardMarkup:
             pid = r.get("profile_id") or ""
             tag = r.get("tag") or "player"
             stake = r.get("stake") or 1
-            chain = r.get("chain") or "arc"
+            chain = chain_label(r.get("chain"))
             game = r.get("game") or "EAFC"
             label = f"🔄 @{tag} · ${stake:.0f} · {game} · {chain}"
             if len(label) > 64:
@@ -474,10 +478,12 @@ def game_menu(category: str | None = None) -> InlineKeyboardMarkup:
 
 def chain_menu() -> InlineKeyboardMarkup:
     """Arc-only challenge network (legacy callback kept for in-flight wizards)."""
+    from gaming.src.backend.services.chains import chain_label
+
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
-            text="🟣 Arc",
+            text=f"🔺 {chain_label()}",
             callback_data="ui:chal:chain:arc",
         ),
     )

@@ -17,6 +17,8 @@ KNOWN_NAMES = {
     RAJA_ID: "Raja",
     NERO_ID: "Nero",
 }
+# Match records without a chain_id predate per-chain links; those all settled
+# on Arc testnet. Records with a chain_id link to that chain's explorer.
 EXPLORER_TX = "https://explorer.testnet.arc.io/tx/"
 
 
@@ -53,12 +55,32 @@ def _wallet(agent_id: Optional[str], match: dict[str, Any], agents: dict[str, An
     return rec.get("wallet_address") or ""
 
 
-def _explorer(tx: Optional[str]) -> str:
+def _explorer(tx: Optional[str], chain_id: Optional[str] = None) -> str:
     if not tx:
         return ""
     if str(tx).startswith("http"):
         return str(tx)
+    if chain_id:
+        try:
+            from gaming.src.backend.services.chains import get_explorer_tx
+
+            base = get_explorer_tx(chain_id)
+            if base:
+                return base + str(tx)
+        except Exception:
+            pass
     return EXPLORER_TX + str(tx)
+
+
+def _arena_label() -> str:
+    """Player-facing name of the arena chain (config/chains.yaml label)."""
+    try:
+        from gaming.src.backend.services.chains import chain_label
+        from gaming.src.backend.services.realms import arena_chain
+
+        return chain_label(arena_chain())
+    except Exception:
+        return "the arena chain"
 
 
 def _empty_card(agent_id: str, name: str, wallet: str) -> dict[str, Any]:
@@ -125,6 +147,7 @@ def _seed_spent(match: dict[str, Any], agent_id: str) -> Decimal:
 def _proofs(match: dict[str, Any]) -> dict[str, Any]:
     onchain = match.get("onchain") or {}
     settle = match.get("onchain_settle") or (match.get("escrow") or {}).get("onchain_settle") or {}
+    chain = match.get("chain_id") or onchain.get("chain_id") or None
     txs = []
     for t in onchain.get("txs") or []:
         txh = t.get("tx_hash") or ""
@@ -134,7 +157,7 @@ def _proofs(match: dict[str, Any]) -> dict[str, Any]:
             {
                 "step": t.get("step") or "",
                 "tx_hash": txh,
-                "explorer": t.get("explorer") or _explorer(txh),
+                "explorer": t.get("explorer") or _explorer(txh, chain),
             }
         )
     settle_hash = settle.get("tx_hash") or ""
@@ -143,7 +166,7 @@ def _proofs(match: dict[str, Any]) -> dict[str, Any]:
             {
                 "step": "resolveMatch",
                 "tx_hash": settle_hash,
-                "explorer": settle.get("explorer") or _explorer(settle_hash),
+                "explorer": settle.get("explorer") or _explorer(settle_hash, chain),
             }
         )
     create_h = onchain.get("create_tx_hash") or ""
@@ -156,9 +179,9 @@ def _proofs(match: dict[str, Any]) -> dict[str, Any]:
         "create_tx_hash": create_h,
         "join_tx_hash": join_h,
         "settle_tx_hash": settle_hash,
-        "explorer_create": onchain.get("explorer_create") or _explorer(create_h),
-        "explorer_join": onchain.get("explorer_join") or _explorer(join_h),
-        "explorer_settle": settle.get("explorer") or _explorer(settle_hash),
+        "explorer_create": onchain.get("explorer_create") or _explorer(create_h, chain),
+        "explorer_join": onchain.get("explorer_join") or _explorer(join_h, chain),
+        "explorer_settle": settle.get("explorer") or _explorer(settle_hash, chain),
         "txs": txs,
         "settle_error": match.get("onchain_settle_error") or "",
     }
@@ -537,7 +560,7 @@ def build_public_metrics(
     tx_rows: list[dict[str, Any]] = []
     tx_by_match: dict[str, int] = {}
 
-    def _add_tx(h: Any, step: str, match_id: str, agent_id: str = "") -> None:
+    def _add_tx(h: Any, step: str, match_id: str, agent_id: str = "", chain: Optional[str] = None) -> None:
         txh = str(h or "").strip()
         if not txh or txh in tx_seen:
             return
@@ -550,7 +573,7 @@ def build_public_metrics(
                 "step": step or "tx",
                 "match_id": match_id,
                 "agent_id": agent_id,
-                "explorer": _explorer(txh),
+                "explorer": _explorer(txh, chain),
                 "created_at": "",
             }
         )
@@ -558,18 +581,19 @@ def build_public_metrics(
     for m in rows_src:
         mid = str(m.get("match_id") or "")
         p = _proofs(m)
-        _add_tx(p.get("create_tx_hash"), "lock", mid, m.get("agent_a_id") or "")
-        _add_tx(p.get("join_tx_hash"), "join", mid, m.get("agent_b_id") or "")
-        _add_tx(p.get("settle_tx_hash"), "settle", mid, m.get("winner_agent_id") or "")
+        ch = m.get("chain_id") or (m.get("onchain") or {}).get("chain_id") or None
+        _add_tx(p.get("create_tx_hash"), "lock", mid, m.get("agent_a_id") or "", ch)
+        _add_tx(p.get("join_tx_hash"), "join", mid, m.get("agent_b_id") or "", ch)
+        _add_tx(p.get("settle_tx_hash"), "settle", mid, m.get("winner_agent_id") or "", ch)
         for t in p.get("txs") or []:
-            _add_tx(t.get("tx_hash"), t.get("step") or "tx", mid)
+            _add_tx(t.get("tx_hash"), t.get("step") or "tx", mid, "", ch)
         book = m.get("spectator_book") or {}
-        _add_tx(book.get("open_tx_hash"), "openBook", mid)
-        _add_tx(book.get("resolve_tx_hash"), "resolveBook", mid)
+        _add_tx(book.get("open_tx_hash"), "openBook", mid, "", ch)
+        _add_tx(book.get("resolve_tx_hash"), "resolveBook", mid, "", ch)
         for b in book.get("bets") or []:
-            _add_tx(b.get("tx_hash"), "deposit", mid)
+            _add_tx(b.get("tx_hash"), "deposit", mid, "", ch)
         for t in book.get("deposit_txs") or []:
-            _add_tx(t.get("tx_hash"), t.get("step") or "deposit", mid)
+            _add_tx(t.get("tx_hash"), t.get("step") or "deposit", mid, "", ch)
 
     for card in out_cards:
         mids = {
@@ -587,7 +611,7 @@ def build_public_metrics(
         "log": "data/agentic/house_log.db",
         "note": (
             "Games and on-chain hashes are stored in house_log.db. "
-            "A lock hash on Arc testnet means that stake was real. "
+            f"A lock hash on {_arena_label()} means that stake was locked on-chain (test USDC). "
             "Transaction count is unique hashes we recorded (lock/join/approve/settle/bets)."
         ),
         "volume": {

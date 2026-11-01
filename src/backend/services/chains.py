@@ -334,11 +334,21 @@ def get_chain(chain_id: str, *, require_enabled: bool = False) -> dict[str, Any]
         raise ValueError(
             f"Chain '{cid}' is not live for users yet "
             f"(status={chains[cid].get('status') or 'disabled'}). "
-            f"Use: {', '.join(c['id'] for c in list_chains()) or 'arc'}"
+            f"Use: {', '.join(c['id'] for c in list_chains()) or default_chain_id()}"
         )
     row = {**chains[cid], "id": cid}
     row["enabled"] = is_chain_enabled(cid)
     return row
+
+
+def chain_label(chain_id: Optional[str] = None) -> str:
+    """Player-facing chain name from config; default: the settlement chain."""
+    try:
+        cid = normalize_chain_id(chain_id)
+        row = (load_chains_config().get("chains") or {}).get(cid) or {}
+        return str(row.get("label") or cid)
+    except Exception:
+        return str(chain_id or "")
 
 
 def chain_has_escrow(chain_id: str) -> bool:

@@ -41,15 +41,20 @@ from gaming.src.backend.services.safety import MAX_STAKE_USDC, MIN_STAKE_USDC
 
 _MIN_STAKE = MIN_STAKE_USDC
 _MAX_STAKE = MAX_STAKE_USDC
-_USAGE = (
-    "Usage: /challenge @opponent amount game public|private [chain]\n\n"
-    "Examples:\n"
-    "• /challenge @stillkenichi 5 EAFC private\n"
-    "• /challenge @rival 10 \"NBA 2K\" private base\n"
-    "• /challenge public 5 EAFC public arc\n\n"
-    "Chains: base (live), arc, avalanche\n"
-    "Default chain uses the live escrow (usually base)."
-)
+def _usage() -> str:
+    """Usage text; chains come from config/chains.yaml."""
+    from gaming.src.backend.services.chains import chain_label, list_chains
+
+    cid = default_chain_id()
+    return (
+        "Usage: /challenge @opponent amount game public|private [chain]\n\n"
+        "Examples:\n"
+        "• /challenge @stillkenichi 5 EAFC private\n"
+        "• /challenge @rival 10 \"NBA 2K\" private\n"
+        f"• /challenge public 5 EAFC public {cid}\n\n"
+        f"Chains: {', '.join(c['id'] for c in list_chains()) or cid}\n"
+        f"Default chain: {cid} ({chain_label(cid)}), where the escrow lives."
+    )
 
 
 def _is_real(chain_id: str) -> bool:
@@ -77,7 +82,7 @@ def _parse_challenge_args(
     """
     raw = text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else ""
     if not raw.strip():
-        return None, Decimal("0"), "", "", default_chain_id(), _USAGE
+        return None, Decimal("0"), "", "", default_chain_id(), _usage()
 
     try:
         parts = shlex.split(raw)
@@ -85,7 +90,7 @@ def _parse_challenge_args(
         return None, Decimal("0"), "", "", default_chain_id(), f"Invalid quoting: {exc}"
 
     if not parts:
-        return None, Decimal("0"), "", "", default_chain_id(), _USAGE
+        return None, Decimal("0"), "", "", default_chain_id(), _usage()
 
     # Optional trailing chain: arc | base | avalanche
     # No chain typed: real money when the humans realm is live, else practice.
@@ -99,7 +104,7 @@ def _parse_challenge_args(
         parts = parts[:-1]
 
     if len(parts) < 1:
-        return None, Decimal("0"), "", "", chain_id, _USAGE
+        return None, Decimal("0"), "", "", chain_id, _usage()
 
     visibility = parts[-1].lower() if parts else ""
     if visibility not in ("public", "private"):
@@ -109,12 +114,12 @@ def _parse_challenge_args(
             "",
             "",
             chain_id,
-            "Visibility must be public or private.\n\n" + _USAGE,
+            "Visibility must be public or private.\n\n" + _usage(),
         )
 
     if parts[0].lower() in ("public", "private"):
         if len(parts) < 4:
-            return None, Decimal("0"), "", "", chain_id, "Missing amount or game.\n\n" + _USAGE
+            return None, Decimal("0"), "", "", chain_id, "Missing amount or game.\n\n" + _usage()
         opponent_tag = None
         amount_str = parts[1]
         game = " ".join(parts[2:-1])
@@ -126,7 +131,7 @@ def _parse_challenge_args(
                 "",
                 "",
                 chain_id,
-                "Missing opponent, amount, or game.\n\n" + _USAGE,
+                "Missing opponent, amount, or game.\n\n" + _usage(),
             )
         opponent_tag = parts[0].lstrip("@")
         amount_str = parts[1]

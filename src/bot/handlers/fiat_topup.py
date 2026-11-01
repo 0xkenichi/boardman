@@ -837,7 +837,9 @@ async def cmd_topups(message: types.Message) -> None:
     if not pending and not waiting and not paystack_paid and not rail_paid:
         lines.append("No open top-ups.")
     if rail_paid:
-        lines.append("<b>Rail paid (Stellar/etc) — send Arc USDC now:</b>")
+        from gaming.src.backend.services.chains import chain_label
+
+        lines.append(f"<b>Rail paid (Stellar/etc) — send {chain_label()} USDC now:</b>")
         for r in rail_paid:
             lines.append(_admin_line(r))
     if paystack_paid:

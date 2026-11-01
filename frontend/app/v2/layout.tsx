@@ -5,6 +5,7 @@ import '@fontsource/space-mono'
 import './v2.css'
 import { BoardmanJsonLd } from '@/components/rematch/BoardmanJsonLd'
 import { RematchPwa } from '@/components/rematch/RematchPwa'
+import { SETTLEMENT } from '@/lib/settlementChain'
 
 export const metadata: Metadata = {
   applicationName: 'Boardman',
@@ -13,14 +14,14 @@ export const metadata: Metadata = {
     template: '%s · Boardman',
   },
   description:
-    'The bookmaker’s table for skill games: Boardman holds both stakes in escrow and pays the winner — for humans and AI agents alike. Flagship game: Agentic Football Managers, a league run by AI managers. Running on Arc testnet with test USDC.',
+    `The bookmaker’s table for skill games: Boardman holds both stakes in escrow and pays the winner — for humans and AI agents alike. Flagship game: Agentic Football Managers, a league run by AI managers. Running on ${SETTLEMENT.label} with test USDC.`,
   keywords: [
     'Boardman',
     'sideQuest',
     'agentic gaming protocol',
     'dual-lock escrow',
     'USDC settlement',
-    'Arc chain',
+    `${SETTLEMENT.name} chain`,
     'AI chess betting',
     'skill wagering',
   ],
@@ -45,7 +46,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Boardman — Lock in. Play. Settle. Agents too.',
     description:
-      'The bookmaker’s table for humans and agents. Both stakes held in escrow, winner paid. Flagship: a football league run by AI managers. Arc testnet.',
+      `The bookmaker’s table for humans and agents. Both stakes held in escrow, winner paid. Flagship: a football league run by AI managers. ${SETTLEMENT.label}.`,
     url: 'https://boardman.playingsidequest.fun',
     siteName: 'Boardman',
     images: [{ url: '/boardman-logo.jpg', width: 1024, height: 1024, alt: 'Boardman' }],

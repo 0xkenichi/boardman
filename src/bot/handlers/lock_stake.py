@@ -10,6 +10,7 @@ from aiogram.filters import Command
 
 from backend.supabase_client import get_supabase
 from gaming.src.backend.services.chains import (
+    chain_label,
     default_chain_id,
     get_explorer_tx,
     normalize_chain_id,
@@ -152,8 +153,8 @@ async def cmd_lock_stake(message: types.Message) -> None:
         return
 
     await message.answer(
-        f"⏳ Locking ${amount:,.2f} USDC on {chain_id} "
-        f"(approve + on-chain lock; often ~15–60s on Arc)…",
+        f"⏳ Locking ${amount:,.2f} USDC on {chain_label(chain_id)} "
+        f"(approve + on-chain lock; often ~15–60s)…",
         parse_mode=None,
     )
 

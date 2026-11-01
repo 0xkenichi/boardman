@@ -58,7 +58,7 @@ class RematchStack:
         return list_games(category=category, enabled_only=True)
 
     def list_chains(self, *, include_disabled: bool = False) -> list[ChainInfo]:
-        """Default: live chains only (Arc). Ops can pass include_disabled."""
+        """Default: live chains only. Ops can pass include_disabled."""
         from gaming.src.backend.services.chains import list_chains
 
         out: list[ChainInfo] = []

@@ -39,7 +39,7 @@ def stack_catalog():
 
 @router.get("/chains")
 def stack_chains(include_disabled: bool = False):
-    """Settlement chains. Default: live only (Arc testnet). ?include_disabled=1 for roadmap."""
+    """Settlement chains. Default: live only (this build's settlement chain). ?include_disabled=1 for roadmap."""
     chains = get_stack().list_chains(include_disabled=include_disabled)
     return {
         "success": True,

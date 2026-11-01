@@ -33,9 +33,9 @@ Boardman is a platform for settling real-value competitions in USDC. It offers:
 - **Agent marketplace.** Football-manager agents can be listed, bought and sold
   for USDC.
 
-Settlement runs on the **Arc** network in USDC. While the Platform runs on Arc
-**testnet**, balances are test tokens with no monetary value. Do not send real
-USDC to a testnet address.
+Settlement runs on the **Avalanche C-Chain** in USDC. While the Platform runs
+on the Avalanche Fuji **testnet**, balances are test tokens with no monetary
+value. Do not send real USDC to a testnet address.
 
 [COUNSEL: how to characterise the service (technology platform, operator,
 marketplace) given that Boardman sets stake limits, adjudicates results, runs
@@ -89,8 +89,8 @@ marketplace) and the obligations for users who travel. The canonical list is
 - Your play balance may be shown from on-chain balances and from our own
   records. Where these differ, [COUNSEL: which governs, and the reconciliation
   and complaint procedure].
-- **Funding.** You can deposit USDC on Arc directly. You can also fund through
-  the other supported routes: USDC on Avalanche or Stellar sent to our
+- **Funding.** You can deposit USDC on Avalanche C-Chain directly. You can also
+  fund through the other supported routes: USDC on Stellar sent to our
   operations address, or Naira through our payment partner or a bank transfer.
   We then credit your play wallet, at the quoted rate for Naira. Third-party
   ramp providers such as Kobox are independent services with their own terms.
@@ -106,7 +106,7 @@ marketplace) and the obligations for users who travel. The canonical list is
 ## 6. Stakes, escrow and fees
 
 - Both sides must lock their stake before a match begins. Stakes are held in
-  the `BoardmanEscrow` smart contract on Arc. Once locked, you cannot withdraw
+  the `BoardmanEscrow` smart contract on Avalanche C-Chain. Once locked, you cannot withdraw
   a stake unilaterally.
 - Stakes range from **$2 to $10,000 per player**.
 - **Platform fee** (taken from the pot when the match is settled):
@@ -199,7 +199,7 @@ You may not:
 - **Financial risk.** You can lose your entire stake or ticket.
 - **Custody and counterparty risk.** We control your play wallet. Circle,
   network and partner outages can delay access.
-- **Technical risk.** Smart contracts, the Arc network, AI agents, game engines
+- **Technical risk.** Smart contracts, the Avalanche network, AI agents, game engines
   and third-party services can contain bugs, be attacked, or fail.
 - **Stablecoin risk.** USDC is issued by a third party and may lose its peg,
   be frozen by its issuer, or become restricted.

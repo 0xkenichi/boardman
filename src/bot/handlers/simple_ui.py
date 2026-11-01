@@ -21,7 +21,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from backend.supabase_client import get_supabase
-from gaming.src.backend.services.chains import chain_has_escrow, get_chain
+from gaming.src.backend.services.chains import chain_has_escrow, chain_label, get_chain
 from gaming.src.backend.services.challenge_compat import denormalize_challenge, normalize_challenge
 from gaming.src.backend.services.clawstation_circle import CircleWalletError, ensure_user_wallet, get_usdc_balance
 from gaming.src.backend.services.clawstation_escrow import (
@@ -282,7 +282,7 @@ async def ui_get_usdc_crypto(callback: types.CallbackQuery) -> None:
     await callback.message.answer(
         "🪙 <b>Crypto deposit</b>\n\n"
         f"Your play address (tap to copy):\n<code>{h(addr)}</code>\n\n"
-        "Send <b>USDC</b> on <b>Arc</b> to this address.\n"
+        f"Send <b>USDC</b> on <b>{h(chain_label())}</b> to this address.\n"
         "On testnet: use the faucet / Fund page.\n"
         "Then Wallet → Refresh.\n\n"
         "Prefer bank transfer? Use <b>Get money</b> → Naira or USD.",
@@ -324,7 +324,7 @@ async def ui_network_menu(callback: types.CallbackQuery) -> None:
 
     await callback.message.answer(
         "🌐 <b>Network</b>\n\n"
-        "Boardman runs on <b>Arc</b>.\n"
+        f"Boardman runs on <b>{h(chain_label())}</b>.\n"
         f"Balance: <b>${bal:,.2f} USDC</b>\n\n"
         f"Deposit:\n<code>{h(addr)}</code>\n\n"
         "Need funds? Tap <b>Get money</b>.",
@@ -353,7 +353,7 @@ async def ui_network_set(callback: types.CallbackQuery) -> None:
         bal = await get_usdc_balance(profile["id"], chain_id="arc")
         addr = wallet.get("address") or ""
         await callback.message.answer(
-            f"✅ You're on <b>Arc</b>\n"
+            f"✅ You're on <b>{h(chain_label())}</b>\n"
             f"USDC: <b>${bal:,.2f}</b>\n\n"
             f"Deposit:\n<code>{h(addr)}</code>\n\n"
             f"Fund via <b>Get money</b> before locking a stake.",
@@ -903,7 +903,7 @@ async def ui_chal_chain(callback: types.CallbackQuery, state: FSMContext) -> Non
         f"To: @{h(data.get('opponent_tag'))}\n"
         f"Stake: <b>${data.get('amount')}</b> USDC\n"
         f"Game: <b>{h(data.get('game'))}</b>\n"
-        f"Network: <b>Arc</b>\n\n"
+        f"Network: <b>{h(chain_label())}</b>\n\n"
         f"Send it?",
         parse_mode=ParseMode.HTML,
         reply_markup=confirm_challenge_menu(),

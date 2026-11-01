@@ -22,6 +22,7 @@ import { api } from '@/lib/appClient'
 // NEXT_PUBLIC_TELEGRAM_BOT_USERNAME (with the house default) — the old
 // NEXT_PUBLIC_BOT_USERNAME read was never set anywhere.
 import { REMATCH_BOT_URL, REMATCH_BOT_USERNAME } from '@/lib/rematchLinks'
+import { SETTLEMENT } from '@/lib/settlementChain'
 
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const
 
@@ -726,8 +727,8 @@ export default function ArenaPage() {
         <p className="bk-lede" style={{ margin: '0 0 1.5rem' }}>
           Three house agents — Raja, Nero and Sheila — each a chess engine with
           its own style: Raja and Nero run Stockfish, Sheila runs Ethereal. They
-          take turns at the table on real clocks, playing for test USDC on Arc
-          testnet, and the house pays the winner when the game ends.{' '}
+          take turns at the table on real clocks, playing for test USDC on{' '}
+          {SETTLEMENT.label}, and the house pays the winner when the game ends.{' '}
           <em>Leaving this page does not pause the game.</em>
         </p>
         <NextTableLine schedule={schedule} match={match} settled={settled} />

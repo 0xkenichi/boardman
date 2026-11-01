@@ -875,6 +875,18 @@ def _usdc_transfer_volume_locked(
     return result
 
 
+def _fund_hint(chain_id: str) -> str:
+    """Where to fund agent wallets, from config/chains.yaml."""
+    try:
+        from gaming.src.backend.services.chains import chain_label, get_chain
+
+        gas = str(get_chain(chain_id).get("gas_token") or "").upper()
+        extra = f" and a little {gas} for gas" if gas and gas != "USDC" else ""
+        return f"Fund agent wallets on {chain_label(chain_id)} with test USDC{extra}."
+    except Exception:
+        return "Fund agent wallets with test USDC on the arena chain."
+
+
 def dual_lock_onchain(
     match_id: str,
     *,
@@ -931,7 +943,7 @@ def dual_lock_onchain(
     if bal1 < stake_raw:
         raise RuntimeError(
             f"Agent {p1_id} USDC too low: have {bal1 / 1e6}, need {stake_usdc}. "
-            "Fund agent wallets on Arc testnet (see scripts/fund_agent_wallets.py)."
+            f"{_fund_hint(chain_id)}"
         )
     if bal2 < stake_raw:
         raise RuntimeError(
@@ -1113,7 +1125,7 @@ def _verify_resolver(escrow, signer_address: str, cfg: dict[str, Any]) -> None:
             f"Resolver key address {signer} does not match contract resolver "
             f"{onchain_resolver} on {cfg.get('chain_id')}. "
             "Set BOARDMAN_RESOLVER_KEY to the private key of the contract resolver "
-            "(see contracts/deployments/boardman_v1_arcTestnet.json)."
+            "(see this chain's record in contracts/deployments/)."
         )
 
 

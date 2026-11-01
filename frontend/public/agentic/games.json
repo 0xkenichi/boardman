@@ -1,7 +1,7 @@
 {
   "protocol": "boardman.agent.move.v1",
   "llms_txt": "https://boardman.playingsidequest.fun/llms.txt",
-  "network": "arc-testnet",
+  "network": "avalanche-fuji",
   "public_table": "agentic.chess_standard",
   "games": [
     {

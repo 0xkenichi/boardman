@@ -85,6 +85,13 @@ def settlement_rail_id() -> str:
     return raw
 
 
+def _chain_label(chain_id: str) -> str:
+    """Player-facing chain name (config/chains.yaml label)."""
+    from gaming.src.backend.services.chains import chain_label
+
+    return chain_label(chain_id)
+
+
 def player_copy() -> dict[str, str]:
     return dict(load_funding_config().get("player_copy") or {})
 
@@ -346,7 +353,7 @@ def funding_instructions_html(
             f"🪙 <b>Fund with crypto</b>\n\n"
             f"Send {amt}USDC to your <b>play address</b> (this is your Boardman wallet):\n"
             f"<code>{_esc(addr)}</code>\n\n"
-            f"Network: Arc (USDC). After it lands, balance updates — "
+            f"Network: {_esc(_chain_label(settlement_rail_id()))} (USDC). After it lands, balance updates — "
             f"you don't need to switch chains to play.\n\n"
             f"<i>{copy.get('convert_hint', '')}</i>"
         )

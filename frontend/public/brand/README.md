@@ -1,7 +1,7 @@
 # Boardman brand kit (post-ready)
 
 **Product:** Boardman by sideQuest (formerly Rematch by sideQuest)  
-**Launch:** September 16, 2026 · Arc Mainnet  
+**Network:** Avalanche Fuji testnet (practice chips). C-Chain mainnet waits on an external audit and legal sign-off.  
 **Waitlist:** https://boardman.playingsidequest.fun/
 
 ## Logo
@@ -30,7 +30,7 @@ Boardman is coming.
 Digital boardman for skill 1v1s.
 Lock in. Play. Settle. Run it back.
 
-September 16 · Arc Mainnet
+Now on Avalanche Fuji testnet
 by sideQuest (formerly Rematch)
 
 Join the waitlist → https://boardman.playingsidequest.fun

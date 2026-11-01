@@ -201,12 +201,13 @@ async def alert_admins(text: str) -> None:
 
 
 def crypto_instructions(address: str) -> str:
+    from gaming.src.backend.services.chains import chain_label
     from gaming.src.backend.services.funding_rails import player_copy
 
     hint = (player_copy() or {}).get("convert_hint", "")
     body = (
         "*Fund with crypto*\n\n"
-        "Send USDC on *Arc* to your play address (your Boardman wallet):\n"
+        f"Send USDC on *{chain_label()}* to your play address (your Boardman wallet):\n"
         f"`{address or 'not ready yet, try again in a minute'}`\n\n"
         "Your balance updates once it lands. Any other network or token can be lost."
     )

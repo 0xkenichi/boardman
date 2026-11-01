@@ -37,7 +37,9 @@ async def start(ctx) -> None:
 
     ctx.st.set(NAME, "dest")
     opts = [ctx.menu_option("Cancel")]
-    bank_hint = "To cash out to your bank, send to your exchange's USDC address on Arc."
+    from gaming.src.backend.services.chains import chain_label
+
+    bank_hint = f"To cash out to your bank, send to your exchange's USDC address on {chain_label()}."
     if ctx.enabled("naira"):
         opts.insert(0, Option(ids.encode("naira", "start", "out"), "Cash out to bank",
                               "Naira to your Nigerian bank (Paycrest)"))

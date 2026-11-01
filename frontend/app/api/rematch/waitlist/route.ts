@@ -8,6 +8,7 @@ import path from 'path'
 import { randomInt } from 'crypto'
 import { rateLimitRequest } from '@/lib/bff'
 import { escapeTelegramHtml as esc } from '@/lib/telegramBot'
+import { SETTLEMENT } from '@/lib/settlementChain'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -231,6 +232,6 @@ export async function GET() {
     ok: true,
     product: 'Boardman by sideQuest',
     launch: '2026-09-16',
-    settlement: 'Arc mainnet',
+    settlement: `${SETTLEMENT.label} (testnet)`,
   })
 }

@@ -840,7 +840,7 @@ def get_agent_wallet(
     agent_id: str,
     _: ApiKeyPrincipal = Depends(require_stack_api_key),
 ):
-    """Wallet identity + ledger vs real Arc USDC balance for an agent."""
+    """Wallet identity + ledger vs on-chain USDC balance for an agent."""
     from gaming.src.stack.agentic.registry import get_registry
     from gaming.src.stack.agentic import ledger
 
@@ -2048,14 +2048,14 @@ class FootballAgentOfferDecisionBody(BaseModel):
 class FootballWalletBindBody(BaseModel):
     """Owner seat: bind a real (Circle) wallet to a marketplace party.
 
-    ``address`` is the Arc USDC address the party is paid to. Pass ``wallet_id``
+    ``address`` is the USDC address the party is paid to. Pass ``wallet_id``
     too when the party pays from that wallet (a Circle developer-controlled
     wallet) so purchases can move real USDC out of it.
     """
 
     party_id: Optional[str] = None  # must be the caller (filled from it when omitted)
     address: str = Field(
-        ..., description="Arc USDC payout address (0x…)", min_length=42, max_length=42
+        ..., description="USDC payout address (0x…)", min_length=42, max_length=42
     )
     wallet_id: Optional[str] = None
 
@@ -2276,7 +2276,7 @@ async def football_agents_purchase(body: FootballAgentPurchaseBody, caller: Stac
 @router.get("/football/agents/wallet")
 def football_agents_wallet(party_id: str = "", caller: StackCaller = Depends(require_stack_caller)):
     """Wallet status for a marketplace party: what they pay with and get paid
-    to — demo ledger wallet vs a bound real (Circle) wallet on Arc. The
+    to — demo ledger wallet vs a bound real (Circle) wallet on-chain. The
     party is the caller's own (the platform may name any)."""
     from gaming.src.stack.agentic.games.football_managers.agent_market import (
         wallet_status,

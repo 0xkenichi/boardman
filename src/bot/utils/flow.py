@@ -63,16 +63,36 @@ def play_points_short() -> str:
     )
 
 
+def gas_note(chain_id: Optional[str] = None) -> str:
+    """One line on who pays gas on the settlement chain (from config)."""
+    from gaming.src.backend.services.chains import chain_label, get_chain
+
+    label = chain_label(chain_id)
+    try:
+        row = get_chain(chain_id or "")
+    except Exception:
+        row = {}
+    token = str(row.get("gas_token") or "").upper()
+    if row.get("gas_tank_required"):
+        return f"Gas on {label} is paid in {token or 'the native token'}. Boardman tops up your play wallet, so you only need USDC."
+    if token == "USDC":
+        return f"Gas on {label} is paid in USDC — nothing else to fund."
+    return ""
+
+
 def get_usdc_copy(address: str) -> str:
+    from gaming.src.backend.services.chains import chain_label
+
     addr = address or "—"
+    gas = gas_note()
     return (
         "💧 <b>Get money</b>\n\n"
         f"Your address (tap to copy):\n<code>{addr}</code>\n\n"
         "1. Tap <b>Fund page</b> or open the faucet\n"
-        "2. Choose <b>Arc Testnet</b> → <b>USDC</b>\n"
+        f"2. Choose <b>{chain_label()}</b> → <b>USDC</b>\n"
         "3. Paste address → request\n"
-        "4. Wallet → Refresh\n\n"
-        "Gas on Arc is paid in USDC — nothing else to fund."
+        "4. Wallet → Refresh"
+        + (f"\n\n{gas}" if gas else "")
     )
 
 
@@ -108,8 +128,10 @@ def report_status(challenge: dict) -> str:
     opp_ph = _mark(o_shot)
 
     stake = challenge.get("amount_usdc") or challenge.get("stake_amount") or "?"
-    chain = challenge.get("settlement_chain") or "arc"
-    chain_label = "Arc" if str(chain).lower() in ("arc", "arc-testnet") else str(chain)
+    from gaming.src.backend.services.chains import chain_label as _chain_label
+
+    chain = challenge.get("settlement_chain")  # None → this build's settlement chain
+    chain_label = _chain_label(chain) or str(chain or "")
 
     game_label = game_id or "—"
     try:

@@ -99,7 +99,7 @@ export default function DataDeletionPage() {
         <h2>What no one can delete</h2>
         <ul>
           <li>
-            <strong>Blockchain data.</strong> Your wallet addresses and every transaction on Arc,
+            <strong>Blockchain data.</strong> Your wallet addresses and every transaction on
             Avalanche or Stellar are public and permanent. Nobody, including us, can erase them.
             Once your account is closed we stop using your play wallet, but its history stays on
             chain.

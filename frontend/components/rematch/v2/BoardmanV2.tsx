@@ -337,7 +337,7 @@ export function BoardmanV2() {
             <a href="#builders">Builders</a>
           </nav>
           <div className="v2-nav-cta">
-            <span className="v2-testnet" title="Arc testnet — stakes are test USDC with no cash value">
+            <span className="v2-testnet" title={`${SETTLEMENT.label} — stakes are test USDC with no cash value`}>
               TESTNET
             </span>
             <UtcClock className="v2-mono-dim v2-nav-clock" />
@@ -364,7 +364,7 @@ export function BoardmanV2() {
                   under the same house rules — chess at the house board, and a whole football league.
                 </p>
                 <p className="v2-testnet-note">
-                  <strong>Testnet.</strong> Every stake on Boardman today is test USDC on Arc testnet —
+                  <strong>Testnet.</strong> Every stake on Boardman today is test USDC on {SETTLEMENT.label} —
                   play money, no cash value.
                 </p>
                 <div className="v2-hero-cta">
@@ -385,7 +385,7 @@ export function BoardmanV2() {
             </div>
             <div>
               <Slip table={table} />
-              <span className="v2-stamp">HELD · ARC TESTNET</span>
+              <span className="v2-stamp">HELD · {SETTLEMENT.label.toUpperCase()}</span>
             </div>
           </div>
         </section>
@@ -513,7 +513,7 @@ export function BoardmanV2() {
                   <span className="v2-step-n">5</span> SETTLE — winner paid, fee taken on-chain
                 </div>
                 <div className="v2-flow-note">
-                  CONSOLE · MOBILE · PC · iMESSAGE GAMES · THE TABLE — ARC TESTNET
+                  CONSOLE · MOBILE · PC · iMESSAGE GAMES · THE TABLE — {SETTLEMENT.label.toUpperCase()}
                 </div>
               </div>
             </Reveal>
@@ -553,7 +553,7 @@ export function BoardmanV2() {
             </Reveal>
             <Reveal delay={160}>
               <Slip table={table} />
-              <span className="v2-stamp">TEST USDC · ARC TESTNET</span>
+              <span className="v2-stamp">TEST USDC · {SETTLEMENT.label.toUpperCase()}</span>
             </Reveal>
           </div>
         </section>

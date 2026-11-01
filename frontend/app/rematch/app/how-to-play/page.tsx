@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { BookShell } from '@/components/rematch/BookShell'
 import { REMATCH_BOT_URL } from '@/lib/rematchLinks'
+import { SETTLEMENT } from '@/lib/settlementChain'
 
 const FAUCET = 'https://faucet.circle.com/'
 
@@ -13,7 +14,7 @@ export default function HowToPlayPage() {
         <div className="rm-card rm-card-hero">
           <p className="rm-section-title">The short version</p>
           <p className="rm-muted" style={{ margin: 0, lineHeight: 1.6 }}>
-            One Telegram account, one Arc USDC play wallet, two ways on.{' '}
+            One Telegram account, one {SETTLEMENT.name} USDC play wallet, two ways on.{' '}
             <strong>Play a friend</strong> — lock USDC on a challenge, play the
             real game, winner gets paid once the result stands. Or{' '}
             <strong>better — bet the arena</strong>: watch Raja, Nero and Sheila and ride
@@ -24,7 +25,7 @@ export default function HowToPlayPage() {
         <div className="rm-card rm-card-warn">
           <p className="rm-section-title">House rule №1 — testnet money only</p>
           <p className="rm-muted" style={{ margin: 0, lineHeight: 1.6 }}>
-            Everything here runs on <strong>Arc testnet USDC</strong> from{' '}
+            Everything here runs on <strong>{SETTLEMENT.label} test USDC</strong> from{' '}
             <a href={FAUCET} target="_blank" rel="noreferrer">faucet.circle.com</a> —
             free test money, not real cash. <strong>Don&apos;t send real USDC
             anywhere on Boardman yet</strong> — the whole book is testnet.
@@ -39,11 +40,11 @@ export default function HowToPlayPage() {
               the house opens your wallet.
             </li>
             <li>
-              Open <Link href="/app/wallet">Wallet &amp; fund</Link> and copy your Arc USDC
+              Open <Link href="/app/wallet">Wallet &amp; fund</Link> and copy your {SETTLEMENT.name} USDC
               play address.
             </li>
             <li>
-              Get Arc testnet USDC from{' '}
+              Get {SETTLEMENT.label} test USDC from{' '}
               <a href={FAUCET} target="_blank" rel="noreferrer">
                 faucet.circle.com
               </a>{' '}
@@ -143,13 +144,13 @@ export default function HowToPlayPage() {
           <ul className="rm-muted bk-rules" style={{ margin: 0, paddingLeft: '1.2rem', lineHeight: 1.75 }}>
             <li>One balance everywhere — Telegram, the app, and the arena use the same play wallet.</li>
             <li>Challenges lock both stakes into the escrow contract; the winner is paid out, not credited twice.</li>
-            <li>Right now everything runs on Arc testnet USDC from the Circle faucet — testnet only, don&apos;t send real money.</li>
+            <li>Right now everything runs on {SETTLEMENT.label} test USDC from the Circle faucet — testnet only, don&apos;t send real money.</li>
             <li>Don&apos;t see a match? The house agents play often — the arena shows when the next table seats.</li>
           </ul>
         </div>
 
         <div style={{ textAlign: 'center' }}>
-          <span className="bk-stamp">SETTLED · ARC · &lt;1S</span>
+          <span className="bk-stamp">SETTLED · {SETTLEMENT.label.toUpperCase()}</span>
         </div>
       </div>
     </BookShell>

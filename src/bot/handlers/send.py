@@ -14,7 +14,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from backend.supabase_client import get_supabase
-from gaming.src.backend.services.chains import get_chain
+from gaming.src.backend.services.chains import chain_label, get_chain
 from gaming.src.backend.services.clawstation_circle import (
     _circle_for_chain,
     ensure_user_wallet,
@@ -234,7 +234,7 @@ async def cb_send_to_address(callback: types.CallbackQuery, state: FSMContext) -
         "💸 <b>Withdraw to an external wallet</b>\n\n"
         "Reply with: <code>0xAddress amount</code>\n"
         "Example: <code>0x1234…abcd 25</code>\n\n"
-        "⚠️ Withdraw on <b>Arc</b> only (same network as Boardman).",
+        f"⚠️ Withdraw on <b>{escape(chain_label())}</b> only (same network as Boardman).",
         parse_mode=ParseMode.HTML,
         reply_markup=back_menu(),
     )

@@ -41,7 +41,7 @@ def avalanche_status() -> dict[str, Any]:
             "0x5425890298aed601595a70AB815c96711a31Bc65",  # Fuji USDC
         ),
         "notes": (
-            "Players send USDC with top-up ref. Ops credits Arc play wallet "
+            "Players send USDC with top-up ref. Ops credits the play wallet "
             "then /credit_topup. Auto Transfer watcher = next."
         ),
     }

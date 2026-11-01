@@ -22,6 +22,7 @@ import {
   type ChainInfo,
   type PreparedCall,
 } from '@/lib/selfCustody/wallet'
+import { SETTLEMENT } from '@/lib/settlementChain'
 
 type View = {
   ok: boolean
@@ -179,7 +180,12 @@ export default function ApprovePage() {
             <div>
               <dt className="rm-label">Network</dt>
               <dd style={{ margin: 0 }}>
-                {view.chain?.label} · gas {view.sponsor_gas ? 'paid by Boardman' : 'paid from your USDC (about $0.01)'}
+                {view.chain?.label} · gas{' '}
+                {view.sponsor_gas
+                  ? 'paid by Boardman'
+                  : SETTLEMENT.gasToken === 'USDC'
+                    ? 'paid from your USDC (about $0.01)'
+                    : `paid in ${SETTLEMENT.gasToken} from your wallet`}
               </dd>
             </div>
           </dl>

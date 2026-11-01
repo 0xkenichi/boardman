@@ -113,7 +113,7 @@ export default function PrivacyPage() {
           </li>
           <li>
             External wallet addresses you sign in with, deposit from, withdraw to, or fund
-            through on Arc, Avalanche or Stellar.
+            through on Avalanche or Stellar.
           </li>
           <li>
             Your transaction history and our ledger: deposits, top-ups, stakes locked, payouts,
@@ -245,7 +245,7 @@ export default function PrivacyPage() {
         </ul>
         <p>
           <strong>Blockchains are public.</strong> Wallet addresses, amounts and transactions on
-          Arc, Avalanche and Stellar are visible to anyone, forever. Telegram and Meta also
+          Avalanche and Stellar are visible to anyone, forever. Telegram and Meta also
           handle your messages under their own privacy policies.
         </p>
 
