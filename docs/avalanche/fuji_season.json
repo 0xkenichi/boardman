@@ -1,0 +1,209 @@
+{
+  "network": "Avalanche Fuji C-Chain",
+  "chain_id": 43113,
+  "escrow": "0xa0626A1744D4817B8b6fE0414a04CB20F6696F09",
+  "agents": {
+    "Raja": "0x28bc7Df81A487a345E9b8DB38948c5fdD59fb7b7",
+    "Nero": "0xBD3c021Be14f0E0c4514aE176653a85BC7CC2527",
+    "Sheila": "0x2DB45D33535770D721FcFdd498dB402163EDC464"
+  },
+  "matches": [
+    {
+      "white": "Raja",
+      "black": "Nero",
+      "match_id": "agm_e71523b1bdad",
+      "stake_usdc": "2.000000",
+      "result": "black_win",
+      "termination": "adjudicated_material",
+      "winner": "agent_nero_sicilian_french",
+      "plies": 123,
+      "create_tx": "0xba0b17bb3f604fa366c12d55065a6345de70eb8838d26e777f6dc7707c279720",
+      "join_tx": "0x2885a2dd2108e5700b4366ad249709406916fd47629fc30b0e0b89530996748a",
+      "settle_tx": "0x2eb05854f8bb66036267bfd9f2a8ba74286b794c405abe796652ff8c96dfd9d9",
+      "status": "settled",
+      "lock_txs": [
+        "0xf62f433714384185fe3bda9d68cedb296382449feb5c5df6b485b88a568f3d9c",
+        "0xba0b17bb3f604fa366c12d55065a6345de70eb8838d26e777f6dc7707c279720",
+        "0xf71d9099584eb091fe11e17212b943323fb1ebc43d06ede5448faf231491d011",
+        "0x2885a2dd2108e5700b4366ad249709406916fd47629fc30b0e0b89530996748a"
+      ]
+    },
+    {
+      "white": "Nero",
+      "black": "Sheila",
+      "match_id": "agm_f4678ba5d4bd",
+      "stake_usdc": "2.000000",
+      "result": "black_win",
+      "termination": "CHECKMATE",
+      "winner": "agent_sheila_anaconda",
+      "plies": 76,
+      "create_tx": "0x0e676c39d9d01246f7f15fc3b52cdf319cdac490080cd8554939b63f6b512b8b",
+      "join_tx": "0x47595fb5e75d3f120a983054a47d7b5c3caca7fdd1782ed951d8fb3c24c84d51",
+      "settle_tx": "0xb0c93e19c45fc2cbcee105f36be4ddf7c4c44e60504ac8d4a7807f344ac93322",
+      "status": "settled",
+      "lock_txs": [
+        "0xca65e92bdb2993dfcfd8d1832b47e7882d00e8b94f8c97aabf579c4b2825fe34",
+        "0x0e676c39d9d01246f7f15fc3b52cdf319cdac490080cd8554939b63f6b512b8b",
+        "0x4a81ba56059e684e5575cf73fc9860a42b561a6b4a8c1dae67cea9eb312798a7",
+        "0x47595fb5e75d3f120a983054a47d7b5c3caca7fdd1782ed951d8fb3c24c84d51"
+      ]
+    },
+    {
+      "white": "Sheila",
+      "black": "Raja",
+      "match_id": "agm_5df3cf42fb68",
+      "stake_usdc": "2.000000",
+      "result": "white_win",
+      "termination": "CHECKMATE",
+      "winner": "agent_sheila_anaconda",
+      "plies": 103,
+      "create_tx": "0x5a0dd522a4d7c0a5c817575ab194a2d02c9991a9386214b573f287448a26b9f3",
+      "join_tx": "0x343e64f71ef72e03479d116a98e789ddc1575398cc08f6fd3c78e260f725eeac",
+      "settle_tx": "0x574086eadce134d032e5f9353758256622464c2cfca67c04a25dbe8f7c2ac85b",
+      "status": "settled",
+      "lock_txs": [
+        "0xcc34af8dc262b6419a794ed39d710fdd568a7f879209158e288cf773481c4dfe",
+        "0x5a0dd522a4d7c0a5c817575ab194a2d02c9991a9386214b573f287448a26b9f3",
+        "0x0e2f144be5d6ebe4bb53e5b49741e6a999d9bc8bcaa9f9618762480af0e9c749",
+        "0x343e64f71ef72e03479d116a98e789ddc1575398cc08f6fd3c78e260f725eeac"
+      ]
+    },
+    {
+      "white": "Nero",
+      "black": "Raja",
+      "match_id": "agm_b2c098dba8b9",
+      "stake_usdc": "2.000000",
+      "result": "black_win",
+      "termination": "CHECKMATE",
+      "winner": "agent_raja_kia_alekhine",
+      "plies": 40,
+      "create_tx": "0xb8bda4f5e6fa2fba0d3054c05aaae6f54650a5a9ce9d1fe1af3358cc7f7ae852",
+      "join_tx": "0xf24115b8b6eb5b7350701790346b4bc1d28bf0f0c737254acdcbbb72dacd9a5c",
+      "settle_tx": "0x20911c66ce8118735ae9f1604b165008586a26153fe7acf7949bd3180cbac7c7",
+      "status": "settled",
+      "lock_txs": [
+        "0x5b966236321845e98bde1e264791abd8f8ded928c02ed86293370265a0858aef",
+        "0xb8bda4f5e6fa2fba0d3054c05aaae6f54650a5a9ce9d1fe1af3358cc7f7ae852",
+        "0x02bea91df11a84bf584ad9ac68e0a25d7ca09e4f20be50108b81e8fcfa9bd9a0",
+        "0xf24115b8b6eb5b7350701790346b4bc1d28bf0f0c737254acdcbbb72dacd9a5c"
+      ]
+    },
+    {
+      "white": "Sheila",
+      "black": "Nero",
+      "match_id": "agm_ce0912d4dc79",
+      "stake_usdc": "2.000000",
+      "result": "white_win",
+      "termination": "CHECKMATE",
+      "winner": "agent_sheila_anaconda",
+      "plies": 37,
+      "create_tx": "0x31711172f914f095dfb947dd565ba43757c90952540a83d118e0a813729d1c7c",
+      "join_tx": "0x243c1d1b3912bdaa24f45ef3bd3fd3e80e65187de4bfe2c528e42138b41e07ee",
+      "settle_tx": "0x84868329a83254a385eadff209fc4efe79dbb96e368553113ef1217349a0fe5c",
+      "status": "settled",
+      "lock_txs": [
+        "0xa017db12fcaed8250d1408029e08569ea37b14c6677b6e27bbccb0e927e2f339",
+        "0x31711172f914f095dfb947dd565ba43757c90952540a83d118e0a813729d1c7c",
+        "0x6a06b123f65274afd5ca87ec21360888298dab6c382011978b0a88d98721567a",
+        "0x243c1d1b3912bdaa24f45ef3bd3fd3e80e65187de4bfe2c528e42138b41e07ee"
+      ]
+    },
+    {
+      "white": "Raja",
+      "black": "Sheila",
+      "match_id": "agm_cdca1f84bfe3",
+      "stake_usdc": "2.000000",
+      "result": "black_win",
+      "termination": "timeout",
+      "winner": "agent_sheila_anaconda",
+      "plies": 51,
+      "create_tx": "0xf65cb4d79bc5b69611f6c68dd41b01048b2c6ff9a05ca9aba6aca58d5de2ab03",
+      "join_tx": "0xf9e62f45c2e136d007827edfaa990862b78c0890df95d16892a26b3746cc70b6",
+      "settle_tx": "0xf9de0b93ab7d30bb6970f6f5412d0c976b0e3c0c7c886bb37802da8db2e8acfc",
+      "status": "settled",
+      "lock_txs": [
+        "0x72ef6b147d248e4bad33e7660f1b57a0946403186a2a9ca0823cf495edcfa4f2",
+        "0xf65cb4d79bc5b69611f6c68dd41b01048b2c6ff9a05ca9aba6aca58d5de2ab03",
+        "0xd41fa33ed16eac6aa46850afd3e45165db80d6fccb349bf0f917eb1fe0bce9e5",
+        "0xf9e62f45c2e136d007827edfaa990862b78c0890df95d16892a26b3746cc70b6"
+      ]
+    }
+  ],
+  "topups": [
+    {
+      "agent": "Raja",
+      "kind": "usdc",
+      "usdc": "2.0",
+      "tx": "0x131500d72a25af0e4427ae22f8a9f2aeac2c1fe3bc93fe14edc5ece171e60484"
+    },
+    {
+      "agent": "Sheila",
+      "kind": "gas",
+      "tx": "0xfc7f0b5da2f0b50b8943ac99a6d058da7fc3cbbc1e2888685e0e8e53379d2a3b"
+    },
+    {
+      "agent": "Sheila",
+      "kind": "usdc",
+      "usdc": "3.5",
+      "tx": "0xba62e6c685a287bb3b02527732f472ce70221a8b4312bef02d41b0ee9af4808f"
+    },
+    {
+      "agent": "Raja",
+      "kind": "usdc",
+      "usdc": "2.0",
+      "tx": "0x2ca28b5ac245d9ec536658632315ee6d781185cd06814b880ea65fe1b6458b55"
+    },
+    {
+      "agent": "Raja",
+      "kind": "usdc",
+      "usdc": "2.0",
+      "tx": "0x339d451c5a60d5b7395995742dd1d7d6f0a373de5184b72465f30e07a477703d"
+    },
+    {
+      "agent": "Nero",
+      "kind": "usdc",
+      "usdc": "2.0",
+      "tx": "0x0516059af38d8d24c66acefbb2d8325544d1ccfbc0556ec83aab85a08e2d38c7"
+    }
+  ],
+  "fee_sweep": {
+    "contract": "BoardmanEscrow",
+    "version": 2,
+    "accrued_raw": 7000000,
+    "withdrawFees": "0x8474175886be26542522276780209d106cf3f51a41b85488924869fbff6f2bec"
+  },
+  "escrow_books_after": {
+    "balance": "0",
+    "totalLocked": "0",
+    "accruedFees": "0",
+    "totalOwed": "0",
+    "balanced": true
+  },
+  "fees_earned_usdc": "6",
+  "usdc_locked_total": "24.000000",
+  "standings": {
+    "Raja": {
+      "w": 1,
+      "d": 0,
+      "l": 3,
+      "usdc_before": "1.5",
+      "usdc_after": "2.5"
+    },
+    "Nero": {
+      "w": 1,
+      "d": 0,
+      "l": 3,
+      "usdc_before": "4.5",
+      "usdc_after": "1.5"
+    },
+    "Sheila": {
+      "w": 4,
+      "d": 0,
+      "l": 0,
+      "usdc_before": "0",
+      "usdc_after": "7.5"
+    }
+  },
+  "gas_spent_avax": "0.00298790103323901",
+  "recorded_at": "2026-11-01T14:00:57Z"
+}

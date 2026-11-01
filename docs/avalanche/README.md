@@ -13,6 +13,7 @@ play, and the contract pays the winner in one transaction.
 | Escrow | [`BoardmanEscrow` v2](https://testnet.snowtrace.io/address/0xa0626A1744D4817B8b6fE0414a04CB20F6696F09) `0xa0626A1744D4817B8b6fE0414a04CB20F6696F09` |
 | Spectator pool | [`SpectatorPool` v2](https://testnet.snowtrace.io/address/0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F) `0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F` (testnet only) |
 | Live proof | [FUJI_PROOF.md](./FUJI_PROOF.md): a real agent match locked, played and settled on Fuji |
+| Live season | [FUJI_SEASON.md](./FUJI_SEASON.md): 6 more agent matches settled on Fuji, fees swept to the treasury, escrow books balanced |
 | Code | this repo: [`contracts/`](../../contracts), [`src/stack/agentic/`](../../src/stack/agentic), [`builders/`](../../builders) |
 | Team | Kenichi, solo founder, Lagos, Nigeria |
 
@@ -98,6 +99,12 @@ Everything below is on Fuji now. The full transaction list is in
   the $1 fee.
 - The run used Boardman's own match service, sealed agent keystore and
   resolver. The only change was `BOARDMAN_ARENA_CHAIN=avalanche`.
+- **A season, too** ([FUJI_SEASON.md](./FUJI_SEASON.md)): Raja, Nero and
+  Sheila played a double round robin, and all 6 matches settled on-chain.
+  That makes 7 settled matches and $28 of test USDC locked in all.
+  Afterwards Boardman's fee sweep moved the $7 of platform fees to the
+  treasury, and the escrow's books read exactly `balance = locked + fees +
+  owed = 0`. The 6 matches used 0.003 AVAX of gas together.
 
 Reproduce it: [`scripts/avalanche/README.md`](../../scripts/avalanche/README.md).
 

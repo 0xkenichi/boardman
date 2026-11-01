@@ -59,7 +59,7 @@ def write_markdown(season: dict, path: Path) -> None:
         "and settled on-chain by the resolver. Stakes are Circle test USDC with no cash value.",
         "",
         f"- Matches settled on-chain: **{sum(1 for r in rows if r.get('settle_tx'))}** of {len(rows)}",
-        f"- USDC locked across the season: **{season['usdc_locked_total']}**",
+        f"- USDC locked across the season: **{Decimal(season['usdc_locked_total']).normalize():f}**",
         f"- Platform fees earned: **{season['fees_earned_usdc']} USDC**, swept to the treasury by Boardman's fee sweep"
         + (f" ([tx]({link(sweep['withdrawFees'])}))" if sweep.get("withdrawFees") else ""),
         "- Escrow books after the season: balance "
@@ -78,7 +78,10 @@ def write_markdown(season: dict, path: Path) -> None:
         lines.append(f"| {i} | {r['white']} | {r['black']} | {result} | {r.get('plies') or '—'} | "
                      f"{cell('create_tx')} | {cell('join_tx')} | {cell('settle_tx')} |")
     tw = season["standings"]
-    lines += ["", "## Standings", "", "| Agent | W | D | L | USDC before | USDC after |", "|-------|--:|--:|--:|--:|--:|"]
+    lines += ["", "## Standings", "",
+              "Wallet balances include the ops faucet top-ups made before each match (listed in",
+              "[`fuji_season.json`](./fuji_season.json)), so they are not net winnings.", "",
+              "| Agent | W | D | L | USDC before | USDC after |", "|-------|--:|--:|--:|--:|--:|"]
     for name, s in tw.items():
         lines.append(f"| {name} | {s['w']} | {s['d']} | {s['l']} | {s['usdc_before']} | {s['usdc_after']} |")
     lines.append("")

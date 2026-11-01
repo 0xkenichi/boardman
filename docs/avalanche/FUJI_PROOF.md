@@ -5,6 +5,8 @@ Recorded 2026-10-31T19:39:52Z on Avalanche Fuji C-Chain (chain 43113) by
 Boardman's own match service, sealed agent keystore, ops faucet and resolver.
 Every stake is Circle test USDC with no cash value.
 
+A full season of 6 more matches on the same escrow is in [FUJI_SEASON.md](./FUJI_SEASON.md).
+
 ## Contracts
 
 | Contract | Address |
