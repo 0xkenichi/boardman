@@ -420,7 +420,7 @@ def main() -> int:
     os.environ.setdefault("PYTHONUNBUFFERED", "1")
     os.environ.setdefault("PYTHONPATH", str(APP_ROOT))
     os.environ.setdefault("CLAWSTATION_BOT_MODE", "polling")
-    os.environ.setdefault("CLAW_DEFAULT_CHAIN", "arc")
+    os.environ.setdefault("CLAW_DEFAULT_CHAIN", "avalanche")
     os.environ.setdefault("PORT", "8000")
     os.environ.setdefault("BLOCKED_REGIONS_FILE", str(APP_ROOT / "config" / "blocked_regions.json"))
     port = os.environ["PORT"]

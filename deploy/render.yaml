@@ -17,7 +17,7 @@ services:
       - key: CLAWSTATION_BOT_MODE
         value: polling
       - key: CLAW_DEFAULT_CHAIN
-        value: arc
+        value: avalanche
       - key: CLAW_MAX_STAKE_USDC
         value: "25"
       - key: CLAW_MAX_WITHDRAW_USDC
@@ -45,7 +45,7 @@ services:
       - key: CLAWSTATION_BOT_MODE
         value: polling
       - key: CLAW_DEFAULT_CHAIN
-        value: arc
+        value: avalanche
       - key: WALLET_WATCH_INTERVAL_SEC
         value: "45"
       - key: LOG_LEVEL

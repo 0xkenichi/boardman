@@ -12,7 +12,7 @@ primary_region = "iad"
 
 [env]
   CLAWSTATION_BOT_MODE = "polling"
-  CLAW_DEFAULT_CHAIN = "arc"
+  CLAW_DEFAULT_CHAIN = "avalanche"
   PORT = "8000"
   PYTHONUNBUFFERED = "1"
   NETWORK = "testnet"

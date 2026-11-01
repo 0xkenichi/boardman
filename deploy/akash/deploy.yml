@@ -41,7 +41,7 @@ services:
       - TELEGRAM_BOT_USERNAME_MYBOARDMAN=myboardmanOfficialBot
       - TELEGRAM_BOT_USERNAME_CLAWSTATION=myboardmanOfficialBot
       - CLAWSTATION_BOT_MODE=polling
-      - CLAW_DEFAULT_CHAIN=arc
+      - CLAW_DEFAULT_CHAIN=avalanche
       - CLAW_MAX_STAKE_USDC=25
       - CLAW_MAX_WITHDRAW_USDC=50
       - CLAW_DAILY_WITHDRAW_CAP_USDC=100
