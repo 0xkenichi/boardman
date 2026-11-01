@@ -304,7 +304,7 @@ def test_rpc_reader_verifies_with_one_deployless_call():
     class Prov(BaseProvider):
         def make_request(self, method, params):
             if method == "eth_chainId":
-                return {"jsonrpc": "2.0", "id": 1, "result": hex(5042002)}
+                return {"jsonrpc": "2.0", "id": 1, "result": hex(43113)}
             seen.append((method, params))
             if answer["v"] == "down":
                 raise ConnectionError("down")
@@ -334,10 +334,10 @@ def test_valid_proof_waits_for_the_chat_yes_then_links_once(sc):
     tok = _token(url)
     v = setup.view(tok)
     assert v["ok"] and v["wallet"] is None and v["pending"] is None and v["username"] == "Boardman @ada"
-    assert v["chain"]["modular_path"] == "arcTestnet" and v["chain"]["evm_chain_id"] == 5042002
+    assert v["chain"]["modular_path"] == "avalancheFuji" and v["chain"]["evm_chain_id"] == 43113
     c, out = _prove(world, tok, ADA_SA, ADA_KEY)
     # the challenge binds profile, wallet, chain and purpose
-    for part in (f"Account: {ada['id']}", "Chain ID: 5042002", "Purpose: setup", "boardman.test wants you"):
+    for part in (f"Account: {ada['id']}", "Chain ID: 43113", "Purpose: setup", "boardman.test wants you"):
         assert part in c["message"]
     assert f"Wallet: {ADA_SA}".lower() in c["message"].lower()
     assert world.chain.sig_checks[-1][0].lower() == ADA_SA
@@ -372,7 +372,7 @@ def test_valid_proof_waits_for_the_chat_yes_then_links_once(sc):
     # stored in the existing per-player wallet table, no key material
     from gaming.src.backend.services.paycrest import store as pstore
 
-    row = pstore.get_wallet(ada["id"], "arc/passkey")
+    row = pstore.get_wallet(ada["id"], "avalanche/passkey")
     assert row["wallet_id"] == f"passkey:{CRED}" and row["account_type"] == "circle_msca_passkey"
     # a second link cannot swap the address without a fresh web sign-in
     tok2 = _token(setup.issue_link(ada["id"], channel="whatsapp", external_id=ADA)[0])
@@ -633,7 +633,7 @@ def test_creator_lock_calls_are_exact_and_permit_binds_both_players(sc):
                                   {"name": "player2", "type": "address"}, {"name": "stake", "type": "uint256"},
                                   {"name": "deadline", "type": "uint256"}]},
         "primaryType": "CreateMatch",
-        "domain": {"name": "BoardmanEscrow", "version": "2", "chainId": 5042002,
+        "domain": {"name": "BoardmanEscrow", "version": "2", "chainId": 43113,
                    "verifyingContract": C.to_checksum_address(world.escrow_addr)},
         "message": {"matchId": mid, "player1": C.to_checksum_address(ADA_SA), "player2": p2, "stake": stake,
                     "deadline": deadline},

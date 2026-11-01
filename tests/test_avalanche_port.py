@@ -29,11 +29,27 @@ def avalanche_build(monkeypatch):
     chains.reload_chains_config()
 
 
-def test_arc_stays_the_default_without_the_avalanche_env(monkeypatch):
-    monkeypatch.delenv("BOARDMAN_ARENA_CHAIN", raising=False)
+def test_avalanche_is_the_default_build(monkeypatch):
+    for name in ("BOARDMAN_ARENA_CHAIN", "BOARDMAN_HUMANS_CHAIN", "CLAW_DEFAULT_CHAIN", "CLAW_ENABLED_CHAINS"):
+        monkeypatch.delenv(name, raising=False)
+    chains.reload_chains_config()
+    assert onchain.default_chain() == "avalanche"
+    assert chains.default_chain_id() == "avalanche"
+    assert realms.humans_chain() == "avalanche_mainnet"
+    assert [c["id"] for c in chains.list_chains()] == ["avalanche"]
+    from gaming.src.backend.services.funding_rails import settlement_rail_id
+
+    assert settlement_rail_id() == "avalanche"
+
+
+def test_arc_still_works_when_switched_on(monkeypatch):
+    """Arc support stays in the code: one env switch makes it the arena chain."""
+    monkeypatch.setenv("BOARDMAN_ARENA_CHAIN", "arc")
+    monkeypatch.setenv("CLAW_ENABLED_CHAINS", "arc")
     chains.reload_chains_config()
     assert onchain.default_chain() == "arc"
-    assert chains.default_chain_id() == "arc"
+    assert onchain._chain_config()["evm_chain_id"] == 5042002
+    chains.reload_chains_config()
 
 
 def test_fuji_is_the_arena_chain_in_the_avalanche_build(avalanche_build):

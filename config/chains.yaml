@@ -1,19 +1,18 @@
-# ClawStation / Rematch settlement chains
+# Boardman settlement chains
 #
 # Product posture (now):
 #   - NETWORK: testnet
-#   - LIVE for users: Arc only (the default build)
-#   - Avalanche build: Avalanche Fuji is the settlement chain. BoardmanEscrow v2
-#     + SpectatorPool v2 are deployed there; .env.avalanche.example switches the
-#     arena to it (CLAW_ENABLED_CHAINS / CLAW_DEFAULT_CHAIN / BOARDMAN_ARENA_CHAIN
-#     = avalanche). Avalanche C-Chain mainnet (avalanche_mainnet) is prep only.
-#   - PLANNED: GOAT Testnet3 (ERC-8004 identity + x402; not settlement)
+#   - Settlement chain: Avalanche C-Chain. Fuji (testnet) is live with
+#     BoardmanEscrow v2 + SpectatorPool v2; C-Chain mainnet (avalanche_mainnet)
+#     is prep only, gated on the external audit and counsel.
+#   - Other EVM chains stay configured (enabled: false) so the same code can
+#     settle elsewhere; none is offered to players in this build.
 #   - Base Sepolia: legacy / internal, not offered in product UI
 #
 # enabled: false chains stay in this file for deploy prep but are hidden from
 # list_chains() / Stack catalog / user-facing "supported chains" help.
 
-default_settlement_chain: arc
+default_settlement_chain: avalanche
 
 # Money realms (src/backend/services/realms.py). Real money never mixes with
 # practice money: every chain below carries `network: mainnet|testnet`, and a
@@ -27,17 +26,18 @@ default_settlement_chain: arc
 # are the legacy "default" for every older code path and must never be real.
 realms:
   humans:
-    chain: arc_mainnet   # override: BOARDMAN_HUMANS_CHAIN (must be network: mainnet)
+    chain: avalanche_mainnet   # override: BOARDMAN_HUMANS_CHAIN (must be network: mainnet)
   arena:
-    chain: arc           # override: BOARDMAN_ARENA_CHAIN (must be network: testnet)
+    chain: avalanche           # override: BOARDMAN_ARENA_CHAIN (must be network: testnet)
 
 chains:
   arc:
     id: arc
     label: Arc Testnet
-    enabled: true
-    recommended: true
-    status: live
+    # Configured, not offered in this build (CLAW_ENABLED_CHAINS=arc turns it on).
+    enabled: false
+    recommended: false
+    status: supported
     # Money realm: mainnet = real money (humans only); testnet = practice chips.
     network: testnet
     circle_blockchain: ARC-TESTNET
@@ -99,11 +99,10 @@ chains:
   avalanche:
     id: avalanche
     label: Avalanche Fuji
-    # Off in the default (Arc) build. The Avalanche build enables it with
-    # CLAW_ENABLED_CHAINS=avalanche and makes it the arena chain
-    # (BOARDMAN_ARENA_CHAIN=avalanche); see docs/avalanche/README.md.
-    enabled: false
-    recommended: false
+    # The settlement chain of this build: arena, spectator pool and practice
+    # play all settle here (docs/avalanche/README.md).
+    enabled: true
+    recommended: true
     status: live
     # Money realm: mainnet = real money (humans only); testnet = practice chips.
     network: testnet
@@ -237,7 +236,8 @@ chains:
   celo:
     id: celo
     label: Celo
-    enabled: true
+    # Not offered in the Avalanche build (CLAW_ENABLED_CHAINS can turn it on).
+    enabled: false
     recommended: false
     status: minipay
     # Money realm: mainnet = real money (humans only); testnet = practice chips.
@@ -360,17 +360,17 @@ chains:
     notes: "Celo testnet for MiniPay dev."
 
 # Settlement policy (see also config/funding_rails.yaml)
-# Stakes / BoardmanEscrow ALWAYS on default_settlement_chain (arc) until a
-# rail has usdc_gas + can_stake. Stellar & Avalanche are funding rails only.
+# Stakes / BoardmanEscrow always lock on default_settlement_chain (avalanche).
+# Stellar and other chains are funding rails only.
 settlement:
-  chain: arc
+  chain: avalanche
   force_convert_for_stake: true
   abstract_balance: true   # players see one USDC number
 
 # Circle CCTP v2 (https://developers.circle.com/cctp). Same contract addresses
 # on every EVM chain except EDGE. Domains live on each chain above
-# (cctp_domain). Arc: domain 26, no Fast Transfer as source (attests fast
-# anyway); Base: domain 6, Fast Transfer supported.
+# (cctp_domain). Avalanche: domain 1; Base: domain 6, Fast Transfer supported;
+# Arc: domain 26.
 cctp:
   mainnet:
     token_messenger_v2: "0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d"
@@ -388,9 +388,9 @@ cctp:
     avalanche: testnet
     avalanche_mainnet: mainnet
 
-# Phase C: bridge funding rails → Arc play wallet (CCTP / ops).
+# Phase C: bridge funding rails → Avalanche play wallet (CCTP / ops).
 bridge:
   enabled: false
   extra_fee_bps: 50   # +0.5% on top of platform 7% when we bridge for them
-  supported_sources: [stellar, avalanche, base, arc, goat, goat_testnet]
-  target: arc
+  supported_sources: [stellar, base, arc, goat, goat_testnet]
+  target: avalanche

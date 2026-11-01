@@ -25,7 +25,7 @@ from gaming.src.backend.services.paycrest.models import (
 )
 
 SECRET = "paycrest-test-secret-not-real"
-RELAYERS = {"PAYCREST_ARC_RELAYER_WALLET_ID": "relay-arc", "PAYCREST_BASE_RELAYER_WALLET_ID": "relay-base"}
+RELAYERS = {"PAYCREST_AVALANCHE_RELAYER_WALLET_ID": "relay-avalanche", "PAYCREST_BASE_RELAYER_WALLET_ID": "relay-base"}
 BANKS = [
     Institution("GTBINGLA", "Guaranty Trust Bank", "bank"),
     Institution("OPAYNGPC", "OPay", "bank"),

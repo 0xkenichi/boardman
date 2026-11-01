@@ -6,7 +6,7 @@ Players see one "play balance". Under the hood:
   - funding rails (Stellar, Avalanche, Paystack, bank): money in → convert to Arc
 
 Stakes ALWAYS require spendable USDC on the settlement rail unless a rail
-is marked can_stake + usdc_gas (only Arc today).
+is marked can_stake (the settlement rail: Avalanche C-Chain).
 """
 from __future__ import annotations
 
@@ -35,15 +35,15 @@ def load_funding_config() -> dict[str, Any]:
         with open(_CONFIG_PATH, "r", encoding="utf-8") as fh:
             return yaml.safe_load(fh) or {}
     return {
-        "settlement_rail": "arc",
+        "settlement_rail": "avalanche",
         "require_settlement_for_stake": True,
         "rails": {
-            "arc": {
-                "id": "arc",
+            "avalanche": {
+                "id": "avalanche",
                 "kind": "settlement",
                 "enabled": True,
                 "can_stake": True,
-                "usdc_gas": True,
+                "usdc_gas": False,
                 "player_label": "Play wallet",
                 "deposit_mode": "play_address",
             }
@@ -57,7 +57,7 @@ def load_funding_config() -> dict[str, Any]:
         "bridge": {
             "auto_convert_to_settlement": False,
             "mode": "manual_ops",
-            "target": "arc",
+            "target": "avalanche",
         },
     }
 
@@ -72,7 +72,7 @@ def settlement_rail_id() -> str:
     chain). Real money is never reached through it: a human challenge uses
     its own ``settlement_chain`` (services/realms.py)."""
     cfg = load_funding_config()
-    raw = (os.getenv("BOARDMAN_SETTLEMENT_RAIL") or cfg.get("settlement_rail") or "arc").strip().lower()
+    raw = (os.getenv("BOARDMAN_SETTLEMENT_RAIL") or cfg.get("settlement_rail") or "avalanche").strip().lower()
     try:
         from gaming.src.backend.services.realms import arena_chain, is_practice_chain
 
@@ -182,8 +182,9 @@ def funding_rail_enabled(rail_id: str) -> bool:
     if rail_id == "stellar":
         # Show if configured OR always as "coming" instructions with ops addr
         return bool(ops_deposit_address("stellar") or os.getenv("STELLAR_SHOW_ALWAYS", "1") == "1")
-    if rail_id == "avalanche":
-        return bool(ops_deposit_address("avalanche") or os.getenv("BOARDMAN_OPS_USDC_ADDRESS"))
+    if r.get("deposit_mode") == "ops_address":
+        # A funding-only rail shows only once ops has a deposit address for it.
+        return bool(ops_deposit_address(rail_id) or os.getenv("BOARDMAN_OPS_USDC_ADDRESS"))
     return True
 
 

@@ -177,7 +177,7 @@ def _realm_cfg(realm: str) -> dict[str, Any]:
 def arena_chain() -> str:
     """The practice chain the arena, spectator betting and AFM use. Raises
     RealmMisconfigured if it names a real-money chain."""
-    raw = (os.getenv("BOARDMAN_ARENA_CHAIN") or _realm_cfg(ARENA).get("chain") or "arc").strip()
+    raw = (os.getenv("BOARDMAN_ARENA_CHAIN") or _realm_cfg(ARENA).get("chain") or "avalanche").strip()
     cid = _norm(raw)
     if not is_practice_chain(cid):
         raise RealmMisconfigured(
@@ -189,7 +189,7 @@ def arena_chain() -> str:
 def humans_chain() -> str:
     """The real-money chain for human challenges. Raises RealmMisconfigured if
     it names a practice chain."""
-    raw = (os.getenv("BOARDMAN_HUMANS_CHAIN") or _realm_cfg(HUMANS).get("chain") or "arc_mainnet").strip()
+    raw = (os.getenv("BOARDMAN_HUMANS_CHAIN") or _realm_cfg(HUMANS).get("chain") or "avalanche_mainnet").strip()
     cid = _norm(raw)
     if not is_real_chain(cid):
         raise RealmMisconfigured(f"humans realm chain {cid!r} is not a mainnet chain")

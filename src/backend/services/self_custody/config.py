@@ -20,10 +20,15 @@ from typing import Any
 _TRUTHY = {"1", "true", "yes", "on"}
 _FALSY = {"0", "false", "no", "off"}
 
-# Circle's modular transport path per chain (``${clientUrl}/<path>``).
-# arcTestnet is from Circle's quickstart; the mainnet path is not documented
-# yet (unverified) and can be overridden with SELF_CUSTODY_MODULAR_PATH.
-_MODULAR_PATHS = {"arc": "arcTestnet", "arc_mainnet": "arc"}
+# Circle's modular transport path per chain (``${clientUrl}/<path>``), named
+# like viem's chains. Override with SELF_CUSTODY_MODULAR_PATH if Circle's
+# console shows a different path for a chain.
+_MODULAR_PATHS = {
+    "avalanche": "avalancheFuji",
+    "avalanche_mainnet": "avalanche",
+    "arc": "arcTestnet",
+    "arc_mainnet": "arc",
+}
 
 
 def _flag(name: str, default: bool) -> bool:

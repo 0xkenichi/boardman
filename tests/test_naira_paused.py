@@ -32,7 +32,7 @@ def paystack_keys(monkeypatch):
 def test_shipped_config_turns_both_naira_rails_off():
     assert fr.naira_paystack_enabled() is False
     assert fr.naira_bank_enabled() is False
-    assert fr.funding_rail_enabled("arc") is True
+    assert fr.funding_rail_enabled("avalanche") is True
 
 
 def test_telegram_menu_hides_naira_even_with_paystack_keys(paystack_keys):

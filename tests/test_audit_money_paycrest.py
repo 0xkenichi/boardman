@@ -25,7 +25,7 @@ from gaming.src.backend.services.paycrest import store
 from gaming.src.channels.core import withdraw_links
 from tests.channels_fixtures import PLAY_ADDR, world  # noqa: F401
 from tests.paycrest_fakes import rail  # noqa: F401
-from tests.test_paycrest import ARC, BASE, _cashout_link, _token
+from tests.test_paycrest import PLAY_CHAIN, BASE, _cashout_link, _token
 
 
 @pytest.fixture()
@@ -34,10 +34,10 @@ def live_balance(world, rail, monkeypatch):  # noqa: F811
     c = "gaming.src.backend.services.clawstation_circle"
 
     async def _bal(user_id, chain_id=None):
-        return max(Decimal("0"), rail.ops.bal(ARC, PLAY_ADDR) + play_adjust.get_adjust(user_id))
+        return max(Decimal("0"), rail.ops.bal(PLAY_CHAIN, PLAY_ADDR) + play_adjust.get_adjust(user_id))
 
     async def _strict(user_id, chain_id=None):
-        return rail.ops.bal(ARC, PLAY_ADDR), None
+        return rail.ops.bal(PLAY_CHAIN, PLAY_ADDR), None
 
     monkeypatch.setattr(f"{c}.get_usdc_balance", _bal)
     monkeypatch.setattr(f"{c}.get_usdc_balance_strict", _strict)

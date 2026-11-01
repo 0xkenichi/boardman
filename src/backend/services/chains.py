@@ -32,8 +32,8 @@ _CONFIG_PATH = Path(__file__).resolve().parents[3] / "config" / "chains.yaml"
 
 # Built-in fallback if PyYAML is not installed or file is missing.
 _FALLBACK_CHAINS: dict[str, Any] = {
-    "default_settlement_chain": "arc",
-    "realms": {"humans": {"chain": "arc_mainnet"}, "arena": {"chain": "arc"}},
+    "default_settlement_chain": "avalanche",
+    "realms": {"humans": {"chain": "avalanche_mainnet"}, "arena": {"chain": "avalanche"}},
     "chains": {
         "arc": {
             "id": "arc",
@@ -282,7 +282,7 @@ def default_chain_id() -> str:
             env_default,
         )
     # Prefer default_settlement_chain if enabled
-    preferred = cfg.get("default_settlement_chain") or "arc"
+    preferred = cfg.get("default_settlement_chain") or "avalanche"
     if is_chain_enabled(preferred) and _is_testnet(preferred):
         return _ALIASES.get(preferred, preferred)
     for cid, c in (cfg.get("chains") or {}).items():
@@ -291,7 +291,7 @@ def default_chain_id() -> str:
     for cid in (cfg.get("chains") or {}):
         if is_chain_enabled(cid) and _is_testnet(cid):
             return cid
-    return "arc"
+    return "avalanche"
 
 
 def list_chains(*, include_disabled: bool = False) -> list[dict[str, Any]]:

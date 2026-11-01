@@ -25,7 +25,7 @@ MASTER = "test-paycrest-master"
 BVN = "22212345678"
 KYC = {"full_name": "Ada Obi", "birth_date": "1995-04-02", "id_type": "BVN", "id_number": BVN}
 REFUND = {"institution": "GTBINGLA", "account_identifier": "0123456789"}
-BASE, ARC = "base_mainnet", "arc_mainnet"
+BASE, PLAY_CHAIN = "base_mainnet", "avalanche_mainnet"
 
 
 def run(coro):
@@ -156,10 +156,10 @@ def test_onramp_happy_path_quote_kyc_webhooks_bridge(world, rail, api):
     _drain()
     assert _order(order["id"])["status"] == "completed"
     assert rail.ops.bal(BASE, base_addr) == 0
-    assert rail.ops.bal(ARC, PLAY_ADDR) == Decimal("12.49875")  # minus the 1 bps fast fee cap
+    assert rail.ops.bal(PLAY_CHAIN, PLAY_ADDR) == Decimal("12.49875")  # minus the 1 bps fast fee cap
     assert [c[0] for c in rail.ops.calls].count("mint") == 1
     burn = next(t for t in rail.ops.txs.values() if t["op"] == "burn")
-    assert burn["fast"] is True and burn["dst_domain"] == 26
+    assert burn["fast"] is True and burn["dst_domain"] == 1  # Avalanche C-Chain
     assert any("in your play wallet" in t for _, t in rail.told)
 
 
@@ -300,7 +300,7 @@ def test_order_and_bridge_creation_are_idempotent(world, rail):
     assert created_a and not created_b and a["id"] == b["id"]
     rail.ops.addr_of["w1"] = (BASE, "0x" + "1" * 40)
     rail.ops.credit(BASE, "0x" + "1" * 40, Decimal("5"))
-    kw = dict(idempotency_key="br", kind="onramp_sweep", profile_id="p", src_chain=BASE, dst_chain=ARC,
+    kw = dict(idempotency_key="br", kind="onramp_sweep", profile_id="p", src_chain=BASE, dst_chain=PLAY_CHAIN,
               amount=Decimal("5"), from_wallet_id="w1", mint_recipient=PLAY_ADDR)
     one = cctp.start(**kw)
     two = cctp.start(**kw)
@@ -334,14 +334,14 @@ def test_bridge_mint_failure_retries_then_succeeds(world, rail):
     rail.ops.credit(BASE, "0x" + "1" * 40, Decimal("5"))
     rail.ops.fail["mint"] = 1
     rail.ops.attest_pending = 2
-    br = cctp.start(idempotency_key="b1", kind="test", profile_id="p", src_chain=BASE, dst_chain=ARC,
+    br = cctp.start(idempotency_key="b1", kind="test", profile_id="p", src_chain=BASE, dst_chain=PLAY_CHAIN,
                     amount=Decimal("5"), from_wallet_id="w1", mint_recipient=PLAY_ADDR)
     for _ in range(12):
         cctp.advance(br["id"])
     row = store.get_bridge(br["id"])
     assert row["status"] == "minted" and row["attempts"] == 1
     ok_mints = [t for t in rail.ops.txs.values() if t["op"] == "mint" and not t["failed"]]
-    assert len(ok_mints) == 1 and ok_mints[0]["relayer"] == "relay-arc"
+    assert len(ok_mints) == 1 and ok_mints[0]["relayer"] == "relay-avalanche"
 
 
 def test_bridge_gives_up_and_flags_order_for_review(world, rail):
@@ -375,8 +375,8 @@ def test_reconciler_polls_missed_webhooks(world, rail):
 
 def _cashout_link(world, rail, amount="20"):
     prof = wa_user(world.repo)
-    rail.ops.addr_of[f"w_{prof['id']}"] = (ARC, PLAY_ADDR)
-    rail.ops.credit(ARC, PLAY_ADDR, Decimal("40"))
+    rail.ops.addr_of[f"w_{prof['id']}"] = (PLAY_CHAIN, PLAY_ADDR)
+    rail.ops.credit(PLAY_CHAIN, PLAY_ADDR, Decimal("40"))
     wa = FakeChannel("wa")
     run(wa.text(U, "withdraw"))
     run(wa.tap(U, "Cash out to bank"))
@@ -414,7 +414,7 @@ def test_withdraw_to_bank_end_to_end(world, rail, api):
     assert Decimal(sent["amount"]) == Decimal("19.98")  # shrunk so amount + fee fits the bridged 20
     transfer = next(t for t in rail.ops.txs.values() if t["op"] == "transfer")
     assert transfer["amount"] == Decimal("20.00") and transfer["to"] == "0x" + "9" * 40
-    assert rail.ops.bal(ARC, PLAY_ADDR) == Decimal("20")
+    assert rail.ops.bal(PLAY_CHAIN, PLAY_ADDR) == Decimal("20")
 
     pcid = o["paycrest_id"]
     body = webhook_body(pcid, "settled")
@@ -438,7 +438,7 @@ def test_withdraw_refund_comes_home(world, rail, api):
     assert api.post("/webhooks/paycrest", content=body, headers=signed(body)).json()["outcome"] == "refunded_on_base"
     _drain()
     assert store.get_order(o["id"])["status"] == "refunded"
-    assert rail.ops.bal(ARC, PLAY_ADDR) > Decimal("39.9")
+    assert rail.ops.bal(PLAY_CHAIN, PLAY_ADDR) > Decimal("39.9")
     assert any("back in your" in t for _, t in rail.told)
 
 
@@ -450,7 +450,7 @@ def test_paycrest_refusing_the_bank_returns_the_money(world, rail):
     o = store.list_orders(direction="offramp")[-1]
     assert o["status"] == "refunded"
     assert not rail.ops.ops("transfer")
-    assert rail.ops.bal(ARC, PLAY_ADDR) == Decimal("39.998")  # 40 back, minus the capped fast-fee on the way home
+    assert rail.ops.bal(PLAY_CHAIN, PLAY_ADDR) == Decimal("39.998")  # 40 back, minus the capped fast-fee on the way home
 
 
 def test_cashout_respects_caps_and_balance(world, rail):

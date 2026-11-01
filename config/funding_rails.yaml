@@ -2,16 +2,17 @@
 #
 # Product rule:
 #   - Players see ONE abstract USDC balance ("play money").
-#   - They may fund via Naira, Stellar USDC, Avalanche USDC, or Arc USDC.
+#   - They may fund via Avalanche USDC (their play wallet), Stellar USDC or Naira.
 #   - All stakes / BoardmanEscrow locks settle on the settlement rail only.
-#   - Today settlement rail = Arc (USDC gas + BoardmanEscrow).
-#   - Other rails are funding only until they support USDC gas + dual-lock escrow.
+#   - Settlement rail = Avalanche C-Chain (BoardmanEscrow v2; AVAX gas covered
+#     by the platform gas tank, services/gas_tank.py).
+#   - Other rails are funding only until they carry a dual-lock escrow.
 #
 # Convert policy:
 #   - Funds that arrive on a non-settlement rail are converted into the
 #     settlement play wallet (manual ops float now; CCTP/bridge later).
 
-settlement_rail: arc
+settlement_rail: avalanche
 
 # When true, lock_stake refuses if spendable on settlement rail < stake
 # even if user has USDC sitting on funding rails (must convert first).
@@ -25,29 +26,28 @@ player_copy:
   convert_hint: "We'll move it into play money before your next stake."
 
 rails:
-  arc:
-    id: arc
-    kind: settlement          # funding + stake + gas in USDC
-    enabled: true
-    player_label: "Play wallet"
-    admin_label: "Arc (settlement)"
-    usdc_gas: true
-    can_stake: true           # BoardmanEscrow lives here
-    deposit_mode: play_address  # each user has their own Arc address
-    notes: "Home rail. Gas = USDC. Stakes always land here."
-
   avalanche:
     id: avalanche
-    kind: funding             # until USDC gas + escrow V1 on Avax
-    enabled: true             # show as funding option
-    player_label: "USDC (Avalanche)"
-    admin_label: "Avalanche Fuji/C-Chain"
-    usdc_gas: false           # needs AVAX for gas today
-    can_stake: false          # force convert → Arc
-    deposit_mode: ops_address # send to ops, memo = top-up ref
-    env_ops_address: BOARDMAN_OPS_USDC_AVALANCHE
-    # Fallback: same ops EOA if multi-chain; override in .env when split
-    notes: "Funding only. Convert to Arc before stake."
+    kind: settlement          # funding + stake; AVAX gas from the platform gas tank
+    enabled: true
+    player_label: "Play wallet"
+    admin_label: "Avalanche C-Chain (settlement)"
+    usdc_gas: false           # gas is AVAX; services/gas_tank.py tops play wallets up
+    can_stake: true           # BoardmanEscrow v2 lives here
+    deposit_mode: play_address  # each user has their own Avalanche address
+    notes: "Home rail. Stakes always land here."
+
+  # Kept configured for the multi-chain code; not offered in this build.
+  arc:
+    id: arc
+    kind: funding
+    enabled: false
+    player_label: "USDC (Arc)"
+    admin_label: "Arc testnet (not offered)"
+    usdc_gas: true
+    can_stake: false
+    deposit_mode: ops_address
+    notes: "Not offered in the Avalanche build."
 
   stellar:
     id: stellar
@@ -106,7 +106,7 @@ rails:
     kind: funding
     enabled: false
     player_label: "Top up with naira (Paycrest)"
-    admin_label: "Paycrest NGN <-> USDC on Base, CCTP to Arc"
+    admin_label: "Paycrest NGN <-> USDC on Base, CCTP to Avalanche"
     can_stake: false
     deposit_mode: fiat
     api_base: "https://api.paycrest.io/v2"
@@ -114,7 +114,7 @@ rails:
     token: USDC
     currency: NGN
     delivery_chain: base_mainnet   # chains.yaml id where Paycrest pays out / takes USDC
-    settlement_chain: arc_mainnet  # chains.yaml id of the player's play wallet
+    settlement_chain: avalanche_mainnet  # chains.yaml id of the player's play wallet
     # Our optional fee on top of Paycrest's (Paycrest's own ~0.5% is inside its rate).
     sender_fee_percent: "0"
     # Who pays Paycrest's network fee: customer (shown to the player) | sender
@@ -133,7 +133,7 @@ rails:
       offramp_daily_usdc: "500"     # per player, rolling 24h
       quote_ttl_sec: 600
     bridge:
-      # Base -> Arc after an on-ramp; Arc -> Base before an off-ramp.
+      # Base -> Avalanche after an on-ramp; Avalanche -> Base before an off-ramp.
       onramp_fast_transfer: true    # CCTP Fast Transfer from Base (fee in bps, quoted by Circle)
       max_fee_bps: 5                # refuse to burn if Circle's fast fee is above this
       min_sweep_usdc: "0.50"
@@ -146,15 +146,14 @@ rails:
       base_account_type: SCA
       # Destination mints are relayed by Boardman wallets (anyone may call
       # receiveMessage when destinationCaller is zero). Wallet ids come from env:
-      #   PAYCREST_ARC_RELAYER_WALLET_ID, PAYCREST_BASE_RELAYER_WALLET_ID
+      #   PAYCREST_AVALANCHE_RELAYER_WALLET_ID, PAYCREST_BASE_RELAYER_WALLET_ID
 
 bridge:
-  # Auto-move funding-rail USDC → Arc play wallet
+  # Auto-move funding-rail USDC → Avalanche play wallet
   auto_convert_to_settlement: false   # true when CCTP/ops bot is live
   mode: manual_ops                    # manual_ops | cctp | partner (paycrest_ngn bridges with CCTP on its own)
   extra_fee_bps: 0                    # charge 0 for now; raise if bridge costs
   supported_sources:
     - stellar
-    - avalanche
     - base
-  target: arc
+  target: avalanche

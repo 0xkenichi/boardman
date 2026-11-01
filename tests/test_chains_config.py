@@ -53,7 +53,7 @@ def test_normalize_aliases(chains_mod):
 def test_mainnet_not_live_for_users(chains_mod):
     chains_mod.reload_chains_config()
     assert chains_mod.is_chain_enabled("arc_mainnet") is False
-    assert chains_mod.default_chain_id() == "arc"  # settlement stays on testnet for now
+    assert chains_mod.default_chain_id() == "avalanche"  # settlement stays on testnet (Fuji) for now
     with pytest.raises(ValueError):
         chains_mod.get_chain("arc_mainnet", require_enabled=True)
 

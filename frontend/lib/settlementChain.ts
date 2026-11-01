@@ -1,8 +1,8 @@
 /**
  * The chain this build settles on, for links and labels on the site.
  *
- * NEXT_PUBLIC_SETTLEMENT_CHAIN picks it at build time: `arc` (default, Arc
- * testnet) or `avalanche` (Avalanche Fuji C-Chain, the Avalanche build).
+ * NEXT_PUBLIC_SETTLEMENT_CHAIN picks it at build time: `avalanche` (default,
+ * Avalanche Fuji C-Chain) or `arc` (Arc testnet, kept for the multi-chain code).
  * Mirrors config/chains.yaml; the escrow addresses there are the source.
  */
 
@@ -50,8 +50,8 @@ const CHAINS: Record<SettlementChain['id'], SettlementChain> = {
 }
 
 export function settlementChain(): SettlementChain {
-  const id = (process.env.NEXT_PUBLIC_SETTLEMENT_CHAIN || 'arc').trim().toLowerCase()
-  return CHAINS[id as SettlementChain['id']] ?? CHAINS.arc
+  const id = (process.env.NEXT_PUBLIC_SETTLEMENT_CHAIN || 'avalanche').trim().toLowerCase()
+  return CHAINS[id as SettlementChain['id']] ?? CHAINS.avalanche
 }
 
 export const SETTLEMENT = settlementChain()

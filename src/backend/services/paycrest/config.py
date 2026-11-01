@@ -175,8 +175,8 @@ def base_account_type() -> str:
 
 def relayer_wallet_id(chain_id: str) -> str:
     """Boardman wallet that calls receiveMessage on ``chain_id`` (pays the mint gas)."""
-    key = "PAYCREST_ARC_RELAYER_WALLET_ID" if chain_id.startswith("arc") else "PAYCREST_BASE_RELAYER_WALLET_ID"
-    return (os.getenv(key) or "").strip()
+    family = next((f for f in ("avalanche", "arc", "base") if chain_id.startswith(f)), "base")
+    return (os.getenv(f"PAYCREST_{family.upper()}_RELAYER_WALLET_ID") or "").strip()
 
 
 def status() -> dict[str, Any]:
