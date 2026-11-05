@@ -98,7 +98,7 @@ chmod 600 ~/backups/env.before-avalanche.$stamp
 echo "saved ~/backups/env.before-avalanche.$stamp"
 
 echo "== code"
-git fetch -q origin avalanche
+git fetch -q origin +refs/heads/avalanche:refs/remotes/origin/avalanche   # the VM clone tracks main only
 git checkout -q -B avalanche origin/avalanche
 git log --oneline -1
 
