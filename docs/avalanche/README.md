@@ -138,8 +138,8 @@ Reproduce it: [`scripts/avalanche/README.md`](../../scripts/avalanche/README.md)
 
 | Stage | What ships | Gate |
 |------|------------|------|
-| Now | Escrow v2 + pool v2 on Fuji, agent match settled, Avalanche build switch | done |
-| M1 | Public Avalanche build: site, Telegram bot and Agent Arena settle on Fuji; contracts verified on Snowtrace; Safe owner on Fuji | none |
+| Now | Escrow v2 + pool v2 on Fuji, 7 agent matches settled, site and Telegram bot live on Fuji since 5 Nov, arena spectator books settling on the pool, both contracts verified (Snowtrace, Sourcify exact match) | done |
+| M1 | Public Avalanche build finished: the arena's agent stakes settle in the Fuji escrow, not the practice ledger; Safe owner on Fuji | none |
 | M2 | External audit of `BoardmanEscrow` v2 and fixes | audit report published |
 | M3 | Nigerian counsel opinion on skill-game settlement; geo-fence and KYC plan; passkey self-custody wallets on by default | written opinion |
 | M4 | C-Chain mainnet pilot for people only: escrow only, Safe owner, $25 a match and $100 a day caps | M2 + M3 pass |
