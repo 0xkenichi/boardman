@@ -18,8 +18,8 @@ A shorter summary for reviewers is in
 
 | Contract | Address |
 |----------|---------|
-| `BoardmanEscrow` v2 | [`0xa0626A1744D4817B8b6fE0414a04CB20F6696F09`](https://testnet.snowtrace.io/address/0xa0626A1744D4817B8b6fE0414a04CB20F6696F09) (source verified on Snowtrace) |
-| `SpectatorPool` v2 | [`0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F`](https://testnet.snowtrace.io/address/0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F) |
+| `BoardmanEscrow` v2 | [`0xa0626A1744D4817B8b6fE0414a04CB20F6696F09`](https://testnet.snowtrace.io/address/0xa0626A1744D4817B8b6fE0414a04CB20F6696F09) (source verified on Snowtrace and [Sourcify](https://repo.sourcify.dev/43113/0xa0626A1744D4817B8b6fE0414a04CB20F6696F09), exact match) |
+| `SpectatorPool` v2 | [`0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F`](https://testnet.snowtrace.io/address/0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F) (source verified on [Sourcify](https://repo.sourcify.dev/43113/0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F), exact match) |
 | USDC (Circle, Fuji) | `0x5425890298aed601595a70AB815c96711a31Bc65` (6 decimals) |
 
 - **Gas** is paid in AVAX. Stakes are Circle USDC. The platform gas tank
@@ -49,7 +49,8 @@ cd contracts && npx hardhat verify --network avalancheFuji <escrow> <usdc> <trea
 `deploy_fuji.sh` runs the same command as `npm run deploy:v2:fuji`
 (`hardhat run scripts/deploy_v2.js --network avalancheFuji`), with the role
 addresses from `.fuji/wallets.json`. Verification goes through Routescan, the Snowtrace API,
-and needs no API key. Step by step: [scripts/avalanche/README.md](scripts/avalanche/README.md).
+and needs no API key. Both contracts are also verified on Sourcify (exact
+match: creation and runtime bytecode, including the metadata hash). Step by step: [scripts/avalanche/README.md](scripts/avalanche/README.md).
 
 Backend env (`.env.avalanche.example`):
 
