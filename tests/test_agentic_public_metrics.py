@@ -131,6 +131,25 @@ def test_volume_counts_locked_and_settled():
     assert Decimal(vol["skill_volume_usdc"]) == Decimal("6.000000")  # 2*(1+2)
 
 
+def test_spectator_txs_link_on_the_match_chain():
+    fuji = _match(mid="f1", onchain=False)
+    fuji["chain_id"] = "avalanche"
+    fuji["spectator_book"].update(open_tx_hash="0xopen", resolve_tx_hash="0xres")
+    # Records from before per-chain links carry no chain_id: they ran on Arc testnet.
+    legacy = _match(mid="old1", onchain=False, created_at="2026-08-11T22:00:00+00:00")
+    del legacy["chain_id"]
+    legacy["spectator_book"]["open_tx_hash"] = "0xold"
+    out = build_public_metrics(
+        matches={"matches": {"f1": fuji, "old1": legacy}}, agents={"agents": {}}, lp_pools={"pools": {}}
+    )
+    rows = {r["match_id"]: r for r in out["matches"]}
+    assert [t["explorer"] for t in rows["f1"]["spectator"]["txs"]] == [
+        "https://testnet.snowtrace.io/tx/0xopen",
+        "https://testnet.snowtrace.io/tx/0xres",
+    ]
+    assert rows["old1"]["spectator"]["txs"][0]["explorer"] == "https://explorer.testnet.arc.io/tx/0xold"
+
+
 def test_public_route_no_api_key():
     from gaming.src.backend.main import app
 

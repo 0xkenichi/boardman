@@ -187,7 +187,8 @@ def _proofs(match: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _spectator_txs(book: dict[str, Any]) -> list[dict[str, str]]:
+def _spectator_txs(book: dict[str, Any], chain_id: Optional[str] = None) -> list[dict[str, str]]:
+    """The book's on-chain txs, linked on its match's chain (books carry no chain)."""
     txs: list[dict[str, str]] = []
     seen: set[str] = set()
 
@@ -196,7 +197,7 @@ def _spectator_txs(book: dict[str, Any]) -> list[dict[str, str]]:
         if not h or h in seen:
             return
         seen.add(h)
-        txs.append({"step": step, "tx_hash": h, "explorer": href or _explorer(h)})
+        txs.append({"step": step, "tx_hash": h, "explorer": href or _explorer(h, chain_id)})
 
     _add("openBook", book.get("open_tx_hash"), book.get("open_explorer"))
     for b in book.get("bets") or []:
@@ -220,7 +221,7 @@ def _public_row(
         book = {**book, **{k: v for k, v in live_book.items() if v not in (None, "", [], {})}}
     totals = book.get("totals") or {}
     pot = _d(totals.get("a")) + _d(totals.get("b"))
-    spec_txs = _spectator_txs(book)
+    spec_txs = _spectator_txs(book, match.get("chain_id") or (match.get("onchain") or {}).get("chain_id"))
     pgn = match.get("pgn") or ""
     return {
         "match_id": match.get("match_id"),

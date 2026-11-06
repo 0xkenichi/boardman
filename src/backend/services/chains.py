@@ -436,7 +436,7 @@ def get_explorer_tx(chain_id: str, tx_hash: str = "") -> str:
 
 
 def circle_blockchains_for_wallets() -> list[str]:
-    # Wallet fan-out only on live chains (Arc-only today)
+    # Wallet fan-out only on the enabled chains
     return [c["circle_blockchain"] for c in list_chains(include_disabled=False)]
 
 
