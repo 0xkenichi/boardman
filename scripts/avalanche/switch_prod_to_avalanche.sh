@@ -24,8 +24,10 @@
 #
 # Back out (about 2 minutes): on the VM,
 #   cd ~/boardman && cp ~/backups/env.before-avalanche.<stamp> .env \
-#     && git checkout main && docker compose up -d --build
-# and redeploy the site from main with scripts/deploy_frontend.sh.
+#     && git checkout 29535f9 && docker compose up -d --build
+# and redeploy the site from a checkout of 29535f9 with scripts/deploy_frontend.sh.
+# 29535f9 is the last Arc build of main; since 2026-11-06 main is the
+# Avalanche build.
 #
 # After the switch: if the arena runs on-chain (BOARDMAN_AGENTIC_ONCHAIN=1 on
 # the VM), each contestant agent wallet needs a little Fuji AVAX and test USDC:
