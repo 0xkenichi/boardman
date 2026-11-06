@@ -526,7 +526,7 @@ class AgentMatchService:
         bud_a = budget_from_manifest(a)
         bud_b = budget_from_manifest(b)
 
-        # Live bankroll: prefer real Arc USDC on the agent's wallet_address;
+        # Live bankroll: prefer real on-chain USDC on the agent's wallet_address;
         # fall back to demo ledger; then manifest bankroll.
         def _play_balance(agent: dict[str, Any], bud) -> Decimal:
             w = agent.get("wallet_address") or ""

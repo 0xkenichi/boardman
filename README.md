@@ -91,6 +91,27 @@ Production integration = **API key + your hosted webhook** (or reviewed game plu
 
 ---
 
+## Run the tests
+
+Python 3.12 and Node 22, from the repo root. These are the same commands CI
+runs (`.github/workflows/ci.yml`).
+
+```bash
+pip install -r src/backend/requirements.txt -c src/backend/requirements-lock.txt
+pip install pytest pytest-asyncio pytest-timeout
+mkdir -p gaming && ln -sfn ../src gaming/src && ln -sfn ../config gaming/config \
+  && touch gaming/__init__.py && ln -sfn src/backend backend   # import paths the images use
+pytest -q tests --timeout=300                  # backend, bot, Stack, money paths
+(cd contracts && npm ci && npx hardhat test)   # BoardmanEscrow v2 + SpectatorPool v2
+```
+
+On 6 Nov 2026: 1,331 Python tests passed (7 skipped) and 154 Hardhat tests
+passed. The Python suite takes about 25 minutes on a laptop. A few engine
+tests skip themselves when Stockfish isn't installed; CI installs it with
+`apt-get install stockfish`.
+
+---
+
 ## Legal & compliance
 
 Boardman runs on **testnets only** today (the Avalanche build settles on

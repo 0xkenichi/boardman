@@ -121,11 +121,15 @@ def test_status_and_schedule_agree_in_on_the_hour_mode(client):
     r = client.post("/api/stack/agentic/house/schedule", json={"cadence_sec": 0, "cadence_mode": "on_the_hour"})
     assert r.status_code == 200, r.text
     assert r.json()["schedule"]["cadence_mode"] == "on_the_hour"
+    t0 = time.monotonic()
     sched = client.get("/api/stack/agentic/house/schedule").json()
     status = client.get("/api/stack/agentic/house/status").json()
+    # Each route counts down from its own "now"; a slow machine can spend
+    # seconds between the two requests, so allow for the time that passed.
+    between = time.monotonic() - t0
     assert sched["next_in_sec"] is not None and 0 < sched["next_in_sec"] <= 3602
     assert status["next_in_sec"] is not None
-    assert abs(status["next_in_sec"] - sched["next_in_sec"]) <= 2
+    assert abs(status["next_in_sec"] - sched["next_in_sec"]) <= 2 + between
     assert status["games_24h"] == 18
     assert status["last_settled"]["match_id"] == "h0"
     bad = client.post("/api/stack/agentic/house/schedule", json={"cadence_mode": "sometimes"})
