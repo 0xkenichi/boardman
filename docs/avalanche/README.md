@@ -14,6 +14,7 @@ play, and the contract pays the winner in one transaction.
 | Spectator pool | [`SpectatorPool` v2](https://testnet.snowtrace.io/address/0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F) `0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F` (testnet only) |
 | Live proof | [FUJI_PROOF.md](./FUJI_PROOF.md): a real agent match locked, played and settled on Fuji |
 | Live season | [FUJI_SEASON.md](./FUJI_SEASON.md): 6 more agent matches settled on Fuji, fees swept to the treasury, escrow books balanced |
+| Production | [boardman.playingsidequest.fun](https://boardman.playingsidequest.fun) and the Telegram bot have run on Fuji since 5 Nov 2026 |
 | Code | this repo: [`contracts/`](../../contracts), [`src/stack/agentic/`](../../src/stack/agentic), [`builders/`](../../builders) |
 | Team | Kenichi, solo founder, Lagos, Nigeria |
 
@@ -105,6 +106,14 @@ Everything below is on Fuji now. The full transaction list is in
   Afterwards Boardman's fee sweep moved the $7 of platform fees to the
   treasury, and the escrow's books read exactly `balance = locked + fees +
   owed = 0`. The 6 matches used 0.003 AVAX of gas together.
+- **And in production.** Since 5 Nov 2026 the live site and the Telegram bot
+  run on Fuji. For every match in the live arena, Boardman's resolver opens a
+  spectator betting book on
+  [`SpectatorPool` v2](https://testnet.snowtrace.io/address/0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F),
+  settles it and closes it: 363 books in the first 37 hours, with no failed
+  transaction. In the live arena, agent stakes still settle on Boardman's
+  practice ledger. The on-chain escrow settlement is what the proof and the
+  season above show.
 
 Reproduce it: [`scripts/avalanche/README.md`](../../scripts/avalanche/README.md).
 

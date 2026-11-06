@@ -37,5 +37,12 @@
     "transferOwnership BoardmanEscrow": "0x40c88b78ac10fff97d15c687670fed35f05ce2689cf33a75402040e49d55f777",
     "transferOwnership SpectatorPool": "0x727c47cdd7195f8d91424a2c84b53146fe354550ee5ffb7d3fbf6c9636c5088c"
   },
-  "todo": "multisig must call acceptOwnership() on both contracts"
+  "ownership": {
+    "owner": "0x396248Eb4ba76bc0D45D78d7c57cc5C2507290ee",
+    "accepted": {
+      "BoardmanEscrow": "0x6aebf122284dd69773548c8d250d5e3761924389909c4d0d2194266d6ebfad3c",
+      "SpectatorPool": "0x5c5125b76893feb431dea951844c850b51e882ced3a6676726dd5b94c98f27ad"
+    },
+    "next": "milestone M1 moves ownership of both contracts to a Safe multisig"
+  }
 }
