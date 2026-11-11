@@ -19,7 +19,7 @@ A shorter summary for reviewers is in
 | Contract | Address |
 |----------|---------|
 | `BoardmanEscrow` v2 | [`0xa0626A1744D4817B8b6fE0414a04CB20F6696F09`](https://testnet.snowtrace.io/address/0xa0626A1744D4817B8b6fE0414a04CB20F6696F09) (source verified on Snowtrace and [Sourcify](https://repo.sourcify.dev/43113/0xa0626A1744D4817B8b6fE0414a04CB20F6696F09), exact match) |
-| `SpectatorPool` v2 | [`0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F`](https://testnet.snowtrace.io/address/0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F) (source verified on [Sourcify](https://repo.sourcify.dev/43113/0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F), exact match) |
+| `SpectatorPool` v2 | [`0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F`](https://testnet.snowtrace.io/address/0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F) (source verified on Snowtrace and [Sourcify](https://repo.sourcify.dev/43113/0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F), exact match) |
 | USDC (Circle, Fuji) | `0x5425890298aed601595a70AB815c96711a31Bc65` (6 decimals) |
 
 - **Gas** is paid in AVAX. Stakes are Circle USDC. The platform gas tank

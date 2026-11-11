@@ -385,3 +385,81 @@ def test_l03_dual_lock_refuses_a_settled_onchain_match(monkeypatch, status):
             agent_b_wallet="0x" + "b2" * 20, stake_usdc=Decimal("5"),
         )
     assert "send" not in calls
+
+
+# ── Native gas: on Avalanche agents need AVAX before they can approve/lock ───
+
+
+class _StopAtFirstSend(Exception):
+    pass
+
+
+def _fresh_lock_fakes(monkeypatch, calls: list[str], gas_result: dict):
+    """A fresh match (no escrow record) on Fuji; the first tx send stops the run."""
+    from gaming.src.backend.services import gas_tank
+    from gaming.src.stack.agentic import onchain
+
+    class _Fn:
+        def __init__(self, ret):
+            self.ret = ret
+
+        def call(self):
+            return self.ret
+
+        def build_transaction(self, tx):
+            return {}
+
+    class _Funcs:
+        def balanceOf(self, a):
+            return _Fn(10**12)
+
+        def matches(self, mid):
+            return _Fn(("0x" + "00" * 20, "0x" + "00" * 20, 0, 0, 0, 0))
+
+        def approve(self, *a):
+            return _Fn(True)
+
+    class _K:
+        functions = _Funcs()
+
+    class _Acct:
+        def __init__(self, a):
+            self.address = a
+
+    def _send(*a, **k):
+        calls.append("send")
+        raise _StopAtFirstSend()
+
+    monkeypatch.setattr(onchain, "_chain_config", lambda cid: {"escrow": "0xE", "chain_id": "avalanche"})
+    monkeypatch.setattr(onchain, "_w3", lambda cfg: type("W", (), {"to_checksum_address": staticmethod(lambda a: a)})())
+    monkeypatch.setattr(onchain, "_contracts", lambda w3, cfg: (_K(), _K()))
+    monkeypatch.setattr(onchain, "load_agent_private_key", lambda aid: aid)
+    monkeypatch.setattr(onchain, "_account", lambda pk: _Acct("0x" + ("a1" if pk == "A" else "b2") * 20))
+    monkeypatch.setattr(onchain, "_send", _send)
+    monkeypatch.setattr(
+        gas_tank, "ensure_native_gas", lambda chain, addr: calls.append(f"gas:{chain}:{addr[:4]}") or gas_result
+    )
+    return onchain
+
+
+def _lock(onchain):
+    return onchain.dual_lock_onchain(
+        "agm_gas", agent_a_id="A", agent_b_id="B", agent_a_wallet="0x" + "a1" * 20,
+        agent_b_wallet="0x" + "b2" * 20, stake_usdc=Decimal("2"),
+    )
+
+
+def test_dual_lock_gives_both_agents_gas_before_the_first_tx(monkeypatch):
+    calls: list[str] = []
+    onchain = _fresh_lock_fakes(monkeypatch, calls, {"ok": True, "action": "topped_up"})
+    with pytest.raises(_StopAtFirstSend):
+        _lock(onchain)
+    assert calls == ["gas:avalanche:0xa1", "gas:avalanche:0xb2", "send"]
+
+
+def test_dual_lock_sends_nothing_when_the_gas_tank_cannot_pay(monkeypatch):
+    calls: list[str] = []
+    onchain = _fresh_lock_fakes(monkeypatch, calls, {"ok": False, "action": "admin_low", "error": "Gas tank low"})
+    with pytest.raises(RuntimeError, match="no gas for agent wallet"):
+        _lock(onchain)
+    assert "send" not in calls

@@ -82,12 +82,14 @@ def _set_env(wallets: dict, deployment: dict, data_dir: Path, rpc: str) -> None:
         "BOARDMAN_ALLOW_LEDGER_FALLBACK": "0",
         "BOARDMAN_RESOLVER_KEY": w["resolver"]["private_key"],
         "BOARDMAN_FUNDER_KEY": w["funder_deployer"]["private_key"],
+        # Agents hold only USDC; the gas tank tops them up with AVAX before they lock.
+        "GAS_TANK_PRIVATE_KEY": w["funder_deployer"]["private_key"],
         "BOARDMAN_AGENT_THINK_MS": "50",
         "BOARDMAN_SF_THINK_MS": "50",
     })
-    # Arc-only overrides from the caller's shell must not leak into this run.
+    # Overrides from the caller's shell (Arc settings, its gas-tank key) must not leak into this run.
     for name in ("ARC_RPC_URL", "ARC_USDC_ADDRESS", "BOARDMAN_ESCROW_ADDRESS_ARC", "CLAW_ESCROW_ADDRESS_ARC",
-                 "SPECTATOR_ESCROW_ADDRESS", "DATABASE_URL", "SPECTATOR_ONCHAIN"):
+                 "SPECTATOR_ESCROW_ADDRESS", "DATABASE_URL", "SPECTATOR_ONCHAIN", "ADMIN_PRIVATE_KEY"):
         os.environ.pop(name, None)
 
 

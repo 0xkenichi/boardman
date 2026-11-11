@@ -888,6 +888,19 @@ def _fund_hint(chain_id: str) -> str:
         return "Fund agent wallets with test USDC on the arena chain."
 
 
+def _ensure_agent_gas(chain_id: str, address: str) -> None:
+    """Agents hold only USDC. On a native-gas chain (AVAX on Avalanche) the
+    platform gas tank tops the wallet up before it signs; USDC-gas chains skip."""
+    from gaming.src.backend.services.gas_tank import ensure_native_gas
+
+    out = ensure_native_gas(chain_id, address)
+    if not out.get("ok"):
+        raise RuntimeError(
+            f"no gas for agent wallet {address} on {chain_id}: "
+            f"{out.get('error') or out.get('action')}. {_fund_hint(chain_id)}"
+        )
+
+
 def dual_lock_onchain(
     match_id: str,
     *,
@@ -983,6 +996,10 @@ def dual_lock_onchain(
                     "player2": existing[1],
                     "stake_usdc": str(stake_usdc),
                 }
+
+    # Both agents send txs below (approve, create/join): give them gas first.
+    _ensure_agent_gas(chain_id, p1_addr)
+    _ensure_agent_gas(chain_id, p2_addr)
 
     txs: list[dict[str, str]] = []
 

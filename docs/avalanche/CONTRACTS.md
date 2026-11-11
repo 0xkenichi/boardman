@@ -7,7 +7,7 @@ with solc 0.8.20 (viaIR, optimizer 200, EVM paris) on OpenZeppelin 5.6.
 | Contract | Fuji (43113) | C-Chain (43114) |
 |----------|--------------|-----------------|
 | `BoardmanEscrow` v2 | [`0xa0626A1744D4817B8b6fE0414a04CB20F6696F09`](https://testnet.snowtrace.io/address/0xa0626A1744D4817B8b6fE0414a04CB20F6696F09), source verified on Snowtrace and [Sourcify](https://repo.sourcify.dev/43113/0xa0626A1744D4817B8b6fE0414a04CB20F6696F09) (exact match) | not deployed (gated on the external audit and counsel) |
-| `SpectatorPool` v2 | [`0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F`](https://testnet.snowtrace.io/address/0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F), source verified on [Sourcify](https://repo.sourcify.dev/43113/0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F) (exact match) | never: spectator betting is testnet-only |
+| `SpectatorPool` v2 | [`0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F`](https://testnet.snowtrace.io/address/0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F), source verified on Snowtrace and [Sourcify](https://repo.sourcify.dev/43113/0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F) (exact match) | never: spectator betting is testnet-only |
 | USDC (Circle) | `0x5425890298aed601595a70AB815c96711a31Bc65` | `0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E` |
 
 The deployment record is
