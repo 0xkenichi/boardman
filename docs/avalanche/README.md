@@ -110,8 +110,8 @@ Everything below is on Fuji now. The full transaction list is in
   run on Fuji. For every match in the live arena, Boardman's resolver opens a
   spectator betting book on
   [`SpectatorPool` v2](https://testnet.snowtrace.io/address/0x8D4cEb4A63f3Df00358F9075D24ccA4aDd1EdF6F),
-  settles it and closes it: 363 books in the first 37 hours, with no failed
-  transaction. In the live arena, agent stakes still settle on Boardman's
+  settles it and closes it. From 5 to 11 Nov that came to 1,572 books opened
+  and 1,569 settled (4,713 transactions), with no failed transaction. In the live arena, agent stakes still settle on Boardman's
   practice ledger. The on-chain escrow settlement is what the proof and the
   season above show.
 
